@@ -18,8 +18,8 @@ import { judgeImages, tags, users } from "../../../../../shared/db/schema.ts";
 import { hashPassword } from "../../../../access/contracts/cross-module/identity_services_security_password.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 import {
-  getAdminUserIds,
-  isUserAdmin,
+    getAdminUserIds,
+    isUserAdmin,
 } from "../../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 
 /**
@@ -28,10 +28,10 @@ import {
  * 幂等：写入同一角色不会产生额外副作用；不再创建角色行或关联记录。
  */
 async function promoteToPlatformAdmin(userId: string): Promise<void> {
-  await getDb().update(users).set({
-    role: "admin",
-    updated_at: new Date().toISOString(),
-  }).where(eq(users.id, userId));
+    await getDb().update(users).set({
+        role: "admin",
+        updated_at: new Date().toISOString(),
+    }).where(eq(users.id, userId));
 }
 
 /**
@@ -41,7 +41,7 @@ async function promoteToPlatformAdmin(userId: string): Promise<void> {
  * `NOJ_FORCE_PASSWORD_CHANGE=false`，使开发环境管理员首次登录即可使用完整功能。
  */
 function shouldForcePasswordChange(): boolean {
-  return Deno.env.get("NOJ_FORCE_PASSWORD_CHANGE") !== "false";
+    return Deno.env.get("NOJ_FORCE_PASSWORD_CHANGE") !== "false";
 }
 
 /**
@@ -50,93 +50,95 @@ function shouldForcePasswordChange(): boolean {
  * 幂等：使用固定 UUID 确保重复运行不重复插入。
  */
 export async function seedJudgeImages(): Promise<void> {
-  const db = getDb();
-  const now = new Date().toISOString();
+    const db = getDb();
+    const now = new Date().toISOString();
 
-  // 生产环境通过 JUDGE_IMAGE_BASE 指定 ghcr 仓库前缀（如 ghcr.io/neuro-oj/），
-  // 使白名单写入 ghcr 全限定镜像名；未设置时保持本地开发默认名。
-  const imageBase = (Deno.env.get("JUDGE_IMAGE_BASE") ?? "").replace(
-    /\/+$/,
-    "",
-  );
-  const withBase = (name: string) => imageBase ? `${imageBase}/${name}` : name;
+    // 生产环境通过 JUDGE_IMAGE_BASE 指定 ghcr 仓库前缀（如 ghcr.io/neuro-oj/），
+    // 使白名单写入 ghcr 全限定镜像名；未设置时保持本地开发默认名。
+    const imageBase = (Deno.env.get("JUDGE_IMAGE_BASE") ?? "").replace(
+        /\/+$/,
+        "",
+    );
+    const withBase = (name: string) =>
+        imageBase ? `${imageBase}/${name}` : name;
 
-  const images = [
-    {
-      id: "e0000000-0000-0000-0000-000000000002",
-      image: withBase("noj-evaluator-python"),
-      mode: "all_versions",
-      kind: "evaluator",
-      description: "双容器 Evaluator (Python 3.12, noj_evaluator_sdk)",
-    },
-    {
-      id: "e0000000-0000-0000-0000-000000000003",
-      image: withBase("noj-solution-python"),
-      mode: "all_versions",
-      kind: "solution",
-      description: "双容器 Solution (Python 3.12, noj_solution_sdk)",
-    },
-    {
-      id: "e0000000-0000-0000-0000-000000000004",
-      image: withBase("noj-solution-ai"),
-      mode: "all_versions",
-      kind: "solution",
-      description: "双容器 Solution AI (Python 3.12, CPU torch, CV/ML 库)",
-    },
-  ];
+    const images = [
+        {
+            id: "e0000000-0000-0000-0000-000000000002",
+            image: withBase("noj-evaluator-python"),
+            mode: "all_versions",
+            kind: "evaluator",
+            description: "双容器 Evaluator (Python 3.12, noj_evaluator_sdk)",
+        },
+        {
+            id: "e0000000-0000-0000-0000-000000000003",
+            image: withBase("noj-solution-python"),
+            mode: "all_versions",
+            kind: "solution",
+            description: "双容器 Solution (Python 3.12, noj_solution_sdk)",
+        },
+        {
+            id: "e0000000-0000-0000-0000-000000000004",
+            image: withBase("noj-solution-ai"),
+            mode: "all_versions",
+            kind: "solution",
+            description:
+                "双容器 Solution AI (Python 3.12, CPU torch, CV/ML 库)",
+        },
+    ];
 
-  // 三条镜像一次批量 upsert（P3）：冲突时按 id 更新 kind/mode/description，
-  // 刻意不写 image —— 运维手工改过的镜像名不被种子覆盖。
-  await db.insert(judgeImages).values(
-    images.map((img) => ({
-      ...img,
-      created_at: now,
-      updated_at: now,
-    })),
-  ).onConflictDoUpdate({
-    target: judgeImages.id,
-    set: {
-      kind: sql`excluded.kind`,
-      mode: sql`excluded.mode`,
-      description: sql`excluded.description`,
-      updated_at: sql`excluded.updated_at`,
-    },
-  });
-  for (const img of images) {
-    console.log(`  已同步评测镜像: ${img.image} (kind=${img.kind})`);
-  }
+    // 三条镜像一次批量 upsert（P3）：冲突时按 id 更新 kind/mode/description，
+    // 刻意不写 image —— 运维手工改过的镜像名不被种子覆盖。
+    await db.insert(judgeImages).values(
+        images.map((img) => ({
+            ...img,
+            created_at: now,
+            updated_at: now,
+        })),
+    ).onConflictDoUpdate({
+        target: judgeImages.id,
+        set: {
+            kind: sql`excluded.kind`,
+            mode: sql`excluded.mode`,
+            description: sql`excluded.description`,
+            updated_at: sql`excluded.updated_at`,
+        },
+    });
+    for (const img of images) {
+        console.log(`  已同步评测镜像: ${img.image} (kind=${img.kind})`);
+    }
 }
 
 /**
  * 初始化种子标签（issue #223：category 系统退役，双类标签取代）。
  */
 export async function seedTags(): Promise<void> {
-  const db = getDb();
-  const now = new Date().toISOString();
+    const db = getDb();
+    const now = new Date().toISOString();
 
-  const seed = [
-    // 题目标签（人人可见）
-    { id: "tag-lmcc", name: "LMCC 样例题", kind: "problem" },
-    { id: "tag-beginner", name: "入门", kind: "problem" },
-    // 算法标签（通过题目后可见）
-    { id: "tag-simulate", name: "模拟", kind: "algorithm" },
-    { id: "tag-sliding-window", name: "滑动窗口", kind: "algorithm" },
-    { id: "tag-prefix-sum", name: "前缀和", kind: "algorithm" },
-    { id: "tag-graph", name: "图论", kind: "algorithm" },
-    { id: "tag-dp", name: "DP", kind: "algorithm" },
-    { id: "tag-ds", name: "数据结构", kind: "algorithm" },
-    { id: "tag-tree", name: "树", kind: "algorithm" },
-  ];
+    const seed = [
+        // 题目标签（人人可见）
+        { id: "tag-lmcc", name: "LMCC 样例题", kind: "problem" },
+        { id: "tag-beginner", name: "入门", kind: "problem" },
+        // 算法标签（通过题目后可见）
+        { id: "tag-simulate", name: "模拟", kind: "algorithm" },
+        { id: "tag-sliding-window", name: "滑动窗口", kind: "algorithm" },
+        { id: "tag-prefix-sum", name: "前缀和", kind: "algorithm" },
+        { id: "tag-graph", name: "图论", kind: "algorithm" },
+        { id: "tag-dp", name: "DP", kind: "algorithm" },
+        { id: "tag-ds", name: "数据结构", kind: "algorithm" },
+        { id: "tag-tree", name: "树", kind: "algorithm" },
+    ];
 
-  for (const tag of seed) {
-    // 以 name 为幂等键：运营者若已手工创建同名标签（随机 UUID），
-    // 种子跳过而不触发 name UNIQUE 冲突（语义上 name 才是标签身份）。
-    await db
-      .insert(tags)
-      .values({ ...tag, created_at: now, updated_at: now })
-      .onConflictDoNothing({ target: tags.name });
-    console.log(`  已同步标签: ${tag.name} (${tag.kind})`);
-  }
+    for (const tag of seed) {
+        // 以 name 为幂等键：运营者若已手工创建同名标签（随机 UUID），
+        // 种子跳过而不触发 name UNIQUE 冲突（语义上 name 才是标签身份）。
+        await db
+            .insert(tags)
+            .values({ ...tag, created_at: now, updated_at: now })
+            .onConflictDoNothing({ target: tags.name });
+        console.log(`  已同步标签: ${tag.name} (${tag.kind})`);
+    }
 }
 
 /**
@@ -147,59 +149,64 @@ export async function seedTags(): Promise<void> {
  * 若 ADMIN_PASS 未设置，则仅提升已存在的用户。
  */
 export async function ensureAdminFromEnv(): Promise<void> {
-  const adminEmail = Deno.env.get("ADMIN_EMAIL");
-  if (!adminEmail) {
-    console.log("  ADMIN_EMAIL 未设置，将进入引导管理员兜底流程");
-    return;
-  }
-
-  const adminPass = Deno.env.get("ADMIN_PASS");
-  const db = getDb();
-
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, adminEmail))
-    .limit(1);
-
-  if (existing.length === 0) {
-    if (!adminPass) {
-      console.warn(
-        `  警告：用户 ${adminEmail} 不存在，且未设置 ADMIN_PASS，无法自动创建`,
-      );
-      return;
+    const adminEmail = Deno.env.get("ADMIN_EMAIL");
+    if (!adminEmail) {
+        console.log("  ADMIN_EMAIL 未设置，将进入引导管理员兜底流程");
+        return;
     }
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const username = adminEmail.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
 
-    await db.insert(users).values({
-      id,
-      username,
-      email: adminEmail,
-      password_hash: await hashPassword(adminPass),
-      must_change_password: shouldForcePasswordChange(),
-      role: "admin",
-      created_at: now,
-      updated_at: now,
-    });
-    await enqueueSearchIndexTask("user", id, "upsert");
-    const guard = shouldForcePasswordChange()
-      ? "已强制首次改密"
-      : "开发模式：未强制首次改密";
-    console.log(`  已创建管理员用户: ${adminEmail} (${username})，${guard}`);
-    return;
-  }
+    const adminPass = Deno.env.get("ADMIN_PASS");
+    const db = getDb();
 
-  const user = existing[0];
-  // 幂等判断：用户平台角色已是 admin 则跳过
-  if (await isUserAdmin(user.id)) {
-    console.log(`  用户 ${adminEmail} 已是管理员，无需提升`);
-    return;
-  }
+    const existing = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, adminEmail))
+        .limit(1);
 
-  await promoteToPlatformAdmin(user.id);
-  console.log(`  已提升用户 ${adminEmail} 为管理员`);
+    if (existing.length === 0) {
+        if (!adminPass) {
+            console.warn(
+                `  警告：用户 ${adminEmail} 不存在，且未设置 ADMIN_PASS，无法自动创建`,
+            );
+            return;
+        }
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const username = adminEmail.split("@")[0].replace(
+            /[^a-zA-Z0-9_]/g,
+            "_",
+        );
+
+        await db.insert(users).values({
+            id,
+            username,
+            email: adminEmail,
+            password_hash: await hashPassword(adminPass),
+            must_change_password: shouldForcePasswordChange(),
+            role: "admin",
+            created_at: now,
+            updated_at: now,
+        });
+        await enqueueSearchIndexTask("user", id, "upsert");
+        const guard = shouldForcePasswordChange()
+            ? "已强制首次改密"
+            : "开发模式：未强制首次改密";
+        console.log(
+            `  已创建管理员用户: ${adminEmail} (${username})，${guard}`,
+        );
+        return;
+    }
+
+    const user = existing[0];
+    // 幂等判断：用户平台角色已是 admin 则跳过
+    if (await isUserAdmin(user.id)) {
+        console.log(`  用户 ${adminEmail} 已是管理员，无需提升`);
+        return;
+    }
+
+    await promoteToPlatformAdmin(user.id);
+    console.log(`  已提升用户 ${adminEmail} 为管理员`);
 }
 
 /**
@@ -209,13 +216,13 @@ export async function ensureAdminFromEnv(): Promise<void> {
  * 24 字符 × 6 bits = 144 bits 熵，满足 NIST SP 800-63B 临时凭证要求。
  */
 function generateStrongPassword(): string {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "")
-    .slice(0, 24);
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    return btoa(String.fromCharCode(...bytes))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "")
+        .slice(0, 24);
 }
 
 /**
@@ -227,57 +234,61 @@ function generateStrongPassword(): string {
  * 已存在可登录 admin 时本函数为 no-op，可重复运行（幂等）。
  */
 export async function ensureBootstrapAdmin(): Promise<void> {
-  if (Deno.env.get("ADMIN_EMAIL")) {
-    console.log("  ADMIN_EMAIL 已设置，遵循环境变量配置，跳过引导管理员创建");
-    return;
-  }
+    if (Deno.env.get("ADMIN_EMAIL")) {
+        console.log(
+            "  ADMIN_EMAIL 已设置，遵循环境变量配置，跳过引导管理员创建",
+        );
+        return;
+    }
 
-  const db = getDb();
+    const db = getDb();
 
-  // 存在可登录管理员（users.role='admin'，排除 root）则跳过
-  const adminIds = await getAdminUserIds();
-  const hasLoginableAdmin = [...adminIds].some((id) => id !== ROOT_USER_ID);
-  if (hasLoginableAdmin) {
-    console.log("  已存在可登录管理员，跳过引导管理员创建");
-    return;
-  }
+    // 存在可登录管理员（users.role='admin'，排除 root）则跳过
+    const adminIds = await getAdminUserIds();
+    const hasLoginableAdmin = [...adminIds].some((id) => id !== ROOT_USER_ID);
+    if (hasLoginableAdmin) {
+        console.log("  已存在可登录管理员，跳过引导管理员创建");
+        return;
+    }
 
-  const username = "admin";
-  const email = "admin@noj.local";
-  const password = generateStrongPassword();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
+    const username = "admin";
+    const email = "admin@noj.local";
+    const password = generateStrongPassword();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-  await db.insert(users).values({
-    id,
-    username,
-    email,
-    password_hash: await hashPassword(password),
-    must_change_password: shouldForcePasswordChange(),
-    role: "admin",
-    created_at: now,
-    updated_at: now,
-  });
+    await db.insert(users).values({
+        id,
+        username,
+        email,
+        password_hash: await hashPassword(password),
+        must_change_password: shouldForcePasswordChange(),
+        role: "admin",
+        created_at: now,
+        updated_at: now,
+    });
 
-  console.log("");
-  console.log("-".repeat(72));
-  if (shouldForcePasswordChange()) {
-    console.log("⚠ 已创建临时引导管理员（首次登录后必须修改密码）");
-  } else {
-    console.log("✓ 已创建开发引导管理员（未强制首次改密，可直接使用完整功能）");
-  }
-  console.log("-".repeat(72));
-  console.log(`  username: ${username}`);
-  console.log(`  email:    ${email}`);
-  // 开发引导必须把一次性密码显示给本机操作者（仅本地 bootstrap 路径）。
-  // codeql[js/clear-text-logging]
-  console.log(`  password: ${password}`);
-  console.log("-".repeat(72));
-  if (shouldForcePasswordChange()) {
-    console.log("⚠ 请立即记录上述密码，首次登录后系统会强制要求修改密码。");
-  }
-  console.log("-".repeat(72));
-  console.log("");
+    console.log("");
+    console.log("-".repeat(72));
+    if (shouldForcePasswordChange()) {
+        console.log("⚠ 已创建临时引导管理员（首次登录后必须修改密码）");
+    } else {
+        console.log(
+            "✓ 已创建开发引导管理员（未强制首次改密，可直接使用完整功能）",
+        );
+    }
+    console.log("-".repeat(72));
+    console.log(`  username: ${username}`);
+    console.log(`  email:    ${email}`);
+    // 开发引导必须把一次性密码显示给本机操作者（仅本地 bootstrap 路径）。
+    // codeql[js/clear-text-logging]
+    console.log(`  password: ${password}`);
+    console.log("-".repeat(72));
+    if (shouldForcePasswordChange()) {
+        console.log("⚠ 请立即记录上述密码，首次登录后系统会强制要求修改密码。");
+    }
+    console.log("-".repeat(72));
+    console.log("");
 }
 
 /**
@@ -288,33 +299,33 @@ export async function ensureBootstrapAdmin(): Promise<void> {
  * 幂等：用户存在时跳过。
  */
 export async function ensureE2EPwChangeUser(): Promise<void> {
-  if (Deno.env.get("NOJ_RUN_E2E") !== "1") return;
+    if (Deno.env.get("NOJ_RUN_E2E") !== "1") return;
 
-  const email = "e2e_pwchange@test.com";
-  const pass = "e2e_pwchange_pass_8chars";
-  const db = getDb();
+    const email = "e2e_pwchange@test.com";
+    const pass = "e2e_pwchange_pass_8chars";
+    const db = getDb();
 
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
-  if (existing.length > 0) {
-    console.log(`  E2E 守卫测试用户 ${email} 已存在，跳过创建`);
-    return;
-  }
+    const existing = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+    if (existing.length > 0) {
+        console.log(`  E2E 守卫测试用户 ${email} 已存在，跳过创建`);
+        return;
+    }
 
-  const now = new Date().toISOString();
-  await db.insert(users).values({
-    id: crypto.randomUUID(),
-    username: "e2e_pwchange",
-    email,
-    password_hash: await hashPassword(pass),
-    must_change_password: true,
-    created_at: now,
-    updated_at: now,
-  });
-  console.log(
-    `  已创建 E2E 守卫测试用户: ${email} (must_change_password=true)`,
-  );
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+        id: crypto.randomUUID(),
+        username: "e2e_pwchange",
+        email,
+        password_hash: await hashPassword(pass),
+        must_change_password: true,
+        created_at: now,
+        updated_at: now,
+    });
+    console.log(
+        `  已创建 E2E 守卫测试用户: ${email} (must_change_password=true)`,
+    );
 }

@@ -10,14 +10,14 @@ import type { Context, Next } from "hono";
 import { runWithRequestContext } from "../../../../shared/observability/context.ts";
 
 declare module "hono" {
-  interface ContextVariableMap {
-    requestId: string;
-  }
+    interface ContextVariableMap {
+        requestId: string;
+    }
 }
 
 export function requestContext(c: Context, next: Next): Promise<void> {
-  const requestId = crypto.randomUUID();
-  c.set("requestId", requestId);
-  c.header("X-Request-Id", requestId);
-  return runWithRequestContext(requestId, () => next());
+    const requestId = crypto.randomUUID();
+    c.set("requestId", requestId);
+    c.header("X-Request-Id", requestId);
+    return runWithRequestContext(requestId, () => next());
 }

@@ -19,61 +19,64 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import type {
-  SystemActor,
-  UserActor,
+    SystemActor,
+    UserActor,
 } from "../../../access/contracts/actor.ts";
 import {
-  evaluationAttempts,
-  objectiveSubmissions,
-  submissions,
+    evaluationAttempts,
+    objectiveSubmissions,
+    submissions,
 } from "../../../../shared/db/schema.ts";
 import type { AttemptResultKind } from "../../../../shared/versioning/types.ts";
 import {
-  finishAttempt,
-  getAttempt,
-  isTerminalAttemptState,
-  runAttemptTerminalRevocationAfterCommit,
+    finishAttempt,
+    getAttempt,
+    isTerminalAttemptState,
+    runAttemptTerminalRevocationAfterCommit,
 } from "./attempts.ts";
 import {
-  lockProjectionHosts,
-  type ProjectionSource,
-  recomputeSubmissionProjection,
-  type SubmissionProjectionPlan,
-  upsertCurrentVersionResult,
+    lockProjectionHosts,
+    type ProjectionSource,
+    recomputeSubmissionProjection,
+    type SubmissionProjectionPlan,
+    upsertCurrentVersionResult,
 } from "./projection.ts";
 import { completeAttemptJobItem } from "./job-item-result.ts";
 import {
-  scheduleAutoRetryInTx,
-  type ScheduledAutoRetry,
+    scheduleAutoRetryInTx,
+    type ScheduledAutoRetry,
 } from "./auto-retry.ts";
 
 /** 结果写入输入（可信封套字段，来自 JudgeResult）。 */
 export interface ApplyAttemptResultInput {
-  /** 尝试 ID（= 正式评测 run_id）。 */
-  attemptId: string;
-  resultKind: AttemptResultKind;
-  resultStatus: string | null;
-  /** ×100 整数分；平台错误时为 null。 */
-  score: number | null;
-  accepted: boolean;
-  output?: string;
-  details?: Record<string, unknown>;
-  timeMs?: number | null;
-  memoryKb?: number | null;
-  /**
-   * 平台错误自动重试（仅 judge 回传的正式提交结果启用）。
-   *
-   * 提供且仍有剩余次数时，平台错误不把提交定为 `error`，而是在同一事务内创建新尝试；
-   * 派发阶段失败、sweeper 永久失败等内部路径不传此项，保持原有终态语义。
-   */
-  autoRetry?: { maxRetries: number };
+    /** 尝试 ID（= 正式评测 run_id）。 */
+    attemptId: string;
+    resultKind: AttemptResultKind;
+    resultStatus: string | null;
+    /** ×100 整数分；平台错误时为 null。 */
+    score: number | null;
+    accepted: boolean;
+    output?: string;
+    details?: Record<string, unknown>;
+    timeMs?: number | null;
+    memoryKb?: number | null;
+    /**
+     * 平台错误自动重试（仅 judge 回传的正式提交结果启用）。
+     *
+     * 提供且仍有剩余次数时，平台错误不把提交定为 `error`，而是在同一事务内创建新尝试；
+     * 派发阶段失败、sweeper 永久失败等内部路径不传此项，保持原有终态语义。
+     */
+    autoRetry?: { maxRetries: number };
 }
 
 /** 结果写入结论。 */
 export type ApplyAttemptOutcome =
-  | { applied: "graded"; projection: SubmissionProjectionPlan }
-  | { applied: "platform_error"; retry?: ScheduledAutoRetry }
-  | { applied: "ignored"; reason: "not_found" | "already_terminal" | "stale" };
+    | { applied: "graded"; projection: SubmissionProjectionPlan }
+    | { applied: "platform_error"; retry?: ScheduledAutoRetry }
+    | {
+        applied: "ignored";
+        reason: "not_found" | "already_terminal" | "stale";
+    };
 
 export type EvaluationResultActor = UserActor | SystemActor;
 
@@ -84,57 +87,57 @@ export type EvaluationResultActor = UserActor | SystemActor;
  * 否则结果写入后 `is_contest_*` 永远为空（竞赛固定版本策略形同失效）。
  */
 async function lockSubmissionRow(
-  source: ProjectionSource,
-  executor: Executor,
+    source: ProjectionSource,
+    executor: Executor,
 ): Promise<
-  | {
-    active_attempt_id: string | null;
-    status: string;
-    contest_id: string | null;
-  }
-  | null
+    | {
+        active_attempt_id: string | null;
+        status: string;
+        contest_id: string | null;
+    }
+    | null
 > {
-  if (source.kind === "submission") {
+    if (source.kind === "submission") {
+        const [row] = await executor.select({
+            active_attempt_id: submissions.active_attempt_id,
+            status: submissions.status,
+            contest_id: submissions.contest_id,
+        }).from(submissions).where(eq(submissions.id, source.id)).for("update");
+        return row ?? null;
+    }
     const [row] = await executor.select({
-      active_attempt_id: submissions.active_attempt_id,
-      status: submissions.status,
-      contest_id: submissions.contest_id,
-    }).from(submissions).where(eq(submissions.id, source.id)).for("update");
+        active_attempt_id: objectiveSubmissions.active_attempt_id,
+        status: objectiveSubmissions.status,
+        contest_id: objectiveSubmissions.contest_id,
+    }).from(objectiveSubmissions).where(
+        eq(objectiveSubmissions.id, source.id),
+    ).for("update");
     return row ?? null;
-  }
-  const [row] = await executor.select({
-    active_attempt_id: objectiveSubmissions.active_attempt_id,
-    status: objectiveSubmissions.status,
-    contest_id: objectiveSubmissions.contest_id,
-  }).from(objectiveSubmissions).where(
-    eq(objectiveSubmissions.id, source.id),
-  ).for("update");
-  return row ?? null;
 }
 
 /** 写提交的"最近尝试 / 运行状态"字段（清空在途尝试）。 */
 async function updateSubmissionRuntimeState(
-  source: ProjectionSource,
-  patch: {
-    latest_attempt_id: string;
-    status: "finished" | "error";
-    judge_finished_at?: string;
-  },
-  executor: Executor,
+    source: ProjectionSource,
+    patch: {
+        latest_attempt_id: string;
+        status: "finished" | "error";
+        judge_finished_at?: string;
+    },
+    executor: Executor,
 ): Promise<void> {
-  if (source.kind === "submission") {
-    await executor.update(submissions).set({
-      latest_attempt_id: patch.latest_attempt_id,
-      active_attempt_id: null,
-      status: patch.status,
-      judge_finished_at: patch.judge_finished_at ?? null,
-    }).where(eq(submissions.id, source.id));
-  } else {
-    await executor.update(objectiveSubmissions).set({
-      latest_attempt_id: patch.latest_attempt_id,
-      active_attempt_id: null,
-    }).where(eq(objectiveSubmissions.id, source.id));
-  }
+    if (source.kind === "submission") {
+        await executor.update(submissions).set({
+            latest_attempt_id: patch.latest_attempt_id,
+            active_attempt_id: null,
+            status: patch.status,
+            judge_finished_at: patch.judge_finished_at ?? null,
+        }).where(eq(submissions.id, source.id));
+    } else {
+        await executor.update(objectiveSubmissions).set({
+            latest_attempt_id: patch.latest_attempt_id,
+            active_attempt_id: null,
+        }).where(eq(objectiveSubmissions.id, source.id));
+    }
 }
 
 /**
@@ -143,105 +146,108 @@ async function updateSubmissionRuntimeState(
  * 调用方必须已经开启事务（本函数不自行开启，以便与任务条目更新、SSE 事件同批提交）。
  */
 export async function applyAttemptResult(
-  input: ApplyAttemptResultInput,
-  executor?: Executor,
+    input: ApplyAttemptResultInput,
+    executor?: Executor,
 ): Promise<ApplyAttemptOutcome> {
-  if (!executor) {
-    const outcome = await getDb().transaction((tx) =>
-      applyAttemptResult(input, tx)
+    if (!executor) {
+        const outcome = await getDb().transaction((tx) =>
+            applyAttemptResult(input, tx)
+        );
+        if (outcome.applied !== "ignored") {
+            await runAttemptTerminalRevocationAfterCommit(input.attemptId);
+        }
+        return outcome;
+    }
+    const db = executor;
+    const attempt = await getAttempt(input.attemptId, db);
+    if (!attempt) return { applied: "ignored", reason: "not_found" };
+    await lockProjectionHosts(db, {
+        kind: attempt.submission_id ? "submission" : "objective",
+        id: (attempt.submission_id ??
+            attempt.objective_submission_id) as string,
+        problem_id: attempt.problem_id,
+    });
+    // 先锁提交行再取竞赛上下文：`contest_id` 是竞赛口径投影的必要输入，
+    // 且必须在同一事务的同一行锁内读到，避免与竞赛固定版本切换发生竞态。
+    const locked = await lockSubmissionRow(
+        {
+            kind: attempt.submission_id ? "submission" : "objective",
+            id: (attempt.submission_id ??
+                attempt.objective_submission_id) as string,
+            problem_id: attempt.problem_id,
+            contest_id: null,
+        },
+        db,
     );
-    if (outcome.applied !== "ignored") {
-      await runAttemptTerminalRevocationAfterCommit(input.attemptId);
+    if (!locked) return { applied: "ignored", reason: "not_found" };
+    const source: ProjectionSource = {
+        kind: attempt.submission_id ? "submission" : "objective",
+        id: (attempt.submission_id ??
+            attempt.objective_submission_id) as string,
+        problem_id: attempt.problem_id,
+        contest_id: locked.contest_id,
+    };
+
+    // 过时结果：提交的活动尝试已经换成别的尝试
+    if (
+        locked.active_attempt_id !== input.attemptId
+    ) {
+        return { applied: "ignored", reason: "stale" };
     }
-    return outcome;
-  }
-  const db = executor;
-  const attempt = await getAttempt(input.attemptId, db);
-  if (!attempt) return { applied: "ignored", reason: "not_found" };
-  await lockProjectionHosts(db, {
-    kind: attempt.submission_id ? "submission" : "objective",
-    id: (attempt.submission_id ?? attempt.objective_submission_id) as string,
-    problem_id: attempt.problem_id,
-  });
-  // 先锁提交行再取竞赛上下文：`contest_id` 是竞赛口径投影的必要输入，
-  // 且必须在同一事务的同一行锁内读到，避免与竞赛固定版本切换发生竞态。
-  const locked = await lockSubmissionRow(
-    {
-      kind: attempt.submission_id ? "submission" : "objective",
-      id: (attempt.submission_id ?? attempt.objective_submission_id) as string,
-      problem_id: attempt.problem_id,
-      contest_id: null,
-    },
-    db,
-  );
-  if (!locked) return { applied: "ignored", reason: "not_found" };
-  const source: ProjectionSource = {
-    kind: attempt.submission_id ? "submission" : "objective",
-    id: (attempt.submission_id ?? attempt.objective_submission_id) as string,
-    problem_id: attempt.problem_id,
-    contest_id: locked.contest_id,
-  };
-
-  // 过时结果：提交的活动尝试已经换成别的尝试
-  if (
-    locked.active_attempt_id !== input.attemptId
-  ) {
-    return { applied: "ignored", reason: "stale" };
-  }
-  if (isTerminalAttemptState(attempt.state)) {
-    return { applied: "ignored", reason: "already_terminal" };
-  }
-
-  const applied = await finishAttempt({
-    attemptId: input.attemptId,
-    resultKind: input.resultKind,
-    resultStatus: input.resultStatus,
-    score: input.score,
-    accepted: input.accepted,
-    output: input.output,
-    details: input.details,
-    timeMs: input.timeMs,
-    memoryKb: input.memoryKb,
-  }, db);
-  if (!applied) return { applied: "ignored", reason: "already_terminal" };
-
-  if (input.resultKind === "platform_error") {
-    // 自动重试：同一事务、同一提交行锁内创建新尝试（sequence 递增，失败尝试保留
-    // error 终态作为持久化的次数依据）；提交保持 pending，批任务条目保持未完成。
-    if (input.autoRetry && source.kind === "submission") {
-      const retry = await scheduleAutoRetryInTx(db, {
-        failedAttemptId: input.attemptId,
-        source,
-        maxRetries: input.autoRetry.maxRetries,
-      });
-      if (retry) return { applied: "platform_error", retry };
+    if (isTerminalAttemptState(attempt.state)) {
+        return { applied: "ignored", reason: "already_terminal" };
     }
-    // 平台错误不替换正式判定：只记终态与运行状态
-    await updateSubmissionRuntimeState(source, {
-      latest_attempt_id: input.attemptId,
-      status: "error",
-      judge_finished_at: new Date().toISOString(),
+
+    const applied = await finishAttempt({
+        attemptId: input.attemptId,
+        resultKind: input.resultKind,
+        resultStatus: input.resultStatus,
+        score: input.score,
+        accepted: input.accepted,
+        output: input.output,
+        details: input.details,
+        timeMs: input.timeMs,
+        memoryKb: input.memoryKb,
     }, db);
-    // 批任务条目：平台错误属于条目 failed（WA/零分才是成功完成）
-    await completeAttemptJobItem(input.attemptId, "failed", db);
-    return { applied: "platform_error" };
-  }
+    if (!applied) return { applied: "ignored", reason: "already_terminal" };
 
-  // graded：更新"该版本当前正式判定"，再按当前策略重算双口径投影
-  await upsertCurrentVersionResult(db, {
-    source,
-    problemVersionId: attempt.problem_version_id,
-    attemptId: input.attemptId,
-  });
-  const projection = await recomputeSubmissionProjection(db, source);
-  await updateSubmissionRuntimeState(source, {
-    latest_attempt_id: input.attemptId,
-    status: "finished",
-    judge_finished_at: new Date().toISOString(),
-  }, db);
-  // 批任务条目：正式判定（含 WA、零分）即条目成功完成
-  await completeAttemptJobItem(input.attemptId, "succeeded", db);
-  return { applied: "graded", projection };
+    if (input.resultKind === "platform_error") {
+        // 自动重试：同一事务、同一提交行锁内创建新尝试（sequence 递增，失败尝试保留
+        // error 终态作为持久化的次数依据）；提交保持 pending，批任务条目保持未完成。
+        if (input.autoRetry && source.kind === "submission") {
+            const retry = await scheduleAutoRetryInTx(db, {
+                failedAttemptId: input.attemptId,
+                source,
+                maxRetries: input.autoRetry.maxRetries,
+            });
+            if (retry) return { applied: "platform_error", retry };
+        }
+        // 平台错误不替换正式判定：只记终态与运行状态
+        await updateSubmissionRuntimeState(source, {
+            latest_attempt_id: input.attemptId,
+            status: "error",
+            judge_finished_at: new Date().toISOString(),
+        }, db);
+        // 批任务条目：平台错误属于条目 failed（WA/零分才是成功完成）
+        await completeAttemptJobItem(input.attemptId, "failed", db);
+        return { applied: "platform_error" };
+    }
+
+    // graded：更新"该版本当前正式判定"，再按当前策略重算双口径投影
+    await upsertCurrentVersionResult(db, {
+        source,
+        problemVersionId: attempt.problem_version_id,
+        attemptId: input.attemptId,
+    });
+    const projection = await recomputeSubmissionProjection(db, source);
+    await updateSubmissionRuntimeState(source, {
+        latest_attempt_id: input.attemptId,
+        status: "finished",
+        judge_finished_at: new Date().toISOString(),
+    }, db);
+    // 批任务条目：正式判定（含 WA、零分）即条目成功完成
+    await completeAttemptJobItem(input.attemptId, "succeeded", db);
+    return { applied: "graded", projection };
 }
 
 /**
@@ -251,25 +257,25 @@ export async function applyAttemptResult(
  * caller 必须使用本入口并显式传入 actor。actor 不从结果封套或请求上下文推断。
  */
 export function applyAttemptResultTx(
-  tx: DbTx,
-  actor: EvaluationResultActor,
-  input: ApplyAttemptResultInput,
+    tx: DbTx,
+    actor: EvaluationResultActor,
+    input: ApplyAttemptResultInput,
 ): Promise<ApplyAttemptOutcome> {
-  void actor;
-  return applyAttemptResult(input, tx);
+    void actor;
+    return applyAttemptResult(input, tx);
 }
 
 /** 供测试与读路径使用的尝试列表（按 sequence 升序）。 */
 export async function listAttempts(
-  source: ProjectionSource,
-  executor?: Executor,
+    source: ProjectionSource,
+    executor?: Executor,
 ): Promise<typeof evaluationAttempts.$inferSelect[]> {
-  const db = executor ?? getDb();
-  const column = source.kind === "submission"
-    ? evaluationAttempts.submission_id
-    : evaluationAttempts.objective_submission_id;
-  const rows = await db.select().from(evaluationAttempts).where(
-    and(eq(column, source.id)),
-  );
-  return rows.sort((a, b) => a.sequence - b.sequence);
+    const db = executor ?? getDb();
+    const column = source.kind === "submission"
+        ? evaluationAttempts.submission_id
+        : evaluationAttempts.objective_submission_id;
+    const rows = await db.select().from(evaluationAttempts).where(
+        and(eq(column, source.id)),
+    );
+    return rows.sort((a, b) => a.sequence - b.sequence);
 }

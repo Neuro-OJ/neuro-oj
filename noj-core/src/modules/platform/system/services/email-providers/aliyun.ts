@@ -13,12 +13,12 @@ import { buildResetPasswordHtml, getSettingOrThrow } from "./common.ts";
 
 /** SingleSendMail 请求参数（**camelCase**，由 SDK 模型映射为 wire 参数名）。 */
 export interface AliyunSendMailParams {
-  accountName: string;
-  replyToAddress: boolean;
-  addressType: number;
-  toAddress: string;
-  subject: string;
-  htmlBody: string;
+    accountName: string;
+    replyToAddress: boolean;
+    addressType: number;
+    toAddress: string;
+    subject: string;
+    htmlBody: string;
 }
 
 /**
@@ -40,20 +40,20 @@ export interface AliyunSendMailParams {
  * @param html - 邮件 HTML 正文
  */
 export function buildSendMailParams(
-  fromEmail: string,
-  toEmail: string,
-  subject: string,
-  html: string,
+    fromEmail: string,
+    toEmail: string,
+    subject: string,
+    html: string,
 ): AliyunSendMailParams {
-  return {
-    accountName: fromEmail,
-    // 不单独指定回复地址（replyToAddress=true 会要求同时提供 ReplyAddress）
-    replyToAddress: false,
-    addressType: 1, // 1 = 发信地址（触发邮件），0 = 随机账号
-    toAddress: toEmail,
-    subject,
-    htmlBody: html,
-  };
+    return {
+        accountName: fromEmail,
+        // 不单独指定回复地址（replyToAddress=true 会要求同时提供 ReplyAddress）
+        replyToAddress: false,
+        addressType: 1, // 1 = 发信地址（触发邮件），0 = 随机账号
+        toAddress: toEmail,
+        subject,
+        htmlBody: html,
+    };
 }
 
 /**
@@ -64,50 +64,50 @@ export function buildSendMailParams(
  * @param expiresInMinutes - 过期时间（分钟），用于邮件正文展示
  */
 export const sendEmail: SendEmail = async (email, subject, html) => {
-  const akId = getSettingOrThrow(
-    "alibaba_access_key_id",
-    "阿里云 AccessKey ID",
-  );
-  const akSecret = getSettingOrThrow(
-    "alibaba_access_key_secret",
-    "阿里云 AccessKey Secret",
-  );
-  const fromEmail = getSettingOrThrow("alibaba_from_email", "阿里云发信地址");
+    const akId = getSettingOrThrow(
+        "alibaba_access_key_id",
+        "阿里云 AccessKey ID",
+    );
+    const akSecret = getSettingOrThrow(
+        "alibaba_access_key_secret",
+        "阿里云 AccessKey Secret",
+    );
+    const fromEmail = getSettingOrThrow("alibaba_from_email", "阿里云发信地址");
 
-  // 动态导入 SDK（CJS/ESM 互操作）
-  // deno-lint-ignore no-explicit-any
-  const DMMod: any = await import("npm:@alicloud/dm20151123@^1.10.2");
-  // deno-lint-ignore no-explicit-any
-  const OApi: any = await import("@alicloud/openapi-core");
+    // 动态导入 SDK（CJS/ESM 互操作）
+    // deno-lint-ignore no-explicit-any
+    const DMMod: any = await import("npm:@alicloud/dm20151123@^1.10.2");
+    // deno-lint-ignore no-explicit-any
+    const OApi: any = await import("@alicloud/openapi-core");
 
-  const DMClient = DMMod["module.exports"].default;
-  const ConfigClass = OApi["$OpenApiUtil"].Config;
-  const SendMailRequest = DMMod.SingleSendMailRequest;
+    const DMClient = DMMod["module.exports"].default;
+    const ConfigClass = OApi["$OpenApiUtil"].Config;
+    const SendMailRequest = DMMod.SingleSendMailRequest;
 
-  const config = new ConfigClass({
-    accessKeyId: akId,
-    accessKeySecret: akSecret,
-    endpoint: "dm.aliyuncs.com",
-  });
+    const config = new ConfigClass({
+        accessKeyId: akId,
+        accessKeySecret: akSecret,
+        endpoint: "dm.aliyuncs.com",
+    });
 
-  const client = new DMClient(config);
+    const client = new DMClient(config);
 
-  const req = new SendMailRequest(
-    buildSendMailParams(fromEmail, email, subject, html),
-  );
+    const req = new SendMailRequest(
+        buildSendMailParams(fromEmail, email, subject, html),
+    );
 
-  await client.singleSendMail(req);
-  return true;
+    await client.singleSendMail(req);
+    return true;
 };
 
 export const sendPasswordResetEmail: SendPasswordResetEmail = async (
-  email,
-  resetLink,
-  expiresInMinutes = 15,
-) => {
-  await sendEmail(
     email,
-    "重置您的 Neuro OJ 密码",
-    buildResetPasswordHtml(resetLink, expiresInMinutes),
-  );
+    resetLink,
+    expiresInMinutes = 15,
+) => {
+    await sendEmail(
+        email,
+        "重置您的 Neuro OJ 密码",
+        buildResetPasswordHtml(resetLink, expiresInMinutes),
+    );
 };

@@ -12,10 +12,10 @@
  */
 
 export interface SweepTarget {
-  /** 主队列名（`:processing` 由基类约定拼接） */
-  queueName: string;
-  /** 超过该时长仍未确认即视为卡住并重投 */
-  processingTimeoutMs: number;
+    /** 主队列名（`:processing` 由基类约定拼接） */
+    queueName: string;
+    /** 超过该时长仍未确认即视为卡住并重投 */
+    processingTimeoutMs: number;
 }
 
 const targets = new Map<string, SweepTarget>();
@@ -27,18 +27,20 @@ const targets = new Map<string, SweepTarget>();
  * 取最小的超时值，避免后创建的实例放宽兜底时限。
  */
 export function registerSweepTarget(target: SweepTarget): void {
-  const existing = targets.get(target.queueName);
-  if (!existing || target.processingTimeoutMs < existing.processingTimeoutMs) {
-    targets.set(target.queueName, target);
-  }
+    const existing = targets.get(target.queueName);
+    if (
+        !existing || target.processingTimeoutMs < existing.processingTimeoutMs
+    ) {
+        targets.set(target.queueName, target);
+    }
 }
 
 /** 当前已登记的兜底目标（供 sweeper 遍历）。 */
 export function listSweepTargets(): SweepTarget[] {
-  return [...targets.values()];
+    return [...targets.values()];
 }
 
 /** 测试用：清空登记表。 */
 export function _resetSweepTargetsForTest(): void {
-  targets.clear();
+    targets.clear();
 }

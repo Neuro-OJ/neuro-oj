@@ -11,72 +11,72 @@
 
 /** 单个环境变量键的 schema 描述。 */
 export interface EnvKeySpec {
-  /** 环境变量名（.env.prod 中的键）。 */
-  key: string;
-  /** 是否无条件必需（judge 条件键见 {@link JUDGE_KEYS}）。 */
-  required: boolean;
-  /** 是否敏感值（口令 / 密钥），用于展示脱敏。 */
-  secret?: boolean;
-  /** 供向导展示的简短说明。 */
-  note?: string;
+    /** 环境变量名（.env.prod 中的键）。 */
+    key: string;
+    /** 是否无条件必需（judge 条件键见 {@link JUDGE_KEYS}）。 */
+    required: boolean;
+    /** 是否敏感值（口令 / 密钥），用于展示脱敏。 */
+    secret?: boolean;
+    /** 供向导展示的简短说明。 */
+    note?: string;
 }
 
 /**
  * 19 个必需键（顺序即报错顺序）。
  */
 export const ENV_KEYS: readonly EnvKeySpec[] = [
-  { key: "NOJ_VERSION", required: true, note: "不可变 Release 标签" },
-  { key: "DOMAIN", required: true, note: "对外域名或服务器 IP" },
-  { key: "APP_URL", required: true, note: "完整应用地址（http(s)://）" },
-  {
-    key: "CORS_ALLOWED_ORIGINS",
-    required: true,
-    note: "CORS 白名单（逗号分隔）",
-  },
-  { key: "TRUSTED_PROXIES", required: true, note: "可信代理网段" },
-  { key: "POSTGRES_PASSWORD", required: true, secret: true },
-  { key: "REDIS_PASSWORD", required: true, secret: true },
-  { key: "MINIO_ROOT_USER", required: true },
-  { key: "MINIO_ROOT_PASSWORD", required: true, secret: true },
-  { key: "S3_ACCESS_KEY", required: true, secret: true },
-  { key: "S3_SECRET_KEY", required: true, secret: true },
-  { key: "S3_BUCKET", required: true },
-  { key: "S3_ENDPOINT", required: true },
-  { key: "STORAGE_PROVIDER", required: true },
-  { key: "JWT_SECRET", required: true, secret: true },
-  { key: "TFA_ENCRYPTION_KEY", required: true, secret: true },
-  { key: "NOJ_LLM_SERVICE_TOKEN", required: true, secret: true },
-  { key: "NOJ_LLM_STORE_KEY", required: true, secret: true },
-  { key: "EMAIL_PROVIDER", required: true },
+    { key: "NOJ_VERSION", required: true, note: "不可变 Release 标签" },
+    { key: "DOMAIN", required: true, note: "对外域名或服务器 IP" },
+    { key: "APP_URL", required: true, note: "完整应用地址（http(s)://）" },
+    {
+        key: "CORS_ALLOWED_ORIGINS",
+        required: true,
+        note: "CORS 白名单（逗号分隔）",
+    },
+    { key: "TRUSTED_PROXIES", required: true, note: "可信代理网段" },
+    { key: "POSTGRES_PASSWORD", required: true, secret: true },
+    { key: "REDIS_PASSWORD", required: true, secret: true },
+    { key: "MINIO_ROOT_USER", required: true },
+    { key: "MINIO_ROOT_PASSWORD", required: true, secret: true },
+    { key: "S3_ACCESS_KEY", required: true, secret: true },
+    { key: "S3_SECRET_KEY", required: true, secret: true },
+    { key: "S3_BUCKET", required: true },
+    { key: "S3_ENDPOINT", required: true },
+    { key: "STORAGE_PROVIDER", required: true },
+    { key: "JWT_SECRET", required: true, secret: true },
+    { key: "TFA_ENCRYPTION_KEY", required: true, secret: true },
+    { key: "NOJ_LLM_SERVICE_TOKEN", required: true, secret: true },
+    { key: "NOJ_LLM_STORE_KEY", required: true, secret: true },
+    { key: "EMAIL_PROVIDER", required: true },
 ];
 
 /** `JUDGE_ENABLED` 为真时额外必需的键。 */
 export const JUDGE_KEYS: readonly string[] = [
-  "JUDGE_DOCKER_SOCKET",
-  "JUDGE_DOCKER_SOCKET_GID",
+    "JUDGE_DOCKER_SOCKET",
+    "JUDGE_DOCKER_SOCKET_GID",
 ];
 
 /** `JUDGE_ENABLED` 判定为假的值。 */
 const JUDGE_FALSY: ReadonlySet<string> = new Set([
-  "false",
-  "FALSE",
-  "no",
-  "NO",
-  "0",
-  "off",
-  "OFF",
+    "false",
+    "FALSE",
+    "no",
+    "NO",
+    "0",
+    "off",
+    "OFF",
 ]);
 
 /** `JUDGE_ENABLED` 判定为真的值；空串表示未设置。 */
 const JUDGE_TRUTHY: ReadonlySet<string> = new Set([
-  "",
-  "true",
-  "TRUE",
-  "yes",
-  "YES",
-  "1",
-  "on",
-  "ON",
+    "",
+    "true",
+    "TRUE",
+    "yes",
+    "YES",
+    "1",
+    "on",
+    "ON",
 ]);
 
 /**
@@ -88,10 +88,10 @@ const JUDGE_TRUTHY: ReadonlySet<string> = new Set([
  * - 其余任意值 → 返回错误信息。
  */
 export function judgeEnabledError(raw: string | undefined): string | null {
-  if (raw === undefined) return null;
-  return JUDGE_FALSY.has(raw) || JUDGE_TRUTHY.has(raw)
-    ? null
-    : "JUDGE_ENABLED 必须是 true 或 false";
+    if (raw === undefined) return null;
+    return JUDGE_FALSY.has(raw) || JUDGE_TRUTHY.has(raw)
+        ? null
+        : "JUDGE_ENABLED 必须是 true 或 false";
 }
 
 /**
@@ -102,8 +102,8 @@ export function judgeEnabledError(raw: string | undefined): string | null {
  * 按「启用」兜底（fail-safe），使非法值不会静默跳过 judge 键要求。
  */
 function judgeEnabled(env: Record<string, string>): boolean {
-  const raw = env["JUDGE_ENABLED"] ?? "";
-  return !JUDGE_FALSY.has(raw);
+    const raw = env["JUDGE_ENABLED"] ?? "";
+    return !JUDGE_FALSY.has(raw);
 }
 
 /**
@@ -116,18 +116,18 @@ function judgeEnabled(env: Record<string, string>): boolean {
  * - `test` / `xxx*` 为整体匹配（`testing` / `vxx` 不算）。
  */
 export function isPlaceholder(value: string | undefined): boolean {
-  if (value === undefined || value === "") return true;
-  return (
-    value.includes("change-me") ||
-    value.includes("change-this") ||
-    value.includes("changeme") ||
-    value.includes("example") ||
-    value.includes("placeholder") ||
-    value.includes("replace-me") ||
-    value.includes("your-") ||
-    value === "test" ||
-    value.startsWith("xxx")
-  );
+    if (value === undefined || value === "") return true;
+    return (
+        value.includes("change-me") ||
+        value.includes("change-this") ||
+        value.includes("changeme") ||
+        value.includes("example") ||
+        value.includes("placeholder") ||
+        value.includes("replace-me") ||
+        value.includes("your-") ||
+        value === "test" ||
+        value.startsWith("xxx")
+    );
 }
 
 /**
@@ -144,74 +144,74 @@ export function isPlaceholder(value: string | undefined): boolean {
  * 非法值（如 `maybe`）应先报错返回，再进入本函数。
  */
 export function validateEnv(
-  env: Record<string, string>,
+    env: Record<string, string>,
 ): { missing: string[]; placeholder: string[] } {
-  const missing: string[] = [];
-  const placeholder: string[] = [];
-  const keys: readonly string[] = judgeEnabled(env)
-    ? [...ENV_KEYS.map((spec) => spec.key), ...JUDGE_KEYS]
-    : ENV_KEYS.map((spec) => spec.key);
+    const missing: string[] = [];
+    const placeholder: string[] = [];
+    const keys: readonly string[] = judgeEnabled(env)
+        ? [...ENV_KEYS.map((spec) => spec.key), ...JUDGE_KEYS]
+        : ENV_KEYS.map((spec) => spec.key);
 
-  for (const key of keys) {
-    const value = env[key];
-    if (value === undefined || value === "") {
-      missing.push(key);
-    } else if (isPlaceholder(value)) {
-      placeholder.push(key);
+    for (const key of keys) {
+        const value = env[key];
+        if (value === undefined || value === "") {
+            missing.push(key);
+        } else if (isPlaceholder(value)) {
+            placeholder.push(key);
+        }
     }
-  }
-  return { missing, placeholder };
+    return { missing, placeholder };
 }
 
 // ---------------- 条件键（EMAIL_PROVIDER 分支） ----------------
 
 /** `EMAIL_PROVIDER` 的受支持取值。 */
 export const EMAIL_PROVIDERS: readonly string[] = [
-  "aliyun",
-  "tencent",
-  "disabled",
+    "aliyun",
+    "tencent",
+    "disabled",
 ];
 
 /** `EMAIL_PROVIDER=aliyun` 时额外必需的键。 */
 export const ALIYUN_EMAIL_KEYS: readonly string[] = [
-  "ALIBABA_ACCESS_KEY_ID",
-  "ALIBABA_ACCESS_KEY_SECRET",
-  "ALIBABA_FROM_EMAIL",
+    "ALIBABA_ACCESS_KEY_ID",
+    "ALIBABA_ACCESS_KEY_SECRET",
+    "ALIBABA_FROM_EMAIL",
 ];
 
 /** `EMAIL_PROVIDER=tencent` 时额外必需的键。 */
 export const TENCENT_EMAIL_KEYS: readonly string[] = [
-  "TENCENT_SECRET_ID",
-  "TENCENT_SECRET_KEY",
-  "TENCENT_FROM_EMAIL",
-  "TENCENT_REGION",
+    "TENCENT_SECRET_ID",
+    "TENCENT_SECRET_KEY",
+    "TENCENT_FROM_EMAIL",
+    "TENCENT_REGION",
 ];
 
 /** 由 `EMAIL_PROVIDER` 决定的额外必需键（枚举外返回空数组，错误另报）。 */
 export function emailBranchKeys(
-  provider: string | undefined,
+    provider: string | undefined,
 ): readonly string[] {
-  switch (provider) {
-    case "aliyun":
-      return ALIYUN_EMAIL_KEYS;
-    case "tencent":
-      return TENCENT_EMAIL_KEYS;
-    default:
-      return [];
-  }
+    switch (provider) {
+        case "aliyun":
+            return ALIYUN_EMAIL_KEYS;
+        case "tencent":
+            return TENCENT_EMAIL_KEYS;
+        default:
+            return [];
+    }
 }
 
 // ---------------- 取值约束 ----------------
 
 /** 单个键的取值约束。 */
 export interface EnvValueRule {
-  /** 约束的目标键。 */
-  key: string;
-  /**
-   * 判定：返回错误文案（不含 "  - " 前缀）表示不合规，返回 null 表示通过。
-   * `value` 是键的原始值；未设置/空值由调用方先行处理，不进入本判定。
-   */
-  check(env: Record<string, string>, value: string): string | null;
+    /** 约束的目标键。 */
+    key: string;
+    /**
+     * 判定：返回错误文案（不含 "  - " 前缀）表示不合规，返回 null 表示通过。
+     * `value` 是键的原始值；未设置/空值由调用方先行处理，不进入本判定。
+     */
+    check(env: Record<string, string>, value: string): string | null;
 }
 
 /**
@@ -230,42 +230,42 @@ export interface EnvValueRule {
  * 由 `prod/config.ts:checkRequiredValues` 的 judge 分支单独实现。
  */
 export const ENV_VALUE_RULES: readonly EnvValueRule[] = [
-  {
-    key: "STORAGE_PROVIDER",
-    check: (_env, value) =>
-      value === "s3" ? null : "STORAGE_PROVIDER 必须设置为 s3",
-  },
-  {
-    key: "JWT_SECRET",
-    check: (_env, value) =>
-      value.includes("test") ? "JWT_SECRET 不得使用测试密钥" : null,
-  },
-  {
-    key: "APP_URL",
-    check: (env, value) => {
-      if (
-        value.startsWith("http://") &&
-        env["NOJ_ALLOW_INSECURE_HTTP"] !== "true"
-      ) {
-        return "网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式";
-      }
-      return null;
+    {
+        key: "STORAGE_PROVIDER",
+        check: (_env, value) =>
+            value === "s3" ? null : "STORAGE_PROVIDER 必须设置为 s3",
     },
-  },
-  {
-    key: "APP_URL",
-    check: (_env, value) =>
-      value.startsWith("http://") || value.startsWith("https://")
-        ? null
-        : "网站完整网址必须以 http:// 或 https:// 开头",
-  },
-  {
-    key: "NOJ_VERSION",
-    check: (_env, value) =>
-      /^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$/.test(value)
-        ? null
-        : "NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）",
-  },
+    {
+        key: "JWT_SECRET",
+        check: (_env, value) =>
+            value.includes("test") ? "JWT_SECRET 不得使用测试密钥" : null,
+    },
+    {
+        key: "APP_URL",
+        check: (env, value) => {
+            if (
+                value.startsWith("http://") &&
+                env["NOJ_ALLOW_INSECURE_HTTP"] !== "true"
+            ) {
+                return "网站完整网址使用 HTTP 时，必须明确选择临时 HTTP 模式";
+            }
+            return null;
+        },
+    },
+    {
+        key: "APP_URL",
+        check: (_env, value) =>
+            value.startsWith("http://") || value.startsWith("https://")
+                ? null
+                : "网站完整网址必须以 http:// 或 https:// 开头",
+    },
+    {
+        key: "NOJ_VERSION",
+        check: (_env, value) =>
+            /^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$/.test(value)
+                ? null
+                : "NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.1.1-rc.1）",
+    },
 ];
 
 /**
@@ -275,9 +275,9 @@ export const ENV_VALUE_RULES: readonly EnvValueRule[] = [
  * - 权限读出来了但不是 600/400 → 硬错误。
  */
 export type FilePermissionVerdict =
-  | { kind: "ok"; mode: string }
-  | { kind: "error"; mode: string; message: string }
-  | { kind: "unreadable"; message: string };
+    | { kind: "ok"; mode: string }
+    | { kind: "error"; mode: string; message: string }
+    | { kind: "unreadable"; message: string };
 
 /** 生产配置文件的合法权限。 */
 export const ENV_FILE_ALLOWED_MODES: readonly string[] = ["600", "400"];
@@ -288,21 +288,21 @@ export const ENV_FILE_ALLOWED_MODES: readonly string[] = ["600", "400"];
  * @param mode probe 读到的八进制权限串；读不出时传 null。
  */
 export function checkEnvFileMode(
-  mode: string | null,
-  envFile: string,
+    mode: string | null,
+    envFile: string,
 ): FilePermissionVerdict {
-  if (mode === null) {
-    return {
-      kind: "unreadable",
-      message: "无法读取生产配置文件权限：" + envFile,
-    };
-  }
-  if (!ENV_FILE_ALLOWED_MODES.includes(mode)) {
-    return {
-      kind: "error",
-      mode,
-      message: "生产配置文件权限必须为 600 或 400：" + envFile,
-    };
-  }
-  return { kind: "ok", mode };
+    if (mode === null) {
+        return {
+            kind: "unreadable",
+            message: "无法读取生产配置文件权限：" + envFile,
+        };
+    }
+    if (!ENV_FILE_ALLOWED_MODES.includes(mode)) {
+        return {
+            kind: "error",
+            mode,
+            message: "生产配置文件权限必须为 600 或 400：" + envFile,
+        };
+    }
+    return { kind: "ok", mode };
 }

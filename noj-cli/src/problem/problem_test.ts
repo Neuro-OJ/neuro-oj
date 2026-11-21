@@ -10,498 +10,526 @@ import { initProblemScaffold, validateSlug } from "./init.ts";
 import { bundleSlug, parseProblemArgs } from "./command.ts";
 
 Deno.test("parseProblemArgs: init 选项与位置参数", () => {
-  const a = parseProblemArgs([
-    "init",
-    "my-problem",
-    "--difficulty",
-    "hard",
-    "--title",
-    "标题",
-    "--judge-type",
-    "oi",
-    "--no-interactive",
-  ]);
-  assertEquals(a.sub, "init");
-  assertEquals(a.slug, "my-problem");
-  assertEquals(a.difficulty, "hard");
-  assertEquals(a.title, "标题");
-  assertEquals(a.judgeType, "oi");
-  assertEquals(a.noInteractive, true);
+    const a = parseProblemArgs([
+        "init",
+        "my-problem",
+        "--difficulty",
+        "hard",
+        "--title",
+        "标题",
+        "--judge-type",
+        "oi",
+        "--no-interactive",
+    ]);
+    assertEquals(a.sub, "init");
+    assertEquals(a.slug, "my-problem");
+    assertEquals(a.difficulty, "hard");
+    assertEquals(a.title, "标题");
+    assertEquals(a.judgeType, "oi");
+    assertEquals(a.noInteractive, true);
 });
 
 Deno.test("parseProblemArgs: lint 位置参数是 dir 而非 slug", () => {
-  const a = parseProblemArgs(["lint", "./some-dir", "--strict", "--json"]);
-  assertEquals(a.sub, "lint");
-  assertEquals(a.dir, "./some-dir");
-  assertEquals(a.slug, undefined);
-  assertEquals(a.strict, true);
-  assertEquals(a.json, true);
+    const a = parseProblemArgs(["lint", "./some-dir", "--strict", "--json"]);
+    assertEquals(a.sub, "lint");
+    assertEquals(a.dir, "./some-dir");
+    assertEquals(a.slug, undefined);
+    assertEquals(a.strict, true);
+    assertEquals(a.json, true);
 });
 
 Deno.test("parseProblemArgs: 支持 --dir 与 --out", () => {
-  assertEquals(parseProblemArgs(["init", "x", "--dir", "/root"]).dir, "/root");
-  assertEquals(parseProblemArgs(["pack", "--out", "/o"]).out, "/o");
+    assertEquals(
+        parseProblemArgs(["init", "x", "--dir", "/root"]).dir,
+        "/root",
+    );
+    assertEquals(parseProblemArgs(["pack", "--out", "/o"]).out, "/o");
 });
 
 Deno.test("parseProblemArgs: 选项缺值报用法错误", () => {
-  let threw = false;
-  try {
-    parseProblemArgs(["init", "x", "--title"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
+    let threw = false;
+    try {
+        parseProblemArgs(["init", "x", "--title"]);
+    } catch {
+        threw = true;
+    }
+    assertEquals(threw, true);
 });
 
 Deno.test("parseProblemArgs: 未知选项报错（不静默忽略）", () => {
-  let threw = false;
-  try {
-    parseProblemArgs(["lint", "--bogus"]);
-  } catch {
-    threw = true;
-  }
-  assertEquals(threw, true);
+    let threw = false;
+    try {
+        parseProblemArgs(["lint", "--bogus"]);
+    } catch {
+        threw = true;
+    }
+    assertEquals(threw, true);
 });
 
 Deno.test("validateSlug: 合法与非法", () => {
-  validateSlug("a-plus-b");
-  validateSlug("abc");
-  for (const bad of ["A-B", "-abc", "abc-", "ab", "a b", "a_b"]) {
-    let threw = false;
-    try {
-      validateSlug(bad);
-    } catch {
-      threw = true;
+    validateSlug("a-plus-b");
+    validateSlug("abc");
+    for (const bad of ["A-B", "-abc", "abc-", "ab", "a b", "a_b"]) {
+        let threw = false;
+        try {
+            validateSlug(bad);
+        } catch {
+            threw = true;
+        }
+        assertEquals(threw, true, `slug「${bad}」应被拒绝`);
     }
-    assertEquals(threw, true, `slug「${bad}」应被拒绝`);
-  }
 });
 
 Deno.test("shouldExclude: 对齐 noj.ts 的排除规则", () => {
-  // 参考实现
-  assertEquals(shouldExclude("submission.py"), true);
-  assertEquals(shouldExclude("submission_secret.py"), true);
-  assertEquals(shouldExclude("sub/submission.py"), true);
-  // 字节码
-  assertEquals(shouldExclude("__pycache__/a.pyc"), true);
-  // git
-  assertEquals(shouldExclude(".git/config"), true);
-  // 打包脚本
-  assertEquals(shouldExclude("build_bundle.sh"), true);
-  // 模板文件**保留**（2026-09 修正）：平台导入题目包时从这里取编辑器初始代码，
-  // 不再依赖服务器本地 data/problems-src（容器化生产没有该目录）
-  assertEquals(shouldExclude("template.py"), false);
-  assertEquals(shouldExclude("my-template.py"), false);
-  // 正常文件保留
-  assertEquals(shouldExclude("evaluate.py"), false);
-  assertEquals(shouldExclude("problem.json"), false);
+    // 参考实现
+    assertEquals(shouldExclude("submission.py"), true);
+    assertEquals(shouldExclude("submission_secret.py"), true);
+    assertEquals(shouldExclude("sub/submission.py"), true);
+    // 字节码
+    assertEquals(shouldExclude("__pycache__/a.pyc"), true);
+    // git
+    assertEquals(shouldExclude(".git/config"), true);
+    // 打包脚本
+    assertEquals(shouldExclude("build_bundle.sh"), true);
+    // 模板文件**保留**（2026-09 修正）：平台导入题目包时从这里取编辑器初始代码，
+    // 不再依赖服务器本地 data/problems-src（容器化生产没有该目录）
+    assertEquals(shouldExclude("template.py"), false);
+    assertEquals(shouldExclude("my-template.py"), false);
+    // 正常文件保留
+    assertEquals(shouldExclude("evaluate.py"), false);
+    assertEquals(shouldExclude("problem.json"), false);
 });
 
 Deno.test("bundleSlug 在 Windows 反斜杠路径下只取目录名", () => {
-  // 修复前用 dir.split("/")，Windows 路径会返回整条路径，
-  // join(outDir, slug + ".zip") 因此把盘符/分隔符带进输出路径。
-  assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b"), "a-plus-b");
-  assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b\\"), "a-plus-b");
-  assertEquals(bundleSlug("/work/problems/a-plus-b"), "a-plus-b");
-  assertEquals(bundleSlug("/work/problems/a-plus-b///"), "a-plus-b");
-  // 盘符根不应被当作 slug
-  assertEquals(bundleSlug("C:\\"), "bundle");
+    // 修复前用 dir.split("/")，Windows 路径会返回整条路径，
+    // join(outDir, slug + ".zip") 因此把盘符/分隔符带进输出路径。
+    assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b"), "a-plus-b");
+    assertEquals(bundleSlug("C:\\work\\problems\\a-plus-b\\"), "a-plus-b");
+    assertEquals(bundleSlug("/work/problems/a-plus-b"), "a-plus-b");
+    assertEquals(bundleSlug("/work/problems/a-plus-b///"), "a-plus-b");
+    // 盘符根不应被当作 slug
+    assertEquals(bundleSlug("C:\\"), "bundle");
 });
 
 Deno.test("packBundle: 排除项不出现在产物中，且可被解压回来", () => {
-  const enc = new TextEncoder();
-  const result = packBundle({
-    entries: {
-      "problem.json": enc.encode('{"format_version":2,"title":"t"}'),
-      "evaluate.py": enc.encode("print(1)"),
-      "submission.py": enc.encode("SECRET"),
-      "__pycache__/x.pyc": enc.encode("junk"),
-    },
-  });
-  assertEquals(result.excluded.sort(), ["__pycache__/x.pyc", "submission.py"]);
-  assertEquals(result.included.sort(), ["evaluate.py", "problem.json"]);
+    const enc = new TextEncoder();
+    const result = packBundle({
+        entries: {
+            "problem.json": enc.encode('{"format_version":2,"title":"t"}'),
+            "evaluate.py": enc.encode("print(1)"),
+            "submission.py": enc.encode("SECRET"),
+            "__pycache__/x.pyc": enc.encode("junk"),
+        },
+    });
+    assertEquals(result.excluded.sort(), [
+        "__pycache__/x.pyc",
+        "submission.py",
+    ]);
+    assertEquals(result.included.sort(), ["evaluate.py", "problem.json"]);
 });
 
 Deno.test("lintBundle: 合法包无 error", () => {
-  const report = lintBundle({
-    texts: {
-      "problem.json": JSON.stringify({
-        format_version: 2,
-        title: "t",
-        runtime_config: {
-          evaluator: {
-            image: "i:1",
-            command: "c",
-            time_limit_ms: 1,
-            memory_limit_mb: 1,
-          },
-          solution: { image: "i:1", call_timeout_ms: 1, memory_limit_mb: 1 },
+    const report = lintBundle({
+        texts: {
+            "problem.json": JSON.stringify({
+                format_version: 2,
+                title: "t",
+                runtime_config: {
+                    evaluator: {
+                        image: "i:1",
+                        command: "c",
+                        time_limit_ms: 1,
+                        memory_limit_mb: 1,
+                    },
+                    solution: {
+                        image: "i:1",
+                        call_timeout_ms: 1,
+                        memory_limit_mb: 1,
+                    },
+                },
+            }),
+            "evaluate.py": "print(1)",
         },
-      }),
-      "evaluate.py": "print(1)",
-    },
-    names: ["problem.json", "evaluate.py"],
-  });
-  assertEquals(report.hasError, false);
+        names: ["problem.json", "evaluate.py"],
+    });
+    assertEquals(report.hasError, false);
 });
 
 Deno.test("lintBundle: OI 包不要求 evaluate.py 且检查测试点文件", () => {
-  const base = {
-    format_version: 2,
-    title: "oi",
-    judge_type: "oi",
-    runtime_config: {
-      backend: "native",
-      languages: ["c"],
-      time_limit_ms: 1000,
-      memory_limit_mb: 256,
-      checker: { type: "default" },
-      subtasks: [{
-        id: "all",
-        score: 100,
-        cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
-      }],
-    },
-  };
-  const valid = lintBundle({
-    texts: { "problem.json": JSON.stringify(base) },
-    names: ["problem.json", "testdata/1.in", "testdata/1.out"],
-  });
-  assertEquals(valid.hasError, false);
-  assertEquals(
-    valid.findings.some((finding) => finding.rule === "must/missing-evaluator"),
-    false,
-  );
+    const base = {
+        format_version: 2,
+        title: "oi",
+        judge_type: "oi",
+        runtime_config: {
+            backend: "native",
+            languages: ["c"],
+            time_limit_ms: 1000,
+            memory_limit_mb: 256,
+            checker: { type: "default" },
+            subtasks: [{
+                id: "all",
+                score: 100,
+                cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
+            }],
+        },
+    };
+    const valid = lintBundle({
+        texts: { "problem.json": JSON.stringify(base) },
+        names: ["problem.json", "testdata/1.in", "testdata/1.out"],
+    });
+    assertEquals(valid.hasError, false);
+    assertEquals(
+        valid.findings.some((finding) =>
+            finding.rule === "must/missing-evaluator"
+        ),
+        false,
+    );
 
-  const invalid = lintBundle({
-    texts: { "problem.json": JSON.stringify(base) },
-    names: ["problem.json"],
-  });
-  assertEquals(invalid.hasError, true);
-  assertEquals(
-    invalid.findings.filter((finding) =>
-      finding.rule === "must/missing-oi-file"
-    )
-      .length,
-    2,
-  );
+    const invalid = lintBundle({
+        texts: { "problem.json": JSON.stringify(base) },
+        names: ["problem.json"],
+    });
+    assertEquals(invalid.hasError, true);
+    assertEquals(
+        invalid.findings.filter((finding) =>
+            finding.rule === "must/missing-oi-file"
+        )
+            .length,
+        2,
+    );
 });
 
 Deno.test("lintBundle: 缺 manifest / 缺 evaluator / JSON 非法均为 error", () => {
-  const missingManifest = lintBundle({ texts: {}, names: [] });
-  assertEquals(missingManifest.hasError, true);
-  assertEquals(
-    missingManifest.findings.some((f) => f.rule === "must/missing-manifest"),
-    true,
-  );
+    const missingManifest = lintBundle({ texts: {}, names: [] });
+    assertEquals(missingManifest.hasError, true);
+    assertEquals(
+        missingManifest.findings.some((f) =>
+            f.rule === "must/missing-manifest"
+        ),
+        true,
+    );
 
-  const badJson = lintBundle({
-    texts: { "problem.json": "{not json" },
-    names: ["problem.json"],
-  });
-  assertEquals(badJson.hasError, true);
+    const badJson = lintBundle({
+        texts: { "problem.json": "{not json" },
+        names: ["problem.json"],
+    });
+    assertEquals(badJson.hasError, true);
 
-  const noEvaluator = lintBundle({
-    texts: {
-      "problem.json": JSON.stringify({
-        format_version: 2,
-        title: "t",
-        runtime_config: {
-          evaluator: {
-            image: "i",
-            command: "c",
-            time_limit_ms: 1,
-            memory_limit_mb: 1,
-          },
-          solution: { image: "i", call_timeout_ms: 1, memory_limit_mb: 1 },
+    const noEvaluator = lintBundle({
+        texts: {
+            "problem.json": JSON.stringify({
+                format_version: 2,
+                title: "t",
+                runtime_config: {
+                    evaluator: {
+                        image: "i",
+                        command: "c",
+                        time_limit_ms: 1,
+                        memory_limit_mb: 1,
+                    },
+                    solution: {
+                        image: "i",
+                        call_timeout_ms: 1,
+                        memory_limit_mb: 1,
+                    },
+                },
+            }),
         },
-      }),
-    },
-    names: ["problem.json"],
-  });
-  assertEquals(noEvaluator.hasError, true);
-  assertEquals(
-    noEvaluator.findings.some((f) => f.rule === "must/missing-evaluator"),
-    true,
-  );
+        names: ["problem.json"],
+    });
+    assertEquals(noEvaluator.hasError, true);
+    assertEquals(
+        noEvaluator.findings.some((f) => f.rule === "must/missing-evaluator"),
+        true,
+    );
 });
 
 Deno.test("runQualityRules: 模板疑似完整实现 → 警告", () => {
-  const findings = runQualityRules({
-    files: {
-      texts: {
-        "template.py": "def solve\n    return 42\n",
-        "hidden.jsonl": "",
-      },
-      names: ["template.py", "hidden.jsonl"],
-    },
-    manifest: {},
-  });
-  assertEquals(
-    findings.some((f) => f.rule === "quality/template-may-be-complete"),
-    true,
-  );
+    const findings = runQualityRules({
+        files: {
+            texts: {
+                "template.py": "def solve\n    return 42\n",
+                "hidden.jsonl": "",
+            },
+            names: ["template.py", "hidden.jsonl"],
+        },
+        manifest: {},
+    });
+    assertEquals(
+        findings.some((f) => f.rule === "quality/template-may-be-complete"),
+        true,
+    );
 });
 
 Deno.test("runQualityRules: 模板含占位 → 不告警", () => {
-  const findings = runQualityRules({
-    files: {
-      texts: {
-        "template.py": "def solve(a, b):\n    raise NotImplementedError\n",
-        "hidden.jsonl": "",
-      },
-      names: ["template.py", "hidden.jsonl"],
-    },
-    manifest: {},
-  });
-  assertEquals(
-    findings.some((f) => f.rule === "quality/template-may-be-complete"),
-    false,
-  );
+    const findings = runQualityRules({
+        files: {
+            texts: {
+                "template.py":
+                    "def solve(a, b):\n    raise NotImplementedError\n",
+                "hidden.jsonl": "",
+            },
+            names: ["template.py", "hidden.jsonl"],
+        },
+        manifest: {},
+    });
+    assertEquals(
+        findings.some((f) => f.rule === "quality/template-may-be-complete"),
+        false,
+    );
 });
 
 Deno.test("runQualityRules: 隐藏用例泄露到可见文件 → 警告", () => {
-  const secret = JSON.stringify({
-    input: "SECRET-INPUT-1234567890",
-    output: "42",
-  });
-  const findings = runQualityRules({
-    files: {
-      texts: {
-        "hidden.jsonl": secret,
-        "statement.md": `样例：${secret}`,
-      },
-      names: ["hidden.jsonl", "statement.md"],
-    },
-    manifest: {},
-  });
-  assertEquals(
-    findings.some((f) => f.rule === "quality/hidden-case-leak"),
-    true,
-  );
+    const secret = JSON.stringify({
+        input: "SECRET-INPUT-1234567890",
+        output: "42",
+    });
+    const findings = runQualityRules({
+        files: {
+            texts: {
+                "hidden.jsonl": secret,
+                "statement.md": `样例：${secret}`,
+            },
+            names: ["hidden.jsonl", "statement.md"],
+        },
+        manifest: {},
+    });
+    assertEquals(
+        findings.some((f) => f.rule === "quality/hidden-case-leak"),
+        true,
+    );
 });
 
 Deno.test("runQualityRules: 无 samples → 不告警", () => {
-  const findings = runQualityRules({
-    files: { texts: {}, names: [] },
-    manifest: { title: "x" },
-  });
-  assertEquals(
-    findings.some((f) => f.rule === "quality/deprecated-samples"),
-    false,
-  );
+    const findings = runQualityRules({
+        files: { texts: {}, names: [] },
+        manifest: { title: "x" },
+    });
+    assertEquals(
+        findings.some((f) => f.rule === "quality/deprecated-samples"),
+        false,
+    );
 });
 
 Deno.test("initProblemScaffold: 生成骨架且拒绝非空目录", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const r = await initProblemScaffold({
-      slug: "my-problem",
-      root,
-      difficulty: "easy",
-      title: "标题",
-    });
-    assertEquals(r.files.length, 7);
-    const manifest = JSON.parse(
-      await Deno.readTextFile(join(r.dir, "problem.json")),
-    );
-    assertEquals(manifest.title, "标题");
-    // 格式 3 最小 manifest：只有判别字段与元数据，runtime_config 走平台缺省
-    assertEquals(manifest, {
-      format_version: 3,
-      kind: "ai",
-      title: "标题",
-      difficulty: "easy",
-    });
+    const root = await Deno.makeTempDir();
+    try {
+        const r = await initProblemScaffold({
+            slug: "my-problem",
+            root,
+            difficulty: "easy",
+            title: "标题",
+        });
+        assertEquals(r.files.length, 7);
+        const manifest = JSON.parse(
+            await Deno.readTextFile(join(r.dir, "problem.json")),
+        );
+        assertEquals(manifest.title, "标题");
+        // 格式 3 最小 manifest：只有判别字段与元数据，runtime_config 走平台缺省
+        assertEquals(manifest, {
+            format_version: 3,
+            kind: "ai",
+            title: "标题",
+            difficulty: "easy",
+        });
 
-    // 二次调用：目录非空 → 拒绝
-    await assertRejects(() =>
-      initProblemScaffold({ slug: "my-problem", root })
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+        // 二次调用：目录非空 → 拒绝
+        await assertRejects(() =>
+            initProblemScaffold({ slug: "my-problem", root })
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblemScaffold: 生成传统 OI 题包骨架", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const result = await initProblemScaffold({
-      slug: "oi-problem",
-      root,
-      judgeType: "oi",
-    });
-    const manifest = JSON.parse(
-      await Deno.readTextFile(join(result.dir, "problem.json")),
-    );
-    assertEquals(manifest.kind, "oi");
-    assertEquals(manifest.runtime_config.backend, "native");
-    assertEquals(
-      await Deno.stat(join(result.dir, "testdata/1.in")).then((s) => s.isFile),
-      true,
-    );
-    assertEquals(result.files.includes("evaluate.py"), false);
-    const report = lintBundle(
-      await (async () => {
-        const texts: Record<string, string> = {};
-        const names: string[] = [];
-        for await (const entry of Deno.readDir(result.dir)) {
-          if (entry.isFile) {
-            names.push(entry.name);
-            texts[entry.name] = await Deno.readTextFile(
-              join(result.dir, entry.name),
-            );
-          }
-        }
-        names.push("testdata/1.in", "testdata/1.out");
-        return { texts, names };
-      })(),
-    );
-    assertEquals(report.hasError, false);
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const root = await Deno.makeTempDir();
+    try {
+        const result = await initProblemScaffold({
+            slug: "oi-problem",
+            root,
+            judgeType: "oi",
+        });
+        const manifest = JSON.parse(
+            await Deno.readTextFile(join(result.dir, "problem.json")),
+        );
+        assertEquals(manifest.kind, "oi");
+        assertEquals(manifest.runtime_config.backend, "native");
+        assertEquals(
+            await Deno.stat(join(result.dir, "testdata/1.in")).then((s) =>
+                s.isFile
+            ),
+            true,
+        );
+        assertEquals(result.files.includes("evaluate.py"), false);
+        const report = lintBundle(
+            await (async () => {
+                const texts: Record<string, string> = {};
+                const names: string[] = [];
+                for await (const entry of Deno.readDir(result.dir)) {
+                    if (entry.isFile) {
+                        names.push(entry.name);
+                        texts[entry.name] = await Deno.readTextFile(
+                            join(result.dir, entry.name),
+                        );
+                    }
+                }
+                names.push("testdata/1.in", "testdata/1.out");
+                return { texts, names };
+            })(),
+        );
+        assertEquals(report.hasError, false);
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblemScaffold: 拒绝符号链接目标", async () => {
-  const root = await Deno.makeTempDir();
-  const outside = await Deno.makeTempDir();
-  try {
-    await Deno.symlink(outside, join(root, "linked"), { type: "dir" });
-    await assertRejects(() => initProblemScaffold({ slug: "linked", root }));
-    // 确认没有写到链接目标之外
-    const entries = [...Deno.readDirSync(outside)];
-    assertEquals(entries.length, 0, "不得写入符号链接目标");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-    await Deno.remove(outside, { recursive: true });
-  }
+    const root = await Deno.makeTempDir();
+    const outside = await Deno.makeTempDir();
+    try {
+        await Deno.symlink(outside, join(root, "linked"), { type: "dir" });
+        await assertRejects(() =>
+            initProblemScaffold({ slug: "linked", root })
+        );
+        // 确认没有写到链接目标之外
+        const entries = [...Deno.readDirSync(outside)];
+        assertEquals(entries.length, 0, "不得写入符号链接目标");
+    } finally {
+        await Deno.remove(root, { recursive: true });
+        await Deno.remove(outside, { recursive: true });
+    }
 });
 
 Deno.test("initProblemScaffold: 非法 difficulty 拒绝", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    await assertRejects(() =>
-      initProblemScaffold({ slug: "x-y-z", root, difficulty: "insane" })
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const root = await Deno.makeTempDir();
+    try {
+        await assertRejects(() =>
+            initProblemScaffold({ slug: "x-y-z", root, difficulty: "insane" })
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("pack: 模板文件必须进包（平台据此填充编辑器初始代码）", () => {
-  // 2026-09 修正：模板随包上传，由核心在导入时落库到 problems.template_content。
-  // 旧规则（模板排除）依赖服务器本地 problems-src，容器化生产没有该目录，
-  // 导致线上所有题目的编辑器都没有初始代码。
-  assertEquals(shouldExclude("template.py"), false);
-  assertEquals(shouldExclude("custom-tpl.py"), false);
-  assertEquals(shouldExclude("templates/template.py"), false);
+    // 2026-09 修正：模板随包上传，由核心在导入时落库到 problems.template_content。
+    // 旧规则（模板排除）依赖服务器本地 problems-src，容器化生产没有该目录，
+    // 导致线上所有题目的编辑器都没有初始代码。
+    assertEquals(shouldExclude("template.py"), false);
+    assertEquals(shouldExclude("custom-tpl.py"), false);
+    assertEquals(shouldExclude("templates/template.py"), false);
 });
 
 Deno.test("packBundle: 旧 P 包输出格式 3，移除执行配置且保留源文件", () => {
-  const manifest = {
-    format_version: 1,
-    type: "P",
-    title: "旧题",
-    llm: {
-      max_calls: 3,
-      model: "source-model",
-      provider_id: "source",
-      api_key: "private",
-    },
-  };
-  const bytes = new TextEncoder().encode(JSON.stringify(manifest));
-  const packed = packBundle({
-    entries: { "problem.json": bytes, "evaluate.py": new Uint8Array() },
-  });
-  const normalized = JSON.parse(
-    new TextDecoder().decode(unzipSync(packed.data)["problem.json"]!),
-  );
-  assertEquals(normalized.format_version, 3);
-  assertEquals(normalized.kind, "ai");
-  assertEquals("type" in normalized, false);
-  assertEquals(normalized.llm, { max_calls: 3 });
-  // 不写入平台缺省值：runtime_config 仍由导入时补全
-  assertEquals("runtime_config" in normalized, false);
-  assertEquals(JSON.parse(new TextDecoder().decode(bytes)), manifest);
+    const manifest = {
+        format_version: 1,
+        type: "P",
+        title: "旧题",
+        llm: {
+            max_calls: 3,
+            model: "source-model",
+            provider_id: "source",
+            api_key: "private",
+        },
+    };
+    const bytes = new TextEncoder().encode(JSON.stringify(manifest));
+    const packed = packBundle({
+        entries: { "problem.json": bytes, "evaluate.py": new Uint8Array() },
+    });
+    const normalized = JSON.parse(
+        new TextDecoder().decode(unzipSync(packed.data)["problem.json"]!),
+    );
+    assertEquals(normalized.format_version, 3);
+    assertEquals(normalized.kind, "ai");
+    assertEquals("type" in normalized, false);
+    assertEquals(normalized.llm, { max_calls: 3 });
+    // 不写入平台缺省值：runtime_config 仍由导入时补全
+    assertEquals("runtime_config" in normalized, false);
+    assertEquals(JSON.parse(new TextDecoder().decode(bytes)), manifest);
 });
 
 Deno.test("parseProblemArgs: --type 已退役，要求通过导入指定 Domain", () => {
-  let error: Error | undefined;
-  try {
-    parseProblemArgs(["init", "abc", "--type", "P"]);
-  } catch (caught) {
-    error = caught as Error;
-  }
-  assertEquals(error?.message.includes("--domain"), true);
+    let error: Error | undefined;
+    try {
+        parseProblemArgs(["init", "abc", "--type", "P"]);
+    } catch (caught) {
+        error = caught as Error;
+    }
+    assertEquals(error?.message.includes("--domain"), true);
 });
 
 Deno.test("CLI parser: Hydro OI 导入规范为格式 3，与新脚手架保持一致", () => {
-  const encode = (value: string) => new TextEncoder().encode(value);
-  const parsed = parseBundleZip(zipSync({
-    "problem.yaml": encode("title: A+B\n"),
-    "problem.md": encode("# A+B"),
-    "testdata/1.in": encode("1 2\n"),
-    "testdata/1.out": encode("3\n"),
-  }));
-  const manifest = validateBundleManifest(parsed.manifest);
-  assertEquals(manifest.format_version, 3);
-  assertEquals(manifest.kind, "oi");
-  assertEquals(manifest.judge_type, "oi");
-  assertEquals("type" in manifest, false);
+    const encode = (value: string) => new TextEncoder().encode(value);
+    const parsed = parseBundleZip(zipSync({
+        "problem.yaml": encode("title: A+B\n"),
+        "problem.md": encode("# A+B"),
+        "testdata/1.in": encode("1 2\n"),
+        "testdata/1.out": encode("3\n"),
+    }));
+    const manifest = validateBundleManifest(parsed.manifest);
+    assertEquals(manifest.format_version, 3);
+    assertEquals(manifest.kind, "oi");
+    assertEquals(manifest.judge_type, "oi");
+    assertEquals("type" in manifest, false);
 });
 
 Deno.test("migrateManifest: 格式 2 改写为格式 3，保留等价语义", () => {
-  const source = JSON.stringify({
-    format_version: 2,
-    title: "套卷",
-    is_objective: true,
-    domain_id: "d1",
-  });
-  const result = migrateManifest(source);
-  assertEquals(result.changed, true);
-  assertEquals(JSON.parse(result.text), {
-    format_version: 3,
-    kind: "objective",
-    title: "套卷",
-  });
-  assertEquals(
-    result.warnings.some((w) => w.includes("noj problem migrate")),
-    false,
-  );
+    const source = JSON.stringify({
+        format_version: 2,
+        title: "套卷",
+        is_objective: true,
+        domain_id: "d1",
+    });
+    const result = migrateManifest(source);
+    assertEquals(result.changed, true);
+    assertEquals(JSON.parse(result.text), {
+        format_version: 3,
+        kind: "objective",
+        title: "套卷",
+    });
+    assertEquals(
+        result.warnings.some((w) => w.includes("noj problem migrate")),
+        false,
+    );
 });
 
 Deno.test("migrateManifest: 已是格式 3 时不改写", () => {
-  const source = JSON.stringify({ format_version: 3, kind: "ai", title: "A" });
-  const result = migrateManifest(source);
-  assertEquals(result.changed, false);
-  assertEquals(result.text, source);
+    const source = JSON.stringify({
+        format_version: 3,
+        kind: "ai",
+        title: "A",
+    });
+    const result = migrateManifest(source);
+    assertEquals(result.changed, false);
+    assertEquals(result.text, source);
 });
 
 Deno.test("migrateManifest: 非法 JSON 与未知版本报错", () => {
-  assertThrows(() => migrateManifest("{"), Error, "不是合法 JSON");
-  assertThrows(
-    () => migrateManifest(JSON.stringify({ format_version: 9, title: "A" })),
-    Error,
-    "不支持的 manifest 格式版本",
-  );
+    assertThrows(() => migrateManifest("{"), Error, "不是合法 JSON");
+    assertThrows(
+        () =>
+            migrateManifest(JSON.stringify({ format_version: 9, title: "A" })),
+        Error,
+        "不支持的 manifest 格式版本",
+    );
 });
 
 Deno.test("lintBundle: 旧格式给出升级告警但不报错", () => {
-  const report = lintBundle({
-    names: ["problem.json", "evaluate.py", "statement.md"],
-    texts: {
-      "problem.json": JSON.stringify({
-        format_version: 2,
-        title: "A",
-        runtime_config: {},
-      }),
-      "statement.md": "# A",
-    },
-  });
-  assertEquals(report.hasError, false);
-  assertEquals(
-    report.findings.some((f) => f.rule === "format/upgrade"),
-    true,
-  );
+    const report = lintBundle({
+        names: ["problem.json", "evaluate.py", "statement.md"],
+        texts: {
+            "problem.json": JSON.stringify({
+                format_version: 2,
+                title: "A",
+                runtime_config: {},
+            }),
+            "statement.md": "# A",
+        },
+    });
+    assertEquals(report.hasError, false);
+    assertEquals(
+        report.findings.some((f) => f.rule === "format/upgrade"),
+        true,
+    );
 });

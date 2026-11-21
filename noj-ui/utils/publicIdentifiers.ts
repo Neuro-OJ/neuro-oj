@@ -7,8 +7,8 @@
 
 import { defaultProblemReference } from './domain/workspace/default-workspace.ts';
 export function problemUrl(id: string, displayId?: string): string {
-  const reference = defaultProblemReference(displayId ?? '');
-  return reference ? `/d/main/problems/${encodeURIComponent(reference)}` : `/problems/${encodeURIComponent(id)}`;
+    const reference = defaultProblemReference(displayId ?? '');
+    return reference ? `/d/main/problems/${encodeURIComponent(reference)}` : `/problems/${encodeURIComponent(id)}`;
 }
 
 /**
@@ -19,25 +19,25 @@ export function problemUrl(id: string, displayId?: string): string {
  * 无法解析的引用退化为旧逻辑（默认域）。
  */
 export function workspaceProblemUrl(displayId: string): string {
-  const match = /^([a-z][a-z0-9-]{0,47}):([1-9]\d*)$/.exec(displayId);
-  if (!match) return problemUrl('', displayId);
-  return `/d/${match[1]}/problems/${encodeURIComponent(match[2]!)}`;
+    const match = /^([a-z][a-z0-9-]{0,47}):([1-9]\d*)$/.exec(displayId);
+    if (!match) return problemUrl('', displayId);
+    return `/d/${match[1]}/problems/${encodeURIComponent(match[2]!)}`;
 }
 
 export function userUrl(username: string): string {
-  return `/users/${username}`;
+    return `/users/${username}`;
 }
 
 export function publicUrl(
-  kind: 'contest' | 'training' | 'submission' | 'post' | 'announcement',
-  publicId: string,
+    kind: 'contest' | 'training' | 'submission' | 'post' | 'announcement',
+    publicId: string,
 ): string {
-  const base = {
-    contest: 'contests',
-    training: 'trainings',
-    submission: 'submissions',
-    post: 'community/posts',
-    announcement: 'announcements',
-  }[kind];
-  return `${['contest', 'submission'].includes(kind) ? '/d/main' : ''}/${base}/${encodeURIComponent(publicId)}`;
+    const base = {
+        contest: 'contests',
+        training: 'trainings',
+        submission: 'submissions',
+        post: 'community/posts',
+        announcement: 'announcements',
+    }[kind];
+    return `${['contest', 'submission'].includes(kind) ? '/d/main' : ''}/${base}/${encodeURIComponent(publicId)}`;
 }

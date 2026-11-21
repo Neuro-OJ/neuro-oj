@@ -23,51 +23,51 @@ import { upgradeBundleManifest } from "../../../noj-core/src/modules/problems/ty
 
 /** 打包排除规则（与 `noj.ts` 及 quality.md 对齐）。 */
 export const PACK_EXCLUDES = {
-  /** 参考实现一律排除（不得进入题目包）。 */
-  submissionPrefix: "submission",
-  /** 字节码缓存目录。 */
-  pycache: "__pycache__",
-  /** git 元数据。 */
-  gitDir: ".git/",
-  /** 根级 AI 编码助手目录（出题 Skill 等本地工具文件）。 */
-  assistantDirs: [".agents", ".claude"],
+    /** 参考实现一律排除（不得进入题目包）。 */
+    submissionPrefix: "submission",
+    /** 字节码缓存目录。 */
+    pycache: "__pycache__",
+    /** git 元数据。 */
+    gitDir: ".git/",
+    /** 根级 AI 编码助手目录（出题 Skill 等本地工具文件）。 */
+    assistantDirs: [".agents", ".claude"],
 } as const;
 
 /** 是否应把该相对路径排除出题目包。 */
 export function shouldExclude(relativePath: string): boolean {
-  const normalized = relativePath.replace(/\\/g, "/");
-  const base = normalized.split("/").pop() ?? normalized;
+    const normalized = relativePath.replace(/\\/g, "/");
+    const base = normalized.split("/").pop() ?? normalized;
 
-  // submission*（参考实现）：文件名，或根级目录（如 submissions/good.py，
-  // 与 noj.ts 的 `zip -x "submission*"` 对齐；`problem test` 默认从这里取参考解答）
-  if (base.startsWith(PACK_EXCLUDES.submissionPrefix)) return true;
-  if (normalized.split("/")[0]!.startsWith(PACK_EXCLUDES.submissionPrefix)) {
-    return true;
-  }
-  // 根级 .agents/ / .claude/（AI 编码助手的 skill 与配置，不进题目包）
-  if (
-    (PACK_EXCLUDES.assistantDirs as readonly string[]).includes(
-      normalized.split("/")[0]!,
-    ) && normalized.includes("/")
-  ) return true;
-  // __pycache__（任意层级）
-  if (normalized.split("/").includes(PACK_EXCLUDES.pycache)) return true;
-  // .git
-  if (
-    normalized.startsWith(PACK_EXCLUDES.gitDir) ||
-    normalized.includes("/" + PACK_EXCLUDES.gitDir)
-  ) return true;
-  // manifest 模板文件（脚手架产物，不应进包）
-  if (base === "manifest.template.json" || base === "problem.template.json") {
-    return true;
-  }
-  // 打包脚本本身（出题人本地工具，不属于题目内容）
-  if (base.endsWith(".sh") && base.startsWith("build_")) return true;
-  // 注意：题目模板文件（template.py / manifest.template 指定名）**不排除**——
-  // 平台导入题目包时从这里取编辑器初始代码，详见文件头说明。
-  // lint 报告等本地产物
-  if (base === ".DS_Store") return true;
-  return false;
+    // submission*（参考实现）：文件名，或根级目录（如 submissions/good.py，
+    // 与 noj.ts 的 `zip -x "submission*"` 对齐；`problem test` 默认从这里取参考解答）
+    if (base.startsWith(PACK_EXCLUDES.submissionPrefix)) return true;
+    if (normalized.split("/")[0]!.startsWith(PACK_EXCLUDES.submissionPrefix)) {
+        return true;
+    }
+    // 根级 .agents/ / .claude/（AI 编码助手的 skill 与配置，不进题目包）
+    if (
+        (PACK_EXCLUDES.assistantDirs as readonly string[]).includes(
+            normalized.split("/")[0]!,
+        ) && normalized.includes("/")
+    ) return true;
+    // __pycache__（任意层级）
+    if (normalized.split("/").includes(PACK_EXCLUDES.pycache)) return true;
+    // .git
+    if (
+        normalized.startsWith(PACK_EXCLUDES.gitDir) ||
+        normalized.includes("/" + PACK_EXCLUDES.gitDir)
+    ) return true;
+    // manifest 模板文件（脚手架产物，不应进包）
+    if (base === "manifest.template.json" || base === "problem.template.json") {
+        return true;
+    }
+    // 打包脚本本身（出题人本地工具，不属于题目内容）
+    if (base.endsWith(".sh") && base.startsWith("build_")) return true;
+    // 注意：题目模板文件（template.py / manifest.template 指定名）**不排除**——
+    // 平台导入题目包时从这里取编辑器初始代码，详见文件头说明。
+    // lint 报告等本地产物
+    if (base === ".DS_Store") return true;
+    return false;
 }
 
 /**
@@ -77,37 +77,39 @@ export function shouldExclude(relativePath: string): boolean {
  * {@link shouldExclude}，保证两者包含的文件完全一致。
  */
 export async function collectBundleEntries(
-  dir: string,
+    dir: string,
 ): Promise<Record<string, Uint8Array>> {
-  const entries: Record<string, Uint8Array> = {};
-  async function collect(current: string, prefix: string): Promise<void> {
-    for await (const entry of Deno.readDir(current)) {
-      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (entry.isDirectory) {
-        if (entry.name === "__pycache__" || entry.name === ".git") continue;
-        await collect(join(current, entry.name), rel);
-        continue;
-      }
-      if (!entry.isFile) continue;
-      entries[rel] = await Deno.readFile(join(current, entry.name));
+    const entries: Record<string, Uint8Array> = {};
+    async function collect(current: string, prefix: string): Promise<void> {
+        for await (const entry of Deno.readDir(current)) {
+            const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+            if (entry.isDirectory) {
+                if (entry.name === "__pycache__" || entry.name === ".git") {
+                    continue;
+                }
+                await collect(join(current, entry.name), rel);
+                continue;
+            }
+            if (!entry.isFile) continue;
+            entries[rel] = await Deno.readFile(join(current, entry.name));
+        }
     }
-  }
-  await collect(dir, "");
-  return entries;
+    await collect(dir, "");
+    return entries;
 }
 
 /** 打包输入：相对路径 → 字节。 */
 export interface PackInput {
-  entries: Record<string, Uint8Array>;
+    entries: Record<string, Uint8Array>;
 }
 
 /** 打包结果。 */
 export interface PackResult {
-  data: Uint8Array;
-  /** 实际写入包的条目名（排序后，便于断言）。 */
-  included: string[];
-  /** 被排除的条目名（排序后）。 */
-  excluded: string[];
+    data: Uint8Array;
+    /** 实际写入包的条目名（排序后，便于断言）。 */
+    included: string[];
+    /** 被排除的条目名（排序后）。 */
+    excluded: string[];
 }
 
 /**
@@ -117,33 +119,33 @@ export interface PackResult {
  * 兼顾体积与速度）。
  */
 export function packBundle(input: PackInput): PackResult {
-  const included: string[] = [];
-  const excluded: string[] = [];
-  const payload: Record<string, Uint8Array> = {};
+    const included: string[] = [];
+    const excluded: string[] = [];
+    const payload: Record<string, Uint8Array> = {};
 
-  for (const [name, data] of Object.entries(input.entries)) {
-    if (shouldExclude(name)) {
-      excluded.push(name);
-      continue;
+    for (const [name, data] of Object.entries(input.entries)) {
+        if (shouldExclude(name)) {
+            excluded.push(name);
+            continue;
+        }
+        payload[name] = name === "problem.json"
+            ? new TextEncoder().encode(
+                JSON.stringify(
+                    upgradeBundleManifest(
+                        JSON.parse(new TextDecoder().decode(data)),
+                    ).manifest,
+                    null,
+                    2,
+                ) + "\n",
+            )
+            : data;
+        included.push(name);
     }
-    payload[name] = name === "problem.json"
-      ? new TextEncoder().encode(
-        JSON.stringify(
-          upgradeBundleManifest(
-            JSON.parse(new TextDecoder().decode(data)),
-          ).manifest,
-          null,
-          2,
-        ) + "\n",
-      )
-      : data;
-    included.push(name);
-  }
 
-  const data = zipSync(payload, { level: 6 });
-  return {
-    data,
-    included: included.sort(),
-    excluded: excluded.sort(),
-  };
+    const data = zipSync(payload, { level: 6 });
+    return {
+        data,
+        included: included.sort(),
+        excluded: excluded.sort(),
+    };
 }

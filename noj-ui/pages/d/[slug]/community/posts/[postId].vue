@@ -5,5 +5,5 @@ const { key } = useCommunityScope();
 const route = useRoute();
 </script>
 <template>
-  <CommunityPostDetail :key="`${key}:${route.path}`" />
+    <CommunityPostDetail :key="`${key}:${route.path}`" />
 </template>

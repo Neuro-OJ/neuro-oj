@@ -17,13 +17,13 @@
 import { AppError } from "../../../shared/base/errors.ts";
 import type { DbTx } from "../../../shared/db/executor.ts";
 import {
-  assertEvaluationAdmission,
-  type EvaluationAdmissionContext,
+    assertEvaluationAdmission,
+    type EvaluationAdmissionContext,
 } from "./read.ts";
 import {
-  type DomainExecutionRequest,
-  lockDomainExecution,
-  resolveDomainExecution,
+    type DomainExecutionRequest,
+    lockDomainExecution,
+    resolveDomainExecution,
 } from "../services/workspace-execution.ts";
 
 /**
@@ -34,22 +34,22 @@ import {
  * 不需要自行寻找 contests/education 上下文，也不会把锁外快照误当成最终授权。
  */
 export type DomainEvaluationAdmissionPlan = Readonly<{
-  readonly request: DomainExecutionRequest;
-  readonly context: EvaluationAdmissionContext;
-  readonly resolved: Awaited<ReturnType<typeof resolveDomainExecution>>;
+    readonly request: DomainExecutionRequest;
+    readonly context: EvaluationAdmissionContext;
+    readonly resolved: Awaited<ReturnType<typeof resolveDomainExecution>>;
 }>;
 
 /** 锁内复核结果：可直接写入提交/尝试行的定位事实。 */
 export interface RevalidatedEvaluationAdmission {
-  readonly domain_id: string;
-  readonly domain_problem_binding_id: string;
-  /** 作业来源（若本次受理来自作业）。 */
-  readonly assignment_id: string | null;
-  readonly assignment_item_id: string | null;
-  /** 复核时重新读到的作答版本；必须与快照一致。 */
-  readonly version_id: string;
-  /** 复核时重新读到的竞赛 id；练习提交为 null。 */
-  readonly contest_id: string | null;
+    readonly domain_id: string;
+    readonly domain_problem_binding_id: string;
+    /** 作业来源（若本次受理来自作业）。 */
+    readonly assignment_id: string | null;
+    readonly assignment_item_id: string | null;
+    /** 复核时重新读到的作答版本；必须与快照一致。 */
+    readonly version_id: string;
+    /** 复核时重新读到的竞赛 id；练习提交为 null。 */
+    readonly contest_id: string | null;
 }
 
 /**
@@ -63,59 +63,69 @@ export interface RevalidatedEvaluationAdmission {
  * @throws {AppError} 403 授权已撤销；409 版本/比赛窗口已变化
  */
 export async function revalidateEvaluationAdmissionTx(
-  tx: DbTx,
-  context: EvaluationAdmissionContext,
-  request: DomainExecutionRequest,
-  userId: string,
-  versionId: string,
+    tx: DbTx,
+    context: EvaluationAdmissionContext,
+    request: DomainExecutionRequest,
+    userId: string,
+    versionId: string,
 ): Promise<RevalidatedEvaluationAdmission> {
-  // 先做一次解析拿到锁序所需的域/源题/绑定 ID；随后 lockDomainExecution 在
-  // 同一事务里加锁并**重新解析**，因此这次读取只用于确定锁顺序，不用于授权。
-  const initial = await resolveDomainExecution(request, userId, versionId, tx);
-  const locked = await lockDomainExecution(
-    initial,
-    request,
-    userId,
-    versionId,
-    tx,
-  );
-
-  // 锁内重读的版本必须与锁外快照一致；不一致按既有的稳定 409 语义失败。
-  const current = await resolveDomainExecution(request, userId, versionId, tx);
-  if (current.version.id !== context.problem.versionId) {
-    throw new AppError(
-      "作答版本已变化，请刷新并确认后重新提交",
-      409,
-      context.contest
-        ? "CONTEST_PROBLEM_VERSION_CHANGED"
-        : "PROBLEM_ANSWER_VERSION_CHANGED",
-      {
-        expected_version_id: context.problem.versionId,
-        submitted_version_id: current.version.id,
-      },
+    // 先做一次解析拿到锁序所需的域/源题/绑定 ID；随后 lockDomainExecution 在
+    // 同一事务里加锁并**重新解析**，因此这次读取只用于确定锁顺序，不用于授权。
+    const initial = await resolveDomainExecution(
+        request,
+        userId,
+        versionId,
+        tx,
     );
-  }
-  if ((current.contestId ?? null) !== (context.contest?.contestId ?? null)) {
-    throw new AppError(
-      "评测受理比赛上下文已变化，请刷新后重新提交",
-      409,
-      "EVALUATION_ADMISSION_MISMATCH",
+    const locked = await lockDomainExecution(
+        initial,
+        request,
+        userId,
+        versionId,
+        tx,
     );
-  }
 
-  // 用锁内事实重跑同一套准入判定：版本、固定版本、exact 策略、比赛窗口。
-  assertEvaluationAdmission(context, {
-    problemId: current.problem.id,
-    versionId: current.version.id,
-    contestId: current.contestId,
-  });
+    // 锁内重读的版本必须与锁外快照一致；不一致按既有的稳定 409 语义失败。
+    const current = await resolveDomainExecution(
+        request,
+        userId,
+        versionId,
+        tx,
+    );
+    if (current.version.id !== context.problem.versionId) {
+        throw new AppError(
+            "作答版本已变化，请刷新并确认后重新提交",
+            409,
+            context.contest
+                ? "CONTEST_PROBLEM_VERSION_CHANGED"
+                : "PROBLEM_ANSWER_VERSION_CHANGED",
+            {
+                expected_version_id: context.problem.versionId,
+                submitted_version_id: current.version.id,
+            },
+        );
+    }
+    if ((current.contestId ?? null) !== (context.contest?.contestId ?? null)) {
+        throw new AppError(
+            "评测受理比赛上下文已变化，请刷新后重新提交",
+            409,
+            "EVALUATION_ADMISSION_MISMATCH",
+        );
+    }
 
-  return {
-    domain_id: locked.domain_id,
-    domain_problem_binding_id: locked.domain_problem_binding_id,
-    assignment_id: locked.assignment_id ?? null,
-    assignment_item_id: locked.assignment_item_id ?? null,
-    version_id: current.version.id,
-    contest_id: current.contestId ?? null,
-  };
+    // 用锁内事实重跑同一套准入判定：版本、固定版本、exact 策略、比赛窗口。
+    assertEvaluationAdmission(context, {
+        problemId: current.problem.id,
+        versionId: current.version.id,
+        contestId: current.contestId,
+    });
+
+    return {
+        domain_id: locked.domain_id,
+        domain_problem_binding_id: locked.domain_problem_binding_id,
+        assignment_id: locked.assignment_id ?? null,
+        assignment_item_id: locked.assignment_item_id ?? null,
+        version_id: current.version.id,
+        contest_id: current.contestId ?? null,
+    };
 }

@@ -21,8 +21,8 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import {
-  evaluationAttempts,
-  submissionJobItems,
+    evaluationAttempts,
+    submissionJobItems,
 } from "../../../../shared/db/schema.ts";
 import type { AttemptSource } from "../../../../shared/versioning/types.ts";
 import { getSetting } from "../../../platform/contracts/cross-module/services_system-settings.ts";
@@ -38,66 +38,66 @@ export const MAX_PLATFORM_ERROR_MAX_RETRIES = 10;
 
 /** 写入新尝试 `task_snapshot.auto_retry` 的持久化标记。 */
 export interface AutoRetryMarker {
-  /** 本尝试是第几次自动重试（1 起）。 */
-  count: number;
-  /** 触发本次重试的平台错误尝试。 */
-  retry_of: string;
-  /** 重试链起点尝试的来源：`initial` 链沿用初次提交的派发优先级。 */
-  origin_source: AttemptSource;
+    /** 本尝试是第几次自动重试（1 起）。 */
+    count: number;
+    /** 触发本次重试的平台错误尝试。 */
+    retry_of: string;
+    /** 重试链起点尝试的来源：`initial` 链沿用初次提交的派发优先级。 */
+    origin_source: AttemptSource;
 }
 
 /** 自动重试调度结果。 */
 export interface ScheduledAutoRetry {
-  /** 新创建的评测尝试 ID（= 新的 run_id）。 */
-  attempt_id: string;
-  /** 新尝试的 sequence。 */
-  sequence: number;
-  /** 第几次自动重试（1 起）。 */
-  retry_count: number;
-  /**
-   * 是否交由批任务 worker 派发（重测/升级任务产生的尝试）。
-   * `false` 时由同事务登记的 evaluation.dispatch 任务派发并恢复。
-   */
-  via_job: boolean;
+    /** 新创建的评测尝试 ID（= 新的 run_id）。 */
+    attempt_id: string;
+    /** 新尝试的 sequence。 */
+    sequence: number;
+    /** 第几次自动重试（1 起）。 */
+    retry_count: number;
+    /**
+     * 是否交由批任务 worker 派发（重测/升级任务产生的尝试）。
+     * `false` 时由同事务登记的 evaluation.dispatch 任务派发并恢复。
+     */
+    via_job: boolean;
 }
 
 /** 读取当前配置的自动重试上限（runtime 设置，DB → env → 默认值）。 */
 export function resolvePlatformErrorMaxRetries(): number {
-  const value = getSetting("judge_platform_error_max_retries")?.value;
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    return DEFAULT_PLATFORM_ERROR_MAX_RETRIES;
-  }
-  return Math.min(value, MAX_PLATFORM_ERROR_MAX_RETRIES);
+    const value = getSetting("judge_platform_error_max_retries")?.value;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        return DEFAULT_PLATFORM_ERROR_MAX_RETRIES;
+    }
+    return Math.min(value, MAX_PLATFORM_ERROR_MAX_RETRIES);
 }
 
 /** 从尝试快照解析自动重试标记；不存在或格式非法返回 null。 */
 export function readAutoRetryMarker(snapshot: unknown): AutoRetryMarker | null {
-  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-    return null;
-  }
-  const raw = (snapshot as Record<string, unknown>).auto_retry;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const marker = raw as Record<string, unknown>;
-  if (
-    typeof marker.count !== "number" || !Number.isInteger(marker.count) ||
-    marker.count < 1
-  ) {
-    return null;
-  }
-  return {
-    count: marker.count,
-    retry_of: typeof marker.retry_of === "string" ? marker.retry_of : "",
-    origin_source: typeof marker.origin_source === "string"
-      ? marker.origin_source as AttemptSource
-      : "initial",
-  };
+    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+        return null;
+    }
+    const raw = (snapshot as Record<string, unknown>).auto_retry;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const marker = raw as Record<string, unknown>;
+    if (
+        typeof marker.count !== "number" || !Number.isInteger(marker.count) ||
+        marker.count < 1
+    ) {
+        return null;
+    }
+    return {
+        count: marker.count,
+        retry_of: typeof marker.retry_of === "string" ? marker.retry_of : "",
+        origin_source: typeof marker.origin_source === "string"
+            ? marker.origin_source as AttemptSource
+            : "initial",
+    };
 }
 
 /** 平台错误可重试判定结论。 */
 export interface PlatformErrorRetryDecision {
-  retryable: boolean;
-  /** 命中的特征（日志与测试用的稳定标识）。 */
-  reason: string;
+    retryable: boolean;
+    /** 命中的特征（日志与测试用的稳定标识）。 */
+    reason: string;
 }
 
 /** 只检查输出尾部：异常回溯与 judge 公开文案都在末尾，避免扫描 evaluator 的大段日志。 */
@@ -111,15 +111,15 @@ const RETRY_CLASSIFY_TAIL_CHARS = 8 * 1024;
  * - 额度/计费/鉴权关键字（含网关透传的上游 `upstream_error` + 402）。
  */
 const NON_RETRYABLE_PATTERNS: ReadonlyArray<[string, RegExp]> = [
-  ["function_not_registered", /\bnot registered\b/],
-  ["llm_gateway_4xx", /LLM gateway 返回 4\d\d\b/],
-  ["llm_out_of_usage", /\bout_of_usage\b/],
-  ["llm_quota", /\binsufficient_quota\b|\bquota\b/i],
-  ["llm_payment_required", /\b402\b|payment required|billing/i],
-  [
-    "llm_auth",
-    /\b(?:401|403)\b|unauthorized|forbidden|invalid_token|invalid_api_key/i,
-  ],
+    ["function_not_registered", /\bnot registered\b/],
+    ["llm_gateway_4xx", /LLM gateway 返回 4\d\d\b/],
+    ["llm_out_of_usage", /\bout_of_usage\b/],
+    ["llm_quota", /\binsufficient_quota\b|\bquota\b/i],
+    ["llm_payment_required", /\b402\b|payment required|billing/i],
+    [
+        "llm_auth",
+        /\b(?:401|403)\b|unauthorized|forbidden|invalid_token|invalid_api_key/i,
+    ],
 ];
 
 /**
@@ -131,10 +131,10 @@ const NON_RETRYABLE_PATTERNS: ReadonlyArray<[string, RegExp]> = [
  * - `LLM gateway 返回 5xx`：网关/上游瞬时故障。
  */
 const RETRYABLE_PATTERNS: ReadonlyArray<[string, RegExp]> = [
-  ["evaluator_total_timeout", /Evaluator 总超时/],
-  ["judge_internal_error", /系统内部错误 \(submission: /],
-  ["llm_gateway_connection", /LLM gateway 连接失败/],
-  ["llm_gateway_5xx", /LLM gateway 返回 5\d\d\b/],
+    ["evaluator_total_timeout", /Evaluator 总超时/],
+    ["judge_internal_error", /系统内部错误 \(submission: /],
+    ["llm_gateway_connection", /LLM gateway 连接失败/],
+    ["llm_gateway_5xx", /LLM gateway 返回 5\d\d\b/],
 ];
 
 /**
@@ -145,23 +145,23 @@ const RETRYABLE_PATTERNS: ReadonlyArray<[string, RegExp]> = [
  * 可重试特征才重试；未知错误与 core 判定的非法评分（`INVALID_SCORE`）默认不重试。
  */
 export function classifyPlatformErrorRetry(input: {
-  resultStatus?: string | null;
-  output?: string | null;
+    resultStatus?: string | null;
+    output?: string | null;
 }): PlatformErrorRetryDecision {
-  if (input.resultStatus === "INVALID_SCORE") {
-    return { retryable: false, reason: "invalid_score" };
-  }
-  const output = input.output ?? "";
-  const tail = output.length > RETRY_CLASSIFY_TAIL_CHARS
-    ? output.slice(-RETRY_CLASSIFY_TAIL_CHARS)
-    : output;
-  for (const [reason, pattern] of NON_RETRYABLE_PATTERNS) {
-    if (pattern.test(tail)) return { retryable: false, reason };
-  }
-  for (const [reason, pattern] of RETRYABLE_PATTERNS) {
-    if (pattern.test(tail)) return { retryable: true, reason };
-  }
-  return { retryable: false, reason: "unknown" };
+    if (input.resultStatus === "INVALID_SCORE") {
+        return { retryable: false, reason: "invalid_score" };
+    }
+    const output = input.output ?? "";
+    const tail = output.length > RETRY_CLASSIFY_TAIL_CHARS
+        ? output.slice(-RETRY_CLASSIFY_TAIL_CHARS)
+        : output;
+    for (const [reason, pattern] of NON_RETRYABLE_PATTERNS) {
+        if (pattern.test(tail)) return { retryable: false, reason };
+    }
+    for (const [reason, pattern] of RETRYABLE_PATTERNS) {
+        if (pattern.test(tail)) return { retryable: true, reason };
+    }
+    return { retryable: false, reason: "unknown" };
 }
 
 /** 批任务中仍未终结的条目状态：重试期间条目保持未完成。 */
@@ -176,84 +176,87 @@ const OPEN_ITEM_STATUSES = ["pending", "preparing", "dispatched"] as const;
  * @returns 已调度的重试；不满足条件（次数用尽、存量无版本等）返回 null
  */
 export async function scheduleAutoRetryInTx(
-  db: Executor,
-  input: {
-    failedAttemptId: string;
-    source: ProjectionSource;
-    maxRetries: number;
-  },
+    db: Executor,
+    input: {
+        failedAttemptId: string;
+        source: ProjectionSource;
+        maxRetries: number;
+    },
 ): Promise<ScheduledAutoRetry | null> {
-  if (input.source.kind !== "submission" || input.maxRetries <= 0) return null;
-  const [failed] = await db.select({
-    id: evaluationAttempts.id,
-    problem_version_id: evaluationAttempts.problem_version_id,
-    source: evaluationAttempts.source,
-    task_snapshot: evaluationAttempts.task_snapshot,
-  }).from(evaluationAttempts).where(
-    eq(evaluationAttempts.id, input.failedAttemptId),
-  ).limit(1);
-  // 存量无版本尝试无法按不可变版本重建任务，不自动重试
-  if (!failed?.problem_version_id) return null;
+    if (input.source.kind !== "submission" || input.maxRetries <= 0) {
+        return null;
+    }
+    const [failed] = await db.select({
+        id: evaluationAttempts.id,
+        problem_version_id: evaluationAttempts.problem_version_id,
+        source: evaluationAttempts.source,
+        task_snapshot: evaluationAttempts.task_snapshot,
+    }).from(evaluationAttempts).where(
+        eq(evaluationAttempts.id, input.failedAttemptId),
+    ).limit(1);
+    // 存量无版本尝试无法按不可变版本重建任务，不自动重试
+    if (!failed?.problem_version_id) return null;
 
-  const previous = readAutoRetryMarker(failed.task_snapshot);
-  const usedRetries = previous?.count ?? 0;
-  if (usedRetries >= input.maxRetries) return null;
+    const previous = readAutoRetryMarker(failed.task_snapshot);
+    const usedRetries = previous?.count ?? 0;
+    if (usedRetries >= input.maxRetries) return null;
 
-  const snapshot = (failed.task_snapshot ?? {}) as Record<string, unknown>;
-  const marker: AutoRetryMarker = {
-    count: usedRetries + 1,
-    retry_of: failed.id,
-    origin_source: previous?.origin_source ?? failed.source as AttemptSource,
-  };
-  // 新尝试沿用失败尝试的冻结执行快照（版本、运行配置、LLM Provider/模型/预算），
-  // 绝不重新解析当前默认配置；LLM 额度按新尝试 ID 独立计算。
-  const attempt = await createAttempt({
-    executor: db,
-    source: input.source,
-    problemVersionId: failed.problem_version_id,
-    // 约束只允许既有来源字面量：自动重试按"重测"语义记账（不计入首次结果统计）
-    source_kind: "rejudge",
-    taskSnapshot: { ...snapshot, auto_retry: marker },
-    createdBy: null,
-  });
-
-  // 批任务产生的尝试：把条目改指向新尝试并退回 `pending`，由 worker 按既有派发
-  // 路径（租约、退避、容量等待）重新派发；条目在重试结束前保持未完成。
-  const [item] = await db.select({
-    id: submissionJobItems.id,
-    job_id: submissionJobItems.job_id,
-  }).from(submissionJobItems).where(and(
-    eq(submissionJobItems.attempt_id, failed.id),
-    inArray(submissionJobItems.status, [...OPEN_ITEM_STATUSES]),
-  )).limit(1).for("update");
-  if (item) {
-    await db.update(submissionJobItems).set({
-      status: "pending",
-      attempt_id: attempt.id,
-      next_dispatch_at: null,
-      lease_owner: null,
-      lease_until: null,
-      reason_code: null,
-      reason_message: null,
-    }).where(eq(submissionJobItems.id, item.id));
-    await refreshJobStatus(item.job_id, db);
-  }
-
-  if (!item) {
-    // 新 attempt 与派发意图原子提交；无需等 sweeper，也不依赖进程存活。
-    await enqueueTaskTx(db as DbTx, {
-      taskType: "evaluation.dispatch",
-      targetKind: "submission",
-      targetId: input.source.id,
-      dedupeKey: attempt.id,
-      payload: { attempt_id: attempt.id, submission_id: input.source.id },
+    const snapshot = (failed.task_snapshot ?? {}) as Record<string, unknown>;
+    const marker: AutoRetryMarker = {
+        count: usedRetries + 1,
+        retry_of: failed.id,
+        origin_source: previous?.origin_source ??
+            failed.source as AttemptSource,
+    };
+    // 新尝试沿用失败尝试的冻结执行快照（版本、运行配置、LLM Provider/模型/预算），
+    // 绝不重新解析当前默认配置；LLM 额度按新尝试 ID 独立计算。
+    const attempt = await createAttempt({
+        executor: db,
+        source: input.source,
+        problemVersionId: failed.problem_version_id,
+        // 约束只允许既有来源字面量：自动重试按"重测"语义记账（不计入首次结果统计）
+        source_kind: "rejudge",
+        taskSnapshot: { ...snapshot, auto_retry: marker },
+        createdBy: null,
     });
-  }
 
-  return {
-    attempt_id: attempt.id,
-    sequence: attempt.sequence,
-    retry_count: marker.count,
-    via_job: Boolean(item),
-  };
+    // 批任务产生的尝试：把条目改指向新尝试并退回 `pending`，由 worker 按既有派发
+    // 路径（租约、退避、容量等待）重新派发；条目在重试结束前保持未完成。
+    const [item] = await db.select({
+        id: submissionJobItems.id,
+        job_id: submissionJobItems.job_id,
+    }).from(submissionJobItems).where(and(
+        eq(submissionJobItems.attempt_id, failed.id),
+        inArray(submissionJobItems.status, [...OPEN_ITEM_STATUSES]),
+    )).limit(1).for("update");
+    if (item) {
+        await db.update(submissionJobItems).set({
+            status: "pending",
+            attempt_id: attempt.id,
+            next_dispatch_at: null,
+            lease_owner: null,
+            lease_until: null,
+            reason_code: null,
+            reason_message: null,
+        }).where(eq(submissionJobItems.id, item.id));
+        await refreshJobStatus(item.job_id, db);
+    }
+
+    if (!item) {
+        // 新 attempt 与派发意图原子提交；无需等 sweeper，也不依赖进程存活。
+        await enqueueTaskTx(db as DbTx, {
+            taskType: "evaluation.dispatch",
+            targetKind: "submission",
+            targetId: input.source.id,
+            dedupeKey: attempt.id,
+            payload: { attempt_id: attempt.id, submission_id: input.source.id },
+        });
+    }
+
+    return {
+        attempt_id: attempt.id,
+        sequence: attempt.sequence,
+        retry_count: marker.count,
+        via_job: Boolean(item),
+    };
 }

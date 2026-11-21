@@ -7,49 +7,49 @@
  * 此兼容入口，应直接依赖 access 政策。
  */
 import {
-  guestActor,
-  userActorFromAuthenticatedId,
+    guestActor,
+    userActorFromAuthenticatedId,
 } from "../../access/contracts/actor.ts";
 import {
-  filterProblemsInRunningContest,
-  getContestPolicySnapshot,
-  isProblemInRunningContest,
-  isProblemInUnendedPublicContest,
-  loadPublicContestSecrecy,
-  resolveContestId,
-  runningWindowCondition,
-  unendedPublicContestForProblem,
+    filterProblemsInRunningContest,
+    getContestPolicySnapshot,
+    isProblemInRunningContest,
+    isProblemInUnendedPublicContest,
+    loadPublicContestSecrecy,
+    resolveContestId,
+    runningWindowCondition,
+    unendedPublicContestForProblem,
 } from "../../access/contest-policy.ts";
 import { verifyContestAccess as verifyContestAccessWithActor } from "../../access/contest-policy.ts";
 export {
-  filterProblemsInRunningContest,
-  getContestPolicySnapshot,
-  isProblemInRunningContest,
-  isProblemInUnendedPublicContest,
-  loadPublicContestSecrecy,
-  resolveContestId,
-  runningWindowCondition,
-  unendedPublicContestForProblem,
+    filterProblemsInRunningContest,
+    getContestPolicySnapshot,
+    isProblemInRunningContest,
+    isProblemInUnendedPublicContest,
+    loadPublicContestSecrecy,
+    resolveContestId,
+    runningWindowCondition,
+    unendedPublicContestForProblem,
 };
 export type {
-  ContestAccessInfo,
-  ContestPolicySnapshot,
-  ContestSecrecyPolicy,
-  ContestType,
-  PublicContestSecrecyRef,
+    ContestAccessInfo,
+    ContestPolicySnapshot,
+    ContestSecrecyPolicy,
+    ContestType,
+    PublicContestSecrecyRef,
 } from "../../access/contest-policy.ts";
 
 /** 旧调用方适配：新的业务写路径必须在边界处构造明确 UserActor。 */
 export async function verifyContestAccess(
-  userId: string | null,
-  contestId: string,
-  problemId: string,
-  options: { domainId?: string } = {},
+    userId: string | null,
+    contestId: string,
+    problemId: string,
+    options: { domainId?: string } = {},
 ) {
-  return await verifyContestAccessWithActor(
-    userId === null ? guestActor() : userActorFromAuthenticatedId(userId),
-    contestId,
-    problemId,
-    options,
-  );
+    return await verifyContestAccessWithActor(
+        userId === null ? guestActor() : userActorFromAuthenticatedId(userId),
+        contestId,
+        problemId,
+        options,
+    );
 }

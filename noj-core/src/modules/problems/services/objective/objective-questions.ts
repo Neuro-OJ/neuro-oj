@@ -17,34 +17,34 @@ import type { Context } from "hono";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, problemVersions } from "../../../../shared/db/schema.ts";
 import {
-  AppError,
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
+    AppError,
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
 } from "../../../../shared/base/errors.ts";
 import {
-  assertProblemEditPermission,
-  assertProblemEditPermissionForActor,
+    assertProblemEditPermission,
+    assertProblemEditPermissionForActor,
 } from "../problems/problems-crud.ts";
 import { evaluateProblemAccess } from "../problem-access-check.ts";
 import { resolveProblemAnswerVersion } from "../versioning/publish.ts";
 import {
-  guestActor,
-  userActorFromAuthenticatedId,
+    guestActor,
+    userActorFromAuthenticatedId,
 } from "../../../access/contracts/actor.ts";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import type { ObjectiveQuestionSnapshot } from "../../types/problem-content.ts";
 import { resolveContestId } from "../../../contests/contracts/read.ts";
 import { verifyContestAccess } from "../../../access/contest-policy.ts";
 import {
-  JUDGE_OPTIONS,
-  type ObjectiveOption,
-  type ObjectiveQuestionResponse,
-  type QuestionType,
+    JUDGE_OPTIONS,
+    type ObjectiveOption,
+    type ObjectiveQuestionResponse,
+    type QuestionType,
 } from "../../types/objective.ts";
 import {
-  listDraftQuestions,
-  listVersionQuestions,
+    listDraftQuestions,
+    listVersionQuestions,
 } from "./versioning/objective-drafts.ts";
 
 /** 客观题套卷源题行类型。 */
@@ -52,16 +52,16 @@ export type PaperRow = typeof problems.$inferSelect;
 
 /** 判断题固定选项（对/错）。 */
 export function judgeOptions(): ObjectiveOption[] {
-  return JUDGE_OPTIONS.map((o) => ({ key: o.key, text: o.text }));
+    return JUDGE_OPTIONS.map((o) => ({ key: o.key, text: o.text }));
 }
 
 /** 按 id 查询套卷（problems 行），不存在抛 404。支持默认域 UUID、数字题号与 P 数字兼容入口。 */
 export async function getPaperOrThrow(paperId: string): Promise<PaperRow> {
-  const paper = await resolvePaperId(paperId);
-  if (!paper) {
-    throw new NotFoundError("套卷不存在");
-  }
-  return paper;
+    const paper = await resolvePaperId(paperId);
+    if (!paper) {
+        throw new NotFoundError("套卷不存在");
+    }
+    return paper;
 }
 
 /**
@@ -71,81 +71,86 @@ export async function getPaperOrThrow(paperId: string): Promise<PaperRow> {
  * 返回完整套卷行；找不到返回 null。
  */
 export async function resolvePaperId(
-  paperId: string,
+    paperId: string,
 ): Promise<PaperRow | null> {
-  const db = getDb();
-  if (/^[Uu][0-9]+$/.test(paperId)) return null;
-  const match = /^(?:[Pp])?([1-9][0-9]*)$/.exec(paperId);
-  const rows = await db.select().from(problems).where(and(
-    match ? eq(problems.number, Number(match[1])) : eq(problems.id, paperId),
-    or(isNull(problems.domain_id), eq(problems.domain_id, DEFAULT_DOMAIN_ID)),
-  )).limit(1);
-  return rows[0] ?? null;
+    const db = getDb();
+    if (/^[Uu][0-9]+$/.test(paperId)) return null;
+    const match = /^(?:[Pp])?([1-9][0-9]*)$/.exec(paperId);
+    const rows = await db.select().from(problems).where(and(
+        match
+            ? eq(problems.number, Number(match[1]))
+            : eq(problems.id, paperId),
+        or(
+            isNull(problems.domain_id),
+            eq(problems.domain_id, DEFAULT_DOMAIN_ID),
+        ),
+    )).limit(1);
+    return rows[0] ?? null;
 }
 
 /** 解析套卷引用的规范 UUID（display_id → 真实 id）。 */
 export async function resolvePaperIdToUuid(paperId: string): Promise<string> {
-  const paper = await getPaperOrThrow(paperId);
-  return paper.id;
+    const paper = await getPaperOrThrow(paperId);
+    return paper.id;
 }
 
 /** 校验套卷标记为客观题（is_objective=true）。 */
 export function assertObjectivePaper(paper: PaperRow): void {
-  if (!paper.is_objective) {
-    throw new BadRequestError(
-      "该题目不是客观题套卷（is_objective 必须为 true）",
-    );
-  }
+    if (!paper.is_objective) {
+        throw new BadRequestError(
+            "该题目不是客观题套卷（is_objective 必须为 true）",
+        );
+    }
 }
 
 /** 当前源域可编辑者可管理套卷及读取草稿答案；匿名查看者没有编辑身份。 */
 export async function isPaperOwnerOrAdmin(
-  paper: PaperRow,
-  userId?: string,
-  userRole?: string,
-  c?: Context,
+    paper: PaperRow,
+    userId?: string,
+    userRole?: string,
+    c?: Context,
 ): Promise<boolean> {
-  const actorId = c?.var.userId ?? userId;
-  if (!actorId) return false;
-  try {
-    await assertProblemEditPermission(c, paper, actorId, userRole);
-    return true;
-  } catch {
-    return false;
-  }
+    const actorId = c?.var.userId ?? userId;
+    if (!actorId) return false;
+    try {
+        await assertProblemEditPermission(c, paper, actorId, userRole);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /** 新写用例的显式身份授权入口；不接收 Hono Context 或角色字符串。 */
 export async function isPaperOwnerOrAdminForActor(
-  paper: PaperRow,
-  actor: UserActor,
+    paper: PaperRow,
+    actor: UserActor,
 ): Promise<boolean> {
-  try {
-    await assertProblemEditPermissionForActor(paper, actor);
-    return true;
-  } catch {
-    return false;
-  }
+    try {
+        await assertProblemEditPermissionForActor(paper, actor);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 /** 断言套卷可管理（owner/admin），否则抛 403。 */
 export async function assertPaperManageable(
-  paper: PaperRow,
-  userId?: string,
-  userRole?: string,
-  c?: Context,
+    paper: PaperRow,
+    userId?: string,
+    userRole?: string,
+    c?: Context,
 ): Promise<void> {
-  if (await isPaperOwnerOrAdmin(paper, userId, userRole, c)) return;
-  throw new ForbiddenError("无权限管理该套卷");
+    if (await isPaperOwnerOrAdmin(paper, userId, userRole, c)) return;
+    throw new ForbiddenError("无权限管理该套卷");
 }
 
 /** 新写用例的显式身份授权入口；权限在当前 access policy 中实时解析。 */
 export async function assertPaperManageableForActor(
-  paper: PaperRow,
-  actor: UserActor,
+    paper: PaperRow,
+    actor: UserActor,
 ): Promise<void> {
-  if (await isPaperOwnerOrAdminForActor(paper, actor)) return;
-  throw new ForbiddenError("无权限管理该套卷");
+    if (await isPaperOwnerOrAdminForActor(paper, actor)) return;
+    throw new ForbiddenError("无权限管理该套卷");
 }
 
 /**
@@ -155,25 +160,25 @@ export async function assertPaperManageableForActor(
  * V1/V2 上标识一致，历史答案可按 key 匹配。
  */
 export function serializeQuestion(
-  paperId: string,
-  question: ObjectiveQuestionSnapshot,
-  includeAnswer: boolean,
+    paperId: string,
+    question: ObjectiveQuestionSnapshot,
+    includeAnswer: boolean,
 ): ObjectiveQuestionResponse {
-  const base: ObjectiveQuestionResponse = {
-    id: question.key,
-    paper_id: paperId,
-    sort_order: question.sort_order,
-    type: question.type as QuestionType,
-    prompt: question.prompt,
-    options: question.options as ObjectiveOption[],
-    created_at: "",
-    updated_at: "",
-  };
-  if (includeAnswer) {
-    base.answer = question.answer;
-    base.explanation = question.explanation;
-  }
-  return base;
+    const base: ObjectiveQuestionResponse = {
+        id: question.key,
+        paper_id: paperId,
+        sort_order: question.sort_order,
+        type: question.type as QuestionType,
+        prompt: question.prompt,
+        options: question.options as ObjectiveOption[],
+        created_at: "",
+        updated_at: "",
+    };
+    if (includeAnswer) {
+        base.answer = question.answer;
+        base.explanation = question.explanation;
+    }
+    return base;
 }
 
 /**
@@ -188,24 +193,24 @@ export function serializeQuestion(
  * @throws {NotFoundError} 套卷不存在或尚未发布（非编辑者）
  */
 export async function listPaperQuestions(
-  paperId: string,
-  includeAnswer: boolean,
-  options: { versionId?: string | null } = {},
+    paperId: string,
+    includeAnswer: boolean,
+    options: { versionId?: string | null } = {},
 ): Promise<ObjectiveQuestionResponse[]> {
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
-  if (includeAnswer && !options.versionId) {
-    const questions = await listDraftQuestions(paper.id);
+    const paper = await getPaperOrThrow(paperId);
+    assertObjectivePaper(paper);
+    if (includeAnswer && !options.versionId) {
+        const questions = await listDraftQuestions(paper.id);
+        return questions.map((question) =>
+            serializeQuestion(paper.id, question, true)
+        );
+    }
+    const version = await resolveAnswerVersion(paper, options.versionId);
+    if (!version) throw new NotFoundError("题目不存在");
+    const questions = await listVersionQuestions(version.version_id);
     return questions.map((question) =>
-      serializeQuestion(paper.id, question, true)
+        serializeQuestion(paper.id, question, includeAnswer)
     );
-  }
-  const version = await resolveAnswerVersion(paper, options.versionId);
-  if (!version) throw new NotFoundError("题目不存在");
-  const questions = await listVersionQuestions(version.version_id);
-  return questions.map((question) =>
-    serializeQuestion(paper.id, question, includeAnswer)
-  );
 }
 
 /**
@@ -216,36 +221,36 @@ export async function listPaperQuestions(
  * contest 域的业务规则。
  */
 async function resolveAnswerVersion(
-  paper: PaperRow,
-  requestedVersionId?: string | null,
+    paper: PaperRow,
+    requestedVersionId?: string | null,
 ): Promise<
-  { version_id: string; version: number } | null
+    { version_id: string; version: number } | null
 > {
-  const requested = requestedVersionId?.trim() || null;
-  if (requested) {
-    const db = getDb();
-    const [row] = await db.select({
-      id: problemVersions.id,
-      version: problemVersions.version,
-    }).from(problemVersions).where(
-      and(
-        eq(problemVersions.problem_id, paper.id),
-        eq(problemVersions.id, requested),
-      ),
-    ).limit(1);
-    if (!row) {
-      // 与提交路径同一错误码：客户端据此提示"版本不存在/未发布"
-      throw new AppError(
-        `题目版本不存在或未发布：${requested}`,
-        404,
-        "PROBLEM_VERSION_NOT_FOUND",
-      );
+    const requested = requestedVersionId?.trim() || null;
+    if (requested) {
+        const db = getDb();
+        const [row] = await db.select({
+            id: problemVersions.id,
+            version: problemVersions.version,
+        }).from(problemVersions).where(
+            and(
+                eq(problemVersions.problem_id, paper.id),
+                eq(problemVersions.id, requested),
+            ),
+        ).limit(1);
+        if (!row) {
+            // 与提交路径同一错误码：客户端据此提示"版本不存在/未发布"
+            throw new AppError(
+                `题目版本不存在或未发布：${requested}`,
+                404,
+                "PROBLEM_VERSION_NOT_FOUND",
+            );
+        }
+        return { version_id: row.id, version: row.version };
     }
-    return { version_id: row.id, version: row.version };
-  }
-  const fallback = await resolveProblemAnswerVersion(paper.id, paper);
-  if (!fallback) return null;
-  return { version_id: fallback.version_id, version: fallback.version };
+    const fallback = await resolveProblemAnswerVersion(paper.id, paper);
+    if (!fallback) return null;
+    return { version_id: fallback.version_id, version: fallback.version };
 }
 
 /**
@@ -261,73 +266,75 @@ async function resolveAnswerVersion(
  * - 题库作答按 `versionId` 显式指定，缺省走默认作答版本。
  */
 export async function listPaperQuestionsWithAccess(
-  paperId: string,
-  options: {
-    viewerId: string | null;
-    isAdmin: boolean;
-    contestId?: string | null;
-    /** 客户端携带的作答版本（题库显式选择）。 */
-    versionId?: string | null;
-    /** 旧服务调用兼容字段；HTTP/application 新路径不再传入。 */
-    userId?: string;
-    userRole?: string;
-    c?: Context;
-  },
+    paperId: string,
+    options: {
+        viewerId: string | null;
+        isAdmin: boolean;
+        contestId?: string | null;
+        /** 客户端携带的作答版本（题库显式选择）。 */
+        versionId?: string | null;
+        /** 旧服务调用兼容字段；HTTP/application 新路径不再传入。 */
+        userId?: string;
+        userRole?: string;
+        c?: Context;
+    },
 ): Promise<{
-  questions: ObjectiveQuestionResponse[];
-  version_id: string | null;
-  version: number | null;
+    questions: ObjectiveQuestionResponse[];
+    version_id: string | null;
+    version: number | null;
 }> {
-  const paper = await getPaperOrThrow(paperId);
-  assertObjectivePaper(paper);
+    const paper = await getPaperOrThrow(paperId);
+    assertObjectivePaper(paper);
 
-  // 浏览器路由使用公开竞赛 ID，权限与固定版本查询必须先归一到内部 UUID。
-  const contestId = options.contestId
-    ? await resolveContestId(options.contestId)
-    : null;
-  const contestAccess = contestId
-    ? await verifyContestAccess(
-      options.viewerId
-        ? userActorFromAuthenticatedId(options.viewerId)
-        : guestActor(),
-      contestId,
-      paper.id,
-    )
-    : null;
-  const { result: access } = await evaluateProblemAccess(paper, {
-    viewerId: options.viewerId,
-    isAdmin: options.isAdmin,
-    contestAccess,
-  });
-  if (!access.allowed) {
-    throw new NotFoundError("题目不存在");
-  }
+    // 浏览器路由使用公开竞赛 ID，权限与固定版本查询必须先归一到内部 UUID。
+    const contestId = options.contestId
+        ? await resolveContestId(options.contestId)
+        : null;
+    const contestAccess = contestId
+        ? await verifyContestAccess(
+            options.viewerId
+                ? userActorFromAuthenticatedId(options.viewerId)
+                : guestActor(),
+            contestId,
+            paper.id,
+        )
+        : null;
+    const { result: access } = await evaluateProblemAccess(paper, {
+        viewerId: options.viewerId,
+        isAdmin: options.isAdmin,
+        contestAccess,
+    });
+    if (!access.allowed) {
+        throw new NotFoundError("题目不存在");
+    }
 
-  // owner 只读模式不等于管理权：答案与草稿必须由域角色（educator/admin）解锁。
-  const canManage = access.mode === "admin" ||
-    (options.userId !== undefined &&
-      await isPaperOwnerOrAdmin(
-        paper,
-        options.userId,
-        options.userRole,
-        options.c,
-      ));
-  const includeAnswer =
-    (!contestAccess?.running || contestAccess.organizer === true) && canManage;
-  // 竞赛 > 显式版本 > 默认作答版本：竞赛固定版本不可被客户端参数覆盖。
-  const effectiveVersionId = contestAccess?.allowed || contestAccess?.organizer
-    ? (contestAccess.pinnedVersionId ?? null)
-    : (options.versionId?.trim() || null);
-  const questions = await listPaperQuestions(paper.id, includeAnswer, {
-    versionId: effectiveVersionId,
-  });
-  // 回传实际展示的版本：客户端据此提交同一版本（竞赛里不匹配将 409）。
-  const version = includeAnswer && !effectiveVersionId
-    ? null
-    : await resolveAnswerVersion(paper, effectiveVersionId);
-  return {
-    questions,
-    version_id: version?.version_id ?? null,
-    version: version?.version ?? null,
-  };
+    // owner 只读模式不等于管理权：答案与草稿必须由域角色（educator/admin）解锁。
+    const canManage = access.mode === "admin" ||
+        (options.userId !== undefined &&
+            await isPaperOwnerOrAdmin(
+                paper,
+                options.userId,
+                options.userRole,
+                options.c,
+            ));
+    const includeAnswer =
+        (!contestAccess?.running || contestAccess.organizer === true) &&
+        canManage;
+    // 竞赛 > 显式版本 > 默认作答版本：竞赛固定版本不可被客户端参数覆盖。
+    const effectiveVersionId =
+        contestAccess?.allowed || contestAccess?.organizer
+            ? (contestAccess.pinnedVersionId ?? null)
+            : (options.versionId?.trim() || null);
+    const questions = await listPaperQuestions(paper.id, includeAnswer, {
+        versionId: effectiveVersionId,
+    });
+    // 回传实际展示的版本：客户端据此提交同一版本（竞赛里不匹配将 409）。
+    const version = includeAnswer && !effectiveVersionId
+        ? null
+        : await resolveAnswerVersion(paper, effectiveVersionId);
+    return {
+        questions,
+        version_id: version?.version_id ?? null,
+        version: version?.version ?? null,
+    };
 }

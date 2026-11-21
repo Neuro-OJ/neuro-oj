@@ -14,14 +14,14 @@ const databaseName = await assertOwnedTestDatabase();
 console.log(`[setup] 测试数据库 ${databaseName} 由启动器接管`);
 
 const result = await getDb().execute(
-  sql`SELECT to_regclass('users') AS users_table`,
+    sql`SELECT to_regclass('users') AS users_table`,
 );
 const rows = unwrapRows<{ users_table: string | null }>(result as never);
 assert(
-  rows[0]?.users_table !== null,
-  "users 表不存在：测试启动器未执行正式迁移",
+    rows[0]?.users_table !== null,
+    "users 表不存在：测试启动器未执行正式迁移",
 );
 
 Deno.test("00_migrate: 测试数据库由启动器完成迁移", () => {
-  assertEquals(typeof databaseName, "string");
+    assertEquals(typeof databaseName, "string");
 });

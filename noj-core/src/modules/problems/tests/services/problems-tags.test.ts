@@ -12,32 +12,32 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq, inArray } from "drizzle-orm";
 import {
-  bindPublishedProblemForTest,
-  deleteProblemFixtures,
-  initRedisForTest,
-  publishBaselineVersionForTest,
+    bindPublishedProblemForTest,
+    deleteProblemFixtures,
+    initRedisForTest,
+    publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  problems,
-  problemTags,
-  submissions,
-  tags,
-  users,
+    problems,
+    problemTags,
+    submissions,
+    tags,
+    users,
 } from "../../../../shared/db/schema.ts";
 import {
-  BadRequestError,
-  ConflictError,
+    BadRequestError,
+    ConflictError,
 } from "../../../../shared/base/errors.ts";
 import { syncProblemTags, updateProblem } from "../../index.ts";
 import {
-  applyAlgorithmTagVisibility,
-  getProblem,
-  getProblemDraft,
+    applyAlgorithmTagVisibility,
+    getProblem,
+    getProblemDraft,
 } from "../../index.ts";
 import {
-  createTag,
-  type TagWriteContext,
+    createTag,
+    type TagWriteContext,
 } from "../../../../features/tags/index.ts";
 
 await resetDbForTest();
@@ -47,415 +47,438 @@ const ts = Date.now();
 
 /** 标签写上下文：标签写操作审计 admin_id 有外键，这里用系统用户。 */
 const tagCtx: TagWriteContext = {
-  actor: { kind: "system", purpose: "background_task" } as const,
-  auditMeta: { ipAddress: "127.0.0.1" },
+    actor: { kind: "system", purpose: "background_task" } as const,
+    auditMeta: { ipAddress: "127.0.0.1" },
 };
 
 /** 建一道 P 型编程题（runtime_config 可空，服务层不校验 DB 层）。 */
 async function createTestProblem(): Promise<string> {
-  const db = getDb();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await db.insert(problems).values({
-    domain_id: "00000000-0000-4000-8000-000000000001",
-    id,
-    title: `门控测试题-${ts}-${Math.random().toString(36).slice(2, 6)}`,
-    description: "描述",
-    difficulty: "easy",
-    runtime_config: null,
-    is_objective: false,
-    number: 940000 + (ts % 10000),
-    owner_id: "0",
-    created_at: now,
-    updated_at: now,
-  });
-  return id;
+    const db = getDb();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(problems).values({
+        domain_id: "00000000-0000-4000-8000-000000000001",
+        id,
+        title: `门控测试题-${ts}-${Math.random().toString(36).slice(2, 6)}`,
+        description: "描述",
+        difficulty: "easy",
+        runtime_config: null,
+        is_objective: false,
+        number: 940000 + (ts % 10000),
+        owner_id: "0",
+        created_at: now,
+        updated_at: now,
+    });
+    return id;
 }
 
 /** 建一个用户（无 RBAC 角色关联也可——门控只读 users 行）。 */
 async function createTestUser(): Promise<string> {
-  const db = getDb();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await db.insert(users).values({
-    id,
-    username: `gate_user_${ts}_${Math.random().toString(36).slice(2, 6)}`,
-    email: `${id}@test.local`,
-    password_hash: "x",
-    must_change_password: false,
-    created_at: now,
-    updated_at: now,
-  });
-  return id;
+    const db = getDb();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+        id,
+        username: `gate_user_${ts}_${Math.random().toString(36).slice(2, 6)}`,
+        email: `${id}@test.local`,
+        password_hash: "x",
+        must_change_password: false,
+        created_at: now,
+        updated_at: now,
+    });
+    return id;
 }
 
 Deno.test({
-  name: "problems-tags: 关联不存在的标签返回 400",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const problemId = await createTestProblem();
-    await assertRejects(
-      () => syncProblemTags(problemId, ["nonexistent-tag-id"]),
-      BadRequestError,
-    );
-    const db = getDb();
-    await db.delete(problems).where(eq(problems.id, problemId));
-  },
+    name: "problems-tags: 关联不存在的标签返回 400",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const problemId = await createTestProblem();
+        await assertRejects(
+            () => syncProblemTags(problemId, ["nonexistent-tag-id"]),
+            BadRequestError,
+        );
+        const db = getDb();
+        await db.delete(problems).where(eq(problems.id, problemId));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 客观题关联算法标签返回 400",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const algoTag = await createTag(tagCtx, {
-      name: `门控算法-${ts}`,
-      kind: "algorithm",
-    });
-    const problemId = await createTestProblem();
+    name: "problems-tags: 客观题关联算法标签返回 400",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const algoTag = await createTag(tagCtx, {
+            name: `门控算法-${ts}`,
+            kind: "algorithm",
+        });
+        const problemId = await createTestProblem();
 
-    await assertRejects(
-      () => syncProblemTags(problemId, [algoTag.id], true),
-      BadRequestError,
-      "客观题不能关联算法标签",
-    );
+        await assertRejects(
+            () => syncProblemTags(problemId, [algoTag.id], true),
+            BadRequestError,
+            "客观题不能关联算法标签",
+        );
 
-    // 客观题 + 题目标签允许
-    const probTag = await createTag(tagCtx, {
-      name: `门控主题-${ts}`,
-      kind: "problem",
-    });
-    await syncProblemTags(problemId, [probTag.id], true);
+        // 客观题 + 题目标签允许
+        const probTag = await createTag(tagCtx, {
+            name: `门控主题-${ts}`,
+            kind: "problem",
+        });
+        await syncProblemTags(problemId, [probTag.id], true);
 
-    const db = getDb();
-    const rows = await db
-      .select()
-      .from(problemTags)
-      .where(eq(problemTags.problem_id, problemId));
-    assertEquals(rows.length, 1);
-    assertEquals(rows[0].tag_id, probTag.id);
+        const db = getDb();
+        const rows = await db
+            .select()
+            .from(problemTags)
+            .where(eq(problemTags.problem_id, problemId));
+        assertEquals(rows.length, 1);
+        assertEquals(rows[0].tag_id, probTag.id);
 
-    await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
-    await db.delete(tags).where(
-      inArray(tags.id, [algoTag.id, probTag.id]),
-    );
-  },
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, problemId),
+        );
+        await db.delete(problems).where(eq(problems.id, problemId));
+        await db.delete(tags).where(
+            inArray(tags.id, [algoTag.id, probTag.id]),
+        );
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 全量替换语义与重复 id 去重",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const tagA = await createTag(tagCtx, {
-      name: `替换A-${ts}`,
-      kind: "problem",
-    });
-    const tagB = await createTag(tagCtx, {
-      name: `替换B-${ts}`,
-      kind: "problem",
-    });
-    const problemId = await createTestProblem();
+    name: "problems-tags: 全量替换语义与重复 id 去重",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const tagA = await createTag(tagCtx, {
+            name: `替换A-${ts}`,
+            kind: "problem",
+        });
+        const tagB = await createTag(tagCtx, {
+            name: `替换B-${ts}`,
+            kind: "problem",
+        });
+        const problemId = await createTestProblem();
 
-    await syncProblemTags(problemId, [tagA.id]);
-    await syncProblemTags(problemId, [tagB.id, tagB.id]); // 重复 id 应去重
+        await syncProblemTags(problemId, [tagA.id]);
+        await syncProblemTags(problemId, [tagB.id, tagB.id]); // 重复 id 应去重
 
-    const db = getDb();
-    const rows = await db
-      .select()
-      .from(problemTags)
-      .where(eq(problemTags.problem_id, problemId));
-    assertEquals(rows.length, 1);
-    assertEquals(rows[0].tag_id, tagB.id);
+        const db = getDb();
+        const rows = await db
+            .select()
+            .from(problemTags)
+            .where(eq(problemTags.problem_id, problemId));
+        assertEquals(rows.length, 1);
+        assertEquals(rows[0].tag_id, tagB.id);
 
-    await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
-    await db.delete(tags).where(inArray(tags.id, [tagA.id, tagB.id]));
-  },
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, problemId),
+        );
+        await db.delete(problems).where(eq(problems.id, problemId));
+        await db.delete(tags).where(inArray(tags.id, [tagA.id, tagB.id]));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 门控——匿名用户不可见算法标签",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const algoTag = await createTag(tagCtx, {
-      name: `门控A-${ts}`,
-      kind: "algorithm",
-    });
-    const probTag = await createTag(tagCtx, {
-      name: `门控P-${ts}`,
-      kind: "problem",
-    });
-    const problemId = await createTestProblem();
-    await syncProblemTags(problemId, [algoTag.id, probTag.id]);
+    name: "problems-tags: 门控——匿名用户不可见算法标签",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const algoTag = await createTag(tagCtx, {
+            name: `门控A-${ts}`,
+            kind: "algorithm",
+        });
+        const probTag = await createTag(tagCtx, {
+            name: `门控P-${ts}`,
+            kind: "problem",
+        });
+        const problemId = await createTestProblem();
+        await syncProblemTags(problemId, [algoTag.id, probTag.id]);
 
-    const problem = await getProblem(problemId);
-    const visible = await applyAlgorithmTagVisibility(problem, {});
+        const problem = await getProblem(problemId);
+        const visible = await applyAlgorithmTagVisibility(problem, {});
 
-    assertEquals(visible.has_hidden_algorithm_tags, true);
-    assertEquals(
-      visible.tags.some((t) => t.kind === "algorithm"),
-      false,
-    );
-    assertEquals(visible.tags.some((t) => t.kind === "problem"), true);
+        assertEquals(visible.has_hidden_algorithm_tags, true);
+        assertEquals(
+            visible.tags.some((t) => t.kind === "algorithm"),
+            false,
+        );
+        assertEquals(visible.tags.some((t) => t.kind === "problem"), true);
 
-    const db = getDb();
-    await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
-    await db.delete(tags).where(inArray(tags.id, [algoTag.id, probTag.id]));
-  },
+        const db = getDb();
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, problemId),
+        );
+        await db.delete(problems).where(eq(problems.id, problemId));
+        await db.delete(tags).where(inArray(tags.id, [algoTag.id, probTag.id]));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 门控——无通过提交的登录用户不可见",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const algoTag = await createTag(tagCtx, {
-      name: `门控A2-${ts}`,
-      kind: "algorithm",
-    });
-    const problemId = await createTestProblem();
-    const userId = await createTestUser();
-    await syncProblemTags(problemId, [algoTag.id]);
+    name: "problems-tags: 门控——无通过提交的登录用户不可见",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const algoTag = await createTag(tagCtx, {
+            name: `门控A2-${ts}`,
+            kind: "algorithm",
+        });
+        const problemId = await createTestProblem();
+        const userId = await createTestUser();
+        await syncProblemTags(problemId, [algoTag.id]);
 
-    const problem = await getProblem(problemId);
-    const visible = await applyAlgorithmTagVisibility(problem, { userId });
+        const problem = await getProblem(problemId);
+        const visible = await applyAlgorithmTagVisibility(problem, { userId });
 
-    assertEquals(visible.has_hidden_algorithm_tags, true);
-    assertEquals(visible.tags.some((t) => t.kind === "algorithm"), false);
+        assertEquals(visible.has_hidden_algorithm_tags, true);
+        assertEquals(visible.tags.some((t) => t.kind === "algorithm"), false);
 
-    const db = getDb();
-    await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
-    await db.delete(tags).where(eq(tags.id, algoTag.id));
-    await db.delete(users).where(eq(users.id, userId));
-  },
+        const db = getDb();
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, problemId),
+        );
+        await db.delete(problems).where(eq(problems.id, problemId));
+        await db.delete(tags).where(eq(tags.id, algoTag.id));
+        await db.delete(users).where(eq(users.id, userId));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 门控——有通过提交的用户可见",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const algoTag = await createTag(tagCtx, {
-      name: `门控A3-${ts}`,
-      kind: "algorithm",
-    });
-    const problemId = await createTestProblem();
-    const userId = await createTestUser();
-    await syncProblemTags(problemId, [algoTag.id]);
+    name: "problems-tags: 门控——有通过提交的用户可见",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const algoTag = await createTag(tagCtx, {
+            name: `门控A3-${ts}`,
+            kind: "algorithm",
+        });
+        const problemId = await createTestProblem();
+        const userId = await createTestUser();
+        await syncProblemTags(problemId, [algoTag.id]);
 
-    // 造一条通过提交。版本化后「是否通过」读的是提交的**有效成绩投影**
-    // （`submissions.is_accepted`），由结果服务写入；这里直接落投影以模拟该状态。
-    const db = getDb();
-    const submissionId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await publishBaselineVersionForTest(problemId);
-    await db.insert(submissions).values({
-      domain_id: "00000000-0000-4000-8000-000000000001",
-      domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
-      id: submissionId,
-      user_id: userId,
-      problem_id: problemId,
-      status: "finished",
-      language: "python3",
-      code: "print(1)",
-      is_valid: true,
-      is_accepted: true,
-      created_at: now,
-    });
+        // 造一条通过提交。版本化后「是否通过」读的是提交的**有效成绩投影**
+        // （`submissions.is_accepted`），由结果服务写入；这里直接落投影以模拟该状态。
+        const db = getDb();
+        const submissionId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await publishBaselineVersionForTest(problemId);
+        await db.insert(submissions).values({
+            domain_id: "00000000-0000-4000-8000-000000000001",
+            domain_problem_binding_id: await bindPublishedProblemForTest(
+                problemId,
+            ),
+            id: submissionId,
+            user_id: userId,
+            problem_id: problemId,
+            status: "finished",
+            language: "python3",
+            code: "print(1)",
+            is_valid: true,
+            is_accepted: true,
+            created_at: now,
+        });
 
-    const problem = await getProblem(problemId);
-    const visible = await applyAlgorithmTagVisibility(problem, { userId });
+        const problem = await getProblem(problemId);
+        const visible = await applyAlgorithmTagVisibility(problem, { userId });
 
-    assertEquals(visible.has_hidden_algorithm_tags, false);
-    assertEquals(visible.tags.some((t) => t.kind === "algorithm"), true);
+        assertEquals(visible.has_hidden_algorithm_tags, false);
+        assertEquals(visible.tags.some((t) => t.kind === "algorithm"), true);
 
-    await db.delete(submissions).where(eq(submissions.id, submissionId));
-    await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await deleteProblemFixtures(eq(problems.id, problemId));
-    await db.delete(tags).where(eq(tags.id, algoTag.id));
-    await db.delete(users).where(eq(users.id, userId));
-  },
+        await db.delete(submissions).where(eq(submissions.id, submissionId));
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, problemId),
+        );
+        await deleteProblemFixtures(eq(problems.id, problemId));
+        await db.delete(tags).where(eq(tags.id, algoTag.id));
+        await db.delete(users).where(eq(users.id, userId));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 门控——admin 与题主始终可见",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const algoTag = await createTag(tagCtx, {
-      name: `门控A4-${ts}`,
-      kind: "algorithm",
-    });
-    const ownerId = await createTestUser();
-    const db = getDb();
+    name: "problems-tags: 门控——admin 与题主始终可见",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const algoTag = await createTag(tagCtx, {
+            name: `门控A4-${ts}`,
+            kind: "algorithm",
+        });
+        const ownerId = await createTestUser();
+        const db = getDb();
 
-    // 题主场景：owner_id = ownerId
-    const ownedProblemId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await db.insert(problems).values({
-      domain_id: "00000000-0000-4000-8000-000000000001",
-      id: ownedProblemId,
-      title: `门控题主题-${ts}`,
-      description: "描述",
-      difficulty: "easy",
-      runtime_config: null,
-      is_objective: false,
-      number: 950000 + (ts % 10000),
-      owner_id: ownerId,
-      created_at: now,
-      updated_at: now,
-    });
-    await syncProblemTags(ownedProblemId, [algoTag.id]);
-    const owned = await getProblem(ownedProblemId);
-    const ownerVisible = await applyAlgorithmTagVisibility(owned, {
-      userId: ownerId,
-    });
-    assertEquals(ownerVisible.has_hidden_algorithm_tags, false);
-    assertEquals(
-      ownerVisible.tags.some((t) => t.kind === "algorithm"),
-      true,
-    );
+        // 题主场景：owner_id = ownerId
+        const ownedProblemId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        await db.insert(problems).values({
+            domain_id: "00000000-0000-4000-8000-000000000001",
+            id: ownedProblemId,
+            title: `门控题主题-${ts}`,
+            description: "描述",
+            difficulty: "easy",
+            runtime_config: null,
+            is_objective: false,
+            number: 950000 + (ts % 10000),
+            owner_id: ownerId,
+            created_at: now,
+            updated_at: now,
+        });
+        await syncProblemTags(ownedProblemId, [algoTag.id]);
+        const owned = await getProblem(ownedProblemId);
+        const ownerVisible = await applyAlgorithmTagVisibility(owned, {
+            userId: ownerId,
+        });
+        assertEquals(ownerVisible.has_hidden_algorithm_tags, false);
+        assertEquals(
+            ownerVisible.tags.some((t) => t.kind === "algorithm"),
+            true,
+        );
 
-    // admin 场景
-    const adminVisible = await applyAlgorithmTagVisibility(owned, {
-      userId: "someone-else",
-      isAdmin: true,
-    });
-    assertEquals(adminVisible.has_hidden_algorithm_tags, false);
-    assertEquals(adminVisible.tags.some((t) => t.kind === "algorithm"), true);
+        // admin 场景
+        const adminVisible = await applyAlgorithmTagVisibility(owned, {
+            userId: "someone-else",
+            isAdmin: true,
+        });
+        assertEquals(adminVisible.has_hidden_algorithm_tags, false);
+        assertEquals(
+            adminVisible.tags.some((t) => t.kind === "algorithm"),
+            true,
+        );
 
-    await db.delete(problemTags).where(
-      eq(problemTags.problem_id, ownedProblemId),
-    );
-    await db.delete(problems).where(eq(problems.id, ownedProblemId));
-    await db.delete(tags).where(eq(tags.id, algoTag.id));
-    await db.delete(users).where(eq(users.id, ownerId));
-  },
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, ownedProblemId),
+        );
+        await db.delete(problems).where(eq(problems.id, ownedProblemId));
+        await db.delete(tags).where(eq(tags.id, algoTag.id));
+        await db.delete(users).where(eq(users.id, ownerId));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: 门控——无算法标签时标志为 false",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const probTag = await createTag(tagCtx, {
-      name: `门控P5-${ts}`,
-      kind: "problem",
-    });
-    const problemId = await createTestProblem();
-    await syncProblemTags(problemId, [probTag.id]);
+    name: "problems-tags: 门控——无算法标签时标志为 false",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const probTag = await createTag(tagCtx, {
+            name: `门控P5-${ts}`,
+            kind: "problem",
+        });
+        const problemId = await createTestProblem();
+        await syncProblemTags(problemId, [probTag.id]);
 
-    const problem = await getProblem(problemId);
-    const visible = await applyAlgorithmTagVisibility(problem, {});
+        const problem = await getProblem(problemId);
+        const visible = await applyAlgorithmTagVisibility(problem, {});
 
-    assertEquals(visible.has_hidden_algorithm_tags, false);
-    assertEquals(visible.tags.length, 1);
+        assertEquals(visible.has_hidden_algorithm_tags, false);
+        assertEquals(visible.tags.length, 1);
 
-    const db = getDb();
-    await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-    await db.delete(problems).where(eq(problems.id, problemId));
-    await db.delete(tags).where(eq(tags.id, probTag.id));
-  },
+        const db = getDb();
+        await db.delete(problemTags).where(
+            eq(problemTags.problem_id, problemId),
+        );
+        await db.delete(problems).where(eq(problems.id, problemId));
+        await db.delete(tags).where(eq(tags.id, probTag.id));
+    },
 });
 
 Deno.test({
-  name: "problems-tags: OI 题标签随字段保存、去重、拒绝过期更新并可清空",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const db = getDb();
-    const problemId = await createTestProblem();
-    const topic = await createTag(tagCtx, {
-      name: `门控OI主题-${ts}`,
-      kind: "problem",
-    });
-    const algorithm = await createTag(tagCtx, {
-      name: `门控OI算法-${ts}`,
-      kind: "algorithm",
-    });
-    try {
-      await db.update(problems).set({ judge_type: "oi" }).where(
-        eq(problems.id, problemId),
-      );
-      const saved = await updateProblem(
-        problemId,
-        {
-          title: "OI 标签更新",
-          tag_ids: [topic.id, algorithm.id, algorithm.id],
-        },
-        undefined,
-        "admin",
-      );
-      assertEquals(
-        saved.tags.map((tag) => tag.id).sort(),
-        [topic.id, algorithm.id].sort(),
-      );
-      await assertRejects(() =>
-        updateProblem(
-          problemId,
-          {
-            title: "不应保存",
-            tag_ids: [],
-          },
-          undefined,
-          "admin",
-          undefined,
-          false,
-          "2000-01-01T00:00:00.000Z",
-        ), ConflictError);
-      await assertRejects(() =>
-        updateProblem(
-          problemId,
-          {
-            title: "不应保存",
-            tag_ids: ["nonexistent-tag-id"],
-          },
-          undefined,
-          "admin",
-        ), BadRequestError);
-      const unchanged = await getProblem(problemId);
-      assertEquals(
-        unchanged.tags.map((tag) => tag.id).sort(),
-        [topic.id, algorithm.id].sort(),
-      );
-      // 内容字段（title）写共享草稿；题目投影只由发布服务更新（Handbook §2.2）
-      const draft = await getProblemDraft(problemId);
-      assertEquals(draft.content.title, "OI 标签更新");
-      const cleared = await updateProblem(
-        problemId,
-        { tag_ids: [] },
-        undefined,
-        "admin",
-      );
-      assertEquals(cleared.tags, []);
-    } finally {
-      await db.delete(problemTags).where(eq(problemTags.problem_id, problemId));
-      await db.delete(problems).where(eq(problems.id, problemId));
-      await db.delete(tags).where(inArray(tags.id, [topic.id, algorithm.id]));
-    }
-  },
+    name: "problems-tags: OI 题标签随字段保存、去重、拒绝过期更新并可清空",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const db = getDb();
+        const problemId = await createTestProblem();
+        const topic = await createTag(tagCtx, {
+            name: `门控OI主题-${ts}`,
+            kind: "problem",
+        });
+        const algorithm = await createTag(tagCtx, {
+            name: `门控OI算法-${ts}`,
+            kind: "algorithm",
+        });
+        try {
+            await db.update(problems).set({ judge_type: "oi" }).where(
+                eq(problems.id, problemId),
+            );
+            const saved = await updateProblem(
+                problemId,
+                {
+                    title: "OI 标签更新",
+                    tag_ids: [topic.id, algorithm.id, algorithm.id],
+                },
+                undefined,
+                "admin",
+            );
+            assertEquals(
+                saved.tags.map((tag) => tag.id).sort(),
+                [topic.id, algorithm.id].sort(),
+            );
+            await assertRejects(() =>
+                updateProblem(
+                    problemId,
+                    {
+                        title: "不应保存",
+                        tag_ids: [],
+                    },
+                    undefined,
+                    "admin",
+                    undefined,
+                    false,
+                    "2000-01-01T00:00:00.000Z",
+                ), ConflictError);
+            await assertRejects(() =>
+                updateProblem(
+                    problemId,
+                    {
+                        title: "不应保存",
+                        tag_ids: ["nonexistent-tag-id"],
+                    },
+                    undefined,
+                    "admin",
+                ), BadRequestError);
+            const unchanged = await getProblem(problemId);
+            assertEquals(
+                unchanged.tags.map((tag) => tag.id).sort(),
+                [topic.id, algorithm.id].sort(),
+            );
+            // 内容字段（title）写共享草稿；题目投影只由发布服务更新（Handbook §2.2）
+            const draft = await getProblemDraft(problemId);
+            assertEquals(draft.content.title, "OI 标签更新");
+            const cleared = await updateProblem(
+                problemId,
+                { tag_ids: [] },
+                undefined,
+                "admin",
+            );
+            assertEquals(cleared.tags, []);
+        } finally {
+            await db.delete(problemTags).where(
+                eq(problemTags.problem_id, problemId),
+            );
+            await db.delete(problems).where(eq(problems.id, problemId));
+            await db.delete(tags).where(
+                inArray(tags.id, [topic.id, algorithm.id]),
+            );
+        }
+    },
 });
 
 Deno.test({
-  name: "problems-tags: cleanup",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const db = getDb();
-    const rows = await db.select().from(tags);
-    for (const row of rows) {
-      if (row.name.startsWith("门控") || row.name.startsWith("替换")) {
-        await db.delete(problemTags).where(eq(problemTags.tag_id, row.id));
-        await db.delete(tags).where(eq(tags.id, row.id));
-      }
-    }
-  },
+    name: "problems-tags: cleanup",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const db = getDb();
+        const rows = await db.select().from(tags);
+        for (const row of rows) {
+            if (row.name.startsWith("门控") || row.name.startsWith("替换")) {
+                await db.delete(problemTags).where(
+                    eq(problemTags.tag_id, row.id),
+                );
+                await db.delete(tags).where(eq(tags.id, row.id));
+            }
+        }
+    },
 });
 
 import { resetDbForTest } from "../default-fixture.ts";

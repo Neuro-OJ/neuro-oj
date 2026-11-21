@@ -23,8 +23,8 @@ import { users } from "../../../../../shared/db/schema.ts";
 import { comparePassword, hashPassword } from "../security/password.ts";
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
-  BadRequestError,
-  UnauthorizedError,
+    BadRequestError,
+    UnauthorizedError,
 } from "../../../../../shared/base/errors.ts";
 import type { UserResponse } from "../../types/auth.ts";
 import { validatePasswordStrength } from "./auth-register.ts";
@@ -44,97 +44,97 @@ import { validatePasswordStrength } from "./auth-register.ts";
  * @throws {BadRequestError} 新密码强度不足、与旧密码相同或账号未设置本地密码
  */
 export async function changePassword(
-  userId: string,
-  oldPassword: string,
-  newPassword: string,
-  clientIp?: string,
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+    clientIp?: string,
 ): Promise<{ user: UserResponse; sessionVersion: number }> {
-  const db = getDb();
+    const db = getDb();
 
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+    const existing = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
 
-  if (existing.length === 0) {
-    throw new UnauthorizedError("用户不存在");
-  }
+    if (existing.length === 0) {
+        throw new UnauthorizedError("用户不存在");
+    }
 
-  const user = existing[0];
+    const user = existing[0];
 
-  if (!user.password_hash) {
-    throw new BadRequestError(
-      "当前账号尚未设置本地密码，请使用密码设定流程",
-      "PASSWORD_SETUP_REQUIRED",
+    if (!user.password_hash) {
+        throw new BadRequestError(
+            "当前账号尚未设置本地密码，请使用密码设定流程",
+            "PASSWORD_SETUP_REQUIRED",
+        );
+    }
+
+    // 1. 先验证旧密码（bcrypt 始终耗时 ~250ms，挡住 oracle）
+    //    评审修复 M2：必须先于"新=旧"检查，使两条路径响应时间一致
+    const oldValid = await comparePassword(oldPassword, user.password_hash);
+    if (!oldValid) {
+        throw new UnauthorizedError("旧密码错误");
+    }
+
+    // 2. 新密码强度校验（与注册保持一致）
+    validatePasswordStrength(newPassword, user.username, user.email);
+
+    // 3. 拒绝新密码与旧密码相同（issue #75 评审 H5）
+    //    必须在 comparePassword 之后，避免攻击者通过响应时间差推断新=旧
+    if (oldPassword === newPassword) {
+        throw new BadRequestError("新密码不能与旧密码相同");
+    }
+
+    // 4. 哈希并 UPDATE
+    const newHash = await hashPassword(newPassword);
+    const now = new Date().toISOString();
+
+    const [updated] = await db
+        .update(users)
+        .set({
+            password_hash: newHash,
+            session_version: sql`${users.session_version} + 1`,
+            must_change_password: false,
+            updated_at: now,
+        })
+        .where(and(
+            eq(users.id, userId),
+            eq(users.session_version, user.session_version),
+            eq(users.password_hash, user.password_hash),
+        ))
+        .returning({ sessionVersion: users.session_version });
+    if (!updated) {
+        throw new UnauthorizedError("密码已变更，请重新登录");
+    }
+
+    // PR-2 审计：改密成功（事务提交后异步写；写失败不影响主业务）
+    await logAuthEvent(
+        userId,
+        clientIp ?? "unknown",
+        "auth.change_password",
+        { user_id: userId },
     );
-  }
 
-  // 1. 先验证旧密码（bcrypt 始终耗时 ~250ms，挡住 oracle）
-  //    评审修复 M2：必须先于"新=旧"检查，使两条路径响应时间一致
-  const oldValid = await comparePassword(oldPassword, user.password_hash);
-  if (!oldValid) {
-    throw new UnauthorizedError("旧密码错误");
-  }
+    // 平台角色直接取自已读取的用户行；不查角色表。
+    const role = user.role === "admin" ? "admin" : "user";
 
-  // 2. 新密码强度校验（与注册保持一致）
-  validatePasswordStrength(newPassword, user.username, user.email);
-
-  // 3. 拒绝新密码与旧密码相同（issue #75 评审 H5）
-  //    必须在 comparePassword 之后，避免攻击者通过响应时间差推断新=旧
-  if (oldPassword === newPassword) {
-    throw new BadRequestError("新密码不能与旧密码相同");
-  }
-
-  // 4. 哈希并 UPDATE
-  const newHash = await hashPassword(newPassword);
-  const now = new Date().toISOString();
-
-  const [updated] = await db
-    .update(users)
-    .set({
-      password_hash: newHash,
-      session_version: sql`${users.session_version} + 1`,
-      must_change_password: false,
-      updated_at: now,
-    })
-    .where(and(
-      eq(users.id, userId),
-      eq(users.session_version, user.session_version),
-      eq(users.password_hash, user.password_hash),
-    ))
-    .returning({ sessionVersion: users.session_version });
-  if (!updated) {
-    throw new UnauthorizedError("密码已变更，请重新登录");
-  }
-
-  // PR-2 审计：改密成功（事务提交后异步写；写失败不影响主业务）
-  await logAuthEvent(
-    userId,
-    clientIp ?? "unknown",
-    "auth.change_password",
-    { user_id: userId },
-  );
-
-  // 平台角色直接取自已读取的用户行；不查角色表。
-  const role = user.role === "admin" ? "admin" : "user";
-
-  return {
-    sessionVersion: updated.sessionVersion,
-    user: {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role,
-      is_admin: role === "admin",
-      has_local_password: true,
-      must_change_password: false,
-      email_verified: user.email_verified,
-      active_ban: null,
-      avatar_url: user.avatar_url ?? null,
-      tfa_enabled: user.tfa_enabled,
-      created_at: user.created_at,
-      updated_at: now,
-    },
-  };
+    return {
+        sessionVersion: updated.sessionVersion,
+        user: {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            role,
+            is_admin: role === "admin",
+            has_local_password: true,
+            must_change_password: false,
+            email_verified: user.email_verified,
+            active_ban: null,
+            avatar_url: user.avatar_url ?? null,
+            tfa_enabled: user.tfa_enabled,
+            created_at: user.created_at,
+            updated_at: now,
+        },
+    };
 }

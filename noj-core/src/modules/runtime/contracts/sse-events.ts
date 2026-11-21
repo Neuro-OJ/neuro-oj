@@ -17,10 +17,10 @@ import { sseEvents } from "../../../shared/db/schema.ts";
 
 /** SSE 事件行（重放返回结构）。 */
 export interface RuntimeSseEventRow {
-  id: number;
-  channel: string;
-  payload: unknown;
-  created_at: string;
+    id: number;
+    channel: string;
+    payload: unknown;
+    created_at: string;
 }
 
 /**
@@ -30,31 +30,31 @@ export interface RuntimeSseEventRow {
  * `createdAt` 显式传入便于重放与测试。
  */
 export async function recordSseEventTx(
-  tx: DbTx,
-  channel: string,
-  payload: unknown,
-  createdAt = new Date().toISOString(),
+    tx: DbTx,
+    channel: string,
+    payload: unknown,
+    createdAt = new Date().toISOString(),
 ): Promise<number> {
-  const rows = await tx.insert(sseEvents).values({
-    channel,
-    payload,
-    created_at: createdAt,
-  }).returning({ id: sseEvents.id });
-  return rows[0].id;
+    const rows = await tx.insert(sseEvents).values({
+        channel,
+        payload,
+        created_at: createdAt,
+    }).returning({ id: sseEvents.id });
+    return rows[0].id;
 }
 
 /** 批量登记同一负载到多个频道，返回各频道事件 id（按入参顺序）。 */
 export async function recordSseEventsTx(
-  tx: DbTx,
-  channels: readonly string[],
-  payload: unknown,
-  createdAt = new Date().toISOString(),
+    tx: DbTx,
+    channels: readonly string[],
+    payload: unknown,
+    createdAt = new Date().toISOString(),
 ): Promise<number[]> {
-  const ids: number[] = [];
-  for (const channel of channels) {
-    ids.push(await recordSseEventTx(tx, channel, payload, createdAt));
-  }
-  return ids;
+    const ids: number[] = [];
+    for (const channel of channels) {
+        ids.push(await recordSseEventTx(tx, channel, payload, createdAt));
+    }
+    return ids;
 }
 
 /**
@@ -63,31 +63,31 @@ export async function recordSseEventsTx(
  * 只读：读取侧不属于业务写能力，调用方是 HTTP/SSE 适配层。
  */
 export async function replayRuntimeSseEvents(
-  channels: readonly string[],
-  afterId: number,
-  limit = 200,
+    channels: readonly string[],
+    afterId: number,
+    limit = 200,
 ): Promise<RuntimeSseEventRow[]> {
-  if (channels.length === 0) return [];
-  const rows = await getDb().select().from(sseEvents).where(
-    and(
-      inArray(sseEvents.channel, [...channels]),
-      gt(sseEvents.id, afterId),
-    ),
-  ).orderBy(asc(sseEvents.id)).limit(limit);
-  return rows as RuntimeSseEventRow[];
+    if (channels.length === 0) return [];
+    const rows = await getDb().select().from(sseEvents).where(
+        and(
+            inArray(sseEvents.channel, [...channels]),
+            gt(sseEvents.id, afterId),
+        ),
+    ).orderBy(asc(sseEvents.id)).limit(limit);
+    return rows as RuntimeSseEventRow[];
 }
 
 /** 清理早于保留期的事件行；返回删除行数（保留任务使用）。 */
 export async function cleanupRuntimeSseEvents(
-  cutoffIso: string,
+    cutoffIso: string,
 ): Promise<number> {
-  const result = await getDb().delete(sseEvents).where(
-    lte(sseEvents.created_at, cutoffIso),
-  );
-  const r = result as unknown as {
-    affectedRows?: number;
-    rowCount?: number;
-    count?: number;
-  };
-  return r.affectedRows ?? r.rowCount ?? r.count ?? 0;
+    const result = await getDb().delete(sseEvents).where(
+        lte(sseEvents.created_at, cutoffIso),
+    );
+    const r = result as unknown as {
+        affectedRows?: number;
+        rowCount?: number;
+        count?: number;
+    };
+    return r.affectedRows ?? r.rowCount ?? r.count ?? 0;
 }

@@ -18,30 +18,30 @@ import { TEACHING_NOTICE_LABELS } from '../education/education-notifications.ts'
  * 未读数接口只允许登录用户访问，公共布局不得为匿名用户发起请求。
  */
 export function shouldLoadCommunityUnreadCount(
-  user: unknown,
-  communityEnabled: boolean | undefined,
+    user: unknown,
+    communityEnabled: boolean | undefined,
 ): boolean {
-  return Boolean(user) && communityEnabled === true;
+    return Boolean(user) && communityEnabled === true;
 }
 
 /**
  * 未读数属于后台状态探测：认证失效时只清零角标，不应把公共页面跳转到登录页。
  */
 export const COMMUNITY_UNREAD_COUNT_REQUEST_OPTIONS = {
-  silent: true,
-  redirectOnUnauthorized: false,
+    silent: true,
+    redirectOnUnauthorized: false,
 } as const;
 
 /** 通知类型（与 noj-core `community_notifications_type_check` 约束一致） */
 export type CommunityNotificationType =
-  | 'reply'
-  | 'like'
-  | 'follow'
-  | 'moderation'
-  | 'clarification'
-  | 'report'
-  | 'ban'
-  | keyof typeof TEACHING_NOTICE_LABELS;
+    | 'reply'
+    | 'like'
+    | 'follow'
+    | 'moderation'
+    | 'clarification'
+    | 'report'
+    | 'ban'
+    | keyof typeof TEACHING_NOTICE_LABELS;
 
 /**
  * 解析通知目标所需的最小字段集。
@@ -50,57 +50,57 @@ export type CommunityNotificationType =
  * 从而避免 utils 反向依赖 composables。
  */
 export interface NotificationTargetSource {
-  notification: {
-    type: CommunityNotificationType | string;
-    post_id: string | null;
-    assignment_id?: string | null;
-    feedback_id?: string | null;
-    help_id?: string | null;
-    data: {
-      report_id?: string;
-      contest_id?: string;
+    notification: {
+        type: CommunityNotificationType | string;
+        post_id: string | null;
+        assignment_id?: string | null;
+        feedback_id?: string | null;
+        help_id?: string | null;
+        data: {
+            report_id?: string;
+            contest_id?: string;
+        };
     };
-  };
-  actor: { username: string } | null;
+    actor: { username: string } | null;
 }
 
 /** 通知类型 → 中文动作描述 */
 export const NOTIFICATION_TYPE_LABEL: Record<CommunityNotificationType, string> = {
-  ...TEACHING_NOTICE_LABELS,
-  reply: '回复了你',
-  like: '赞了你的内容',
-  follow: '关注了你',
-  moderation: '更新了内容审核状态',
-  clarification: '回复了你的竞赛提问',
-  report: '举报通知',
-  ban: '封禁通知',
+    ...TEACHING_NOTICE_LABELS,
+    reply: '回复了你',
+    like: '赞了你的内容',
+    follow: '关注了你',
+    moderation: '更新了内容审核状态',
+    clarification: '回复了你的竞赛提问',
+    report: '举报通知',
+    ban: '封禁通知',
 };
 
 /** 通知类型 → Lucide 图标名 */
 export const NOTIFICATION_TYPE_ICON: Record<CommunityNotificationType, string> = {
-  assignment: 'i-lucide-book-open',
-  assignment_changed: 'i-lucide-pencil',
-  resource_unavailable: 'i-lucide-circle-alert',
-  feedback: 'i-lucide-message-square',
-  help: 'i-lucide-message-circle-question',
-  help_reply: 'i-lucide-reply',
-  reply: 'i-lucide-reply',
-  like: 'i-lucide-heart',
-  follow: 'i-lucide-user-plus',
-  moderation: 'i-lucide-shield-check',
-  clarification: 'i-lucide-message-circle-question',
-  report: 'i-lucide-flag',
-  ban: 'i-lucide-ban',
+    assignment: 'i-lucide-book-open',
+    assignment_changed: 'i-lucide-pencil',
+    resource_unavailable: 'i-lucide-circle-alert',
+    feedback: 'i-lucide-message-square',
+    help: 'i-lucide-message-circle-question',
+    help_reply: 'i-lucide-reply',
+    reply: 'i-lucide-reply',
+    like: 'i-lucide-heart',
+    follow: 'i-lucide-user-plus',
+    moderation: 'i-lucide-shield-check',
+    clarification: 'i-lucide-message-circle-question',
+    report: 'i-lucide-flag',
+    ban: 'i-lucide-ban',
 };
 
 /** 通知类型 → 中文标签（未知类型回退原始值，便于排查新增类型） */
 export function notificationTypeLabel(type: string): string {
-  return NOTIFICATION_TYPE_LABEL[type as CommunityNotificationType] ?? type;
+    return NOTIFICATION_TYPE_LABEL[type as CommunityNotificationType] ?? type;
 }
 
 /** 通知类型 → 图标名（未知类型回退通用铃铛） */
 export function notificationTypeIcon(type: string): string {
-  return NOTIFICATION_TYPE_ICON[type as CommunityNotificationType] ?? 'i-lucide-bell';
+    return NOTIFICATION_TYPE_ICON[type as CommunityNotificationType] ?? 'i-lucide-bell';
 }
 
 /**
@@ -110,28 +110,28 @@ export function notificationTypeIcon(type: string): string {
  *   调用方应改为进入通知详情页。
  */
 export function notificationTarget(item: NotificationTargetSource, slug: string | null = null): string | null {
-  const { notification, actor } = item;
-  if (slug && notification.assignment_id) {
-    const query = new URLSearchParams();
-    if (notification.feedback_id) query.set('feedback', notification.feedback_id);
-    if (notification.help_id) query.set('help', notification.help_id);
-    return workspacePath(slug, `assignments/${notification.assignment_id}`) + (query.size ? `?${query}` : '');
-  }
-  if (notification.type === 'report' && notification.data.report_id) {
-    return communityPath(slug, `reports/${notification.data.report_id}`);
-  }
-  if (notification.post_id) return communityPath(slug, `posts/${notification.post_id}`);
-  if (notification.type === 'follow' && actor) return userUrl(actor.username);
-  if (notification.type === 'clarification' && notification.data.contest_id) {
-    const path = slug === null
-      ? publicUrl('contest', notification.data.contest_id)
-      : workspacePath(slug, `contests/${notification.data.contest_id}`);
-    return `${path}?tab=clarifications`;
-  }
-  return null;
+    const { notification, actor } = item;
+    if (slug && notification.assignment_id) {
+        const query = new URLSearchParams();
+        if (notification.feedback_id) query.set('feedback', notification.feedback_id);
+        if (notification.help_id) query.set('help', notification.help_id);
+        return workspacePath(slug, `assignments/${notification.assignment_id}`) + (query.size ? `?${query}` : '');
+    }
+    if (notification.type === 'report' && notification.data.report_id) {
+        return communityPath(slug, `reports/${notification.data.report_id}`);
+    }
+    if (notification.post_id) return communityPath(slug, `posts/${notification.post_id}`);
+    if (notification.type === 'follow' && actor) return userUrl(actor.username);
+    if (notification.type === 'clarification' && notification.data.contest_id) {
+        const path = slug === null
+            ? publicUrl('contest', notification.data.contest_id)
+            : workspacePath(slug, `contests/${notification.data.contest_id}`);
+        return `${path}?tab=clarifications`;
+    }
+    return null;
 }
 
 /** 通知详情页路径 */
 export function notificationDetailUrl(notificationId: string, _slug: string | null = null): string {
-  return `/notifications/${notificationId}`;
+    return `/notifications/${notificationId}`;
 }

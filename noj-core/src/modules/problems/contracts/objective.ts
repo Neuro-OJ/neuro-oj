@@ -6,7 +6,7 @@
  * 也不把 objective service 深路径泄漏给跨模块调用方。
  */
 export {
-  listVersionQuestions,
-  resolveQuestionsForJudging,
+    listVersionQuestions,
+    resolveQuestionsForJudging,
 } from "../services/objective/versioning/objective-drafts.ts";
 export type { ObjectiveQuestionSnapshot } from "../types/problem-content.ts";

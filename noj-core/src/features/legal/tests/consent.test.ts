@@ -12,12 +12,12 @@ import { getDb } from "../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../tests/helpers/db.ts";
 import { users } from "../../../shared/db/schema.ts";
 import {
-  getConsentedVersions,
-  getCurrentDocument,
-  getUserConsent,
-  publishVersion,
-  recordConsent,
-  recordConsentsForRegistration,
+    getConsentedVersions,
+    getCurrentDocument,
+    getUserConsent,
+    publishVersion,
+    recordConsent,
+    recordConsentsForRegistration,
 } from "../index.ts";
 
 const USER = "legal-test-user";
@@ -26,79 +26,101 @@ const PUBLISHER = "legal-test-publisher";
 const PUBLISHER_ACTOR = userActorFromAuthenticatedId(PUBLISHER);
 
 async function setup() {
-  await resetDbForTest();
-  const db = getDb();
-  const now = new Date().toISOString();
-  await db
-    .insert(users)
-    .values([
-      {
-        id: USER,
-        username: "legal-user",
-        email: "legal-user@example.test",
-        password_hash: "",
-        created_at: now,
-        updated_at: now,
-      },
-      {
-        id: PUBLISHER,
-        username: "legal-publisher",
-        email: "legal-publisher@example.test",
-        password_hash: "",
-        created_at: now,
-        updated_at: now,
-      },
-    ])
-    .onConflictDoNothing();
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db
+        .insert(users)
+        .values([
+            {
+                id: USER,
+                username: "legal-user",
+                email: "legal-user@example.test",
+                password_hash: "",
+                created_at: now,
+                updated_at: now,
+            },
+            {
+                id: PUBLISHER,
+                username: "legal-publisher",
+                email: "legal-publisher@example.test",
+                password_hash: "",
+                created_at: now,
+                updated_at: now,
+            },
+        ])
+        .onConflictDoNothing();
 }
 
 Deno.test({
-  name: "legal consent: 记录、幂等、取最新版本",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  async fn() {
-    await setup();
-    await publishVersion("privacy", "v1", null, true, PUBLISHER_ACTOR);
-    await publishVersion("privacy", "v2", null, true, PUBLISHER_ACTOR);
+    name: "legal consent: 记录、幂等、取最新版本",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    async fn() {
+        await setup();
+        await publishVersion("privacy", "v1", null, true, PUBLISHER_ACTOR);
+        await publishVersion("privacy", "v2", null, true, PUBLISHER_ACTOR);
 
-    await recordConsent(USER_ACTOR, "privacy", 1, "hash1", "1.2.3.4", "UA/1");
-    await recordConsent(
-      USER_ACTOR,
-      "privacy",
-      1,
-      "hash1",
-      "1.2.3.4",
-      "UA/1",
-    ); // 幂等
-    await recordConsent(USER_ACTOR, "privacy", 2, "hash2", "1.2.3.4", "UA/2");
+        await recordConsent(
+            USER_ACTOR,
+            "privacy",
+            1,
+            "hash1",
+            "1.2.3.4",
+            "UA/1",
+        );
+        await recordConsent(
+            USER_ACTOR,
+            "privacy",
+            1,
+            "hash1",
+            "1.2.3.4",
+            "UA/1",
+        ); // 幂等
+        await recordConsent(
+            USER_ACTOR,
+            "privacy",
+            2,
+            "hash2",
+            "1.2.3.4",
+            "UA/2",
+        );
 
-    const latest = await getUserConsent(USER, "privacy");
-    assertEquals(latest?.version, 2);
-    // 历史保留：两行都在
-    assertEquals((await getConsentedVersions(USER)).privacy, 2);
-  },
+        const latest = await getUserConsent(USER, "privacy");
+        assertEquals(latest?.version, 2);
+        // 历史保留：两行都在
+        assertEquals((await getConsentedVersions(USER)).privacy, 2);
+    },
 });
 
 Deno.test({
-  name: "legal consent: 注册批量写入两文档当前版本",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  async fn() {
-    await setup();
-    await publishVersion("privacy", "p1", null, true, PUBLISHER_ACTOR);
-    await publishVersion("terms", "t1", null, true, PUBLISHER_ACTOR);
+    name: "legal consent: 注册批量写入两文档当前版本",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    async fn() {
+        await setup();
+        await publishVersion("privacy", "p1", null, true, PUBLISHER_ACTOR);
+        await publishVersion("terms", "t1", null, true, PUBLISHER_ACTOR);
 
-    const db = getDb();
-    await db.transaction(async (tx) => {
-      await recordConsentsForRegistration(tx, USER_ACTOR, "9.9.9.9", "UA/reg");
-    });
+        const db = getDb();
+        await db.transaction(async (tx) => {
+            await recordConsentsForRegistration(
+                tx,
+                USER_ACTOR,
+                "9.9.9.9",
+                "UA/reg",
+            );
+        });
 
-    const privacy = await getUserConsent(USER, "privacy");
-    const terms = await getUserConsent(USER, "terms");
-    assertEquals(
-      privacy?.version,
-      (await getCurrentDocument("privacy"))?.version,
-    );
-    assertEquals(terms?.version, (await getCurrentDocument("terms"))?.version);
-  },
+        const privacy = await getUserConsent(USER, "privacy");
+        const terms = await getUserConsent(USER, "terms");
+        assertEquals(
+            privacy?.version,
+            (await getCurrentDocument("privacy"))?.version,
+        );
+        assertEquals(
+            terms?.version,
+            (await getCurrentDocument("terms"))?.version,
+        );
+    },
 });

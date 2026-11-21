@@ -17,14 +17,14 @@ export type DomainResourceName = "members" | "problems" | "storage_bytes";
 
 /** 计数行快照；`used` 与 `reserved` 都是持久事实，不含进程内状态。 */
 export interface DomainResourceCounterSnapshot {
-  readonly used: number;
-  readonly reserved: number;
+    readonly used: number;
+    readonly reserved: number;
 }
 
 function assertNonNegativeSafeInteger(value: number, label: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new RangeError(`${label}必须是非负安全整数`);
-  }
+    if (!Number.isSafeInteger(value) || value < 0) {
+        throw new RangeError(`${label}必须是非负安全整数`);
+    }
 }
 
 /**
@@ -34,46 +34,49 @@ function assertNonNegativeSafeInteger(value: number, label: string): void {
  * 后续结算与预约判断都在同一把行锁内完成。
  */
 export async function lockDomainResourceCounterTx(
-  tx: DbTx,
-  domainId: string,
-  resource: DomainResourceName,
+    tx: DbTx,
+    domainId: string,
+    resource: DomainResourceName,
 ): Promise<DomainResourceCounterSnapshot> {
-  await tx.insert(domainResourceCounters).values({
-    domain_id: domainId,
-    resource,
-  }).onConflictDoNothing();
-  const [counter] = await tx.select({
-    used: domainResourceCounters.used,
-    reserved: domainResourceCounters.reserved,
-  }).from(domainResourceCounters).where(and(
-    eq(domainResourceCounters.domain_id, domainId),
-    eq(domainResourceCounters.resource, resource),
-  )).for("update");
-  if (!counter) {
-    // 刚插入并锁定过的行不可能不存在；出现即说明并发删除，必须显式失败。
-    throw new Error(`域资源计数行缺失：${domainId}/${resource}`);
-  }
-  assertNonNegativeSafeInteger(counter.used, "域资源已用量");
-  assertNonNegativeSafeInteger(counter.reserved, "域资源预占量");
-  return { used: counter.used, reserved: counter.reserved };
+    await tx.insert(domainResourceCounters).values({
+        domain_id: domainId,
+        resource,
+    }).onConflictDoNothing();
+    const [counter] = await tx.select({
+        used: domainResourceCounters.used,
+        reserved: domainResourceCounters.reserved,
+    }).from(domainResourceCounters).where(and(
+        eq(domainResourceCounters.domain_id, domainId),
+        eq(domainResourceCounters.resource, resource),
+    )).for("update");
+    if (!counter) {
+        // 刚插入并锁定过的行不可能不存在；出现即说明并发删除，必须显式失败。
+        throw new Error(`域资源计数行缺失：${domainId}/${resource}`);
+    }
+    assertNonNegativeSafeInteger(counter.used, "域资源已用量");
+    assertNonNegativeSafeInteger(counter.reserved, "域资源预占量");
+    return { used: counter.used, reserved: counter.reserved };
 }
 
 /** 直接设定 used；reserved 保持不动。 */
 export async function setDomainResourceCounterTx(
-  tx: DbTx,
-  domainId: string,
-  resource: DomainResourceName,
-  used: number,
+    tx: DbTx,
+    domainId: string,
+    resource: DomainResourceName,
+    used: number,
 ): Promise<void> {
-  assertNonNegativeSafeInteger(used, "域资源计数");
-  await tx.insert(domainResourceCounters).values({
-    domain_id: domainId,
-    resource,
-    used,
-  }).onConflictDoUpdate({
-    target: [domainResourceCounters.domain_id, domainResourceCounters.resource],
-    set: { used },
-  });
+    assertNonNegativeSafeInteger(used, "域资源计数");
+    await tx.insert(domainResourceCounters).values({
+        domain_id: domainId,
+        resource,
+        used,
+    }).onConflictDoUpdate({
+        target: [
+            domainResourceCounters.domain_id,
+            domainResourceCounters.resource,
+        ],
+        set: { used },
+    });
 }
 
 /**
@@ -83,42 +86,42 @@ export async function setDomainResourceCounterTx(
  * 也不允许把计数减成负数。
  */
 export async function adjustDomainResourceCounterTx(
-  tx: DbTx,
-  domainId: string,
-  resource: DomainResourceName,
-  delta: number,
+    tx: DbTx,
+    domainId: string,
+    resource: DomainResourceName,
+    delta: number,
 ): Promise<void> {
-  if (!Number.isSafeInteger(delta)) {
-    throw new RangeError("域资源计数增量必须是安全整数");
-  }
-  const updated = await tx.update(domainResourceCounters).set({
-    used: sql`${domainResourceCounters.used} + ${delta}`,
-  }).where(and(
-    eq(domainResourceCounters.domain_id, domainId),
-    eq(domainResourceCounters.resource, resource),
-  )).returning({ used: domainResourceCounters.used });
-  if (!updated.length) {
-    throw new Error(`域资源计数行缺失：${domainId}/${resource}`);
-  }
-  assertNonNegativeSafeInteger(updated[0].used, "域资源已用量");
+    if (!Number.isSafeInteger(delta)) {
+        throw new RangeError("域资源计数增量必须是安全整数");
+    }
+    const updated = await tx.update(domainResourceCounters).set({
+        used: sql`${domainResourceCounters.used} + ${delta}`,
+    }).where(and(
+        eq(domainResourceCounters.domain_id, domainId),
+        eq(domainResourceCounters.resource, resource),
+    )).returning({ used: domainResourceCounters.used });
+    if (!updated.length) {
+        throw new Error(`域资源计数行缺失：${domainId}/${resource}`);
+    }
+    assertNonNegativeSafeInteger(updated[0].used, "域资源已用量");
 }
 
 /**
  * 设定预占量；调用方必须已经用 `lockDomainResourceCounterTx` 取得行锁。
  */
 export async function setDomainResourceReservedTx(
-  tx: DbTx,
-  domainId: string,
-  resource: DomainResourceName,
-  reserved: number,
+    tx: DbTx,
+    domainId: string,
+    resource: DomainResourceName,
+    reserved: number,
 ): Promise<void> {
-  assertNonNegativeSafeInteger(reserved, "域资源预占量");
-  const updated = await tx.update(domainResourceCounters).set({ reserved })
-    .where(and(
-      eq(domainResourceCounters.domain_id, domainId),
-      eq(domainResourceCounters.resource, resource),
-    )).returning({ reserved: domainResourceCounters.reserved });
-  if (!updated.length) {
-    throw new Error(`域资源计数行缺失：${domainId}/${resource}`);
-  }
+    assertNonNegativeSafeInteger(reserved, "域资源预占量");
+    const updated = await tx.update(domainResourceCounters).set({ reserved })
+        .where(and(
+            eq(domainResourceCounters.domain_id, domainId),
+            eq(domainResourceCounters.resource, resource),
+        )).returning({ reserved: domainResourceCounters.reserved });
+    if (!updated.length) {
+        throw new Error(`域资源计数行缺失：${domainId}/${resource}`);
+    }
 }

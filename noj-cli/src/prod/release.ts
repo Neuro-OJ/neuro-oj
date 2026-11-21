@@ -25,18 +25,18 @@
 
 import { dirname, join } from "@std/path";
 import {
-  parseEnvFile,
-  serializeEnvFile,
-  writeEnvFileAtomic,
+    parseEnvFile,
+    serializeEnvFile,
+    writeEnvFileAtomic,
 } from "../core/env-file.ts";
 import { type Fetcher, RELEASE_FILES } from "./bootstrap.ts";
 
 /** GitHub Release 列表条目中本模块需要的字段。 */
 interface ReleaseSummary {
-  tag_name?: string;
-  draft?: boolean;
-  prerelease?: boolean;
-  assets?: { name?: string }[];
+    tag_name?: string;
+    draft?: boolean;
+    prerelease?: boolean;
+    assets?: { name?: string }[];
 }
 
 /**
@@ -58,18 +58,20 @@ const RELEASE_TAG_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
  * 列表顺序即优先级，命中即返回；无命中返回 `null`。
  */
 function selectLatestAssetReadyRelease(
-  releases: readonly ReleaseSummary[],
-  assets: readonly string[],
+    releases: readonly ReleaseSummary[],
+    assets: readonly string[],
 ): string | null {
-  for (const release of releases) {
-    const tag = release.tag_name ?? "";
-    if (!RELEASE_TAG_RE.test(tag)) continue;
-    if (release.draft || release.prerelease) continue;
-    const names = new Set((release.assets ?? []).map((asset) => asset.name));
-    if (!assets.every((asset) => names.has(asset))) continue;
-    return tag;
-  }
-  return null;
+    for (const release of releases) {
+        const tag = release.tag_name ?? "";
+        if (!RELEASE_TAG_RE.test(tag)) continue;
+        if (release.draft || release.prerelease) continue;
+        const names = new Set(
+            (release.assets ?? []).map((asset) => asset.name),
+        );
+        if (!assets.every((asset) => names.has(asset))) continue;
+        return tag;
+    }
+    return null;
 }
 
 /** 升级默认仓库（`NOJ_UPDATE_REPOSITORY` 的缺省值）。 */
@@ -86,35 +88,35 @@ export const DEFAULT_UPDATE_REPOSITORY = "https://github.com/Neuro-OJ/neuro-oj";
  * GitHub "点号开头会被改写为 `default.<name>`" 约束（见 bootstrap.ts 模块头注释）。
  */
 export const UPDATE_RELEASE_ASSETS: readonly string[] = [
-  "noj-cli-linux-amd64",
-  "noj-cli-linux-amd64.sha256",
-  ...RELEASE_FILES.flatMap(({ asset }) => [asset, `${asset}.sha256`]),
-  "release-set.json",
-  "release-set.json.sha256",
+    "noj-cli-linux-amd64",
+    "noj-cli-linux-amd64.sha256",
+    ...RELEASE_FILES.flatMap(({ asset }) => [asset, `${asset}.sha256`]),
+    "release-set.json",
+    "release-set.json.sha256",
 ];
 
 /** 稳定版本标签报错文案。 */
 export function releaseTagHint(version: string): string {
-  return `GitHub Release 标签格式非法：${version}；请使用固定版本升级`;
+    return `GitHub Release 标签格式非法：${version}；请使用固定版本升级`;
 }
 
 /** 解析最新版本的失败文案。 */
 export const UPDATE_API_URL_HINT =
-  "无法自动获取最新版本；请使用 NOJ_UPDATE_API_URL 或固定版本升级";
+    "无法自动获取最新版本；请使用 NOJ_UPDATE_API_URL 或固定版本升级";
 
 /** API 地址非 HTTPS 的报错文案。 */
 export function httpsOnlyHint(url: string): string {
-  return `最新版本 API 地址必须使用 HTTPS：${url}`;
+    return `最新版本 API 地址必须使用 HTTPS：${url}`;
 }
 
 /** Release 列表获取失败的文案（追加 HTTP 细节便于诊断）。 */
 export function releaseListHint(status: number): string {
-  return `无法获取 Release 列表，请检查网络，或使用固定版本升级（GitHub API ${status}）`;
+    return `无法获取 Release 列表，请检查网络，或使用固定版本升级（GitHub API ${status}）`;
 }
 
 /** 自定义 API 地址返回的单个 Release 对象无效时的文案。 */
 export const SINGLE_RELEASE_INVALID_HINT =
-  "GitHub 返回的最新 Release 无效或仍是预发布版本";
+    "GitHub 返回的最新 Release 无效或仍是预发布版本";
 
 /**
  * 校验 Release 标签格式（允许预发布后缀）。
@@ -122,8 +124,8 @@ export const SINGLE_RELEASE_INVALID_HINT =
  * 返回原标签（含 `v` 前缀），便于链式使用。
  */
 export function validateReleaseTag(tag: string): string {
-  if (!RELEASE_TAG_RE.test(tag)) throw new Error(releaseTagHint(tag));
-  return tag;
+    if (!RELEASE_TAG_RE.test(tag)) throw new Error(releaseTagHint(tag));
+    return tag;
 }
 
 /**
@@ -138,7 +140,7 @@ export function validateReleaseTag(tag: string): string {
  * 改写前缀会改变镜像名。
  */
 export function normalizedVersion(tag: string): string {
-  return tag.replace(/^v/, "");
+    return tag.replace(/^v/, "");
 }
 
 /**
@@ -154,26 +156,28 @@ export function normalizedVersion(tag: string): string {
  * 必然 404 的地址。
  */
 export function releasesApiUrl(opts: {
-  repository?: string;
-  apiUrl?: string;
+    repository?: string;
+    apiUrl?: string;
 }): string {
-  if (opts.apiUrl !== undefined && opts.apiUrl !== "") {
-    if (!opts.apiUrl.startsWith("https://")) {
-      throw new Error(httpsOnlyHint(opts.apiUrl));
+    if (opts.apiUrl !== undefined && opts.apiUrl !== "") {
+        if (!opts.apiUrl.startsWith("https://")) {
+            throw new Error(httpsOnlyHint(opts.apiUrl));
+        }
+        return opts.apiUrl;
     }
-    return opts.apiUrl;
-  }
-  const repository = (opts.repository ?? DEFAULT_UPDATE_REPOSITORY)
-    .replace(/\/+$/, "")
-    .replace(/\.git$/, "");
-  const match = /^https:\/\/github\.com\/([^/]+\/[^/]+)$/.exec(repository);
-  if (match === null) {
-    throw new Error(UPDATE_API_URL_HINT);
-  }
-  const url = `https://api.github.com/repos/${match[1]}/releases?per_page=100`;
-  // 该分支的地址由上面的常量前缀拼成，恒为 HTTPS；显式断言保住不变式。
-  if (!url.startsWith("https://")) throw new Error(httpsOnlyHint(url));
-  return url;
+    const repository = (opts.repository ?? DEFAULT_UPDATE_REPOSITORY)
+        .replace(/\/+$/, "")
+        .replace(/\.git$/, "");
+    const match = /^https:\/\/github\.com\/([^/]+\/[^/]+)$/.exec(repository);
+    if (match === null) {
+        throw new Error(UPDATE_API_URL_HINT);
+    }
+    const url = `https://api.github.com/repos/${
+        match[1]
+    }/releases?per_page=100`;
+    // 该分支的地址由上面的常量前缀拼成，恒为 HTTPS；显式断言保住不变式。
+    if (!url.startsWith("https://")) throw new Error(httpsOnlyHint(url));
+    return url;
 }
 
 /**
@@ -189,53 +193,53 @@ export function releasesApiUrl(opts: {
  * `/releases/latest`。
  */
 export async function resolveLatestReleaseTag(opts: {
-  repository?: string;
-  apiUrl?: string;
-  fetcher?: Fetcher;
+    repository?: string;
+    apiUrl?: string;
+    fetcher?: Fetcher;
 } = {}): Promise<string> {
-  const url = releasesApiUrl(opts);
-  const fetcher = opts.fetcher ?? ((target: string) => fetch(target));
-  const res = await fetcher(url);
-  if (!res.ok) throw new Error(releaseListHint(res.status));
+    const url = releasesApiUrl(opts);
+    const fetcher = opts.fetcher ?? ((target: string) => fetch(target));
+    const res = await fetcher(url);
+    if (!res.ok) throw new Error(releaseListHint(res.status));
 
-  let parsed: unknown;
-  try {
-    parsed = await res.json();
-  } catch {
-    throw new Error(releaseListHint(res.status));
-  }
+    let parsed: unknown;
+    try {
+        parsed = await res.json();
+    } catch {
+        throw new Error(releaseListHint(res.status));
+    }
 
-  if (Array.isArray(parsed)) {
-    const tag = selectLatestAssetReadyRelease(
-      parsed as ReleaseSummary[],
-      UPDATE_RELEASE_ASSETS,
-    );
-    if (tag === null) {
-      throw new Error(
-        "没有发现资产就绪的正式 Release（需要包含 noj-cli 二进制与校验文件），请使用固定版本升级",
-      );
+    if (Array.isArray(parsed)) {
+        const tag = selectLatestAssetReadyRelease(
+            parsed as ReleaseSummary[],
+            UPDATE_RELEASE_ASSETS,
+        );
+        if (tag === null) {
+            throw new Error(
+                "没有发现资产就绪的正式 Release（需要包含 noj-cli 二进制与校验文件），请使用固定版本升级",
+            );
+        }
+        return validateReleaseTag(tag);
+    }
+
+    const single = parsed as ReleaseSummary;
+    const tag = single.tag_name ?? "";
+    if (tag === "" || single.draft !== false || single.prerelease !== false) {
+        throw new Error(SINGLE_RELEASE_INVALID_HINT);
     }
     return validateReleaseTag(tag);
-  }
-
-  const single = parsed as ReleaseSummary;
-  const tag = single.tag_name ?? "";
-  if (tag === "" || single.draft !== false || single.prerelease !== false) {
-    throw new Error(SINGLE_RELEASE_INVALID_HINT);
-  }
-  return validateReleaseTag(tag);
 }
 
 // ---------------- 版本配置的读写 ----------------
 
 /** `.env.prod` 缺失文案。 */
 export function envMissingHint(envFile: string): string {
-  return `未找到生产配置：${envFile}`;
+    return `未找到生产配置：${envFile}`;
 }
 
 /** `.env.prod` 缺少 `NOJ_VERSION` 文案。 */
 export function versionMissingHint(envFile: string): string {
-  return `生产配置缺少 NOJ_VERSION：${envFile}`;
+    return `生产配置缺少 NOJ_VERSION：${envFile}`;
 }
 
 /**
@@ -246,18 +250,18 @@ export function versionMissingHint(envFile: string): string {
  * 原样返回（**不去 `v` 前缀**）：它既用于比较，也是 compose 的镜像 tag 插值源。
  */
 export async function configuredVersion(envFile: string): Promise<string> {
-  let text: string;
-  try {
-    text = await Deno.readTextFile(envFile);
-  } catch {
-    throw new Error(envMissingHint(envFile));
-  }
-  // 复用 parseEnvFile：首个 `^NOJ_VERSION=` 命中即胜出、成对引号剥一层、CRLF 归一。
-  // 不用 `readEnvFile`：它的"文件不存在"文案是另一套，这里必须先报
-  // `未找到生产配置`，故自行读取、只复用解析。
-  const version = parseEnvFile(text).get("NOJ_VERSION") ?? "";
-  if (version === "") throw new Error(versionMissingHint(envFile));
-  return version;
+    let text: string;
+    try {
+        text = await Deno.readTextFile(envFile);
+    } catch {
+        throw new Error(envMissingHint(envFile));
+    }
+    // 复用 parseEnvFile：首个 `^NOJ_VERSION=` 命中即胜出、成对引号剥一层、CRLF 归一。
+    // 不用 `readEnvFile`：它的"文件不存在"文案是另一套，这里必须先报
+    // `未找到生产配置`，故自行读取、只复用解析。
+    const version = parseEnvFile(text).get("NOJ_VERSION") ?? "";
+    if (version === "") throw new Error(versionMissingHint(envFile));
+    return version;
 }
 
 /**
@@ -268,7 +272,7 @@ export async function configuredVersion(envFile: string): Promise<string> {
  * 键时追加到末尾。因此"注释与顺序保留 + 幂等写回"由 env-file 的既有测试背书，本模块不另写一套序列化。
  */
 export function versionConfigText(original: string, version: string): string {
-  return serializeEnvFile(new Map([["NOJ_VERSION", version]]), original);
+    return serializeEnvFile(new Map([["NOJ_VERSION", version]]), original);
 }
 
 /**
@@ -277,10 +281,10 @@ export function versionConfigText(original: string, version: string): string {
  * 原子写（临时文件 → 600 → rename）由 {@link writeEnvFileAtomic} 保证。
  */
 export async function writeConfigVersion(
-  envFile: string,
-  version: string,
+    envFile: string,
+    version: string,
 ): Promise<void> {
-  await writeEnvFileAtomic(envFile, new Map([["NOJ_VERSION", version]]));
+    await writeEnvFileAtomic(envFile, new Map([["NOJ_VERSION", version]]));
 }
 
 /**
@@ -293,39 +297,39 @@ export async function writeConfigVersion(
  * 暂存文件放在 `.env.prod` **同目录**：跨目录 `rename` 可能退化为拷贝并丢失原子性。
  */
 export async function stageConfigVersion(
-  envFile: string,
-  version: string,
+    envFile: string,
+    version: string,
 ): Promise<string> {
-  let original: string;
-  try {
-    original = await Deno.readTextFile(envFile);
-  } catch {
-    throw new Error(envMissingHint(envFile));
-  }
-  const staged = join(
-    dirname(envFile),
-    `.env.prod.latest.${Deno.pid}.${crypto.randomUUID()}`,
-  );
-  const text = versionConfigText(original, version);
-  try {
-    const file = await Deno.open(staged, {
-      create: true,
-      write: true,
-      truncate: true,
-      mode: 0o600,
-    });
+    let original: string;
     try {
-      await file.write(new TextEncoder().encode(text));
-    } finally {
-      file.close();
+        original = await Deno.readTextFile(envFile);
+    } catch {
+        throw new Error(envMissingHint(envFile));
     }
-    // open 的 mode 会被 umask 裁剪，暂存文件必须恒为 600。
-    await Deno.chmod(staged, 0o600);
-  } catch (err) {
-    await Deno.remove(staged).catch(() => {});
-    throw new Error(`无法创建版本配置暂存文件：${staged}`, { cause: err });
-  }
-  return staged;
+    const staged = join(
+        dirname(envFile),
+        `.env.prod.latest.${Deno.pid}.${crypto.randomUUID()}`,
+    );
+    const text = versionConfigText(original, version);
+    try {
+        const file = await Deno.open(staged, {
+            create: true,
+            write: true,
+            truncate: true,
+            mode: 0o600,
+        });
+        try {
+            await file.write(new TextEncoder().encode(text));
+        } finally {
+            file.close();
+        }
+        // open 的 mode 会被 umask 裁剪，暂存文件必须恒为 600。
+        await Deno.chmod(staged, 0o600);
+    } catch (err) {
+        await Deno.remove(staged).catch(() => {});
+        throw new Error(`无法创建版本配置暂存文件：${staged}`, { cause: err });
+    }
+    return staged;
 }
 
 /**
@@ -338,16 +342,16 @@ export async function stageConfigVersion(
  * 配置的唯一新副本，删除会丢掉"应该写什么"的信息。
  */
 export async function commitConfigVersion(
-  staged: string,
-  envFile: string,
+    staged: string,
+    envFile: string,
 ): Promise<void> {
-  try {
-    await Deno.chmod(staged, 0o600);
-    await Deno.rename(staged, envFile);
-  } catch (err) {
-    throw new Error(
-      `升级成功但无法提交生产版本配置：${envFile}（新配置仍在 ${staged}）`,
-      { cause: err },
-    );
-  }
+    try {
+        await Deno.chmod(staged, 0o600);
+        await Deno.rename(staged, envFile);
+    } catch (err) {
+        throw new Error(
+            `升级成功但无法提交生产版本配置：${envFile}（新配置仍在 ${staged}）`,
+            { cause: err },
+        );
+    }
 }

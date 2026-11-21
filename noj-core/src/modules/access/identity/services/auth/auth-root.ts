@@ -12,31 +12,31 @@ import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
  * root 用户为 admin 角色，密码随机生成，不可登录，不在用户列表中显示。
  */
 export async function ensureRootUser(): Promise<void> {
-  const db = getDb();
+    const db = getDb();
 
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, ROOT_USER_ID))
-    .limit(1);
+    const existing = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, ROOT_USER_ID))
+        .limit(1);
 
-  if (existing.length > 0) return;
+    if (existing.length > 0) return;
 
-  const randomPassword = crypto.randomUUID();
-  const { hashPassword } = await import("../security/password.ts");
-  const now = new Date().toISOString();
+    const randomPassword = crypto.randomUUID();
+    const { hashPassword } = await import("../security/password.ts");
+    const now = new Date().toISOString();
 
-  await db.insert(users)
-    .values({
-      id: ROOT_USER_ID,
-      username: "root",
-      email: "root@noj.local",
-      password_hash: await hashPassword(randomPassword),
-      bio: "系统根用户",
-      created_at: now,
-      updated_at: now,
-    })
-    .onConflictDoNothing();
+    await db.insert(users)
+        .values({
+            id: ROOT_USER_ID,
+            username: "root",
+            email: "root@noj.local",
+            password_hash: await hashPassword(randomPassword),
+            bio: "系统根用户",
+            created_at: now,
+            updated_at: now,
+        })
+        .onConflictDoNothing();
 
-  logger.info("Root 系统用户 (UID=0) 已创建（或已存在）");
+    logger.info("Root 系统用户 (UID=0) 已创建（或已存在）");
 }

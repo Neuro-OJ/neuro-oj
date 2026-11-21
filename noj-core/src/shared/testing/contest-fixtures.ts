@@ -26,18 +26,18 @@
 import { DEFAULT_DOMAIN_ID } from "../workspace/types.ts";
 import { getDb } from "../db/connection.ts";
 import {
-  contestProblems,
-  contests,
-  domainProblemBindings,
-  problems,
-  problemVersions,
+    contestProblems,
+    contests,
+    domainProblemBindings,
+    problems,
+    problemVersions,
 } from "../db/schema.ts";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 /** 竞赛时间对（开始/结束）。 */
 export interface ContestTimes {
-  start_time: string;
-  end_time: string;
+    start_time: string;
+    end_time: string;
 }
 
 /**
@@ -47,36 +47,36 @@ export interface ContestTimes {
  * 编号（故可 `onConflictDoNothing` 重复调用），不同 id 冲突概率可忽略。
  */
 function stableProblemNumber(problemId: string): number {
-  let hash = 0;
-  for (let i = 0; i < problemId.length; i++) {
-    hash = (hash * 31 + problemId.charCodeAt(i)) % 100_000;
-  }
-  // 落在 9xxxx 段，远离种子题（1001-1003）与常见测试编号
-  return 900_000 + hash;
+    let hash = 0;
+    for (let i = 0; i < problemId.length; i++) {
+        hash = (hash * 31 + problemId.charCodeAt(i)) % 100_000;
+    }
+    // 落在 9xxxx 段，远离种子题（1001-1003）与常见测试编号
+    return 900_000 + hash;
 }
 
 /** 默认夹具时间：已开始 1 分钟、1 小时后结束。 */
 export function runningContestTimes(): ContestTimes {
-  return {
-    start_time: new Date(Date.now() - 60_000).toISOString(),
-    end_time: new Date(Date.now() + 3_600_000).toISOString(),
-  };
+    return {
+        start_time: new Date(Date.now() - 60_000).toISOString(),
+        end_time: new Date(Date.now() + 3_600_000).toISOString(),
+    };
 }
 
 /** 已结束的竞赛时间（用于验证"赛后自动放行"）。 */
 export function endedContestTimes(): ContestTimes {
-  return {
-    start_time: new Date(Date.now() - 7_200_000).toISOString(),
-    end_time: new Date(Date.now() - 1_000).toISOString(),
-  };
+    return {
+        start_time: new Date(Date.now() - 7_200_000).toISOString(),
+        end_time: new Date(Date.now() - 1_000).toISOString(),
+    };
 }
 
 /** 未开始的竞赛时间（用于验证"pending 不门控"）。 */
 export function pendingContestTimes(): ContestTimes {
-  return {
-    start_time: new Date(Date.now() + 3_600_000).toISOString(),
-    end_time: new Date(Date.now() + 7_200_000).toISOString(),
-  };
+    return {
+        start_time: new Date(Date.now() + 3_600_000).toISOString(),
+        end_time: new Date(Date.now() + 7_200_000).toISOString(),
+    };
 }
 
 /**
@@ -94,19 +94,19 @@ export function pendingContestTimes(): ContestTimes {
  * 永远输出 `Z`，故此处显式偏移后裁剪毫秒。
  */
 export function nonCanonicalOffsetTimes(offsetMinutes = 480): ContestTimes {
-  const shift = (ms: number): string => {
-    // 把 UTC 毫秒加上偏移后按 UTC 字段格式化，即得到该偏移下的本地时间写法
-    const shifted = new Date(ms + offsetMinutes * 60_000);
-    const iso = shifted.toISOString();
-    // 裁剪毫秒（秒级精度）并附上偏移量，形如 2026-09-14T10:19:18+08:00
-    return `${iso.slice(0, 19)}+${
-      String(Math.floor(offsetMinutes / 60)).padStart(2, "0")
-    }:00`;
-  };
-  return {
-    start_time: shift(Date.now() - 60_000),
-    end_time: shift(Date.now() + 3_600_000),
-  };
+    const shift = (ms: number): string => {
+        // 把 UTC 毫秒加上偏移后按 UTC 字段格式化，即得到该偏移下的本地时间写法
+        const shifted = new Date(ms + offsetMinutes * 60_000);
+        const iso = shifted.toISOString();
+        // 裁剪毫秒（秒级精度）并附上偏移量，形如 2026-09-14T10:19:18+08:00
+        return `${iso.slice(0, 19)}+${
+            String(Math.floor(offsetMinutes / 60)).padStart(2, "0")
+        }:00`;
+    };
+    return {
+        start_time: shift(Date.now() - 60_000),
+        end_time: shift(Date.now() + 3_600_000),
+    };
 }
 
 /**
@@ -126,138 +126,146 @@ export function nonCanonicalOffsetTimes(offsetMinutes = 480): ContestTimes {
  * @returns 竞赛 id。
  */
 export async function seedRunningContest(options: {
-  problemIds: string[];
-  times?: ContestTimes;
-  title?: string;
-  createdBy?: string;
-  /** 显式使用域；其他域源题必须已有该域的共享绑定。 */
-  domainId?: string;
+    problemIds: string[];
+    times?: ContestTimes;
+    title?: string;
+    createdBy?: string;
+    /** 显式使用域；其他域源题必须已有该域的共享绑定。 */
+    domainId?: string;
 }): Promise<string> {
-  const times = options.times ?? runningContestTimes();
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  const db = getDb();
-  const domainId = options.domainId ?? DEFAULT_DOMAIN_ID;
-  await db.insert(contests).values({
-    domain_id: domainId,
-    id,
-    title: options.title ?? `夹具竞赛 ${Date.now()}-${id.slice(0, 8)}`,
-    description: "",
-    start_time: times.start_time,
-    end_time: times.end_time,
-    type: "kaggle",
-    kind: "public",
-    is_public: true,
-    created_by: options.createdBy ?? "0",
-    created_at: now,
-    updated_at: now,
-  });
-  if (options.problemIds.length > 0) {
-    // 补建缺失题目。编号由题目 id 的字符哈希派生：同一 id 稳定得到同一编号
-    // （重复调用 onConflictDoNothing 安全），不同 id 几乎不可能撞上
-    // (domain_id, number) 唯一约束——用递增基数会在并发/多次调用下冲突。
-    await db.insert(problems).values(
-      options.problemIds.map((problemId) => ({
-        domain_id: DEFAULT_DOMAIN_ID,
-        id: problemId,
-        title: `夹具题目 ${problemId}`,
+    const times = options.times ?? runningContestTimes();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const db = getDb();
+    const domainId = options.domainId ?? DEFAULT_DOMAIN_ID;
+    await db.insert(contests).values({
+        domain_id: domainId,
+        id,
+        title: options.title ?? `夹具竞赛 ${Date.now()}-${id.slice(0, 8)}`,
         description: "",
-        difficulty: "easy",
-        runtime_config: {},
-        number: stableProblemNumber(problemId),
-        visibility: "public",
-        owner_id: options.createdBy ?? "0",
-        created_at: now,
-        updated_at: now,
-      })),
-    ).onConflictDoNothing();
-    // 竞赛固定版本必填（Handbook §2.6）：为每题补迁移基线 V1（id 稳定，
-    // 重复调用幂等），并回写最新版指针，再写关联。
-    await db.insert(problemVersions).values(
-      options.problemIds.map((problemId) => ({
-        id: baselineVersionId(problemId),
-        problem_id: problemId,
-        version: 1,
-        schema_version: 1,
-        origin: "migration_baseline" as const,
-        content: {
-          kind: "ai",
-          title: `夹具题目 ${problemId}`,
-          description: "",
-          samples: [],
-          submission_mode: "code",
-          runtime_config: {},
-          template_content: "",
-          artifact_max_size_mb: null,
-          llm_config: null,
-        },
-        published_at: now,
-      })),
-    ).onConflictDoNothing();
-    for (const problemId of options.problemIds) {
-      // 已有自己版本的题目（例如独立副本）保留原版本指针：基线 V1 因唯一键冲突
-      // 未被插入时，指向 baseline id 会违反 problems_latest_version_fk。
-      await db.update(problems).set({
-        latest_version_id: baselineVersionId(problemId),
-      }).where(
-        and(eq(problems.id, problemId), isNull(problems.latest_version_id)),
-      );
-    }
-    const sources = await db.select().from(problems).where(
-      inArray(problems.id, options.problemIds),
-    );
-    const owned = sources.filter((problem) =>
-      domainId === DEFAULT_DOMAIN_ID && problem.domain_id === DEFAULT_DOMAIN_ID
-    );
-    if (owned.length) {
-      await db.insert(domainProblemBindings).values(owned.map((problem) => ({
-        id: `fixture-binding-${problem.id}`,
-        domain_id: DEFAULT_DOMAIN_ID,
-        problem_id: problem.id,
-        visibility: problem.visibility === "public"
-          ? "public" as const
-          : "members" as const,
+        start_time: times.start_time,
+        end_time: times.end_time,
+        type: "kaggle",
+        kind: "public",
+        is_public: true,
         created_by: options.createdBy ?? "0",
         created_at: now,
         updated_at: now,
-      }))).onConflictDoNothing();
+    });
+    if (options.problemIds.length > 0) {
+        // 补建缺失题目。编号由题目 id 的字符哈希派生：同一 id 稳定得到同一编号
+        // （重复调用 onConflictDoNothing 安全），不同 id 几乎不可能撞上
+        // (domain_id, number) 唯一约束——用递增基数会在并发/多次调用下冲突。
+        await db.insert(problems).values(
+            options.problemIds.map((problemId) => ({
+                domain_id: DEFAULT_DOMAIN_ID,
+                id: problemId,
+                title: `夹具题目 ${problemId}`,
+                description: "",
+                difficulty: "easy",
+                runtime_config: {},
+                number: stableProblemNumber(problemId),
+                visibility: "public",
+                owner_id: options.createdBy ?? "0",
+                created_at: now,
+                updated_at: now,
+            })),
+        ).onConflictDoNothing();
+        // 竞赛固定版本必填（Handbook §2.6）：为每题补迁移基线 V1（id 稳定，
+        // 重复调用幂等），并回写最新版指针，再写关联。
+        await db.insert(problemVersions).values(
+            options.problemIds.map((problemId) => ({
+                id: baselineVersionId(problemId),
+                problem_id: problemId,
+                version: 1,
+                schema_version: 1,
+                origin: "migration_baseline" as const,
+                content: {
+                    kind: "ai",
+                    title: `夹具题目 ${problemId}`,
+                    description: "",
+                    samples: [],
+                    submission_mode: "code",
+                    runtime_config: {},
+                    template_content: "",
+                    artifact_max_size_mb: null,
+                    llm_config: null,
+                },
+                published_at: now,
+            })),
+        ).onConflictDoNothing();
+        for (const problemId of options.problemIds) {
+            // 已有自己版本的题目（例如独立副本）保留原版本指针：基线 V1 因唯一键冲突
+            // 未被插入时，指向 baseline id 会违反 problems_latest_version_fk。
+            await db.update(problems).set({
+                latest_version_id: baselineVersionId(problemId),
+            }).where(
+                and(
+                    eq(problems.id, problemId),
+                    isNull(problems.latest_version_id),
+                ),
+            );
+        }
+        const sources = await db.select().from(problems).where(
+            inArray(problems.id, options.problemIds),
+        );
+        const owned = sources.filter((problem) =>
+            domainId === DEFAULT_DOMAIN_ID &&
+            problem.domain_id === DEFAULT_DOMAIN_ID
+        );
+        if (owned.length) {
+            await db.insert(domainProblemBindings).values(
+                owned.map((problem) => ({
+                    id: `fixture-binding-${problem.id}`,
+                    domain_id: DEFAULT_DOMAIN_ID,
+                    problem_id: problem.id,
+                    visibility: problem.visibility === "public"
+                        ? "public" as const
+                        : "members" as const,
+                    created_by: options.createdBy ?? "0",
+                    created_at: now,
+                    updated_at: now,
+                })),
+            ).onConflictDoNothing();
+        }
+        const bindings = await db.select().from(domainProblemBindings).where(
+            and(
+                eq(domainProblemBindings.domain_id, domainId),
+                inArray(domainProblemBindings.problem_id, options.problemIds),
+            ),
+        );
+        const bindingIds = new Map(
+            bindings.map((binding) => [binding.problem_id, binding.id]),
+        );
+        const latestVersions = new Map(
+            sources.map((problem) => [problem.id, problem.latest_version_id]),
+        );
+        await db.insert(contestProblems).values(
+            options.problemIds.map((problemId, index) => {
+                const bindingId = bindingIds.get(problemId);
+                if (!bindingId) throw new Error("竞赛夹具缺少使用域题库绑定");
+                // 已有自己版本的题目（独立副本）不能被钉到未插入的基线版本上。
+                const pinnedVersionId = latestVersions.get(problemId) ??
+                    baselineVersionId(problemId);
+                return {
+                    domain_id: domainId,
+                    domain_problem_binding_id: bindingId,
+                    contest_id: id,
+                    problem_id: problemId,
+                    sort_order: index,
+                    label: String.fromCharCode(65 + index),
+                    score: 10000,
+                    pinned_version_id: pinnedVersionId,
+                };
+            }),
+        );
     }
-    const bindings = await db.select().from(domainProblemBindings).where(and(
-      eq(domainProblemBindings.domain_id, domainId),
-      inArray(domainProblemBindings.problem_id, options.problemIds),
-    ));
-    const bindingIds = new Map(
-      bindings.map((binding) => [binding.problem_id, binding.id]),
-    );
-    const latestVersions = new Map(
-      sources.map((problem) => [problem.id, problem.latest_version_id]),
-    );
-    await db.insert(contestProblems).values(
-      options.problemIds.map((problemId, index) => {
-        const bindingId = bindingIds.get(problemId);
-        if (!bindingId) throw new Error("竞赛夹具缺少使用域题库绑定");
-        // 已有自己版本的题目（独立副本）不能被钉到未插入的基线版本上。
-        const pinnedVersionId = latestVersions.get(problemId) ??
-          baselineVersionId(problemId);
-        return {
-          domain_id: domainId,
-          domain_problem_binding_id: bindingId,
-          contest_id: id,
-          problem_id: problemId,
-          sort_order: index,
-          label: String.fromCharCode(65 + index),
-          score: 10000,
-          pinned_version_id: pinnedVersionId,
-        };
-      }),
-    );
-  }
-  return id;
+    return id;
 }
 
 /** 夹具迁移基线版本 id（同一题目稳定，便于幂等重入）。 */
 function baselineVersionId(problemId: string): string {
-  return `baseline-${problemId}`;
+    return `baseline-${problemId}`;
 }
 
 /**
@@ -267,12 +275,12 @@ function baselineVersionId(problemId: string): string {
  * 而是"形态攻击"夹具。
  */
 export function seedNonCanonicalTimeRunningContest(
-  problemIds: string[],
-  createdBy?: string,
+    problemIds: string[],
+    createdBy?: string,
 ): Promise<string> {
-  return seedRunningContest({
-    problemIds,
-    times: nonCanonicalOffsetTimes(),
-    createdBy,
-  });
+    return seedRunningContest({
+        problemIds,
+        times: nonCanonicalOffsetTimes(),
+        createdBy,
+    });
 }

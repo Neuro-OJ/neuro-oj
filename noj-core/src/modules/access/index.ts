@@ -1,96 +1,96 @@
 /** access 模块公共门面；只显式导出稳定合同和本地用例入口。 */
 export type {
-  Actor,
-  GuestActor,
-  SystemActor,
-  SystemPurpose,
-  UserActor,
-  UserId,
+    Actor,
+    GuestActor,
+    SystemActor,
+    SystemPurpose,
+    UserActor,
+    UserId,
 } from "./contracts/actor.ts";
 export type { AuthEnv, OptionalAuthEnv } from "../../shared/http/hono-env.ts";
 export {
-  guestActor,
-  isSystemActor,
-  isUserActor,
-  requireUserActor,
-  userActorFromAuthenticatedId,
+    guestActor,
+    isSystemActor,
+    isUserActor,
+    requireUserActor,
+    userActorFromAuthenticatedId,
 } from "./contracts/actor.ts";
 
 export type {
-  DomainConfiguration,
-  DomainLimits,
-  DomainPreset,
-  DomainRole,
+    DomainConfiguration,
+    DomainLimits,
+    DomainPreset,
+    DomainRole,
 } from "./types.ts";
 export {
-  DEFAULT_DOMAIN_ID,
-  DEFAULT_DOMAIN_SLUG,
-  DOMAIN_MEMBER_ROLES,
-  DOMAIN_PRESETS,
-  domainPermissions,
-  isDomainMemberRole,
-  isDomainRole,
-  isPlatformRole,
-  parseDomainMemberRole,
-  parsePlatformRole,
-  presetConfiguration,
-  validateDomainConfiguration,
-  validateDomainSlug,
+    DEFAULT_DOMAIN_ID,
+    DEFAULT_DOMAIN_SLUG,
+    DOMAIN_MEMBER_ROLES,
+    DOMAIN_PRESETS,
+    domainPermissions,
+    isDomainMemberRole,
+    isDomainRole,
+    isPlatformRole,
+    parseDomainMemberRole,
+    parsePlatformRole,
+    presetConfiguration,
+    validateDomainConfiguration,
+    validateDomainSlug,
 } from "./types.ts";
 export type { DomainMemberRole, PlatformRole } from "./types.ts";
 
 export type {
-  AccessActor,
-  WorkspaceAccessContext,
-  WorkspaceAccessResult,
+    AccessActor,
+    WorkspaceAccessContext,
+    WorkspaceAccessResult,
 } from "./policy.ts";
 export {
-  assertWorkspacePermission,
-  domainMemberWhere,
-  domainReadableWhere,
-  loadDomainForJoiningTx,
-  loadWorkspace,
-  loadWorkspaceTx,
-  requireWorkspaceUser,
+    assertWorkspacePermission,
+    domainMemberWhere,
+    domainReadableWhere,
+    loadDomainForJoiningTx,
+    loadWorkspace,
+    loadWorkspaceTx,
+    requireWorkspaceUser,
 } from "./policy.ts";
 
 export type {
-  ContestAccessInfo,
-  ContestPolicySnapshot,
-  ContestSecrecyPolicy,
-  ContestType,
-  PublicContestSecrecyRef,
+    ContestAccessInfo,
+    ContestPolicySnapshot,
+    ContestSecrecyPolicy,
+    ContestType,
+    PublicContestSecrecyRef,
 } from "./contest-policy.ts";
 
 export type {
-  ProblemSubmissionSummary,
-  SubmissionQueryScope,
+    ProblemSubmissionSummary,
+    SubmissionQueryScope,
 } from "./submission-policy.ts";
 export {
-  domainProblemProgressWhere,
-  getProblemSubmissionSummaries,
-  submissionQueryVisibility,
+    domainProblemProgressWhere,
+    getProblemSubmissionSummaries,
+    submissionQueryVisibility,
 } from "./submission-policy.ts";
 export type { DomainResourceName } from "./resource-counters.ts";
 export {
-  adjustDomainResourceCounterTx,
-  lockDomainResourceCounterTx,
-  setDomainResourceCounterTx,
-  setDomainResourceReservedTx,
+    adjustDomainResourceCounterTx,
+    lockDomainResourceCounterTx,
+    setDomainResourceCounterTx,
+    setDomainResourceReservedTx,
 } from "./resource-counters.ts";
 export type { InvitationRegistrationBoundary } from "./registration.ts";
 export { allocateDomainProblemNumberTx } from "./domain-capabilities.ts";
 export {
-  filterProblemsInRunningContest,
-  getContestPolicySnapshot,
-  isProblemInRunningContest,
-  isProblemInUnendedPublicContest,
-  loadDomainProblemProtection,
-  loadPublicContestSecrecy,
-  resolveContestId,
-  runningWindowCondition,
-  unendedPublicContestForProblem,
-  verifyContestAccess as verifyContestAccessWithActor,
+    filterProblemsInRunningContest,
+    getContestPolicySnapshot,
+    isProblemInRunningContest,
+    isProblemInUnendedPublicContest,
+    loadDomainProblemProtection,
+    loadPublicContestSecrecy,
+    resolveContestId,
+    runningWindowCondition,
+    unendedPublicContestForProblem,
+    verifyContestAccess as verifyContestAccessWithActor,
 } from "./contest-policy.ts";
 
 export type { AccessAuditActor, AccessAuditMeta } from "./audit.ts";
@@ -98,72 +98,72 @@ export { workspaceAuditTx } from "./audit.ts";
 
 export type { AccessWriteMeta, MemberRemovalBoundary } from "./members.ts";
 export {
-  addDomainMemberTx,
-  assertAccountHasNoOwnedDomainTx,
-  joinDomain,
-  joinDomainTx,
-  listDomainMembers,
-  listDomainMembersPage,
-  removeDomainMember,
-  removeDomainMemberTx,
-  retireAccountWorkspaceMembershipsTx,
-  reviewJoinRequest,
-  reviewJoinRequestTx,
-  setMemberRole,
-  setMemberRoleTx,
-  transferDomain,
-  transferDomainTx,
+    addDomainMemberTx,
+    assertAccountHasNoOwnedDomainTx,
+    joinDomain,
+    joinDomainTx,
+    listDomainMembers,
+    listDomainMembersPage,
+    removeDomainMember,
+    removeDomainMemberTx,
+    retireAccountWorkspaceMembershipsTx,
+    reviewJoinRequest,
+    reviewJoinRequestTx,
+    setMemberRole,
+    setMemberRoleTx,
+    transferDomain,
+    transferDomainTx,
 } from "./members.ts";
 
 export type {
-  ClassroomInvitationBoundary,
-  DomainInvitationInput,
+    ClassroomInvitationBoundary,
+    DomainInvitationInput,
 } from "./invitations.ts";
 export {
-  assertInvitationRegistrationAllowed,
-  consumeDomainInvitation,
-  consumeDomainInvitationTx,
-  createDomainInvitation,
-  createDomainInvitationTx,
-  hashInvitationToken,
-  isInvitationCredential,
-  listDomainInvitations,
-  previewDomainInvitation,
-  revokeDomainInvitation,
-  revokeDomainInvitationTx,
+    assertInvitationRegistrationAllowed,
+    consumeDomainInvitation,
+    consumeDomainInvitationTx,
+    createDomainInvitation,
+    createDomainInvitationTx,
+    hashInvitationToken,
+    isInvitationCredential,
+    listDomainInvitations,
+    previewDomainInvitation,
+    revokeDomainInvitation,
+    revokeDomainInvitationTx,
 } from "./invitations.ts";
 
 export type { DomainChangeBoundary, DomainWriteMeta } from "./domains.ts";
 export {
-  createDomain,
-  createDomainTx,
-  ensureDefaultWorkspace,
-  ensureDefaultWorkspaceTx,
-  listDomains,
-  setDomainStatus,
-  setDomainStatusTx,
-  updateDomain,
-  updateDomainTx,
+    createDomain,
+    createDomainTx,
+    ensureDefaultWorkspace,
+    ensureDefaultWorkspaceTx,
+    listDomains,
+    setDomainStatus,
+    setDomainStatusTx,
+    updateDomain,
+    updateDomainTx,
 } from "./domains.ts";
 
 export type { AccountLifecycleBoundary } from "./account.ts";
 export {
-  adminDeleteAccount,
-  adminDeleteAccountTx,
-  deleteOwnAccount,
-  deleteOwnAccountTx,
-  verifyOwnAccountPassword,
+    adminDeleteAccount,
+    adminDeleteAccountTx,
+    deleteOwnAccount,
+    deleteOwnAccountTx,
+    verifyOwnAccountPassword,
 } from "./account.ts";
 
 export {
-  assertInstanceRegistration,
-  enrollRegisteredAccountTx,
+    assertInstanceRegistration,
+    enrollRegisteredAccountTx,
 } from "./registration.ts";
 
 // 迁移期：供 src/features/* 经模块出口使用鉴权中间件（见 core 重构提案）。
 export {
-  authMiddleware,
-  optionalAuthMiddleware,
+    authMiddleware,
+    optionalAuthMiddleware,
 } from "./identity/middleware/auth.ts";
 
 // 迁移期：供 src/features/tags 使用

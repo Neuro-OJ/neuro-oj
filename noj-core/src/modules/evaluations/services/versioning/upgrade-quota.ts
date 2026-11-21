@@ -29,9 +29,9 @@ import type { RateLimitConfig } from "../../../../shared/rate-limit/rate-limit.t
 import { getLogger } from "@logtape/logtape";
 import { isRateLimitEnabled } from "../../../platform/contracts/cross-module/system_services_rate-limit-env.ts";
 import {
-  SUBMISSION_QUOTA_BUCKETS,
-  type SubmissionQuotaBucket,
-  submissionQuotaRedisKey,
+    SUBMISSION_QUOTA_BUCKETS,
+    type SubmissionQuotaBucket,
+    submissionQuotaRedisKey,
 } from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 
 const logger = getLogger(["noj", "submission"]);
@@ -50,12 +50,12 @@ export type UpgradeQuotaBucket = SubmissionQuotaBucket;
 
 /** {@link consumeSubmissionQuotaForUpgrade} 的选项。 */
 export interface UpgradeQuotaOptions {
-  /** 覆盖额度配置（默认按桶选择，测试用小额度注入）。 */
-  limit?: RateLimitConfig;
-  /** 额度桶，缺省 `code`（普通代码提交）。 */
-  bucket?: UpgradeQuotaBucket;
-  /** 竞赛上下文：**仅用于日志/审计**，额度键仍按原用户维度（不按竞赛拆分）。 */
-  contestId?: string | null;
+    /** 覆盖额度配置（默认按桶选择，测试用小额度注入）。 */
+    limit?: RateLimitConfig;
+    /** 额度桶，缺省 `code`（普通代码提交）。 */
+    bucket?: UpgradeQuotaBucket;
+    /** 竞赛上下文：**仅用于日志/审计**，额度键仍按原用户维度（不按竞赛拆分）。 */
+    contestId?: string | null;
 }
 
 /**
@@ -75,10 +75,10 @@ const UPGRADE_QUOTA_MARKER_TTL_MS = 24 * 60 * 60 * 1000;
  * @returns 幂等标记的完整 Redis 键
  */
 export function upgradeQuotaMarkerKey(
-  sourceUserId: string,
-  jobItemId: string,
+    sourceUserId: string,
+    jobItemId: string,
 ): string {
-  return `${UPGRADE_QUOTA_MARKER_PREFIX}${sourceUserId}:${jobItemId}`;
+    return `${UPGRADE_QUOTA_MARKER_PREFIX}${sourceUserId}:${jobItemId}`;
 }
 
 /**
@@ -117,8 +117,8 @@ return {1, 0}
 
 /** 额度占用结果：`ok=false` 表示应延期重试，而不是失败。 */
 export type UpgradeQuotaConsumption =
-  | { ok: true }
-  | { ok: false; retryAfterMs: number };
+    | { ok: true }
+    | { ok: false; retryAfterMs: number };
 
 /**
  * 为**一个升级副本**占用原用户的正常提交额度（幂等 + 原子）。
@@ -139,52 +139,52 @@ export type UpgradeQuotaConsumption =
  * @returns 扣费成功，或结构化延期信号
  */
 export async function consumeSubmissionQuotaForUpgrade(
-  sourceUserId: string,
-  jobItemId: string,
-  options: UpgradeQuotaOptions = {},
+    sourceUserId: string,
+    jobItemId: string,
+    options: UpgradeQuotaOptions = {},
 ): Promise<UpgradeQuotaConsumption> {
-  // 总开关优先：升级额度**就是**对应桶的正常提交额度，限流总开关关闭时
-  // （含 `NOJ_ENV=test` 默认关闭）必须与 `enforce*` 系列一样直接放行，不能先去碰
-  // Redis——否则 Redis 不可用会把"未启用限流"误判成"额度不可用"，使正常升级被延期
-  // （2026-10-11 集成验收在整目录运行时命中）。
-  if (!isRateLimitEnabled()) return { ok: true };
+    // 总开关优先：升级额度**就是**对应桶的正常提交额度，限流总开关关闭时
+    // （含 `NOJ_ENV=test` 默认关闭）必须与 `enforce*` 系列一样直接放行，不能先去碰
+    // Redis——否则 Redis 不可用会把"未启用限流"误判成"额度不可用"，使正常升级被延期
+    // （2026-10-11 集成验收在整目录运行时命中）。
+    if (!isRateLimitEnabled()) return { ok: true };
 
-  const bucket = options.bucket ?? "code";
-  const limit = options.limit ?? SUBMISSION_QUOTA_BUCKETS[bucket].limit;
-  // 兜底等待时长：即使限流返回值异常也不能把 NaN/undefined 传给调用方
-  // （`plusSeconds(Math.ceil(NaN/1000))` 会抛 RangeError，把"延期"变成真正的失败）
-  const fallbackRetryAfterMs = Math.max(1000, limit.windowSec * 1000);
-  try {
-    const redis = getRedis();
-    const raw = await redis.eval(
-      UPGRADE_QUOTA_CONSUME_SCRIPT,
-      2,
-      upgradeQuotaMarkerKey(sourceUserId, jobItemId),
-      // 与对应桶的正常提交**同键**：`code` / `contest_code` / `objective`
-      submissionQuotaRedisKey(bucket, sourceUserId),
-      new Date().toISOString(),
-      UPGRADE_QUOTA_MARKER_TTL_MS,
-      limit.windowSec * 1000,
-      limit.max,
-    );
-    const result = Array.isArray(raw) ? raw as number[] : [0, 0];
-    if (Number(result[0]) === 1) return { ok: true };
-    const ttl = Number(result[1]);
-    return {
-      ok: false,
-      retryAfterMs: Number.isFinite(ttl) && ttl > 0
-        ? ttl
-        : fallbackRetryAfterMs,
-    };
-  } catch (err) {
-    // Redis 不可用 / 脚本执行失败：fail-closed 延期。
-    // 脚本的写操作只发生在扣费成功之后，失败时不会留下"已标记但未扣费"的状态。
-    logger.warn("升级额度占用失败，按延期处理", {
-      err,
-      jobItemId,
-      bucket,
-      contestId: options.contestId ?? null,
-    });
-    return { ok: false, retryAfterMs: fallbackRetryAfterMs };
-  }
+    const bucket = options.bucket ?? "code";
+    const limit = options.limit ?? SUBMISSION_QUOTA_BUCKETS[bucket].limit;
+    // 兜底等待时长：即使限流返回值异常也不能把 NaN/undefined 传给调用方
+    // （`plusSeconds(Math.ceil(NaN/1000))` 会抛 RangeError，把"延期"变成真正的失败）
+    const fallbackRetryAfterMs = Math.max(1000, limit.windowSec * 1000);
+    try {
+        const redis = getRedis();
+        const raw = await redis.eval(
+            UPGRADE_QUOTA_CONSUME_SCRIPT,
+            2,
+            upgradeQuotaMarkerKey(sourceUserId, jobItemId),
+            // 与对应桶的正常提交**同键**：`code` / `contest_code` / `objective`
+            submissionQuotaRedisKey(bucket, sourceUserId),
+            new Date().toISOString(),
+            UPGRADE_QUOTA_MARKER_TTL_MS,
+            limit.windowSec * 1000,
+            limit.max,
+        );
+        const result = Array.isArray(raw) ? raw as number[] : [0, 0];
+        if (Number(result[0]) === 1) return { ok: true };
+        const ttl = Number(result[1]);
+        return {
+            ok: false,
+            retryAfterMs: Number.isFinite(ttl) && ttl > 0
+                ? ttl
+                : fallbackRetryAfterMs,
+        };
+    } catch (err) {
+        // Redis 不可用 / 脚本执行失败：fail-closed 延期。
+        // 脚本的写操作只发生在扣费成功之后，失败时不会留下"已标记但未扣费"的状态。
+        logger.warn("升级额度占用失败，按延期处理", {
+            err,
+            jobItemId,
+            bucket,
+            contestId: options.contestId ?? null,
+        });
+        return { ok: false, retryAfterMs: fallbackRetryAfterMs };
+    }
 }

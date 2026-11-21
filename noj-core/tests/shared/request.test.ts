@@ -3,37 +3,39 @@ import { parseJsonBody } from "./../../src/shared/http/request.ts";
 import { ValidationError } from "./../../src/shared/base/errors.ts";
 
 function mockCtx(body: unknown) {
-  return {
-    req: {
-      json: <T>() => body as T,
-    },
-  };
+    return {
+        req: {
+            json: <T>() => body as T,
+        },
+    };
 }
 
 Deno.test({
-  name: "parseJsonBody: 有效 JSON 返回正确类型",
-  fn: async () => {
-    const ctx = mockCtx({ name: "test", value: 42 });
-    const result = await parseJsonBody<{ name: string; value: number }>(ctx);
-    assertEquals(result.name, "test");
-    assertEquals(result.value, 42);
-  },
+    name: "parseJsonBody: 有效 JSON 返回正确类型",
+    fn: async () => {
+        const ctx = mockCtx({ name: "test", value: 42 });
+        const result = await parseJsonBody<{ name: string; value: number }>(
+            ctx,
+        );
+        assertEquals(result.name, "test");
+        assertEquals(result.value, 42);
+    },
 });
 
 Deno.test({
-  name: "parseJsonBody: JSON 解析失败抛出 ValidationError",
-  fn: async () => {
-    const badCtx = {
-      req: {
-        json: <T>() => {
-          throw new SyntaxError("Unexpected token");
-        },
-      },
-    };
-    await assertRejects(
-      () => parseJsonBody(badCtx),
-      ValidationError,
-      "请求体格式错误",
-    );
-  },
+    name: "parseJsonBody: JSON 解析失败抛出 ValidationError",
+    fn: async () => {
+        const badCtx = {
+            req: {
+                json: <T>() => {
+                    throw new SyntaxError("Unexpected token");
+                },
+            },
+        };
+        await assertRejects(
+            () => parseJsonBody(badCtx),
+            ValidationError,
+            "请求体格式错误",
+        );
+    },
 });

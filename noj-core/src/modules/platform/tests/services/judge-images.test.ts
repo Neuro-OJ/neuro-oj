@@ -10,16 +10,16 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { judgeImages } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
-  createJudgeImage,
-  deleteJudgeImage,
-  listJudgeImages,
-  updateJudgeImage,
-  validateJudgeImage,
+    createJudgeImage,
+    deleteJudgeImage,
+    listJudgeImages,
+    updateJudgeImage,
+    validateJudgeImage,
 } from "../../system/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
-  NotFoundError,
-  ValidationError,
+    NotFoundError,
+    ValidationError,
 } from "../../../../shared/base/errors.ts";
 
 const TEST_ACTOR = userActorFromAuthenticatedId("judge-images-test-admin");
@@ -27,251 +27,261 @@ const TEST_ACTOR = userActorFromAuthenticatedId("judge-images-test-admin");
 const ts = Date.now();
 
 Deno.test({
-  name: "judge-images service: listJudgeImages 返回数组",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const items = await listJudgeImages();
-    assertEquals(Array.isArray(items), true);
-    // 应包含 00_migrate_test.ts 的默认 seed
-    assertEquals(items.some((i) => i.image === "noj-judge-python"), true);
-  },
+    name: "judge-images service: listJudgeImages 返回数组",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const items = await listJudgeImages();
+        assertEquals(Array.isArray(items), true);
+        // 应包含 00_migrate_test.ts 的默认 seed
+        assertEquals(items.some((i) => i.image === "noj-judge-python"), true);
+    },
 });
 
 Deno.test({
-  name: "judge-images service: createJudgeImage 创建成功",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const item = await createJudgeImage({
-      image: `test-image-${ts}`,
-      mode: "exact",
-      kind: "evaluator",
-      description: "测试用镜像",
-    }, TEST_ACTOR);
-    assertEquals(item.image, `test-image-${ts}`);
-    assertEquals(item.mode, "exact");
-    assertEquals(item.description, "测试用镜像");
-    assertEquals(typeof item.id, "string");
-    assertEquals(typeof item.created_at, "string");
-    assertEquals(typeof item.updated_at, "string");
-  },
+    name: "judge-images service: createJudgeImage 创建成功",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const item = await createJudgeImage({
+            image: `test-image-${ts}`,
+            mode: "exact",
+            kind: "evaluator",
+            description: "测试用镜像",
+        }, TEST_ACTOR);
+        assertEquals(item.image, `test-image-${ts}`);
+        assertEquals(item.mode, "exact");
+        assertEquals(item.description, "测试用镜像");
+        assertEquals(typeof item.id, "string");
+        assertEquals(typeof item.created_at, "string");
+        assertEquals(typeof item.updated_at, "string");
+    },
 });
 
 Deno.test({
-  name: "judge-images service: createJudgeImage 非法 mode 拒绝",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await assertRejects(
-      () =>
-        createJudgeImage({
-          image: "test-image",
-          mode: "regex" as "exact" | "all_versions",
-          kind: "evaluator",
-        }, TEST_ACTOR),
-      ValidationError,
-    );
-  },
+    name: "judge-images service: createJudgeImage 非法 mode 拒绝",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        await assertRejects(
+            () =>
+                createJudgeImage({
+                    image: "test-image",
+                    mode: "regex" as "exact" | "all_versions",
+                    kind: "evaluator",
+                }, TEST_ACTOR),
+            ValidationError,
+        );
+    },
 });
 
 Deno.test({
-  name: "judge-images service: createJudgeImage 空镜像名拒绝",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await assertRejects(
-      () =>
-        createJudgeImage({
-          image: "",
-          mode: "exact",
-          kind: "evaluator",
-        }, TEST_ACTOR),
-      ValidationError,
-    );
-  },
+    name: "judge-images service: createJudgeImage 空镜像名拒绝",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        await assertRejects(
+            () =>
+                createJudgeImage({
+                    image: "",
+                    mode: "exact",
+                    kind: "evaluator",
+                }, TEST_ACTOR),
+            ValidationError,
+        );
+    },
 });
 
 Deno.test({
-  name: "judge-images service: updateJudgeImage 更新成功",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    // 先创建
-    const created = await createJudgeImage({
-      image: `update-test-${ts}`,
-      mode: "exact",
-      kind: "evaluator",
-      description: "原始介绍",
-    }, TEST_ACTOR);
-    // 再更新
-    const updated = await updateJudgeImage(created.id, {
-      description: "更新后的介绍",
-      mode: "all_versions",
-    }, TEST_ACTOR);
-    assertEquals(updated.description, "更新后的介绍");
-    assertEquals(updated.mode, "all_versions");
-    assertEquals(updated.image, `update-test-${ts}`);
-  },
+    name: "judge-images service: updateJudgeImage 更新成功",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        // 先创建
+        const created = await createJudgeImage({
+            image: `update-test-${ts}`,
+            mode: "exact",
+            kind: "evaluator",
+            description: "原始介绍",
+        }, TEST_ACTOR);
+        // 再更新
+        const updated = await updateJudgeImage(created.id, {
+            description: "更新后的介绍",
+            mode: "all_versions",
+        }, TEST_ACTOR);
+        assertEquals(updated.description, "更新后的介绍");
+        assertEquals(updated.mode, "all_versions");
+        assertEquals(updated.image, `update-test-${ts}`);
+    },
 });
 
 Deno.test({
-  name: "judge-images service: updateJudgeImage 不存在的 id 返回 NotFound",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await assertRejects(
-      () =>
-        updateJudgeImage("nonexistent-id", { description: "new" }, TEST_ACTOR),
-      NotFoundError,
-    );
-  },
+    name: "judge-images service: updateJudgeImage 不存在的 id 返回 NotFound",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        await assertRejects(
+            () =>
+                updateJudgeImage(
+                    "nonexistent-id",
+                    { description: "new" },
+                    TEST_ACTOR,
+                ),
+            NotFoundError,
+        );
+    },
 });
 
 Deno.test({
-  name: "judge-images service: deleteJudgeImage 删除成功",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const created = await createJudgeImage({
-      image: `delete-test-${ts}`,
-      mode: "exact",
-      kind: "evaluator",
-    }, TEST_ACTOR);
-    await deleteJudgeImage(created.id, TEST_ACTOR);
-    // 删除后再次删除应抛 NotFound
-    await assertRejects(
-      () => deleteJudgeImage(created.id, TEST_ACTOR),
-      NotFoundError,
-    );
-  },
+    name: "judge-images service: deleteJudgeImage 删除成功",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const created = await createJudgeImage({
+            image: `delete-test-${ts}`,
+            mode: "exact",
+            kind: "evaluator",
+        }, TEST_ACTOR);
+        await deleteJudgeImage(created.id, TEST_ACTOR);
+        // 删除后再次删除应抛 NotFound
+        await assertRejects(
+            () => deleteJudgeImage(created.id, TEST_ACTOR),
+            NotFoundError,
+        );
+    },
 });
 
 Deno.test({
-  name: "judge-images service: validateJudgeImage 有效镜像通过",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const result = await validateJudgeImage("noj-judge-python");
-    assertEquals(result, true);
-  },
+    name: "judge-images service: validateJudgeImage 有效镜像通过",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const result = await validateJudgeImage("noj-judge-python");
+        assertEquals(result, true);
+    },
 });
 
 Deno.test({
-  name: "judge-images service: validateJudgeImage all_versions 带标签通过",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const result = await validateJudgeImage("noj-judge-python:latest");
-    assertEquals(result, true);
-  },
+    name: "judge-images service: validateJudgeImage all_versions 带标签通过",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const result = await validateJudgeImage("noj-judge-python:latest");
+        assertEquals(result, true);
+    },
 });
 
 Deno.test({
-  name:
-    "judge-images service: validateJudgeImage all_versions 保留完整 repository 路径",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    await db.delete(judgeImages);
-    await createJudgeImage({
-      image: "registry.local/team/noj-judge-python:3.12",
-      mode: "all_versions",
-      kind: "evaluator",
-      description: "repo path test",
-    }, TEST_ACTOR);
+    name:
+        "judge-images service: validateJudgeImage all_versions 保留完整 repository 路径",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const db = getDb();
+        await db.delete(judgeImages);
+        await createJudgeImage({
+            image: "registry.local/team/noj-judge-python:3.12",
+            mode: "all_versions",
+            kind: "evaluator",
+            description: "repo path test",
+        }, TEST_ACTOR);
 
-    assertEquals(
-      await validateJudgeImage("registry.local/team/noj-judge-python:latest"),
-      true,
-    );
-    await assertRejects(
-      () => validateJudgeImage("evil.example/other/noj-judge-python:latest"),
-      ValidationError,
-    );
-  },
+        assertEquals(
+            await validateJudgeImage(
+                "registry.local/team/noj-judge-python:latest",
+            ),
+            true,
+        );
+        await assertRejects(
+            () =>
+                validateJudgeImage(
+                    "evil.example/other/noj-judge-python:latest",
+                ),
+            ValidationError,
+        );
+    },
 });
 
 Deno.test({
-  name:
-    "judge-images service: validateJudgeImage 不在白名单返回 ValidationError",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    await assertRejects(
-      () => validateJudgeImage("unknown-image:latest"),
-      ValidationError,
-    );
-  },
+    name:
+        "judge-images service: validateJudgeImage 不在白名单返回 ValidationError",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        await assertRejects(
+            () => validateJudgeImage("unknown-image:latest"),
+            ValidationError,
+        );
+    },
 });
 
 Deno.test({
-  name: "judge-images service: validateJudgeImage 空白名单返回 ValidationError",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    // 清空白名单
-    const db = getDb();
-    await db.delete(judgeImages);
-    await assertRejects(
-      () => validateJudgeImage("any-image"),
-      ValidationError,
-      "系统尚未配置允许的评测镜像",
-    );
-  },
+    name:
+        "judge-images service: validateJudgeImage 空白名单返回 ValidationError",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        // 清空白名单
+        const db = getDb();
+        await db.delete(judgeImages);
+        await assertRejects(
+            () => validateJudgeImage("any-image"),
+            ValidationError,
+            "系统尚未配置允许的评测镜像",
+        );
+    },
 });
 
 // 清理
 Deno.test({
-  name: "judge-images service: cleanup",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    try {
-      const db = getDb();
-      await db.delete(judgeImages).where(
-        eq(judgeImages.image, `test-image-${ts}`),
-      );
-      await db.delete(judgeImages).where(
-        eq(judgeImages.image, `update-test-${ts}`),
-      );
-      await db.delete(judgeImages).where(
-        eq(judgeImages.image, `delete-test-${ts}`),
-      );
+    name: "judge-images service: cleanup",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        try {
+            const db = getDb();
+            await db.delete(judgeImages).where(
+                eq(judgeImages.image, `test-image-${ts}`),
+            );
+            await db.delete(judgeImages).where(
+                eq(judgeImages.image, `update-test-${ts}`),
+            );
+            await db.delete(judgeImages).where(
+                eq(judgeImages.image, `delete-test-${ts}`),
+            );
 
-      // 确保默认评测镜像种子数据存在（"空白名单"测试可能已清除）
-      const existing = await db
-        .select()
-        .from(judgeImages)
-        .where(eq(judgeImages.image, "noj-judge-python"))
-        .limit(1);
-      if (existing.length === 0) {
-        const now = new Date().toISOString();
-        await db.insert(judgeImages).values({
-          id: "e0000000-0000-0000-0000-000000000001",
-          image: "noj-judge-python",
-          mode: "all_versions",
-          kind: "evaluator",
-          description: "Python 3.12 评测环境",
-          created_at: now,
-          updated_at: now,
-        });
-      }
-    } catch {
-      // ignore
-    }
-  },
+            // 确保默认评测镜像种子数据存在（"空白名单"测试可能已清除）
+            const existing = await db
+                .select()
+                .from(judgeImages)
+                .where(eq(judgeImages.image, "noj-judge-python"))
+                .limit(1);
+            if (existing.length === 0) {
+                const now = new Date().toISOString();
+                await db.insert(judgeImages).values({
+                    id: "e0000000-0000-0000-0000-000000000001",
+                    image: "noj-judge-python",
+                    mode: "all_versions",
+                    kind: "evaluator",
+                    description: "Python 3.12 评测环境",
+                    created_at: now,
+                    updated_at: now,
+                });
+            }
+        } catch {
+            // ignore
+        }
+    },
 });

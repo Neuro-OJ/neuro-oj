@@ -1,282 +1,288 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/server/apiError'
-import { useToast } from '~/composables/useToast'
-import type { AdminColumn } from "~/components/admin/AdminTable.vue"
-import { useDialog } from '~/composables/useDialog'
+import { extractApiError } from '~/utils/server/apiError';
+import { useToast } from '~/composables/useToast';
+import type { AdminColumn } from '~/components/admin/AdminTable.vue';
+import { useDialog } from '~/composables/useDialog';
 
 definePageMeta({
-  layout: "admin",
-  middleware: "admin",
+    layout: 'admin',
+    middleware: 'admin',
+});
 
-})
+const { isLoggedIn } = useAuth();
+const { api } = useApi();
+const { toast } = useToast();
+const { dialog } = useDialog();
 
-const { isLoggedIn } = useAuth()
-const { api } = useApi()
-const { toast } = useToast()
-const { dialog } = useDialog()
-
-useRequireLogin()
+useRequireLogin();
 
 interface Tag {
-  id: string
-  name: string
-  kind: 'problem' | 'algorithm'
-  problem_count: number
-  created_at: string
-  updated_at: string
+    id: string;
+    name: string;
+    kind: 'problem' | 'algorithm';
+    problem_count: number;
+    created_at: string;
+    updated_at: string;
 }
 
-const tags = ref<Tag[]>([])
-const tableLoading = ref(true)
-const tableError = ref("")
+const tags = ref<Tag[]>([]);
+const tableLoading = ref(true);
+const tableError = ref('');
 
 const kindLabels: Record<Tag['kind'], string> = {
-  problem: '题目标签',
-  algorithm: '算法标签',
-}
+    problem: '题目标签',
+    algorithm: '算法标签',
+};
 
 const columns: AdminColumn[] = [
-  { key: "name", label: "名称" },
-  { key: "kind", label: "类型" },
-  { key: "problem_count", label: "关联题目数" },
-  { key: "created_at", label: "创建时间" },
-  { key: "actions", label: "操作" },
-]
+    { key: 'name', label: '名称' },
+    { key: 'kind', label: '类型' },
+    { key: 'problem_count', label: '关联题目数' },
+    { key: 'created_at', label: '创建时间' },
+    { key: 'actions', label: '操作' },
+];
 
 async function loadTags() {
-  if (!isLoggedIn.value) return
-  tableLoading.value = true
-  tableError.value = ""
-  try {
-    const res = await api.get<{ data: Tag[] }>("/api/v1/tags", { silent: true })
-    tags.value = res.data
-  } catch (err: unknown) {
-    tableError.value = extractApiError(err).message
-  } finally {
-    tableLoading.value = false
-  }
+    if (!isLoggedIn.value) return;
+    tableLoading.value = true;
+    tableError.value = '';
+    try {
+        const res = await api.get<{ data: Tag[] }>('/api/v1/tags', { silent: true });
+        tags.value = res.data;
+    } catch (err: unknown) {
+        tableError.value = extractApiError(err).message;
+    } finally {
+        tableLoading.value = false;
+    }
 }
 
 watch(isLoggedIn, (val) => {
-  if (val) loadTags()
-}, { immediate: true })
+    if (val) loadTags();
+}, { immediate: true });
 
 // ── 创建/编辑弹窗 ──
-const showForm = ref(false)
-const editingTag = ref<Tag | null>(null)
-const formName = ref("")
-const formKind = ref<'problem' | 'algorithm'>('problem')
-const saving = ref(false)
-const formError = ref("")
+const showForm = ref(false);
+const editingTag = ref<Tag | null>(null);
+const formName = ref('');
+const formKind = ref<'problem' | 'algorithm'>('problem');
+const saving = ref(false);
+const formError = ref('');
 
 function openCreate() {
-  editingTag.value = null
-  formName.value = ""
-  formKind.value = "problem"
-  formError.value = ""
-  showForm.value = true
+    editingTag.value = null;
+    formName.value = '';
+    formKind.value = 'problem';
+    formError.value = '';
+    showForm.value = true;
 }
 
 function openEdit(tag: Tag) {
-  editingTag.value = tag
-  formName.value = tag.name
-  formKind.value = tag.kind
-  formError.value = ""
-  showForm.value = true
+    editingTag.value = tag;
+    formName.value = tag.name;
+    formKind.value = tag.kind;
+    formError.value = '';
+    showForm.value = true;
 }
 
 async function handleSave() {
-  if (!formName.value.trim()) {
-    formError.value = "名称不能为空"
-    return
-  }
-  saving.value = true
-  formError.value = ""
-  try {
-    if (editingTag.value) {
-      await api.put(`/api/v1/tags/${editingTag.value.id}`, {
-        name: formName.value.trim(),
-        kind: formKind.value,
-      })
-      toast.success("标签已更新")
-    } else {
-      await api.post("/api/v1/tags", {
-        name: formName.value.trim(),
-        kind: formKind.value,
-      })
-      toast.success("标签已创建")
+    if (!formName.value.trim()) {
+        formError.value = '名称不能为空';
+        return;
     }
-    showForm.value = false
-    await loadTags()
-  } catch (err: unknown) {
-    formError.value = extractApiError(err).message
-  } finally {
-    saving.value = false
-  }
+    saving.value = true;
+    formError.value = '';
+    try {
+        if (editingTag.value) {
+            await api.put(`/api/v1/tags/${editingTag.value.id}`, {
+                name: formName.value.trim(),
+                kind: formKind.value,
+            });
+            toast.success('标签已更新');
+        } else {
+            await api.post('/api/v1/tags', {
+                name: formName.value.trim(),
+                kind: formKind.value,
+            });
+            toast.success('标签已创建');
+        }
+        showForm.value = false;
+        await loadTags();
+    } catch (err: unknown) {
+        formError.value = extractApiError(err).message;
+    } finally {
+        saving.value = false;
+    }
 }
 
 // ── 合并弹窗 ──
-const mergeSource = ref<Tag | null>(null)
-const showMergeModal = ref(false)
-const mergeTargetId = ref("")
-const merging = ref(false)
-const mergeError = ref("")
+const mergeSource = ref<Tag | null>(null);
+const showMergeModal = ref(false);
+const mergeTargetId = ref('');
+const merging = ref(false);
+const mergeError = ref('');
 
 // 合并目标选项：排除源标签自身
 const mergeTargetOptions = computed(() =>
-  tags.value
-    .filter((t) => t.id !== mergeSource.value?.id)
-    .map((t) => ({ label: `${kindLabels[t.kind]}: ${t.name}`, value: t.id })),
-)
+    tags.value
+        .filter((t) => t.id !== mergeSource.value?.id)
+        .map((t) => ({ label: `${kindLabels[t.kind]}: ${t.name}`, value: t.id }))
+);
 
 function openMerge(tag: Tag) {
-  mergeSource.value = tag
-  mergeTargetId.value = ""
-  mergeError.value = ""
-  showMergeModal.value = true
+    mergeSource.value = tag;
+    mergeTargetId.value = '';
+    mergeError.value = '';
+    showMergeModal.value = true;
 }
 
 async function handleMerge() {
-  if (!mergeSource.value) return
-  if (!mergeTargetId.value) {
-    mergeError.value = "请选择目标标签"
-    return
-  }
-  merging.value = true
-  mergeError.value = ""
-  try {
-    await api.post(`/api/v1/tags/${mergeSource.value.id}/merge`, {
-      target_id: mergeTargetId.value,
-    })
-    toast.success("标签已合并")
-    showMergeModal.value = false
-    await loadTags()
-  } catch (err: unknown) {
-    mergeError.value = extractApiError(err).message
-  } finally {
-    merging.value = false
-  }
+    if (!mergeSource.value) return;
+    if (!mergeTargetId.value) {
+        mergeError.value = '请选择目标标签';
+        return;
+    }
+    merging.value = true;
+    mergeError.value = '';
+    try {
+        await api.post(`/api/v1/tags/${mergeSource.value.id}/merge`, {
+            target_id: mergeTargetId.value,
+        });
+        toast.success('标签已合并');
+        showMergeModal.value = false;
+        await loadTags();
+    } catch (err: unknown) {
+        mergeError.value = extractApiError(err).message;
+    } finally {
+        merging.value = false;
+    }
 }
 
 // ── 删除（useDialog danger 确认） ──
 async function confirmDelete(tag: Tag) {
-  const ok = await dialog({
-    title: "确认删除标签？",
-    text: `将删除「${tag.name}」（${kindLabels[tag.kind]}）。此操作不可撤销，关联题目将失去该标签。`,
-    danger: true,
-    confirmText: "确认删除",
-  })
-  if (!ok) return
-  try {
-    await api.delete(`/api/v1/tags/${tag.id}`, { silent: true })
-    toast.success(`已删除「${tag.name}」`)
-    await loadTags()
-  } catch (err: unknown) {
-    toast.error(extractApiError(err).message)
-  }
+    const ok = await dialog({
+        title: '确认删除标签？',
+        text: `将删除「${tag.name}」（${kindLabels[tag.kind]}）。此操作不可撤销，关联题目将失去该标签。`,
+        danger: true,
+        confirmText: '确认删除',
+    });
+    if (!ok) return;
+    try {
+        await api.delete(`/api/v1/tags/${tag.id}`, { silent: true });
+        toast.success(`已删除「${tag.name}」`);
+        await loadTags();
+    } catch (err: unknown) {
+        toast.error(extractApiError(err).message);
+    }
 }
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
-    <AdminPageHeader title="标签管理" description="管理题目标签（problem）与算法标签（algorithm）">
-      <template #actions>
-        <UButton color="primary" size="sm" @click="openCreate">
+    <div class="flex flex-col gap-4">
+        <AdminPageHeader title="标签管理" description="管理题目标签（problem）与算法标签（algorithm）">
+            <template #actions>
+                <UButton color="primary" size="sm" @click="openCreate">
           <UIcon name="i-lucide-plus" class="size-4" />
           新建标签
         </UButton>
-      </template>
-    </AdminPageHeader>
+            </template>
+        </AdminPageHeader>
 
-    <AdminTable
-      :columns="columns"
-      :items="tags as unknown as Record<string, unknown>[]"
-      :loading="tableLoading"
-      :error="tableError || undefined"
-      :total-pages="1"
-      :current-page="1"
-    >
-      <template #cell="{ row, column }">
-        <template v-if="column.key === 'kind'">
-          <UBadge size="sm" variant="subtle" :color="(row as unknown as Tag).kind === 'algorithm' ? 'secondary' : 'primary'">
+        <AdminTable
+            :columns="columns"
+            :items="tags as unknown as Record<string, unknown>[]"
+            :loading="tableLoading"
+            :error="tableError || undefined"
+            :total-pages="1"
+            :current-page="1"
+        >
+            <template #cell="{ row, column }">
+                <template v-if="column.key === 'kind'">
+                    <UBadge size="sm" variant="subtle"
+                        :color="(row as unknown as Tag).kind === 'algorithm' ? 'secondary' : 'primary'">
             {{ kindLabels[(row as unknown as Tag).kind] }}
           </UBadge>
+                </template>
+                <template v-else-if="column.key === 'created_at'">
+          {{ new Date((row as unknown as Tag).created_at).toLocaleString('zh-CN') }}
         </template>
-        <template v-else-if="column.key === 'created_at'">
-          {{ new Date((row as unknown as Tag).created_at).toLocaleString("zh-CN") }}
-        </template>
-      </template>
-      <template #actions="{ row }">
-        <div class="flex gap-1.5 justify-center">
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text" title="编辑" aria-label="编辑" @click="openEdit(row as unknown as Tag)">
-            <UIcon name="i-lucide-pencil" class="size-3.5" />
-          </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300" title="合并到其他标签" aria-label="合并" @click="openMerge(row as unknown as Tag)">
-            <UIcon name="i-lucide-git-merge" class="size-3.5" />
-          </UButton>
-          <UButton color="neutral" variant="outline" class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30" title="删除" aria-label="删除" @click="confirmDelete(row as unknown as Tag)">
-            <UIcon name="i-lucide-trash-2" class="size-3.5" />
-          </UButton>
-        </div>
-      </template>
-    </AdminTable>
-  </div>
-
-  <!-- 创建/编辑抽屉 (Slideover) -->
-  <AdminEditPanel
-    :open="showForm"
-    :title="editingTag ? '编辑标签' : '新建标签'"
-    :loading="saving"
-    :save-text="editingTag ? '保存标签' : '立即创建'"
-    @close="showForm = false"
-    @save="handleSave"
-  >
-    <div class="flex flex-col gap-3">
-      <div class="flex flex-col gap-1">
-        <label class="text-xs font-semibold text-text">名称 <span class="text-error-text">*</span></label>
-        <input
-          v-model="formName"
-          class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary"
-          placeholder="标签名称"
-        />
-      </div>
-      <div class="flex flex-col gap-1">
-        <label class="text-xs font-semibold text-text">类型 <span class="text-error-text">*</span></label>
-        <USelect
-          v-model="formKind"
-          :items="[{ label: '题目标签', value: 'problem' }, { label: '算法标签', value: 'algorithm' }]"
-          class="w-full"
-        />
-      </div>
-      <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+            </template>
+            <template #actions="{ row }">
+                <div class="flex gap-1.5 justify-center">
+                    <UButton color="neutral" variant="outline"
+                        class="flex w-9 h-9 border-border text-text-secondary hover:bg-primary-bg hover:text-text"
+                        title="编辑" aria-label="编辑" @click="openEdit(row as unknown as Tag)">
+                        <UIcon name="i-lucide-pencil" class="size-3.5" />
+                    </UButton>
+                    <UButton color="neutral" variant="outline"
+                        class="flex w-9 h-9 border-border text-text-secondary hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                        title="合并到其他标签" aria-label="合并" @click="openMerge(row as unknown as Tag)">
+                        <UIcon name="i-lucide-git-merge" class="size-3.5" />
+                    </UButton>
+                    <UButton color="neutral" variant="outline"
+                        class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30"
+                        title="删除" aria-label="删除" @click="confirmDelete(row as unknown as Tag)">
+                        <UIcon name="i-lucide-trash-2" class="size-3.5" />
+                    </UButton>
+                </div>
+            </template>
+        </AdminTable>
     </div>
-  </AdminEditPanel>
 
-  <!-- 合并标签抽屉 -->
-  <AdminEditPanel
-    :open="showMergeModal"
-    title="合并标签"
-    width-class="sm:max-w-md"
-    :loading="merging"
-    save-text="确认合并"
-    @update:open="(val: boolean) => showMergeModal = val"
-    @close="showMergeModal = false"
-    @save="handleMerge"
-  >
-    <div class="flex flex-col gap-3">
-      <p class="text-sm text-text-secondary">
+    <!-- 创建/编辑抽屉 (Slideover) -->
+    <AdminEditPanel
+        :open="showForm"
+        :title="editingTag ? '编辑标签' : '新建标签'"
+        :loading="saving"
+        :save-text="editingTag ? '保存标签' : '立即创建'"
+        @close="showForm = false"
+        @save="handleSave"
+    >
+        <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-semibold text-text">名称 <span class="text-error-text">*</span></label>
+                <input
+                    v-model="formName"
+                    class="px-3 py-2 text-sm border border-border rounded outline-none transition-colors duration-150 focus:border-primary"
+                    placeholder="标签名称"
+                />
+            </div>
+            <div class="flex flex-col gap-1">
+                <label class="text-xs font-semibold text-text">类型 <span class="text-error-text">*</span></label>
+                <USelect
+                    v-model="formKind"
+                    :items="[{ label: '题目标签', value: 'problem' }, { label: '算法标签', value: 'algorithm' }]"
+                    class="w-full"
+                />
+            </div>
+            <p v-if="formError" class="text-error-text text-xs">{{ formError }}</p>
+        </div>
+    </AdminEditPanel>
+
+    <!-- 合并标签抽屉 -->
+    <AdminEditPanel
+        :open="showMergeModal"
+        title="合并标签"
+        width-class="sm:max-w-md"
+        :loading="merging"
+        save-text="确认合并"
+        @update:open="(val: boolean) => showMergeModal = val"
+        @close="showMergeModal = false"
+        @save="handleMerge"
+    >
+        <div class="flex flex-col gap-3">
+            <p class="text-sm text-text-secondary">
         将标签 <strong class="text-text">{{ mergeSource?.name }}</strong> 合并到目标标签，源标签下的题目会转移到目标标签。
       </p>
-      <div class="flex flex-col gap-1">
-        <label class="text-13px font-semibold text-text">目标标签 <span class="text-error-text">*</span></label>
-        <USelect
-          v-model="mergeTargetId"
-          :items="mergeTargetOptions"
-          placeholder="选择目标标签"
-          class="w-full"
-        />
-      </div>
-      <p v-if="mergeError" class="text-error-text text-13px">{{ mergeError }}</p>
-    </div>
-  </AdminEditPanel>
+            <div class="flex flex-col gap-1">
+                <label class="text-13px font-semibold text-text">目标标签 <span class="text-error-text">*</span></label>
+                <USelect
+                    v-model="mergeTargetId"
+                    :items="mergeTargetOptions"
+                    placeholder="选择目标标签"
+                    class="w-full"
+                />
+            </div>
+            <p v-if="mergeError" class="text-error-text text-13px">{{ mergeError }}</p>
+        </div>
+    </AdminEditPanel>
 </template>

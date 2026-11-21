@@ -14,9 +14,9 @@ import { createInternalRouter } from "./routes/internal.ts";
 import { createPlatformRouter } from "./routes/platform.ts";
 import { renderMetrics } from "./metrics.ts";
 import {
-  type AccountingWorkerHandle,
-  type AccountingWorkerStatus,
-  evaluateAccountingWorkerHealth,
+    type AccountingWorkerHandle,
+    type AccountingWorkerStatus,
+    evaluateAccountingWorkerHealth,
 } from "./accounting.ts";
 
 /** /health/ready 单类依赖的检查结果。 */
@@ -24,110 +24,111 @@ export type ReadyCheckStatus = "ok" | "error";
 
 /** /health/ready 三类依赖的检查结果。 */
 export interface ReadyChecks {
-  /** 数据库是否可执行真实查询（SELECT 1）。 */
-  database: ReadyCheckStatus;
-  /** 本地政策表是否可读；空表表示尚未写入，按空政策继续服务。 */
-  policy: ReadyCheckStatus;
-  /** Redis ping 是否成功。 */
-  redis: ReadyCheckStatus;
-  /** 记账 worker 是否运行且最近没有持续失败。 */
-  accounting: ReadyCheckStatus;
+    /** 数据库是否可执行真实查询（SELECT 1）。 */
+    database: ReadyCheckStatus;
+    /** 本地政策表是否可读；空表表示尚未写入，按空政策继续服务。 */
+    policy: ReadyCheckStatus;
+    /** Redis ping 是否成功。 */
+    redis: ReadyCheckStatus;
+    /** 记账 worker 是否运行且最近没有持续失败。 */
+    accounting: ReadyCheckStatus;
 }
 
 /** /health/ready 探测结果：只含非敏感类别，不携带底层错误详情。 */
 export interface ReadyReport {
-  /** 三类依赖全部 ok 时为 true。 */
-  ready: boolean;
-  /** 逐类依赖状态（供结构化消费方区分失败类别）。 */
-  checks: ReadyChecks;
-  /** 失败类别代码（如 database_unavailable）；ready 时为空数组。 */
-  failures: string[];
+    /** 三类依赖全部 ok 时为 true。 */
+    ready: boolean;
+    /** 逐类依赖状态（供结构化消费方区分失败类别）。 */
+    checks: ReadyChecks;
+    /** 失败类别代码（如 database_unavailable）；ready 时为空数组。 */
+    failures: string[];
 }
 
 /** 就绪探测所需的依赖；null 表示该依赖未配置或不可查询。 */
 export interface ReadyProbeDeps {
-  /** 数据库连接；null 表示未配置。 */
-  db: Db | null;
-  /** Redis 连接；null 表示未配置。 */
-  redis: RedisClient | null;
-  /** 记账 worker 状态读取函数；null 表示没有可查询的 worker。 */
-  accounting: (() => AccountingWorkerStatus | null) | null;
+    /** 数据库连接；null 表示未配置。 */
+    db: Db | null;
+    /** Redis 连接；null 表示未配置。 */
+    redis: RedisClient | null;
+    /** 记账 worker 状态读取函数；null 表示没有可查询的 worker。 */
+    accounting: (() => AccountingWorkerStatus | null) | null;
 }
 
 /** createApp 的显式依赖注入点；组合根必须提供全部必需资源。 */
 export interface CreateAppDeps {
-  /** 数据库连接；不能省略或传 null。 */
-  db: Db;
-  /** Redis 连接；不能省略或传 null。 */
-  redis: RedisClient;
-  /** 记账 worker 句柄；后台任务必须由组合根显式创建并注入。 */
-  accountingWorker: AccountingWorkerHandle;
+    /** 数据库连接；不能省略或传 null。 */
+    db: Db;
+    /** Redis 连接；不能省略或传 null。 */
+    redis: RedisClient;
+    /** 记账 worker 句柄；后台任务必须由组合根显式创建并注入。 */
+    accountingWorker: AccountingWorkerHandle;
 }
 
 /** 数据库探针：真实执行 SELECT 1，失败只返回非敏感类别代码。 */
 async function checkDatabase(db: Db | null): Promise<string | null> {
-  if (!db) return "database_not_configured";
-  try {
-    const rows = (await db`SELECT 1 AS ok`) as unknown as Array<
-      { ok?: unknown }
-    >;
-    // SELECT 1 必须且只能返回一行 ok=1；空结果/异常值说明连接或协议异常。
-    if (
-      !Array.isArray(rows) || rows.length !== 1 || Number(rows[0]?.ok) !== 1
-    ) {
-      return "database_unexpected_result";
+    if (!db) return "database_not_configured";
+    try {
+        const rows = (await db`SELECT 1 AS ok`) as unknown as Array<
+            { ok?: unknown }
+        >;
+        // SELECT 1 必须且只能返回一行 ok=1；空结果/异常值说明连接或协议异常。
+        if (
+            !Array.isArray(rows) || rows.length !== 1 ||
+            Number(rows[0]?.ok) !== 1
+        ) {
+            return "database_unexpected_result";
+        }
+        return null;
+    } catch {
+        return "database_unavailable";
     }
-    return null;
-  } catch {
-    return "database_unavailable";
-  }
 }
 
 /** 政策探针：确认 Gateway 本地政策表可读，不回查 Core。 */
 async function checkPolicy(db: Db | null): Promise<string | null> {
-  if (!db) return "policy_not_configured";
-  try {
-    const rows = (await db`
+    if (!db) return "policy_not_configured";
+    try {
+        const rows = (await db`
       SELECT revision, day_max_calls, day_max_tokens, day_max_cost,
              month_max_calls, month_max_tokens, month_max_cost, updated_at
       FROM llm_policy WHERE id = ${INSTANCE_POLICY_ID}
     `) as unknown as Array<Partial<PolicyCapsInput> & { revision?: unknown }>;
-    // 迁移后尚未有实例政策行时，readCurrentPolicy 的空政策语义仍有效；
-    // 若已有行，则至少验证 revision 是合法的非负整数，避免错误行假装 ready。
-    if (
-      rows.length > 1 ||
-      rows.length === 1 &&
-        (!Number.isSafeInteger(Number(rows[0]?.revision)) ||
-          Number(rows[0]?.revision) < 0)
-    ) {
-      return "policy_unavailable";
+        // 迁移后尚未有实例政策行时，readCurrentPolicy 的空政策语义仍有效；
+        // 若已有行，则至少验证 revision 是合法的非负整数，避免错误行假装 ready。
+        if (
+            rows.length > 1 ||
+            rows.length === 1 &&
+                (!Number.isSafeInteger(Number(rows[0]?.revision)) ||
+                    Number(rows[0]?.revision) < 0)
+        ) {
+            return "policy_unavailable";
+        }
+        return null;
+    } catch {
+        return "policy_unavailable";
     }
-    return null;
-  } catch {
-    return "policy_unavailable";
-  }
 }
 
 /** Redis 探针：ping 成功即视为可写（失败只返回非敏感类别代码）。 */
 async function checkRedis(redis: RedisClient | null): Promise<string | null> {
-  if (!redis) return "redis_not_configured";
-  try {
-    await redis.ping();
-    return null;
-  } catch {
-    return "redis_unavailable";
-  }
+    if (!redis) return "redis_not_configured";
+    try {
+        await redis.ping();
+        return null;
+    } catch {
+        return "redis_unavailable";
+    }
 }
 
 /** 记账 worker 探针：读取状态并判定运行/持续失败，失败返回非敏感类别代码。 */
 function checkAccounting(
-  readStatus: (() => AccountingWorkerStatus | null) | null,
+    readStatus: (() => AccountingWorkerStatus | null) | null,
 ): string | null {
-  if (!readStatus) return "accounting_worker_missing";
-  const status = readStatus();
-  if (!status) return "accounting_worker_missing";
-  const health = evaluateAccountingWorkerHealth(status);
-  return health.healthy ? null : `accounting_${health.reason ?? "unhealthy"}`;
+    if (!readStatus) return "accounting_worker_missing";
+    const status = readStatus();
+    if (!status) return "accounting_worker_missing";
+    const health = evaluateAccountingWorkerHealth(status);
+    return health.healthy ? null : `accounting_${health.reason ?? "unhealthy"}`;
 }
 
 /**
@@ -140,26 +141,26 @@ function checkAccounting(
  * @returns 执行一次探测的异步函数
  */
 export function createReadyProbe(
-  deps: ReadyProbeDeps,
+    deps: ReadyProbeDeps,
 ): () => Promise<ReadyReport> {
-  return async () => {
-    const [database, policy, redis, accounting] = await Promise.all([
-      checkDatabase(deps.db),
-      checkPolicy(deps.db),
-      checkRedis(deps.redis),
-      checkAccounting(deps.accounting),
-    ]);
-    const checks: ReadyChecks = {
-      database: database === null ? "ok" : "error",
-      policy: policy === null ? "ok" : "error",
-      redis: redis === null ? "ok" : "error",
-      accounting: accounting === null ? "ok" : "error",
+    return async () => {
+        const [database, policy, redis, accounting] = await Promise.all([
+            checkDatabase(deps.db),
+            checkPolicy(deps.db),
+            checkRedis(deps.redis),
+            checkAccounting(deps.accounting),
+        ]);
+        const checks: ReadyChecks = {
+            database: database === null ? "ok" : "error",
+            policy: policy === null ? "ok" : "error",
+            redis: redis === null ? "ok" : "error",
+            accounting: accounting === null ? "ok" : "error",
+        };
+        const failures = [database, policy, redis, accounting].filter(
+            (failure): failure is string => failure !== null,
+        );
+        return { ready: failures.length === 0, checks, failures };
     };
-    const failures = [database, policy, redis, accounting].filter(
-      (failure): failure is string => failure !== null,
-    );
-    return { ready: failures.length === 0, checks, failures };
-  };
 }
 
 /**
@@ -173,71 +174,71 @@ export function createReadyProbe(
  * @returns Hono 应用实例
  */
 export function createApp(config: GatewayConfig, deps: CreateAppDeps) {
-  const app = new Hono();
+    const app = new Hono();
 
-  // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
-  app.use("*", requestIdMiddleware());
+    // 请求上下文最先挂载：使后续所有路由/服务的日志自动带上同一 request_id。
+    app.use("*", requestIdMiddleware());
 
-  // 入站请求体限制在 10MB 以内，超出直接 413，防止超大包 DoS（GW-01 / GW-03）。
-  app.use(
-    "*",
-    bodyLimit({
-      maxSize: 10 * 1024 * 1024,
-      onError: (c) => c.json({ error: "payload_too_large" }, 413),
-    }),
-  );
+    // 入站请求体限制在 10MB 以内，超出直接 413，防止超大包 DoS（GW-01 / GW-03）。
+    app.use(
+        "*",
+        bodyLimit({
+            maxSize: 10 * 1024 * 1024,
+            onError: (c) => c.json({ error: "payload_too_large" }, 413),
+        }),
+    );
 
-  // createApp 只组合 HTTP 路由。数据库、Redis 与后台任务必须由 main/runtime
-  // 显式创建并注入，避免测试或其它装配点因构造 app 产生隐藏连接和 worker。
-  const { db, redis, accountingWorker: worker } = deps;
-  const readyProbe = createReadyProbe({
-    db,
-    redis,
-    accounting: () => worker.getStatus(),
-  });
-
-  app.get("/health", (c) => {
-    return c.json({
-      status: "ok",
-      service: "noj-llm-gateway",
-      time: new Date().toISOString(),
+    // createApp 只组合 HTTP 路由。数据库、Redis 与后台任务必须由 main/runtime
+    // 显式创建并注入，避免测试或其它装配点因构造 app 产生隐藏连接和 worker。
+    const { db, redis, accountingWorker: worker } = deps;
+    const readyProbe = createReadyProbe({
+        db,
+        redis,
+        accounting: () => worker.getStatus(),
     });
-  });
 
-  app.get("/health/live", (c) => {
-    return c.json({
-      status: "alive",
-      service: "noj-llm-gateway",
-      contract_version: 1,
-      time: new Date().toISOString(),
+    app.get("/health", (c) => {
+        return c.json({
+            status: "ok",
+            service: "noj-llm-gateway",
+            time: new Date().toISOString(),
+        });
     });
-  });
 
-  app.get("/health/ready", async (c) => {
-    const report = await readyProbe();
-    const service = "noj-llm-gateway";
-    if (!report.ready) {
-      // detail 只含 db/redis/accounting 三类非敏感失败代码，便于区分故障来源。
-      return c.json({
-        status: "not_ready",
-        service,
-        detail: report.failures,
-        checks: report.checks,
-      }, 503);
-    }
-    return c.json({ status: "ready", service, checks: report.checks });
-  });
+    app.get("/health/live", (c) => {
+        return c.json({
+            status: "alive",
+            service: "noj-llm-gateway",
+            contract_version: 1,
+            time: new Date().toISOString(),
+        });
+    });
 
-  app.get("/metrics", (c) => {
-    c.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-    return c.body(renderMetrics());
-  });
+    app.get("/health/ready", async (c) => {
+        const report = await readyProbe();
+        const service = "noj-llm-gateway";
+        if (!report.ready) {
+            // detail 只含 db/redis/accounting 三类非敏感失败代码，便于区分故障来源。
+            return c.json({
+                status: "not_ready",
+                service,
+                detail: report.failures,
+                checks: report.checks,
+            }, 503);
+        }
+        return c.json({ status: "ready", service, checks: report.checks });
+    });
 
-  app.route("/", createLlmRouter({ config, db, redis }));
-  app.route("/", createInternalRouter({ config, db, redis }));
-  app.route("/", createPlatformRouter({ config, db, redis }));
+    app.get("/metrics", (c) => {
+        c.header("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+        return c.body(renderMetrics());
+    });
 
-  app.notFound((c) => c.json({ error: "not_found" }, 404));
+    app.route("/", createLlmRouter({ config, db, redis }));
+    app.route("/", createInternalRouter({ config, db, redis }));
+    app.route("/", createPlatformRouter({ config, db, redis }));
 
-  return app;
+    app.notFound((c) => c.json({ error: "not_found" }, 404));
+
+    return app;
 }

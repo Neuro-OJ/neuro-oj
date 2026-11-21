@@ -13,15 +13,15 @@ import type { Context, MiddlewareHandler, Next } from "hono";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import type { DbRoot, DbTx } from "../../../../../shared/db/executor.ts";
 import {
-  ForbiddenError,
-  UnauthorizedError,
+    ForbiddenError,
+    UnauthorizedError,
 } from "../../../../../shared/base/errors.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import {
-  type CapabilityName,
-  isPlatformRole,
-  type PlatformRole,
-  platformRoleCapabilities,
+    type CapabilityName,
+    isPlatformRole,
+    type PlatformRole,
+    platformRoleCapabilities,
 } from "../../../../../shared/access/roles.ts";
 
 type Executor = DbRoot | DbTx;
@@ -30,7 +30,7 @@ type Executor = DbRoot | DbTx;
 const PLATFORM_ROLE_CACHE = Symbol.for("noj.platformRole");
 
 interface RoleCacheCarrier {
-  [PLATFORM_ROLE_CACHE]?: PlatformRole;
+    [PLATFORM_ROLE_CACHE]?: PlatformRole;
 }
 
 const ROOT_USER_ID = "0";
@@ -41,23 +41,23 @@ const ROOT_USER_ID = "0";
  * 账号不存在、已注销或角色值非法时返回 null（fail-closed），调用方按无权限处理。
  */
 export async function findPlatformRole(
-  userId: string,
-  executor?: Executor,
+    userId: string,
+    executor?: Executor,
 ): Promise<PlatformRole | null> {
-  const db = executor ?? getDb();
-  const [row] = await db.select({ role: users.role }).from(users).where(
-    and(eq(users.id, userId), isNull(users.deleted_at)),
-  ).limit(1);
-  if (!row) return null;
-  return isPlatformRole(row.role) ? row.role : null;
+    const db = executor ?? getDb();
+    const [row] = await db.select({ role: users.role }).from(users).where(
+        and(eq(users.id, userId), isNull(users.deleted_at)),
+    ).limit(1);
+    if (!row) return null;
+    return isPlatformRole(row.role) ? row.role : null;
 }
 
 /** 单用户是否平台管理员；账号不存在时返回 false。 */
 export async function isUserAdmin(
-  userId: string,
-  executor?: Executor,
+    userId: string,
+    executor?: Executor,
 ): Promise<boolean> {
-  return (await findPlatformRole(userId, executor)) === "admin";
+    return (await findPlatformRole(userId, executor)) === "admin";
 }
 
 /**
@@ -66,11 +66,11 @@ export async function isUserAdmin(
  * 保留旧函数名以缩小调用面迁移；语义已改为“平台角色静态能力”，不再查角色表。
  */
 export async function getUserPermissions(
-  userId: string,
-  executor?: Executor,
+    userId: string,
+    executor?: Executor,
 ): Promise<ReadonlySet<CapabilityName>> {
-  const role = await findPlatformRole(userId, executor);
-  return role ? platformRoleCapabilities(role) : new Set();
+    const role = await findPlatformRole(userId, executor);
+    return role ? platformRoleCapabilities(role) : new Set();
 }
 
 /**
@@ -80,61 +80,61 @@ export async function getUserPermissions(
  * “可用管理员”统计，最后一个管理员保护依赖同一口径。
  */
 export async function getAdminUserIds(
-  executor?: Executor,
+    executor?: Executor,
 ): Promise<Set<string>> {
-  const db = executor ?? getDb();
-  const rows = await db.select({ id: users.id }).from(users).where(
-    and(
-      eq(users.role, "admin"),
-      isNull(users.deleted_at),
-      ne(users.id, ROOT_USER_ID),
-      sql`NOT EXISTS (
+    const db = executor ?? getDb();
+    const rows = await db.select({ id: users.id }).from(users).where(
+        and(
+            eq(users.role, "admin"),
+            isNull(users.deleted_at),
+            ne(users.id, ROOT_USER_ID),
+            sql`NOT EXISTS (
         SELECT 1 FROM user_bans admin_ban
         WHERE admin_ban.user_id = ${users.id}
           AND admin_ban.scope = 'platform'
           AND admin_ban.unbanned_at IS NULL
           AND (admin_ban.banned_until IS NULL OR admin_ban.banned_until > ${
-        new Date().toISOString()
-      })
+                new Date().toISOString()
+            })
       )`,
-    ),
-  );
-  return new Set(rows.map((row) => row.id));
+        ),
+    );
+    return new Set(rows.map((row) => row.id));
 }
 
 /** 读取（并缓存）当前请求的平台角色。 */
 export async function resolvePlatformRole(
-  c: Context,
+    c: Context,
 ): Promise<PlatformRole | null> {
-  const cached = (c as unknown as RoleCacheCarrier)[PLATFORM_ROLE_CACHE];
-  if (cached) return cached;
-  const userId = c.get("userId") as string | undefined;
-  if (!userId) return null;
-  const role = await findPlatformRole(userId);
-  if (role) (c as unknown as RoleCacheCarrier)[PLATFORM_ROLE_CACHE] = role;
-  return role;
+    const cached = (c as unknown as RoleCacheCarrier)[PLATFORM_ROLE_CACHE];
+    if (cached) return cached;
+    const userId = c.get("userId") as string | undefined;
+    if (!userId) return null;
+    const role = await findPlatformRole(userId);
+    if (role) (c as unknown as RoleCacheCarrier)[PLATFORM_ROLE_CACHE] = role;
+    return role;
 }
 
 /** 当前请求用户是否平台管理员（请求级缓存）。 */
 export async function isCurrentUserAdmin(c: Context): Promise<boolean> {
-  return (await resolvePlatformRole(c)) === "admin";
+    return (await resolvePlatformRole(c)) === "admin";
 }
 
 /** 当前请求用户的能力集合（请求级缓存）。 */
 export async function resolvePermissions(
-  c: Context,
+    c: Context,
 ): Promise<ReadonlySet<CapabilityName>> {
-  const cached = c.get("userPerms") as
-    | ReadonlySet<CapabilityName>
-    | undefined;
-  if (cached) return cached;
-  const role = await resolvePlatformRole(c);
-  const platform = role
-    ? platformRoleCapabilities(role)
-    : new Set<CapabilityName>();
-  const capabilities = new Set<CapabilityName>(platform);
-  c.set("userPerms", capabilities as never);
-  return capabilities;
+    const cached = c.get("userPerms") as
+        | ReadonlySet<CapabilityName>
+        | undefined;
+    if (cached) return cached;
+    const role = await resolvePlatformRole(c);
+    const platform = role
+        ? platformRoleCapabilities(role)
+        : new Set<CapabilityName>();
+    const capabilities = new Set<CapabilityName>(platform);
+    c.set("userPerms", capabilities as never);
+    return capabilities;
 }
 
 /** 平台管理员通配能力：持有它的角色可通行所有 `requirePermission` 守卫。 */
@@ -152,42 +152,42 @@ const ADMIN_FULL_ACCESS: CapabilityName = "admin:full_access";
  * `assertWorkspacePermission` / `loadWorkspace()` 的域内口径。
  */
 export async function checkPermission(
-  c: Context,
-  permission: CapabilityName,
+    c: Context,
+    permission: CapabilityName,
 ): Promise<boolean> {
-  const permissions = await resolvePermissions(c);
-  return permissions.has(ADMIN_FULL_ACCESS) || permissions.has(permission);
+    const permissions = await resolvePermissions(c);
+    return permissions.has(ADMIN_FULL_ACCESS) || permissions.has(permission);
 }
 
 /** handler 内断言：无能力时抛 403。 */
 export async function assertPermission(
-  c: Context,
-  permission: CapabilityName,
+    c: Context,
+    permission: CapabilityName,
 ): Promise<void> {
-  if (!(await checkPermission(c, permission))) {
-    throw new ForbiddenError("权限不足");
-  }
+    if (!(await checkPermission(c, permission))) {
+        throw new ForbiddenError("权限不足");
+    }
 }
 
 /** 管理路由中间件：平台角色必须为 admin。 */
 export function requireAdmin(): MiddlewareHandler {
-  return async (c: Context, next: Next) => {
-    if (!c.get("userId")) throw new UnauthorizedError("未提供认证令牌");
-    if ((await resolvePlatformRole(c)) !== "admin") {
-      throw new ForbiddenError("需要管理员权限");
-    }
-    await next();
-  };
+    return async (c: Context, next: Next) => {
+        if (!c.get("userId")) throw new UnauthorizedError("未提供认证令牌");
+        if ((await resolvePlatformRole(c)) !== "admin") {
+            throw new ForbiddenError("需要管理员权限");
+        }
+        await next();
+    };
 }
 
 /** 通用能力中间件：平台角色能力集合必须包含该能力。 */
 export function requirePermission(
-  permission: CapabilityName,
+    permission: CapabilityName,
 ): MiddlewareHandler {
-  return async (c: Context, next: Next) => {
-    if (!(await checkPermission(c, permission))) {
-      throw new ForbiddenError("权限不足");
-    }
-    await next();
-  };
+    return async (c: Context, next: Next) => {
+        if (!(await checkPermission(c, permission))) {
+            throw new ForbiddenError("权限不足");
+        }
+        await next();
+    };
 }

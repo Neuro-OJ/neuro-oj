@@ -12,27 +12,27 @@ import { DEFAULT_DOMAIN_ID } from "./types.ts";
 import { unifiedSubmissionSources } from "../../shared/versioning/submission-sources.ts";
 
 const CONTEST_TIME_ISO_REGEX_SQL =
-  "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$";
+    "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$";
 
 /** 统计/本人状态查询的已解析域范围。 */
 export interface SubmissionQueryScope {
-  domainId: string;
-  member: boolean;
-  includeAllEndedContests?: boolean;
+    domainId: string;
+    member: boolean;
+    includeAllEndedContests?: boolean;
 }
 
 export interface ProblemSubmissionSummary {
-  problem_id: string;
-  submit_count: number;
-  valid_submissions: number;
-  accepted_submissions: number;
-  attempted: boolean;
-  solved: boolean;
-  best_score: number | null;
+    problem_id: string;
+    submit_count: number;
+    valid_submissions: number;
+    accepted_submissions: number;
+    attempted: boolean;
+    solved: boolean;
+    best_score: number | null;
 }
 
 function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
-  return sql`CASE
+    return sql`CASE
     WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
      AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
     THEN ${endTimeExpr}::timestamptz <= now()
@@ -41,18 +41,18 @@ function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
 }
 
 function bindingAvailabilityCondition(): SQL {
-  return sql`b.disabled_at IS NULL AND p.latest_version_id IS NOT NULL AND src.status <> 'suspended'
+    return sql`b.disabled_at IS NULL AND p.latest_version_id IS NOT NULL AND src.status <> 'suspended'
     AND EXISTS (SELECT 1 FROM problem_versions v WHERE v.problem_id = p.id
       AND v.id = CASE WHEN p.effective_version_mode = 'exact' THEN p.required_version_id ELSE p.latest_version_id END)
     AND b.domain_id = p.domain_id`;
 }
 
 function availableBindingWhere(
-  selector: SQL,
-  domainId: AnyColumn | SQL,
-  _member: boolean | SQL,
+    selector: SQL,
+    domainId: AnyColumn | SQL,
+    _member: boolean | SQL,
 ): SQL {
-  return sql`EXISTS (SELECT 1 FROM domain_problem_bindings b
+    return sql`EXISTS (SELECT 1 FROM domain_problem_bindings b
     JOIN problems p ON p.id = b.problem_id JOIN domains src ON src.id = p.domain_id
     WHERE ${selector} AND b.domain_id = ${domainId}
       AND ${bindingAvailabilityCondition()})`;
@@ -60,33 +60,33 @@ function availableBindingWhere(
 
 /** 所有提交聚合必须使用的域、绑定、保密和竞赛窗口过滤。 */
 export function submissionQueryVisibility(
-  scope: SubmissionQueryScope,
-  columns: {
-    domainId: AnyColumn | SQL;
-    bindingId: AnyColumn | SQL;
-    contestId: AnyColumn | SQL;
-  },
+    scope: SubmissionQueryScope,
+    columns: {
+        domainId: AnyColumn | SQL;
+        bindingId: AnyColumn | SQL;
+        contestId: AnyColumn | SQL;
+    },
 ): SQL {
-  return sql`coalesce(${columns.domainId},${DEFAULT_DOMAIN_ID})=${scope.domainId}
+    return sql`coalesce(${columns.domainId},${DEFAULT_DOMAIN_ID})=${scope.domainId}
     AND (${columns.domainId} IS NULL OR EXISTS (SELECT 1 FROM domains query_domain
       WHERE query_domain.id=${scope.domainId} AND query_domain.status<>'suspended'
         AND (query_domain.configuration->>'access'='public' OR ${scope.member})))
     AND ((${columns.domainId} IS NULL AND ${columns.bindingId} IS NULL AND ${
-    scope.domainId === DEFAULT_DOMAIN_ID
-  })
+        scope.domainId === DEFAULT_DOMAIN_ID
+    })
       OR ${
-    availableBindingWhere(
-      sql`b.id = ${columns.bindingId}`,
-      sql`${scope.domainId}`,
-      scope.member,
-    )
-  })
+        availableBindingWhere(
+            sql`b.id = ${columns.bindingId}`,
+            sql`${scope.domainId}`,
+            scope.member,
+        )
+    })
     AND (${columns.contestId} IS NULL OR EXISTS (SELECT 1 FROM contests visible_contest
       WHERE visible_contest.id=${columns.contestId}
       AND ${endedWindowCondition(sql`visible_contest.end_time`)}
       AND (${
-    scope.domainId !== DEFAULT_DOMAIN_ID || !!scope.includeAllEndedContests
-  } OR visible_contest.affect_global_ranking=true)))`;
+        scope.domainId !== DEFAULT_DOMAIN_ID || !!scope.includeAllEndedContests
+    } OR visible_contest.affect_global_ranking=true)))`;
 }
 
 /**
@@ -95,22 +95,22 @@ export function submissionQueryVisibility(
  * problems 业务也可以直接使用这个低层只读政策而不反向依赖 read-model。
  */
 export async function getProblemSubmissionSummaries(
-  scope: SubmissionQueryScope,
-  problemIds: string[],
-  actorId: string | null,
+    scope: SubmissionQueryScope,
+    problemIds: string[],
+    actorId: string | null,
 ): Promise<ProblemSubmissionSummary[]> {
-  if (!problemIds.length) return [];
-  const visibleScope = { ...scope, includeAllEndedContests: true };
-  const result = await getDb().execute(
-    sql`WITH visible_sources AS (
+    if (!problemIds.length) return [];
+    const visibleScope = { ...scope, includeAllEndedContests: true };
+    const result = await getDb().execute(
+        sql`WITH visible_sources AS (
       SELECT * FROM (SELECT * FROM ${unifiedSubmissionSources}) s
       WHERE ${
-      submissionQueryVisibility(visibleScope, {
-        domainId: sql`s.domain_id`,
-        bindingId: sql`s.domain_problem_binding_id`,
-        contestId: sql`s.contest_id`,
-      })
-    }
+            submissionQueryVisibility(visibleScope, {
+                domainId: sql`s.domain_id`,
+                bindingId: sql`s.domain_problem_binding_id`,
+                contestId: sql`s.contest_id`,
+            })
+        }
     )
     SELECT s.problem_id, count(*)::int AS submit_count,
       count(*) FILTER (WHERE is_valid)::int AS valid_submissions,
@@ -120,41 +120,41 @@ export async function getProblemSubmissionSummaries(
       max(ea.score) FILTER (WHERE s.user_id=${actorId} AND s.is_valid) AS best_score
     FROM visible_sources s LEFT JOIN evaluation_attempts ea ON ea.id = s.effective_attempt_id
     WHERE s.problem_id IN (${
-      sql.join(
-        problemIds.map((id) => sql`${id}`),
-        sql`,`,
-      )
-    })
+            sql.join(
+                problemIds.map((id) => sql`${id}`),
+                sql`,`,
+            )
+        })
     GROUP BY s.problem_id`,
-  );
-  return unwrapRows<ProblemSubmissionSummary>(result as never);
+    );
+    return unwrapRows<ProblemSubmissionSummary>(result as never);
 }
 
 /** 题库分页中的本人状态过滤，直接返回 SQL 条件。 */
 export function domainProblemProgressWhere(
-  scope: SubmissionQueryScope,
-  problemId: AnyColumn | SQL,
-  actorId: string,
-  state: "solved" | "attempted" | "unseen",
+    scope: SubmissionQueryScope,
+    problemId: AnyColumn | SQL,
+    actorId: string,
+    state: "solved" | "attempted" | "unseen",
 ): SQL {
-  const visibleScope = { ...scope, includeAllEndedContests: true };
-  const source =
-    sql`SELECT s.* FROM (SELECT * FROM ${unifiedSubmissionSources}) s
+    const visibleScope = { ...scope, includeAllEndedContests: true };
+    const source =
+        sql`SELECT s.* FROM (SELECT * FROM ${unifiedSubmissionSources}) s
     WHERE s.problem_id=${problemId} AND s.user_id=${actorId} AND ${
-      submissionQueryVisibility(
-        visibleScope,
-        {
-          domainId: sql`s.domain_id`,
-          bindingId: sql`s.domain_problem_binding_id`,
-          contestId: sql`s.contest_id`,
-        },
-      )
-    }`;
-  const attempted = sql`EXISTS (${source})`;
-  const solved = sql`EXISTS (${source} AND s.is_valid AND s.is_accepted)`;
-  return state === "solved"
-    ? solved
-    : state === "unseen"
-    ? sql`NOT ${attempted}`
-    : sql`${attempted} AND NOT ${solved}`;
+            submissionQueryVisibility(
+                visibleScope,
+                {
+                    domainId: sql`s.domain_id`,
+                    bindingId: sql`s.domain_problem_binding_id`,
+                    contestId: sql`s.contest_id`,
+                },
+            )
+        }`;
+    const attempted = sql`EXISTS (${source})`;
+    const solved = sql`EXISTS (${source} AND s.is_valid AND s.is_accepted)`;
+    return state === "solved"
+        ? solved
+        : state === "unseen"
+        ? sql`NOT ${attempted}`
+        : sql`${attempted} AND NOT ${solved}`;
 }

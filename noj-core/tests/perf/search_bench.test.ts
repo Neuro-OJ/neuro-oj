@@ -1,7 +1,7 @@
 import { assert } from "jsr:@std/assert@^1";
 import {
-  reindexAll,
-  searchFlat,
+    reindexAll,
+    searchFlat,
 } from "../../src/modules/read-models/search/index.ts";
 import { getDb } from "./../../src/shared/db/connection.ts";
 import { resetDbForTest } from "../helpers/db.ts";
@@ -12,13 +12,13 @@ import type { Context } from "hono";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 
 function makeCtx(
-  query: Record<string, string | undefined>,
+    query: Record<string, string | undefined>,
 ): Context {
-  return {
-    req: {
-      query: (key: string) => query[key],
-    },
-  } as unknown as Context;
+    return {
+        req: {
+            query: (key: string) => query[key],
+        },
+    } as unknown as Context;
 }
 
 // 性能基准默认不跑：seed 100k problems + 10k users 在每次 PR 上都执行
@@ -29,178 +29,188 @@ const keepPerfData = Deno.env.get("NOJ_PERF_KEEP_DATA") === "1";
 const hasExternalDb = Boolean(Deno.env.get("DATABASE_URL"));
 
 if (
-  runPerf && hasExternalDb &&
-  Deno.env.get("NOJ_PERF_ALLOW_EXTERNAL_DB") !== "1"
+    runPerf && hasExternalDb &&
+    Deno.env.get("NOJ_PERF_ALLOW_EXTERNAL_DB") !== "1"
 ) {
-  throw new Error(
-    "性能基准拒绝使用外部数据库；请设置 NOJ_PERF_ALLOW_EXTERNAL_DB=1 确认该数据库可被清理",
-  );
+    throw new Error(
+        "性能基准拒绝使用外部数据库；请设置 NOJ_PERF_ALLOW_EXTERNAL_DB=1 确认该数据库可被清理",
+    );
 }
 
 Deno.test({
-  name: "search perf: 100k problems + 10k users 搜索响应",
-  ignore: !runPerf,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await resetDbForTest();
-    const db = getDb();
-    const publicCtx = {
-      userId: undefined,
-      isAdmin: false,
-      guestReadEnabled: true,
-    };
-    const adminCtx = {
-      userId: undefined,
-      isAdmin: true,
-      guestReadEnabled: true,
-    };
+    name: "search perf: 100k problems + 10k users 搜索响应",
+    ignore: !runPerf,
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await resetDbForTest();
+        const db = getDb();
+        const publicCtx = {
+            userId: undefined,
+            isAdmin: false,
+            guestReadEnabled: true,
+        };
+        const adminCtx = {
+            userId: undefined,
+            isAdmin: true,
+            guestReadEnabled: true,
+        };
 
-    try {
-      // Seed 100k problems（分批插入，避免 测试数据库 OOM）
-      const BATCH = 1000;
-      const now = new Date().toISOString();
-      for (let i = 0; i < 100; i++) {
-        const batch = Array.from({ length: BATCH }, (_, j) => ({
-          id: `perf-p-${i}-${j}`,
-          domain_id: DEFAULT_DOMAIN_ID,
-          title: j === 0
-            ? `题目 ${i * BATCH + j}：perfuniquekeyword`
-            : `题目 ${i * BATCH + j}：常规数据`,
-          description: "",
-          difficulty: "medium",
-          runtime_config: {
-            evaluator: {
-              image: "noj-evaluator-python",
-              command: "python3 /workspace/evaluate.py",
-              time_limit_ms: 5000,
-              memory_limit_mb: 512,
-            },
+        try {
+            // Seed 100k problems（分批插入，避免 测试数据库 OOM）
+            const BATCH = 1000;
+            const now = new Date().toISOString();
+            for (let i = 0; i < 100; i++) {
+                const batch = Array.from({ length: BATCH }, (_, j) => ({
+                    id: `perf-p-${i}-${j}`,
+                    domain_id: DEFAULT_DOMAIN_ID,
+                    title: j === 0
+                        ? `题目 ${i * BATCH + j}：perfuniquekeyword`
+                        : `题目 ${i * BATCH + j}：常规数据`,
+                    description: "",
+                    difficulty: "medium",
+                    runtime_config: {
+                        evaluator: {
+                            image: "noj-evaluator-python",
+                            command: "python3 /workspace/evaluate.py",
+                            time_limit_ms: 5000,
+                            memory_limit_mb: 512,
+                        },
 
-            solution: {
-              image: "noj-solution-python",
-              call_timeout_ms: 2000,
-              memory_limit_mb: 512,
-            },
-          },
-          number: i * BATCH + j + 1,
-          visibility: "public",
-          created_at: now,
-          updated_at: now,
-        }));
-        await db.insert(problems).values(batch);
-      }
+                        solution: {
+                            image: "noj-solution-python",
+                            call_timeout_ms: 2000,
+                            memory_limit_mb: 512,
+                        },
+                    },
+                    number: i * BATCH + j + 1,
+                    visibility: "public",
+                    created_at: now,
+                    updated_at: now,
+                }));
+                await db.insert(problems).values(batch);
+            }
 
-      // Seed 10k users
-      for (let i = 0; i < 10; i++) {
-        const batch = Array.from({ length: 1000 }, (_, j) => ({
-          id: `perf-u-${i}-${j}`,
-          username: `user_${i * 1000 + j}`,
-          email: `user_${i}_${j}@perf.test`,
-          password_hash: "x",
-          created_at: now,
-          updated_at: now,
-        }));
-        await db.insert(users).values(batch);
-      }
+            // Seed 10k users
+            for (let i = 0; i < 10; i++) {
+                const batch = Array.from({ length: 1000 }, (_, j) => ({
+                    id: `perf-u-${i}-${j}`,
+                    username: `user_${i * 1000 + j}`,
+                    email: `user_${i}_${j}@perf.test`,
+                    password_hash: "x",
+                    created_at: now,
+                    updated_at: now,
+                }));
+                await db.insert(users).values(batch);
+            }
 
-      // 搜索只索引已发布题目（latest_version_id 非空，见 index-writer.buildProblemEntry），
-      // 批量补一个版本并回写 latest_version_id，否则索引为空、基准测的是空结果
-      await db.execute(sql`
+            // 搜索只索引已发布题目（latest_version_id 非空，见 index-writer.buildProblemEntry），
+            // 批量补一个版本并回写 latest_version_id，否则索引为空、基准测的是空结果
+            await db.execute(sql`
         INSERT INTO problem_versions (id, problem_id, version, content, published_at)
         SELECT 'v-' || id, id, 1, '{}'::jsonb, ${now} FROM problems
       `);
-      await db.execute(sql`UPDATE problems SET latest_version_id = 'v-' || id`);
-      await db.execute(sql`
+            await db.execute(
+                sql`UPDATE problems SET latest_version_id = 'v-' || id`,
+            );
+            await db.execute(sql`
         INSERT INTO domain_problem_bindings
           (id, domain_id, problem_id, visibility, created_by, created_at, updated_at)
         SELECT 'binding-' || id, domain_id, id, 'public', '0', ${now}, ${now}
         FROM problems
       `);
 
-      // 将源数据同步到统一搜索索引表，确保基准测量的是 search_entries 新路径
-      await reindexAll();
+            // 将源数据同步到统一搜索索引表，确保基准测量的是 search_entries 新路径
+            await reindexAll();
 
-      // ANALYZE 让 planner 用上索引统计
-      await db.execute(sql`ANALYZE problems`);
-      await db.execute(sql`ANALYZE users`);
-      await db.execute(sql`ANALYZE search_entries`);
+            // ANALYZE 让 planner 用上索引统计
+            await db.execute(sql`ANALYZE problems`);
+            await db.execute(sql`ANALYZE users`);
+            await db.execute(sql`ANALYZE search_entries`);
 
-      // 高选择性题目搜索：100 条命中，验证常见关键词路径。
-      const pStart = performance.now();
-      const pResult = await searchFlat({
-        q: "perfuniquekeyword",
-        type: "problem",
-        page: 1,
-        perPage: 20,
-        ctx: publicCtx,
-      });
-      const pElapsed = performance.now() - pStart;
-      console.log(
-        `高选择性题目搜索：${pResult.items.length} 命中，${
-          pElapsed.toFixed(0)
-        }ms`,
-      );
-      assert(pResult.items.length > 0, "高选择性题目搜索应命中至少一条结果");
-      assert(pElapsed < 500, `高选择性题目搜索 ${pElapsed}ms 超 500ms 阈值`);
+            // 高选择性题目搜索：100 条命中，验证常见关键词路径。
+            const pStart = performance.now();
+            const pResult = await searchFlat({
+                q: "perfuniquekeyword",
+                type: "problem",
+                page: 1,
+                perPage: 20,
+                ctx: publicCtx,
+            });
+            const pElapsed = performance.now() - pStart;
+            console.log(
+                `高选择性题目搜索：${pResult.items.length} 命中，${
+                    pElapsed.toFixed(0)
+                }ms`,
+            );
+            assert(
+                pResult.items.length > 0,
+                "高选择性题目搜索应命中至少一条结果",
+            );
+            assert(
+                pElapsed < 500,
+                `高选择性题目搜索 ${pElapsed}ms 超 500ms 阈值`,
+            );
 
-      // 全命中题目搜索：100k 条命中，监控最坏情景但允许共享 CI Runner 波动。
-      const broadStart = performance.now();
-      const broadResult = await searchFlat({
-        q: "题目",
-        type: "problem",
-        page: 1,
-        perPage: 20,
-        ctx: publicCtx,
-      });
-      const broadElapsed = performance.now() - broadStart;
-      console.log(
-        `全命中题目搜索：${broadResult.items.length} 命中，${
-          broadElapsed.toFixed(0)
-        }ms`,
-      );
-      assert(
-        broadElapsed < 1200,
-        `全命中题目搜索 ${broadElapsed}ms 超 1200ms 阈值`,
-      );
+            // 全命中题目搜索：100k 条命中，监控最坏情景但允许共享 CI Runner 波动。
+            const broadStart = performance.now();
+            const broadResult = await searchFlat({
+                q: "题目",
+                type: "problem",
+                page: 1,
+                perPage: 20,
+                ctx: publicCtx,
+            });
+            const broadElapsed = performance.now() - broadStart;
+            console.log(
+                `全命中题目搜索：${broadResult.items.length} 命中，${
+                    broadElapsed.toFixed(0)
+                }ms`,
+            );
+            assert(
+                broadElapsed < 1200,
+                `全命中题目搜索 ${broadElapsed}ms 超 1200ms 阈值`,
+            );
 
-      // 用户搜索基准
-      const uStart = performance.now();
-      const uResult = await searchFlat({
-        q: "user_1",
-        type: "user",
-        page: 1,
-        perPage: 20,
-        ctx: adminCtx,
-      });
-      const uElapsed = performance.now() - uStart;
-      console.log(
-        `用户搜索：${uResult.items.length} 命中，${uElapsed.toFixed(0)}ms`,
-      );
-      assert(uElapsed < 500, `用户搜索 ${uElapsed}ms 超 500ms 阈值`);
-    } finally {
-      if (!keepPerfData) {
-        await resetDbForTest();
-      }
-    }
-  },
+            // 用户搜索基准
+            const uStart = performance.now();
+            const uResult = await searchFlat({
+                q: "user_1",
+                type: "user",
+                page: 1,
+                perPage: 20,
+                ctx: adminCtx,
+            });
+            const uElapsed = performance.now() - uStart;
+            console.log(
+                `用户搜索：${uResult.items.length} 命中，${
+                    uElapsed.toFixed(0)
+                }ms`,
+            );
+            assert(uElapsed < 500, `用户搜索 ${uElapsed}ms 超 500ms 阈值`);
+        } finally {
+            if (!keepPerfData) {
+                await resetDbForTest();
+            }
+        }
+    },
 });
 
 Deno.test({
-  name: "perf: 分页解析 10 万次耗时低于 500ms",
-  ignore: !runPerf,
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: () => {
-    const start = performance.now();
-    for (let i = 0; i < 100_000; i++) {
-      parsePagination(
-        makeCtx({ page: String((i % 100) + 1), per_page: "20" }),
-      );
-    }
-    const elapsed = performance.now() - start;
-    if (elapsed > 500) {
-      throw new Error(`分页解析过慢: ${elapsed}ms`);
-    }
-  },
+    name: "perf: 分页解析 10 万次耗时低于 500ms",
+    ignore: !runPerf,
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: () => {
+        const start = performance.now();
+        for (let i = 0; i < 100_000; i++) {
+            parsePagination(
+                makeCtx({ page: String((i % 100) + 1), per_page: "20" }),
+            );
+        }
+        const elapsed = performance.now() - start;
+        if (elapsed > 500) {
+            throw new Error(`分页解析过慢: ${elapsed}ms`);
+        }
+    },
 });

@@ -9,72 +9,72 @@
  * 保持 O(1)（只读临时文件分块）。
  */
 export function createFileStream(
-  file: import("node:stream").Readable,
+    file: import("node:stream").Readable,
 ): ReadableStream<Uint8Array> {
-  const spoolPromise = (async () => {
-    const tmpPath = await Deno.makeTempFile({ suffix: ".zip" });
-    const out = await Deno.open(tmpPath, {
-      write: true,
-      create: true,
-      truncate: true,
-    });
-    try {
-      for await (const chunk of file) {
-        await out.write(chunk as Uint8Array);
-      }
-    } finally {
-      out.close();
-    }
-    return tmpPath;
-  })();
-
-  let handle: Deno.FsFile | null = null;
-  let tmpPath = "";
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        if (!handle) {
-          tmpPath = await spoolPromise;
-          handle = await Deno.open(tmpPath, { read: true });
-        }
-        const buf = new Uint8Array(64 * 1024);
-        const n = await handle.read(buf);
-        if (n === null) {
-          controller.close();
-          await handle.close();
-          await Deno.remove(tmpPath).catch(() => {});
-          handle = null;
-        } else {
-          controller.enqueue(buf.subarray(0, n));
-        }
-      } catch (err) {
-        controller.error(err);
-        if (handle) {
-          try {
-            handle.close();
-          } catch {
-            // ignore
-          }
-          handle = null;
-        }
-        if (tmpPath) {
-          await Deno.remove(tmpPath).catch(() => {});
-        }
-      }
-    },
-    cancel() {
-      if (handle) {
+    const spoolPromise = (async () => {
+        const tmpPath = await Deno.makeTempFile({ suffix: ".zip" });
+        const out = await Deno.open(tmpPath, {
+            write: true,
+            create: true,
+            truncate: true,
+        });
         try {
-          handle.close();
-        } catch {
-          // ignore
+            for await (const chunk of file) {
+                await out.write(chunk as Uint8Array);
+            }
+        } finally {
+            out.close();
         }
-        handle = null;
-      }
-      if (tmpPath) {
-        Deno.remove(tmpPath).catch(() => {});
-      }
-      file.destroy();
-    },
-  });
+        return tmpPath;
+    })();
+
+    let handle: Deno.FsFile | null = null;
+    let tmpPath = "";
+    return new ReadableStream<Uint8Array>({
+        async pull(controller) {
+            try {
+                if (!handle) {
+                    tmpPath = await spoolPromise;
+                    handle = await Deno.open(tmpPath, { read: true });
+                }
+                const buf = new Uint8Array(64 * 1024);
+                const n = await handle.read(buf);
+                if (n === null) {
+                    controller.close();
+                    await handle.close();
+                    await Deno.remove(tmpPath).catch(() => {});
+                    handle = null;
+                } else {
+                    controller.enqueue(buf.subarray(0, n));
+                }
+            } catch (err) {
+                controller.error(err);
+                if (handle) {
+                    try {
+                        handle.close();
+                    } catch {
+                        // ignore
+                    }
+                    handle = null;
+                }
+                if (tmpPath) {
+                    await Deno.remove(tmpPath).catch(() => {});
+                }
+            }
+        },
+        cancel() {
+            if (handle) {
+                try {
+                    handle.close();
+                } catch {
+                    // ignore
+                }
+                handle = null;
+            }
+            if (tmpPath) {
+                Deno.remove(tmpPath).catch(() => {});
+            }
+            file.destroy();
+        },
+    });
 }

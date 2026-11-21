@@ -3,11 +3,11 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import {
-  BadRequestError,
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationError,
 } from "../../../../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 
@@ -22,32 +22,32 @@ const BIO_MAX_LENGTH = 5000;
  * @throws {ValidationError} bio 超长时抛出
  */
 export async function updateUserProfile(
-  userId: string,
-  bio: string,
+    userId: string,
+    bio: string,
 ): Promise<{ id: string; username: string; bio: string }> {
-  const db = getDb();
+    const db = getDb();
 
-  if (bio.length > BIO_MAX_LENGTH) {
-    throw new ValidationError(`bio 长度不能超过 ${BIO_MAX_LENGTH} 字`);
-  }
+    if (bio.length > BIO_MAX_LENGTH) {
+        throw new ValidationError(`bio 长度不能超过 ${BIO_MAX_LENGTH} 字`);
+    }
 
-  const [updated] = await db
-    .update(users)
-    .set({ bio, updated_at: new Date().toISOString() })
-    .where(eq(users.id, userId))
-    .returning({
-      id: users.id,
-      username: users.username,
-      bio: users.bio,
-    });
+    const [updated] = await db
+        .update(users)
+        .set({ bio, updated_at: new Date().toISOString() })
+        .where(eq(users.id, userId))
+        .returning({
+            id: users.id,
+            username: users.username,
+            bio: users.bio,
+        });
 
-  if (!updated) {
-    throw new NotFoundError("用户不存在");
-  }
+    if (!updated) {
+        throw new NotFoundError("用户不存在");
+    }
 
-  await enqueueSearchIndexTask("user", userId, "upsert");
+    await enqueueSearchIndexTask("user", userId, "upsert");
 
-  return updated;
+    return updated;
 }
 
 /**
@@ -66,107 +66,108 @@ export async function updateUserProfile(
  * @throws {ConflictError} 邮箱已被其他用户使用
  */
 export async function adminUpdateUserProfile(
-  targetUserId: string,
-  input: { email?: string; bio?: string },
+    targetUserId: string,
+    input: { email?: string; bio?: string },
 ): Promise<{
-  id: string;
-  username: string;
-  email: string;
-  bio: string;
+    id: string;
+    username: string;
+    email: string;
+    bio: string;
 }> {
-  // 拒绝修改 root 系统用户，避免破坏系统惯例（root 不计入管理员统计、不可登录）
-  if (targetUserId === ROOT_USER_ID) {
-    throw new ForbiddenError("不能修改系统 root 用户");
-  }
-
-  const db = getDb();
-
-  // 先校验 email 格式（无需查询数据库）
-  if (input.email !== undefined) {
-    // 强化：local-part 不允许连续点号、不允许首尾点号；TLD 至少 2 字符
-    if (
-      !/^(?!\.)(?!.*\.\.)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(
-        input.email,
-      )
-    ) {
-      throw new BadRequestError("邮箱格式不正确");
+    // 拒绝修改 root 系统用户，避免破坏系统惯例（root 不计入管理员统计、不可登录）
+    if (targetUserId === ROOT_USER_ID) {
+        throw new ForbiddenError("不能修改系统 root 用户");
     }
-  }
 
-  // 检查用户是否存在
-  const existing = await db
-    .select()
-    .from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
+    const db = getDb();
 
-  if (existing.length === 0) {
-    throw new NotFoundError("用户不存在");
-  }
+    // 先校验 email 格式（无需查询数据库）
+    if (input.email !== undefined) {
+        // 强化：local-part 不允许连续点号、不允许首尾点号；TLD 至少 2 字符
+        if (
+            !/^(?!\.)(?!.*\.\.)[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/
+                .test(
+                    input.email,
+                )
+        ) {
+            throw new BadRequestError("邮箱格式不正确");
+        }
+    }
 
-  const user = existing[0];
-  const updates: Record<string, string> = {};
-  const now = new Date().toISOString();
-
-  // 处理邮箱更新
-  if (input.email !== undefined) {
-    if (input.email === user.email) {
-      // 邮箱未变更，跳过
-    } else {
-      // 唯一性检查
-      const existingEmail = await db
+    // 检查用户是否存在
+    const existing = await db
         .select()
         .from(users)
-        .where(
-          and(
-            eq(users.email, input.email),
-            sql`${users.id} <> ${targetUserId}`,
-          ),
-        )
+        .where(eq(users.id, targetUserId))
         .limit(1);
 
-      if (existingEmail.length > 0) {
-        throw new ConflictError("邮箱已被注册");
-      }
-
-      updates.email = input.email;
+    if (existing.length === 0) {
+        throw new NotFoundError("用户不存在");
     }
-  }
 
-  // 处理 bio 更新（不检查长度限制）
-  if (input.bio !== undefined) {
-    updates.bio = input.bio;
-  }
+    const user = existing[0];
+    const updates: Record<string, string> = {};
+    const now = new Date().toISOString();
 
-  if (Object.keys(updates).length === 0) {
-    return {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      bio: user.bio,
-    };
-  }
+    // 处理邮箱更新
+    if (input.email !== undefined) {
+        if (input.email === user.email) {
+            // 邮箱未变更，跳过
+        } else {
+            // 唯一性检查
+            const existingEmail = await db
+                .select()
+                .from(users)
+                .where(
+                    and(
+                        eq(users.email, input.email),
+                        sql`${users.id} <> ${targetUserId}`,
+                    ),
+                )
+                .limit(1);
 
-  updates.updated_at = now;
+            if (existingEmail.length > 0) {
+                throw new ConflictError("邮箱已被注册");
+            }
 
-  await db
-    .update(users)
-    .set(updates)
-    .where(eq(users.id, targetUserId));
+            updates.email = input.email;
+        }
+    }
 
-  // 返回更新后的用户信息
-  const [updated] = await db
-    .select({
-      id: users.id,
-      username: users.username,
-      email: users.email,
-      bio: users.bio,
-    })
-    .from(users)
-    .where(eq(users.id, targetUserId))
-    .limit(1);
+    // 处理 bio 更新（不检查长度限制）
+    if (input.bio !== undefined) {
+        updates.bio = input.bio;
+    }
 
-  await enqueueSearchIndexTask("user", targetUserId, "upsert");
+    if (Object.keys(updates).length === 0) {
+        return {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            bio: user.bio,
+        };
+    }
 
-  return updated;
+    updates.updated_at = now;
+
+    await db
+        .update(users)
+        .set(updates)
+        .where(eq(users.id, targetUserId));
+
+    // 返回更新后的用户信息
+    const [updated] = await db
+        .select({
+            id: users.id,
+            username: users.username,
+            email: users.email,
+            bio: users.bio,
+        })
+        .from(users)
+        .where(eq(users.id, targetUserId))
+        .limit(1);
+
+    await enqueueSearchIndexTask("user", targetUserId, "upsert");
+
+    return updated;
 }

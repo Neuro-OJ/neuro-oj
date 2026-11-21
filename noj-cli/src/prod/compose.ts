@@ -36,10 +36,10 @@ export type ProdProfile = "judge" | "monitoring";
 
 /** 一个 prod 服务及其所属 profile；无 `profile` 者为默认启动。 */
 export interface ProdService {
-  /** compose service 名（亦为 noj-net 内的 DNS 名）。 */
-  name: string;
-  /** 所属 profile；缺省表示无 profile，始终随 `up` 启动。 */
-  profile?: ProdProfile;
+    /** compose service 名（亦为 noj-net 内的 DNS 名）。 */
+    name: string;
+    /** 所属 profile；缺省表示无 profile，始终随 `up` 启动。 */
+    profile?: ProdProfile;
 }
 
 /**
@@ -55,20 +55,20 @@ export interface ProdService {
  * 不是"第二份手抄清单"。
  */
 export const PROD_SERVICES: readonly ProdService[] = [
-  { name: "migrate" },
-  { name: "check-upgrade" },
-  { name: "gateway-migrate" },
-  { name: "core" },
-  { name: "ui" },
-  { name: "judge", profile: "judge" },
-  { name: "llm-gateway" },
-  { name: "nginx" },
-  { name: "prometheus", profile: "monitoring" },
-  { name: "alertmanager", profile: "monitoring" },
-  { name: "postgres" },
-  { name: "redis" },
-  { name: "minio" },
-  { name: "minio-init" },
+    { name: "migrate" },
+    { name: "check-upgrade" },
+    { name: "gateway-migrate" },
+    { name: "core" },
+    { name: "ui" },
+    { name: "judge", profile: "judge" },
+    { name: "llm-gateway" },
+    { name: "nginx" },
+    { name: "prometheus", profile: "monitoring" },
+    { name: "alertmanager", profile: "monitoring" },
+    { name: "postgres" },
+    { name: "redis" },
+    { name: "minio" },
+    { name: "minio-init" },
 ];
 
 /** 生产编排文件名（`RELEASE_FILES` 中的固定资产名）。 */
@@ -79,23 +79,23 @@ export const PROD_ENV_FILE = ".env.prod";
 
 /** 构造 compose 参数所需的公共选项。 */
 export interface ComposeArgsOptions {
-  /** `-f` 指向的 compose 文件路径。 */
-  composeFile: string;
-  /**
-   * compose 项目目录（`--project-directory`）。
-   *
-   * 即使 `-f` 指向暂存目录里的候选文件，项目目录也必须固定为安装目录，
-   * 否则 compose 的相对挂载（nginx 配置、备份目录等）会跟随暂存路径解析。
-   */
-  projectDirectory?: string;
-  /** `--env-file` 指向的环境文件路径。 */
-  envFile: string;
-  /** 是否启用 `--profile judge`。 */
-  judge?: boolean;
-  /** 是否启用 `--profile monitoring`。 */
-  monitoring?: boolean;
-  /** 追加到 profile 之后的 compose 子命令与参数。 */
-  command: string[];
+    /** `-f` 指向的 compose 文件路径。 */
+    composeFile: string;
+    /**
+     * compose 项目目录（`--project-directory`）。
+     *
+     * 即使 `-f` 指向暂存目录里的候选文件，项目目录也必须固定为安装目录，
+     * 否则 compose 的相对挂载（nginx 配置、备份目录等）会跟随暂存路径解析。
+     */
+    projectDirectory?: string;
+    /** `--env-file` 指向的环境文件路径。 */
+    envFile: string;
+    /** 是否启用 `--profile judge`。 */
+    judge?: boolean;
+    /** 是否启用 `--profile monitoring`。 */
+    monitoring?: boolean;
+    /** 追加到 profile 之后的 compose 子命令与参数。 */
+    command: string[];
 }
 
 /**
@@ -106,20 +106,20 @@ export interface ComposeArgsOptions {
  * 且 judge 排在 monitoring 之前。
  */
 export function composeArgs(options: ComposeArgsOptions): string[] {
-  const args = ["compose"];
-  if (options.projectDirectory !== undefined) {
-    args.push("--project-directory", options.projectDirectory);
-  }
-  args.push(
-    "--env-file",
-    options.envFile,
-    "-f",
-    options.composeFile,
-  );
-  if (options.judge === true) args.push("--profile", "judge");
-  if (options.monitoring === true) args.push("--profile", "monitoring");
-  args.push(...options.command);
-  return args;
+    const args = ["compose"];
+    if (options.projectDirectory !== undefined) {
+        args.push("--project-directory", options.projectDirectory);
+    }
+    args.push(
+        "--env-file",
+        options.envFile,
+        "-f",
+        options.composeFile,
+    );
+    if (options.judge === true) args.push("--profile", "judge");
+    if (options.monitoring === true) args.push("--profile", "monitoring");
+    args.push(...options.command);
+    return args;
 }
 
 /**
@@ -128,18 +128,18 @@ export function composeArgs(options: ComposeArgsOptions): string[] {
  * `dryRun` 为 `true` 时**不执行任何命令**，直接返回将执行的参数数组。
  */
 export interface ComposeOptions {
-  composeFile: string;
-  /** 项目目录；升级时固定为安装目录，避免暂存路径影响相对挂载。 */
-  projectDirectory?: string;
-  envFile: string;
-  /** 是否启用 `--profile judge`。 */
-  judge?: boolean;
-  /** 是否启用 `--profile monitoring`。 */
-  monitoring?: boolean;
-  /** 只对指定服务执行（追加在子命令末尾）。 */
-  services?: string[];
-  /** 仅返回参数数组，不调用 runner。 */
-  dryRun?: boolean;
+    composeFile: string;
+    /** 项目目录；升级时固定为安装目录，避免暂存路径影响相对挂载。 */
+    projectDirectory?: string;
+    envFile: string;
+    /** 是否启用 `--profile judge`。 */
+    judge?: boolean;
+    /** 是否启用 `--profile monitoring`。 */
+    monitoring?: boolean;
+    /** 只对指定服务执行（追加在子命令末尾）。 */
+    services?: string[];
+    /** 仅返回参数数组，不调用 runner。 */
+    dryRun?: boolean;
 }
 
 /**
@@ -151,12 +151,12 @@ export type ComposeResult = CmdResult | string[];
 
 /** 统一执行路径：`dryRun` 短路返回参数数组，否则执行并透传**完整** `CmdResult`。 */
 function invoke(
-  runner: CommandRunner,
-  args: string[],
-  dryRun: boolean | undefined,
+    runner: CommandRunner,
+    args: string[],
+    dryRun: boolean | undefined,
 ): Promise<ComposeResult> {
-  if (dryRun === true) return Promise.resolve(args);
-  return runner.run("docker", args);
+    if (dryRun === true) return Promise.resolve(args);
+    return runner.run("docker", args);
 }
 
 /**
@@ -165,15 +165,15 @@ function invoke(
  * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composeUp(
-  runner: CommandRunner,
-  options: ComposeOptions,
+    runner: CommandRunner,
+    options: ComposeOptions,
 ): Promise<ComposeResult> {
-  const command = ["up", "-d", "--wait", ...(options.services ?? [])];
-  return invoke(
-    runner,
-    composeArgs({ ...options, command }),
-    options.dryRun,
-  );
+    const command = ["up", "-d", "--wait", ...(options.services ?? [])];
+    return invoke(
+        runner,
+        composeArgs({ ...options, command }),
+        options.dryRun,
+    );
 }
 
 /**
@@ -182,15 +182,15 @@ export function composeUp(
  * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composeDown(
-  runner: CommandRunner,
-  options: ComposeOptions,
+    runner: CommandRunner,
+    options: ComposeOptions,
 ): Promise<ComposeResult> {
-  const command = ["down", ...(options.services ?? [])];
-  return invoke(
-    runner,
-    composeArgs({ ...options, command }),
-    options.dryRun,
-  );
+    const command = ["down", ...(options.services ?? [])];
+    return invoke(
+        runner,
+        composeArgs({ ...options, command }),
+        options.dryRun,
+    );
 }
 
 /**
@@ -200,22 +200,22 @@ export function composeDown(
  * `dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composePs(
-  runner: CommandRunner,
-  options: ComposeOptions,
+    runner: CommandRunner,
+    options: ComposeOptions,
 ): Promise<ComposeResult> {
-  return invoke(
-    runner,
-    composeArgs({ ...options, command: ["ps"] }),
-    options.dryRun,
-  );
+    return invoke(
+        runner,
+        composeArgs({ ...options, command: ["ps"] }),
+        options.dryRun,
+    );
 }
 
 /** `composeLogs` 的选项：在公共选项上追加 tail / follow。 */
 export interface ComposeLogsOptions extends ComposeOptions {
-  /** 仅显示末尾 N 行；缺省 200。 */
-  tail?: number;
-  /** 是否 `--follow`。 */
-  follow?: boolean;
+    /** 仅显示末尾 N 行；缺省 200。 */
+    tail?: number;
+    /** 是否 `--follow`。 */
+    follow?: boolean;
 }
 
 /**
@@ -225,17 +225,17 @@ export interface ComposeLogsOptions extends ComposeOptions {
  * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composeLogs(
-  runner: CommandRunner,
-  options: ComposeLogsOptions,
+    runner: CommandRunner,
+    options: ComposeLogsOptions,
 ): Promise<ComposeResult> {
-  const command = ["logs", `--tail=${options.tail ?? 200}`];
-  if (options.follow === true) command.push("--follow");
-  command.push(...(options.services ?? []));
-  return invoke(
-    runner,
-    composeArgs({ ...options, command }),
-    options.dryRun,
-  );
+    const command = ["logs", `--tail=${options.tail ?? 200}`];
+    if (options.follow === true) command.push("--follow");
+    command.push(...(options.services ?? []));
+    return invoke(
+        runner,
+        composeArgs({ ...options, command }),
+        options.dryRun,
+    );
 }
 
 /**
@@ -246,15 +246,15 @@ export function composeLogs(
  * 退出码在 `result.code`；`dryRun` 时返回参数数组（runner 零调用）。
  */
 export function composePull(
-  runner: CommandRunner,
-  options: ComposeOptions,
+    runner: CommandRunner,
+    options: ComposeOptions,
 ): Promise<ComposeResult> {
-  const command = ["pull", ...(options.services ?? [])];
-  return invoke(
-    runner,
-    composeArgs({ ...options, command }),
-    options.dryRun,
-  );
+    const command = ["pull", ...(options.services ?? [])];
+    return invoke(
+        runner,
+        composeArgs({ ...options, command }),
+        options.dryRun,
+    );
 }
 
 /**
@@ -264,32 +264,32 @@ export function composePull(
  * `up` 的隐式 depends_on 副作用。`--no-deps` 防止迁移命令再次启动旧应用栈。
  */
 export function composeRun(
-  runner: CommandRunner,
-  options: ComposeOptions,
-  service: string,
-  args: string[] = [],
+    runner: CommandRunner,
+    options: ComposeOptions,
+    service: string,
+    args: string[] = [],
 ): Promise<ComposeResult> {
-  if (!/^[a-z0-9][a-z0-9_-]*$/.test(service)) {
-    throw new Error(`Compose 服务名非法：${service}`);
-  }
-  return invoke(
-    runner,
-    composeArgs({
-      ...options,
-      command: ["run", "--rm", "--no-deps", service, ...args],
-    }),
-    options.dryRun,
-  );
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(service)) {
+        throw new Error(`Compose 服务名非法：${service}`);
+    }
+    return invoke(
+        runner,
+        composeArgs({
+            ...options,
+            command: ["run", "--rm", "--no-deps", service, ...args],
+        }),
+        options.dryRun,
+    );
 }
 
 /** `composeConfig` 的选项：在公共选项上追加 `--quiet`。 */
 export interface ComposeConfigOptions extends ComposeOptions {
-  /**
-   * 追加 `--quiet`（只判定可解析性，不输出渲染结果）。
-   *
-   * 生产前置校验（`prepareAndCheck` 的步骤 6）恒用 `--quiet`。
-   */
-  quiet?: boolean;
+    /**
+     * 追加 `--quiet`（只判定可解析性，不输出渲染结果）。
+     *
+     * 生产前置校验（`prepareAndCheck` 的步骤 6）恒用 `--quiet`。
+     */
+    quiet?: boolean;
 }
 
 /**
@@ -301,13 +301,13 @@ export interface ComposeConfigOptions extends ComposeOptions {
  * 退出码在 `result.code`；`dryRun` 时返回参数数组。
  */
 export function composeConfig(
-  runner: CommandRunner,
-  options: ComposeConfigOptions,
+    runner: CommandRunner,
+    options: ComposeConfigOptions,
 ): Promise<ComposeResult> {
-  const command = options.quiet === true ? ["config", "--quiet"] : ["config"];
-  return invoke(
-    runner,
-    composeArgs({ ...options, command }),
-    options.dryRun,
-  );
+    const command = options.quiet === true ? ["config", "--quiet"] : ["config"];
+    return invoke(
+        runner,
+        composeArgs({ ...options, command }),
+        options.dryRun,
+    );
 }

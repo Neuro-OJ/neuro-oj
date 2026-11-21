@@ -17,10 +17,10 @@ import { Channels, onEvent } from "../../../../shared/sse/event-bus.ts";
 import { createSseStream } from "../../../../shared/sse/sse-stream.ts";
 import { parsePagination } from "../../../../shared/http/pagination.ts";
 import {
-  getLatestBannerAnnouncement,
-  getPublicAnnouncement,
-  listPublicAnnouncements,
-  resolveAnnouncementId,
+    getLatestBannerAnnouncement,
+    getPublicAnnouncement,
+    listPublicAnnouncements,
+    resolveAnnouncementId,
 } from "../../services/announcements.ts";
 
 const router = new Hono();
@@ -31,9 +31,9 @@ const router = new Hono();
  * 仅返回 is_active=true 的公告，排序 is_pinned DESC, created_at DESC。
  */
 router.get("/", async (c) => {
-  const { page, perPage } = parsePagination(c);
-  const result = await listPublicAnnouncements(page, perPage);
-  return c.json(result);
+    const { page, perPage } = parsePagination(c);
+    const result = await listPublicAnnouncements(page, perPage);
+    return c.json(result);
 });
 
 /**
@@ -48,25 +48,25 @@ router.get("/", async (c) => {
  *   data: { type: "announcement:updated" }
  */
 router.get("/events", authMiddleware, (c) => {
-  return createSseStream(
-    c,
-    (ctx) => {
-      ctx.onUnsubscribe(
-        onEvent(
-          Channels.announcements,
-          (_channel, message) => {
-            void ctx.run(async () => {
-              if (ctx.closed) return;
-              await ctx.stream.writeSSE({
-                event: "announcement:updated",
-                data: message,
-              });
-            });
-          },
-        ),
-      );
-    },
-  );
+    return createSseStream(
+        c,
+        (ctx) => {
+            ctx.onUnsubscribe(
+                onEvent(
+                    Channels.announcements,
+                    (_channel, message) => {
+                        void ctx.run(async () => {
+                            if (ctx.closed) return;
+                            await ctx.stream.writeSSE({
+                                event: "announcement:updated",
+                                data: message,
+                            });
+                        });
+                    },
+                ),
+            );
+        },
+    );
 });
 
 /**
@@ -77,8 +77,8 @@ router.get("/events", authMiddleware, (c) => {
  * 必须注册在 `/:id` 之前，避免 "banner" 被当作公告 id 解析。
  */
 router.get("/banner", async (c) => {
-  const banner = await getLatestBannerAnnouncement();
-  return c.json({ data: banner });
+    const banner = await getLatestBannerAnnouncement();
+    return c.json({ data: banner });
 });
 
 /**
@@ -87,9 +87,9 @@ router.get("/banner", async (c) => {
  * 非 active 或不存在 → 404（NotFoundError 由 app.ts 统一处理）。
  */
 router.get("/:id", async (c) => {
-  const id = await resolveAnnouncementId(c.req.param("id") as string);
-  const detail = await getPublicAnnouncement(id);
-  return c.json(detail);
+    const id = await resolveAnnouncementId(c.req.param("id") as string);
+    const detail = await getPublicAnnouncement(id);
+    return c.json(detail);
 });
 
 export default router;

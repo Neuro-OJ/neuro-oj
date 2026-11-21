@@ -24,28 +24,28 @@ export const ENV_FILE_MODE = 0o600;
  * 值被 CR 污染（否则成对引号剥离会因尾字符是 CR 而失效）。
  */
 function normalizeLine(raw: string): string {
-  const noCr = raw.endsWith(CR) ? raw.slice(0, -1) : raw;
-  let end = noCr.length;
-  while (end > 0) {
-    const ch = noCr[end - 1];
-    if (ch !== " " && ch !== TAB) break;
-    end--;
-  }
-  return noCr.slice(0, end);
+    const noCr = raw.endsWith(CR) ? raw.slice(0, -1) : raw;
+    let end = noCr.length;
+    while (end > 0) {
+        const ch = noCr[end - 1];
+        if (ch !== " " && ch !== TAB) break;
+        end--;
+    }
+    return noCr.slice(0, end);
 }
 
 /**
  * 剥掉成对的首尾引号（单或双），只剥一层；引号不配对或长度不足 2 则原样返回。
  */
 function stripQuotes(value: string): string {
-  const first = value[0];
-  if (
-    (first === '"' || first === "'") && value.length >= 2 &&
-    value.endsWith(first)
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
+    const first = value[0];
+    if (
+        (first === '"' || first === "'") && value.length >= 2 &&
+        value.endsWith(first)
+    ) {
+        return value.slice(1, -1);
+    }
+    return value;
 }
 
 /**
@@ -57,25 +57,25 @@ function stripQuotes(value: string): string {
  * - 同一键出现多次时取首个。
  */
 export function parseEnvFile(text: string): Map<string, string> {
-  const entries = new Map<string, string>();
-  for (const raw of text.split(LF)) {
-    const line = normalizeLine(raw);
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq <= 0) continue;
-    const key = line.slice(0, eq);
-    // 首个匹配优先：后续同键行忽略。
-    if (entries.has(key)) continue;
-    entries.set(key, stripQuotes(line.slice(eq + 1)));
-  }
-  return entries;
+    const entries = new Map<string, string>();
+    for (const raw of text.split(LF)) {
+        const line = normalizeLine(raw);
+        if (!line || line.startsWith("#")) continue;
+        const eq = line.indexOf("=");
+        if (eq <= 0) continue;
+        const key = line.slice(0, eq);
+        // 首个匹配优先：后续同键行忽略。
+        if (entries.has(key)) continue;
+        entries.set(key, stripQuotes(line.slice(eq + 1)));
+    }
+    return entries;
 }
 
 /** 在原文本末尾追加一行，保证结果以换行结尾（原文本为空时也只写这一行）。 */
 function appendLine(text: string, line: string): string {
-  if (text === "") return line + LF;
-  if (text.endsWith(LF)) return text + line + LF;
-  return text + LF + line + LF;
+    if (text === "") return line + LF;
+    if (text.endsWith(LF)) return text + line + LF;
+    return text + LF + line + LF;
 }
 
 /**
@@ -89,53 +89,55 @@ function appendLine(text: string, line: string): string {
  * - entries 中未在原文本出现的键按 Map 迭代顺序追加到末尾。
  */
 export function serializeEnvFile(
-  entries: Map<string, string>,
-  original: string,
+    entries: Map<string, string>,
+    original: string,
 ): string {
-  const out: string[] = [];
-  const written = new Set<string>();
-  for (const raw of original.split(LF)) {
-    const line = normalizeLine(raw);
-    const eq = line.indexOf("=");
-    if (!line.startsWith("#") && eq > 0) {
-      const key = line.slice(0, eq);
-      const value = entries.get(key);
-      if (value !== undefined) {
-        // 值未变则保留原行（引号 / 空白 / CRLF 原样），实现幂等写回。
-        out.push(
-          stripQuotes(line.slice(eq + 1)) === value ? raw : key + "=" + value,
-        );
-        written.add(key);
-        continue;
-      }
+    const out: string[] = [];
+    const written = new Set<string>();
+    for (const raw of original.split(LF)) {
+        const line = normalizeLine(raw);
+        const eq = line.indexOf("=");
+        if (!line.startsWith("#") && eq > 0) {
+            const key = line.slice(0, eq);
+            const value = entries.get(key);
+            if (value !== undefined) {
+                // 值未变则保留原行（引号 / 空白 / CRLF 原样），实现幂等写回。
+                out.push(
+                    stripQuotes(line.slice(eq + 1)) === value
+                        ? raw
+                        : key + "=" + value,
+                );
+                written.add(key);
+                continue;
+            }
+        }
+        out.push(raw);
     }
-    out.push(raw);
-  }
-  let text = out.join(LF);
-  for (const [key, value] of entries) {
-    if (written.has(key)) continue;
-    text = appendLine(text, key + "=" + value);
-  }
-  return text;
+    let text = out.join(LF);
+    for (const [key, value] of entries) {
+        if (written.has(key)) continue;
+        text = appendLine(text, key + "=" + value);
+    }
+    return text;
 }
 
 /** 读取存在文件的文本；文件不存在视为空文本。 */
 async function readTextOrEmpty(path: string): Promise<string> {
-  try {
-    return await Deno.readTextFile(path);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) return "";
-    throw err;
-  }
+    try {
+        return await Deno.readTextFile(path);
+    } catch (err) {
+        if (err instanceof Deno.errors.NotFound) return "";
+        throw err;
+    }
 }
 
 /** 删除临时文件，忽略「本就不存在」的错误。 */
 async function removeQuietly(path: string): Promise<void> {
-  try {
-    await Deno.remove(path);
-  } catch {
-    // 清理失败不覆盖原始错误
-  }
+    try {
+        await Deno.remove(path);
+    } catch {
+        // 清理失败不覆盖原始错误
+    }
 }
 
 /**
@@ -145,36 +147,36 @@ async function removeQuietly(path: string): Promise<void> {
  * 「空配置」（后者返回空 Map）。
  */
 export async function readEnvFile(path: string): Promise<Map<string, string>> {
-  let text: string;
-  try {
-    text = await Deno.readTextFile(path);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      throw new Error("配置文件不存在：" + path);
+    let text: string;
+    try {
+        text = await Deno.readTextFile(path);
+    } catch (err) {
+        if (err instanceof Deno.errors.NotFound) {
+            throw new Error("配置文件不存在：" + path);
+        }
+        throw err;
     }
-    throw err;
-  }
-  return parseEnvFile(text);
+    return parseEnvFile(text);
 }
 
 /** 读取 .env.prod 为键值表；文件不存在时抛错（同 {@link readEnvFile}）。 */
 export async function readEnvValues(
-  path: string,
+    path: string,
 ): Promise<Record<string, string>> {
-  return Object.fromEntries(await readEnvFile(path));
+    return Object.fromEntries(await readEnvFile(path));
 }
 
 /** 读取 .env.prod 为键值表；文件缺失或不可读时返回空表。 */
 export async function readEnvValuesOrEmpty(
-  path: string,
+    path: string,
 ): Promise<Record<string, string>> {
-  let text: string;
-  try {
-    text = await Deno.readTextFile(path);
-  } catch {
-    return {};
-  }
-  return Object.fromEntries(parseEnvFile(text));
+    let text: string;
+    try {
+        text = await Deno.readTextFile(path);
+    } catch {
+        return {};
+    }
+    return Object.fromEntries(parseEnvFile(text));
 }
 
 /**
@@ -184,32 +186,32 @@ export async function readEnvValuesOrEmpty(
  * 任一步骤失败都会清理临时文件并抛出错误，原文件保持完整（rename 前不触碰）。
  */
 export async function writeEnvFileAtomic(
-  path: string,
-  entries: Map<string, string>,
+    path: string,
+    entries: Map<string, string>,
 ): Promise<void> {
-  const tmp = join(
-    dirname(path),
-    ".env.prod.tmp-" + Deno.pid + "-" + crypto.randomUUID(),
-  );
-  try {
-    const original = await readTextOrEmpty(path);
-    const text = serializeEnvFile(entries, original);
-    const file = await Deno.open(tmp, {
-      create: true,
-      write: true,
-      truncate: true,
-      mode: ENV_FILE_MODE,
-    });
+    const tmp = join(
+        dirname(path),
+        ".env.prod.tmp-" + Deno.pid + "-" + crypto.randomUUID(),
+    );
     try {
-      await file.write(new TextEncoder().encode(text));
-    } finally {
-      file.close();
+        const original = await readTextOrEmpty(path);
+        const text = serializeEnvFile(entries, original);
+        const file = await Deno.open(tmp, {
+            create: true,
+            write: true,
+            truncate: true,
+            mode: ENV_FILE_MODE,
+        });
+        try {
+            await file.write(new TextEncoder().encode(text));
+        } finally {
+            file.close();
+        }
+        // 显式 chmod：open 的 mode 会被 umask 裁剪，配置文件须恒为 600。
+        await Deno.chmod(tmp, ENV_FILE_MODE);
+        await Deno.rename(tmp, path);
+    } catch (err) {
+        await removeQuietly(tmp);
+        throw err;
     }
-    // 显式 chmod：open 的 mode 会被 umask 裁剪，配置文件须恒为 600。
-    await Deno.chmod(tmp, ENV_FILE_MODE);
-    await Deno.rename(tmp, path);
-  } catch (err) {
-    await removeQuietly(tmp);
-    throw err;
-  }
 }

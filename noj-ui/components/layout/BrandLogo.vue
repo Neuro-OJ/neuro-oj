@@ -10,29 +10,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
-import defaultLogo from "~/assets/img/logo.jpg"
+import { computed } from 'vue';
+import defaultLogo from '~/assets/img/logo.jpg';
 
 interface Props {
     /** Logo 点击后的目标地址 */
-    to?: string
+    to?: string;
     /** 品牌名称 */
-    brandName?: string
+    brandName?: string;
     /** Logo 图片地址（支持 PNG、JPG/JPEG、SVG 或外部 URL） */
-    logoSrc?: string
+    logoSrc?: string;
     /** Logo 尺寸（Tailwind size-N，对应 size-N 类） */
-    size?: number
+    size?: number;
     /** 品牌文字额外类名（如移动端隐藏：hidden sm:inline） */
-    textClass?: string
+    textClass?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    to: "/",
-    brandName: "Neuro OJ",
+    to: '/',
+    brandName: 'Neuro OJ',
     logoSrc: defaultLogo,
     size: 7,
-    textClass: "",
-})
+    textClass: '',
+});
 
-const sizeClass = computed(() => `size-${props.size}`)
+const sizeClass = computed(() => `size-${props.size}`);
 </script>

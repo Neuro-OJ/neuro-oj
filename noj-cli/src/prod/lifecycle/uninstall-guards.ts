@@ -19,7 +19,7 @@ import { type PrepareFailure } from "./steps.ts";
 
 /** docker CLI 缺失文案。 */
 export function dockerMissingHint(dockerBin: string): string {
-  return `找不到 Docker CLI：${dockerBin}`;
+    return `找不到 Docker CLI：${dockerBin}`;
 }
 
 /** daemon 不可用文案。 */
@@ -30,31 +30,31 @@ export const UNINSTALL_COMPOSE_HINT = "Docker Compose v2 不可用";
 
 /** `.env.prod` 缺失文案。 */
 export function uninstallEnvMissingHint(envFile: string): string {
-  return `找不到生产配置：${envFile}；无法安全定位生产 Compose 栈`;
+    return `找不到生产配置：${envFile}；无法安全定位生产 Compose 栈`;
 }
 
 /** compose 文件缺失文案。 */
 export function uninstallComposeMissingHint(composeFile: string): string {
-  return `找不到生产 Compose 文件：${composeFile}`;
+    return `找不到生产 Compose 文件：${composeFile}`;
 }
 
 /** 工作区拒绝文案。 */
 export const UNINSTALL_WORKSPACE_HINT =
-  "检测到 Git 工作区，拒绝删除源码目录；请在生产安装目录执行 uninstall --all";
+    "检测到 Git 工作区，拒绝删除源码目录；请在生产安装目录执行 uninstall --all";
 
 /** 危险路径拒绝文案。 */
 export function uninstallUnsafePathHint(dir: string): string {
-  return `拒绝删除危险安装路径：${dir}`;
+    return `拒绝删除危险安装路径：${dir}`;
 }
 
 /** 安装目录形态不符文案。 */
 export function uninstallNotADirHint(dir: string): string {
-  return `当前安装目录不存在或不是普通目录：${dir}`;
+    return `当前安装目录不存在或不是普通目录：${dir}`;
 }
 
 /** 安装目录不完整文案。 */
 export function uninstallIncompleteDirHint(dir: string): string {
-  return `当前目录不是完整的 NOJ 安装目录，拒绝完全删除：${dir}`;
+    return `当前目录不是完整的 NOJ 安装目录，拒绝完全删除：${dir}`;
 }
 
 /**
@@ -68,30 +68,30 @@ export function uninstallIncompleteDirHint(dir: string): string {
  * @returns 退出码；命令无法启动（不存在/无权限）时为 `null`。
  */
 export async function probeCommandCode(
-  runner: CommandRunner,
-  cmd: string,
-  args: string[],
+    runner: CommandRunner,
+    cmd: string,
+    args: string[],
 ): Promise<number | null> {
-  try {
-    return (await runner.run(cmd, args)).code;
-  } catch {
-    return null;
-  }
+    try {
+        return (await runner.run(cmd, args)).code;
+    } catch {
+        return null;
+    }
 }
 
 /** {@link checkUninstallDependencies} 的成功分支：卸载所需的三个已定位路径。 */
 export interface UninstallDependencies {
-  ok: true;
-  /** 归一化安装目录（无尾斜杠）。 */
-  dir: string;
-  envFile: string;
-  composeFile: string;
+    ok: true;
+    /** 归一化安装目录（无尾斜杠）。 */
+    dir: string;
+    envFile: string;
+    composeFile: string;
 }
 
 /** {@link checkUninstallDependencies} 的结果。 */
 export type UninstallDependenciesResult =
-  | UninstallDependencies
-  | PrepareFailure;
+    | UninstallDependencies
+    | PrepareFailure;
 
 /**
  * `check_uninstall_dependencies`：卸载前的五条前置。
@@ -105,37 +105,40 @@ export type UninstallDependenciesResult =
  * `uninstall()` 的注释），不需要 `judge` 旗标，成功分支只回填三个路径字段。
  */
 export async function checkUninstallDependencies(opts: {
-  dir: string;
-  runner: CommandRunner;
-  /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN` 的等价）。 */
-  dockerBin?: string;
+    dir: string;
+    runner: CommandRunner;
+    /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN` 的等价）。 */
+    dockerBin?: string;
 }): Promise<UninstallDependenciesResult> {
-  const dockerBin = opts.dockerBin ?? "docker";
-  const envFile = join(opts.dir, PROD_ENV_FILE);
-  const composeFile = join(opts.dir, PROD_COMPOSE_FILE);
+    const dockerBin = opts.dockerBin ?? "docker";
+    const envFile = join(opts.dir, PROD_ENV_FILE);
+    const composeFile = join(opts.dir, PROD_COMPOSE_FILE);
 
-  if (
-    (await probeCommandCode(opts.runner, dockerBin, ["--version"])) !== 0
-  ) {
-    return { ok: false, error: dockerMissingHint(dockerBin) };
-  }
-  if ((await probeCommandCode(opts.runner, dockerBin, ["info"])) !== 0) {
-    return { ok: false, error: UNINSTALL_DAEMON_HINT };
-  }
-  if (
-    (await probeCommandCode(opts.runner, dockerBin, ["compose", "version"])) !==
-      0
-  ) {
-    return { ok: false, error: UNINSTALL_COMPOSE_HINT };
-  }
-  if (!(await isFile(envFile))) {
-    return { ok: false, error: uninstallEnvMissingHint(envFile) };
-  }
-  if (!(await isFile(composeFile))) {
-    return { ok: false, error: uninstallComposeMissingHint(composeFile) };
-  }
+    if (
+        (await probeCommandCode(opts.runner, dockerBin, ["--version"])) !== 0
+    ) {
+        return { ok: false, error: dockerMissingHint(dockerBin) };
+    }
+    if ((await probeCommandCode(opts.runner, dockerBin, ["info"])) !== 0) {
+        return { ok: false, error: UNINSTALL_DAEMON_HINT };
+    }
+    if (
+        (await probeCommandCode(opts.runner, dockerBin, [
+            "compose",
+            "version",
+        ])) !==
+            0
+    ) {
+        return { ok: false, error: UNINSTALL_COMPOSE_HINT };
+    }
+    if (!(await isFile(envFile))) {
+        return { ok: false, error: uninstallEnvMissingHint(envFile) };
+    }
+    if (!(await isFile(composeFile))) {
+        return { ok: false, error: uninstallComposeMissingHint(composeFile) };
+    }
 
-  return { ok: true, dir: opts.dir, envFile, composeFile };
+    return { ok: true, dir: opts.dir, envFile, composeFile };
 }
 
 /**
@@ -151,65 +154,66 @@ export async function checkUninstallDependencies(opts: {
  * 可继续的信号。
  */
 export async function assertRemovableInstallDir(
-  dir: string,
-  processEnv: Record<string, string | undefined> = Deno.env.toObject(),
-  opts: {
-    /** 安装版 CLI 路径；缺省 `<dir>/bin/noj-cli`。 */
-    cliBinary?: string;
-  } = {},
+    dir: string,
+    processEnv: Record<string, string | undefined> = Deno.env.toObject(),
+    opts: {
+        /** 安装版 CLI 路径；缺省 `<dir>/bin/noj-cli`。 */
+        cliBinary?: string;
+    } = {},
 ): Promise<void> {
-  let st: Deno.FileInfo | null = null;
-  try {
-    st = await Deno.lstat(dir);
-  } catch {
-    st = null;
-  }
-  if (st === null || !st.isDirectory || st.isSymlink) {
-    throw new Error(uninstallNotADirHint(dir));
-  }
-
-  const cliBinary = opts.cliBinary ?? join(dir, "bin/noj-cli");
-  // 各条 `-f` 用 `&&` 串在一起时失败只有**一句**文案，
-  // 无法（也不应）区分是哪一个特征文件缺失。
-  if (!(await isFile(cliBinary))) {
-    throw new Error(uninstallIncompleteDirHint(dir));
-  }
-  for (const marker of PRODUCTION_MARKERS) {
-    if (!(await isFile(join(dir, marker)))) {
-      throw new Error(uninstallIncompleteDirHint(dir));
+    let st: Deno.FileInfo | null = null;
+    try {
+        st = await Deno.lstat(dir);
+    } catch {
+        st = null;
     }
-  }
+    if (st === null || !st.isDirectory || st.isSymlink) {
+        throw new Error(uninstallNotADirHint(dir));
+    }
 
-  if (
-    await pathExists(join(dir, ".git")) || await pathExists(join(dir, ".jj"))
-  ) {
-    throw new Error(UNINSTALL_WORKSPACE_HINT);
-  }
+    const cliBinary = opts.cliBinary ?? join(dir, "bin/noj-cli");
+    // 各条 `-f` 用 `&&` 串在一起时失败只有**一句**文案，
+    // 无法（也不应）区分是哪一个特征文件缺失。
+    if (!(await isFile(cliBinary))) {
+        throw new Error(uninstallIncompleteDirHint(dir));
+    }
+    for (const marker of PRODUCTION_MARKERS) {
+        if (!(await isFile(join(dir, marker)))) {
+            throw new Error(uninstallIncompleteDirHint(dir));
+        }
+    }
 
-  const normalized = dir.replace(/\/+$/, "");
-  const home = (processEnv["HOME"] ?? "").replace(/\/+$/, "");
-  if (
-    normalized === "" || normalized === "/" || normalized === "." ||
-    normalized === ".." || (home !== "" && normalized === home)
-  ) {
-    throw new Error(uninstallUnsafePathHint(dir));
-  }
+    if (
+        await pathExists(join(dir, ".git")) ||
+        await pathExists(join(dir, ".jj"))
+    ) {
+        throw new Error(UNINSTALL_WORKSPACE_HINT);
+    }
+
+    const normalized = dir.replace(/\/+$/, "");
+    const home = (processEnv["HOME"] ?? "").replace(/\/+$/, "");
+    if (
+        normalized === "" || normalized === "/" || normalized === "." ||
+        normalized === ".." || (home !== "" && normalized === home)
+    ) {
+        throw new Error(uninstallUnsafePathHint(dir));
+    }
 }
 
 /**
  * 删除安装目录：先守卫、再 `rm -rf`；删除失败即抛错。
  */
 export async function removeInstallDirectory(
-  dir: string,
-  processEnv: Record<string, string | undefined> = Deno.env.toObject(),
-  opts: {
-    cliBinary?: string;
-  } = {},
+    dir: string,
+    processEnv: Record<string, string | undefined> = Deno.env.toObject(),
+    opts: {
+        cliBinary?: string;
+    } = {},
 ): Promise<void> {
-  await assertRemovableInstallDir(dir, processEnv, opts);
-  try {
-    await Deno.remove(dir, { recursive: true });
-  } catch {
-    throw new Error(`无法删除 NOJ 安装目录：${dir}`);
-  }
+    await assertRemovableInstallDir(dir, processEnv, opts);
+    try {
+        await Deno.remove(dir, { recursive: true });
+    } catch {
+        throw new Error(`无法删除 NOJ 安装目录：${dir}`);
+    }
 }

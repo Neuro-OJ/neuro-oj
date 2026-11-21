@@ -28,7 +28,7 @@
  * ```
  */
 export function unwrapRows<T>(result: T[]): T[] {
-  return result;
+    return result;
 }
 
 /**
@@ -38,9 +38,9 @@ export function unwrapRows<T>(result: T[]): T[] {
  * 无行时返回 undefined（不抛错，与原代码的 `rows[0]?.field ?? default` 模式一致）。
  */
 export function unwrapFirstRow<T>(
-  result: T[],
+    result: T[],
 ): T | undefined {
-  return unwrapRows(result)[0];
+    return unwrapRows(result)[0];
 }
 
 /**
@@ -54,7 +54,7 @@ export function unwrapFirstRow<T>(
  * ```
  */
 export function countToNumber(value: unknown): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") return Number(value) || 0;
-  return 0;
+    if (typeof value === "number") return value;
+    if (typeof value === "string") return Number(value) || 0;
+    return 0;
 }

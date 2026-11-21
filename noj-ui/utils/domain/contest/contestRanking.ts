@@ -30,10 +30,10 @@ export const FROZEN_LOGIN_HINT = '登录并报名参赛后可查看本场竞赛�
  * @param adminLive 后端返回的 `admin_live`；管理员实时完整榜不属于"仅本人"。
  */
 export function isFrozenSelfOnly(
-  view?: ContestRankingView | null,
-  adminLive?: boolean | null,
+    view?: ContestRankingView | null,
+    adminLive?: boolean | null,
 ): boolean {
-  return view === 'frozen' && adminLive !== true;
+    return view === 'frozen' && adminLive !== true;
 }
 
 /**
@@ -46,9 +46,9 @@ export function isFrozenSelfOnly(
  * @returns 展示文案；不适用时为 null。
  */
 export function frozenAccessHint(status?: number | null): string | null {
-  if (status === 401) return FROZEN_LOGIN_HINT;
-  if (status === 403) return FROZEN_SELF_ONLY_HINT;
-  return null;
+    if (status === 401) return FROZEN_LOGIN_HINT;
+    if (status === 403) return FROZEN_SELF_ONLY_HINT;
+    return null;
 }
 
 /**
@@ -62,9 +62,9 @@ export function frozenAccessHint(status?: number | null): string | null {
  * @param contestStatus 竞赛状态；仅 `running` 时成立。
  */
 export function isLiveSelfOnly(
-  view: ContestRankingView | null | undefined,
-  adminLive: boolean | null | undefined,
-  contestStatus: string | null | undefined,
+    view: ContestRankingView | null | undefined,
+    adminLive: boolean | null | undefined,
+    contestStatus: string | null | undefined,
 ): boolean {
-  return (view ?? 'live') === 'live' && adminLive !== true && contestStatus === 'running';
+    return (view ?? 'live') === 'live' && adminLive !== true && contestStatus === 'running';
 }

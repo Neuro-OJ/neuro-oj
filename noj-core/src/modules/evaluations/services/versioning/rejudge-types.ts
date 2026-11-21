@@ -19,78 +19,78 @@ export type JobSourceKind = "submission" | "objective";
 
 /** 重测范围。 */
 export type RejudgeScope =
-  | {
-    type: "selected";
-    submissions: Array<{ kind: JobSourceKind; id: string }>;
-  }
-  | { type: "problem"; problem_id: string }
-  | { type: "contest"; contest_id: string };
+    | {
+        type: "selected";
+        submissions: Array<{ kind: JobSourceKind; id: string }>;
+    }
+    | { type: "problem"; problem_id: string }
+    | { type: "contest"; contest_id: string };
 
 /** 重测目标版本。 */
 export type RejudgeTarget =
-  | { mode: "submitted" }
-  | { mode: "latest" }
-  | { mode: "specified"; versions: Record<string, string> };
+    | { mode: "submitted" }
+    | { mode: "latest" }
+    | { mode: "specified"; versions: Record<string, string> };
 
 /** 策略变更请求。 */
 export interface PolicyChangeRequest {
-  problem_id: string;
-  contest_id?: string;
-  expected_revision: number;
-  policy: EffectiveVersionPolicy;
+    problem_id: string;
+    contest_id?: string;
+    expected_revision: number;
+    policy: EffectiveVersionPolicy;
 }
 
 /** 管理员重测请求体（§4.3）。 */
 export interface RejudgeRequest {
-  kind: "rejudge";
-  scope: RejudgeScope;
-  target: RejudgeTarget;
-  policy_changes?: PolicyChangeRequest[];
+    kind: "rejudge";
+    scope: RejudgeScope;
+    target: RejudgeTarget;
+    policy_changes?: PolicyChangeRequest[];
 }
 
 /** 受理结果。 */
 export interface AcceptJobResult {
-  job_id: string;
-  status: string;
-  total_items: number;
-  /** 已存在同幂等键任务时为 true（未新建）。 */
-  existing: boolean;
+    job_id: string;
+    status: string;
+    total_items: number;
+    /** 已存在同幂等键任务时为 true（未新建）。 */
+    existing: boolean;
 }
 
 /** 条目读模型。 */
 export interface JobItemView {
-  id: string;
-  ordinal: number;
-  source_kind: JobSourceKind;
-  source_id: string;
-  problem_id: string;
-  target_version_id: string | null;
-  target_version_ref: string | null;
-  status: string;
-  attempt_id: string | null;
-  reason_code: string | null;
-  reason_message: string | null;
+    id: string;
+    ordinal: number;
+    source_kind: JobSourceKind;
+    source_id: string;
+    problem_id: string;
+    target_version_id: string | null;
+    target_version_ref: string | null;
+    status: string;
+    attempt_id: string | null;
+    reason_code: string | null;
+    reason_message: string | null;
 }
 
 /** 任务读模型。 */
 export interface JobView {
-  id: string;
-  kind: string;
-  actor_id: string;
-  status: string;
-  created_at: string;
-  finished_at: string | null;
-  /** 由条目聚合的计数（不维护进程内计数器）。 */
-  counts: Record<string, number>;
-  total_items: number;
+    id: string;
+    kind: string;
+    actor_id: string;
+    status: string;
+    created_at: string;
+    finished_at: string | null;
+    /** 由条目聚合的计数（不维护进程内计数器）。 */
+    counts: Record<string, number>;
+    total_items: number;
 }
 
 /** 受理前的规范化条目。 */
 export interface PlannedItem {
-  source_kind: JobSourceKind;
-  source_id: string;
-  problem_id: string;
-  target_version_id: string | null;
-  target_version_ref: string | null;
-  skipped_reason?: { code: string; message: string };
+    source_kind: JobSourceKind;
+    source_id: string;
+    problem_id: string;
+    target_version_id: string | null;
+    target_version_ref: string | null;
+    skipped_reason?: { code: string; message: string };
 }

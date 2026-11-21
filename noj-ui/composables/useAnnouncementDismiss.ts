@@ -12,22 +12,22 @@ import { DISMISS_KEY, parseDismissed, serializeDismissed } from '~/utils/domain/
 
 /** 读取已关闭 id 集合（SSR / 解析失败时返回空集）。 */
 function readDismissed(): Set<string> {
-  if (!import.meta.client) return new Set();
-  try {
-    return parseDismissed(localStorage.getItem(DISMISS_KEY));
-  } catch {
-    return new Set();
-  }
+    if (!import.meta.client) return new Set();
+    try {
+        return parseDismissed(localStorage.getItem(DISMISS_KEY));
+    } catch {
+        return new Set();
+    }
 }
 
 /** 写回已关闭 id 集合（尽力而为；配额/隐私模式失败时静默）。 */
 function writeDismissed(ids: Set<string>): void {
-  if (!import.meta.client) return;
-  try {
-    localStorage.setItem(DISMISS_KEY, serializeDismissed(ids));
-  } catch {
-    // 隐私模式/配额限制：静默降级（本次会话内仍通过响应式 ref 生效）
-  }
+    if (!import.meta.client) return;
+    try {
+        localStorage.setItem(DISMISS_KEY, serializeDismissed(ids));
+    } catch {
+        // 隐私模式/配额限制：静默降级（本次会话内仍通过响应式 ref 生效）
+    }
 }
 
 /**
@@ -36,18 +36,18 @@ function writeDismissed(ids: Set<string>): void {
  * @returns `isDismissed(id)` 判断是否已关闭；`dismiss(id)` 记录关闭
  */
 export function useAnnouncementDismiss() {
-  const dismissed = ref<Set<string>>(readDismissed());
+    const dismissed = ref<Set<string>>(readDismissed());
 
-  function isDismissed(id: string): boolean {
-    return dismissed.value.has(id);
-  }
+    function isDismissed(id: string): boolean {
+        return dismissed.value.has(id);
+    }
 
-  function dismiss(id: string): void {
-    const next = new Set(dismissed.value);
-    next.add(id);
-    dismissed.value = next;
-    writeDismissed(next);
-  }
+    function dismiss(id: string): void {
+        const next = new Set(dismissed.value);
+        next.add(id);
+        dismissed.value = next;
+        writeDismissed(next);
+    }
 
-  return { isDismissed, dismiss, dismissed };
+    return { isDismissed, dismiss, dismissed };
 }

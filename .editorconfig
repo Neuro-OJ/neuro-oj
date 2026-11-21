@@ -1,0 +1,41 @@
+# 全仓统一格式约定。deno fmt / cargo fmt 会自动读取本文件，
+# 但各自 deno.json 里的显式 fmt 配置优先。
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[*.ts]
+indent_style = space
+indent_size = 4
+
+[*.tsx]
+indent_style = space
+indent_size = 4
+
+[*.vue]
+indent_style = space
+indent_size = 4
+
+[*.json]
+indent_style = space
+indent_size = 4
+
+[*.md]
+indent_style = space
+indent_size = 2
+
+[*.yml]
+indent_style = space
+indent_size = 2
+
+[*.yaml]
+indent_style = space
+indent_size = 2
+
+[*.rs]
+indent_style = space
+indent_size = 4

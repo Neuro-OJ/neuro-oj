@@ -10,14 +10,14 @@ import { accountNotifications } from "../../../../shared/db/schema.ts";
 import { communityPosts } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
-  communityDb,
-  type CommunityScope,
+    communityDb,
+    type CommunityScope,
 } from "./community/community-scope.ts";
 import { nowIso } from "../../../../shared/base/dates.ts";
 import {
-  Channels,
-  publishSseEvent,
-  publishSseEventAfterTx,
+    Channels,
+    publishSseEvent,
+    publishSseEventAfterTx,
 } from "../../../../shared/sse/event-bus.ts";
 import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 
@@ -27,13 +27,13 @@ import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
  * 与 `community_notifications_type_check` CHECK 约束保持一致。
  */
 export type NotificationType =
-  | "reply"
-  | "like"
-  | "follow"
-  | "moderation"
-  | "clarification"
-  | "report"
-  | "ban";
+    | "reply"
+    | "like"
+    | "follow"
+    | "moderation"
+    | "clarification"
+    | "report"
+    | "ban";
 
 /**
  * 创建通知并推送 SSE。
@@ -43,44 +43,48 @@ export type NotificationType =
  *   前端收到后刷新通知列表与未读计数
  */
 export async function createNotification(
-  recipientId: string,
-  actorId: string | null,
-  type: NotificationType,
-  postId: string | null,
-  commentId: string | null,
-  data: Record<string, unknown>,
-  scope?: CommunityScope,
-  /** 非社区通知的归属只能由调用方读取已授权业务记录后传入。 */
-  trustedDomainId?: string,
+    recipientId: string,
+    actorId: string | null,
+    type: NotificationType,
+    postId: string | null,
+    commentId: string | null,
+    data: Record<string, unknown>,
+    scope?: CommunityScope,
+    /** 非社区通知的归属只能由调用方读取已授权业务记录后传入。 */
+    trustedDomainId?: string,
 ): Promise<void> {
-  if (recipientId === actorId) return;
-  const db = communityDb(scope);
-  const [post] = postId
-    ? await db.select({ domain_id: communityPosts.domain_id }).from(
-      communityPosts,
-    ).where(eq(communityPosts.id, postId))
-    : [];
-  const notification = {
-    id: crypto.randomUUID(),
-    domain_id: scope?.domainId ?? trustedDomainId ?? post?.domain_id ?? null,
-    recipient_id: recipientId,
-    actor_id: actorId,
-    type,
-    post_id: postId,
-    comment_id: commentId,
-    data,
-    read_at: null,
-    created_at: nowIso(),
-  };
-  await db.insert(accountNotifications).values(notification);
-  const channel = Channels.user(recipientId),
-    payload = { type: "notification:new", notification_id: notification.id };
-  if (scope) {
-    const eventId = await recordSseEvent(channel, payload, db);
-    scope.afterCommit.push(() =>
-      publishSseEventAfterTx(channel, payload, eventId)
-    );
-  } else {
-    await publishSseEvent(channel, payload);
-  }
+    if (recipientId === actorId) return;
+    const db = communityDb(scope);
+    const [post] = postId
+        ? await db.select({ domain_id: communityPosts.domain_id }).from(
+            communityPosts,
+        ).where(eq(communityPosts.id, postId))
+        : [];
+    const notification = {
+        id: crypto.randomUUID(),
+        domain_id: scope?.domainId ?? trustedDomainId ?? post?.domain_id ??
+            null,
+        recipient_id: recipientId,
+        actor_id: actorId,
+        type,
+        post_id: postId,
+        comment_id: commentId,
+        data,
+        read_at: null,
+        created_at: nowIso(),
+    };
+    await db.insert(accountNotifications).values(notification);
+    const channel = Channels.user(recipientId),
+        payload = {
+            type: "notification:new",
+            notification_id: notification.id,
+        };
+    if (scope) {
+        const eventId = await recordSseEvent(channel, payload, db);
+        scope.afterCommit.push(() =>
+            publishSseEventAfterTx(channel, payload, eventId)
+        );
+    } else {
+        await publishSseEvent(channel, payload);
+    }
 }

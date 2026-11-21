@@ -29,74 +29,74 @@
 
 import { zipSync } from "fflate";
 import {
-  createSelfTest,
-  type DomainProblemClientDeps,
-  downloadSupportPackage,
-  getSelfTest,
-  importProblemBundle,
-  listProblems,
-  publishProblemVersion,
-  readProblem,
+    createSelfTest,
+    type DomainProblemClientDeps,
+    downloadSupportPackage,
+    getSelfTest,
+    importProblemBundle,
+    listProblems,
+    publishProblemVersion,
+    readProblem,
 } from "../../problem/client.ts";
 import {
-  DEFAULT_EVALUATOR_IMAGE,
-  DEFAULT_SOLUTION_IMAGE,
-  DRILL_ADMIN_EMAIL_DOMAIN,
-  DRILL_ADMIN_PASSWORD,
-  DRILL_ADMIN_USER,
+    DEFAULT_EVALUATOR_IMAGE,
+    DEFAULT_SOLUTION_IMAGE,
+    DRILL_ADMIN_EMAIL_DOMAIN,
+    DRILL_ADMIN_PASSWORD,
+    DRILL_ADMIN_USER,
 } from "./plan.ts";
 
 /** 单个验收步骤的结论（字段名固定，报告解析方依赖它）。 */
 export interface VerifyStep {
-  step: string;
-  status: "passed" | "failed" | "warning" | "skipped";
-  detail: string;
+    step: string;
+    status: "passed" | "failed" | "warning" | "skipped";
+    detail: string;
 }
 
 /** 业务验收的汇总结果。 */
 export interface VerifyResult {
-  passed: boolean;
-  steps: VerifyStep[];
-  /** 首个必需步骤失败的原因（用于报告与错误传播）。 */
-  firstFailure: string | null;
+    passed: boolean;
+    steps: VerifyStep[];
+    /** 首个必需步骤失败的原因（用于报告与错误传播）。 */
+    firstFailure: string | null;
 }
 
 /** {@link runBusinessVerification} 的注入点。 */
 export interface VerifyOptions {
-  /** core 的 API 基址（如 `http://172.29.0.3:8000/api/v1`）。 */
-  baseUrl: string;
-  /** HTTP 客户端（注入以便在无网络的 CI 里用 fake 全覆盖）。 */
-  fetch: typeof fetch;
-  /** 管理员账号（缺省为演练固定账号）。 */
-  adminUser?: string;
-  adminPassword?: string;
-  /** 评测镜像名（来自 judge_images 白名单；缺省用兜底名）。 */
-  evaluatorImage?: string;
-  solutionImage?: string;
-  /** 跳过评测相关步骤（`--skip-judge`）。 */
-  skipEvaluation?: boolean;
-  /** 轮询间隔与上限（测试注入小值）。 */
-  pollIntervalMs?: number;
-  evaluationTimeoutMs?: number;
-  /**
-   * 目标工作空间 slug（0.11 起题目只存在于域内，无域写入口已删除）。
-   * 缺省 `main`：系统初始化即创建该域，演练管理员有全域权限。
-   */
-  domain?: string;
-  /** 步骤输出的汇聚点（人类日志；缺省丢弃）。 */
-  log?: (line: string) => void;
-  /** 时间源（测试注入）。 */
-  now?: () => number;
-  /** 睡眠（测试注入以避免真实等待）。 */
-  sleep?: (ms: number) => Promise<void>;
+    /** core 的 API 基址（如 `http://172.29.0.3:8000/api/v1`）。 */
+    baseUrl: string;
+    /** HTTP 客户端（注入以便在无网络的 CI 里用 fake 全覆盖）。 */
+    fetch: typeof fetch;
+    /** 管理员账号（缺省为演练固定账号）。 */
+    adminUser?: string;
+    adminPassword?: string;
+    /** 评测镜像名（来自 judge_images 白名单；缺省用兜底名）。 */
+    evaluatorImage?: string;
+    solutionImage?: string;
+    /** 跳过评测相关步骤（`--skip-judge`）。 */
+    skipEvaluation?: boolean;
+    /** 轮询间隔与上限（测试注入小值）。 */
+    pollIntervalMs?: number;
+    evaluationTimeoutMs?: number;
+    /**
+     * 目标工作空间 slug（0.11 起题目只存在于域内，无域写入口已删除）。
+     * 缺省 `main`：系统初始化即创建该域，演练管理员有全域权限。
+     */
+    domain?: string;
+    /** 步骤输出的汇聚点（人类日志；缺省丢弃）。 */
+    log?: (line: string) => void;
+    /** 时间源（测试注入）。 */
+    now?: () => number;
+    /** 睡眠（测试注入以避免真实等待）。 */
+    sleep?: (ms: number) => Promise<void>;
 }
 
 /** 构造演练题目包（`buildDrillBundle` 的等价；改用既有依赖 fflate）。 */
 export function buildDrillBundle(
-  evaluatorImage: string,
-  solutionImage: string,
+    evaluatorImage: string,
+    solutionImage: string,
 ): Uint8Array {
-  const evaluatorPy = `#!/usr/bin/env python3
+    const evaluatorPy = `#!/usr/bin/env python3
 """NOJ 恢复演练 evaluator：调用 solve 并校验 A+B 结果。"""
 import json
 from noj_evaluator_sdk.runner import SolutionRunner
@@ -116,353 +116,370 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 `;
-  const manifest = {
-    format_version: 2,
-    title: "NOJ 恢复演练自测题",
-    description:
-      "恢复演练自动导入的 A+B 自测题，验证隔离恢复后的真实评测链路。",
-    difficulty: "easy",
-    template: "template.py",
-    runtime_config: {
-      evaluator: {
-        image: evaluatorImage,
-        time_limit_ms: 60000,
-        memory_limit_mb: 256,
-      },
-      solution: {
-        image: solutionImage,
-        call_timeout_ms: 10000,
-        memory_limit_mb: 256,
-      },
-    },
-  };
-  return zipSync({
-    "problem.json": new TextEncoder().encode(JSON.stringify(manifest)),
-    "statement.md": new TextEncoder().encode(
-      "# NOJ 恢复演练自测题\n\n实现 solve(input_str) 返回两数之和。\n",
-    ),
-    "template.py": new TextEncoder().encode(
-      "def solve(input_str: str) -> str:\n    ...\n",
-    ),
-    "evaluate.py": new TextEncoder().encode(evaluatorPy),
-    "visible.jsonl": new TextEncoder().encode(
-      '{"id":"v001","input":"1 2\\n","expected":3}\n',
-    ),
-  });
+    const manifest = {
+        format_version: 2,
+        title: "NOJ 恢复演练自测题",
+        description:
+            "恢复演练自动导入的 A+B 自测题，验证隔离恢复后的真实评测链路。",
+        difficulty: "easy",
+        template: "template.py",
+        runtime_config: {
+            evaluator: {
+                image: evaluatorImage,
+                time_limit_ms: 60000,
+                memory_limit_mb: 256,
+            },
+            solution: {
+                image: solutionImage,
+                call_timeout_ms: 10000,
+                memory_limit_mb: 256,
+            },
+        },
+    };
+    return zipSync({
+        "problem.json": new TextEncoder().encode(JSON.stringify(manifest)),
+        "statement.md": new TextEncoder().encode(
+            "# NOJ 恢复演练自测题\n\n实现 solve(input_str) 返回两数之和。\n",
+        ),
+        "template.py": new TextEncoder().encode(
+            "def solve(input_str: str) -> str:\n    ...\n",
+        ),
+        "evaluate.py": new TextEncoder().encode(evaluatorPy),
+        "visible.jsonl": new TextEncoder().encode(
+            '{"id":"v001","input":"1 2\\n","expected":3}\n',
+        ),
+    });
 }
 
 /** 一次业务验收运行的内部状态。 */
 class Verifier {
-  readonly steps: VerifyStep[] = [];
-  private authCookie = "";
-  private authToken = "";
-  private requiredFailure = false;
+    readonly steps: VerifyStep[] = [];
+    private authCookie = "";
+    private authToken = "";
+    private requiredFailure = false;
 
-  constructor(private readonly opts: VerifyOptions) {}
+    constructor(private readonly opts: VerifyOptions) {}
 
-  private get fetch(): typeof fetch {
-    return this.opts.fetch;
-  }
-
-  private get base(): string {
-    return this.opts.baseUrl.replace(/\/+$/, "");
-  }
-
-  private log(line: string): void {
-    this.opts.log?.(line);
-  }
-
-  /** 记录一步（与原实现同样的 `{step,status,detail}` 形状）。 */
-  record(step: string, status: VerifyStep["status"], detail: string): void {
-    this.steps.push({ step, status, detail });
-    this.log(JSON.stringify({ step, status, detail }));
-  }
-
-  /** 记录一个**必需**步骤；失败即置位短路标记。 */
-  required(step: string, ok: boolean, detail: string): void {
-    this.record(step, ok ? "passed" : "failed", detail);
-    if (!ok) this.requiredFailure = true;
-  }
-
-  get failed(): boolean {
-    return this.requiredFailure;
-  }
-
-  /** 与生产一致的认证凭据；历史 core 直接在 JSON 响应返回 token。 */
-  private async api(
-    method: string,
-    path: string,
-    init: RequestInit = {},
-  ): Promise<Response> {
-    const headers = new Headers(init.headers);
-    if (this.authCookie) headers.set("Cookie", this.authCookie);
-    if (this.authToken) {
-      headers.set("Authorization", `Bearer ${this.authToken}`);
-    }
-    return await this.fetch(`${this.base}${path}`, {
-      method,
-      ...init,
-      headers,
-    });
-  }
-
-  /** 域题目契约客户端（路径定义只有一处，见 `problem/client.ts`）。 */
-  private client(): DomainProblemClientDeps {
-    return {
-      baseUrl: this.base,
-      fetch: this.fetch,
-      domain: this.opts.domain ?? "main",
-      headers: () => {
-        const headers: Record<string, string> = {};
-        if (this.authCookie) headers.Cookie = this.authCookie;
-        if (this.authToken) headers.Authorization = `Bearer ${this.authToken}`;
-        return headers;
-      },
-    };
-  }
-
-  /** 兼容 Cookie 与 JSON token 两种登录响应（原实现 `captureAuth` 的等价）。 */
-  private captureAuth(res: Response, payload: unknown): void {
-    const setCookie = res.headers.get("set-cookie") ?? "";
-    const match = setCookie.match(/(?:^|[,\s])noj:token=([^;,\s]+)/);
-    if (match) {
-      this.authToken = match[1]!;
-      this.authCookie = `noj:token=${this.authToken}`;
-      return;
-    }
-    const candidate =
-      (payload as { data?: { token?: unknown }; token?: unknown })?.data
-        ?.token ?? (payload as { token?: unknown })?.token;
-    if (typeof candidate === "string" && candidate) this.authToken = candidate;
-  }
-
-  /** 登录演练管理员账号（由编排层经 SQL 注入并授予 admin 角色）。 */
-  async stepLogin(): Promise<void> {
-    const res = await this.api("POST", "/auth/login", {
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        login: this.opts.adminUser ?? DRILL_ADMIN_USER,
-        password: this.opts.adminPassword ?? DRILL_ADMIN_PASSWORD,
-      }),
-    });
-    if (res.status !== 200) {
-      this.required("login", false, `POST /auth/login 返回 HTTP ${res.status}`);
-      return;
-    }
-    const payload = await res.json();
-    this.captureAuth(res, payload);
-    const username =
-      (payload as { data?: { username?: string } })?.data?.username ??
-        this.opts.adminUser ?? DRILL_ADMIN_USER;
-    this.required(
-      "login",
-      Boolean(this.authToken),
-      `管理员 ${username} 登录成功并取得认证令牌`,
-    );
-  }
-
-  /** 题目读取（域入口）：列表 + （有引用时）题目详情。 */
-  async stepProblemRead(reference: number | null): Promise<void> {
-    const client = this.client();
-    let total = 0;
-    try {
-      total = (await listProblems(client)).total;
-    } catch (error) {
-      this.required(
-        "problem_read",
-        false,
-        error instanceof Error ? error.message : String(error),
-      );
-      return;
-    }
-    if (reference === null) {
-      this.required(
-        "problem_read",
-        true,
-        `域题目列表正常返回（当前可见题目数：${total}）`,
-      );
-      return;
-    }
-    try {
-      await readProblem(client, reference);
-      this.required(
-        "problem_read",
-        true,
-        `域题目列表正常（可见题目数：${total}），题目详情 ${reference} 读取正常`,
-      );
-    } catch (error) {
-      this.required(
-        "problem_read",
-        false,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  /** 附件下载：经 core 代理从恢复后的对象存储下载支持包。 */
-  async stepAttachmentDownload(reference: number): Promise<void> {
-    try {
-      const bytes = await downloadSupportPackage(this.client(), reference);
-      const zipMagic = bytes[0] === 0x50 && bytes[1] === 0x4b;
-      this.required(
-        "attachment_download",
-        bytes.length > 0 && zipMagic,
-        `支持包下载成功：${bytes.length} 字节，zip 头校验${
-          zipMagic ? "通过" : "失败"
-        }`,
-      );
-    } catch (error) {
-      this.required(
-        "attachment_download",
-        false,
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  /**
-   * 真实评测：提交 A+B 正确解并轮询自测结果。
-   * 走完整链路：core 入队 → judge 沙箱 → Evaluator + Solution 双容器 → 结果回写。
-   */
-  async stepEvaluation(
-    target: { reference: number; versionId: string },
-  ): Promise<void> {
-    if (this.opts.skipEvaluation === true) {
-      this.record(
-        "evaluation",
-        "skipped",
-        "演练以 --skip-judge 运行，未执行真实评测",
-      );
-      return;
-    }
-    const code =
-      "def solve(input_str: str) -> str:\n    a, b = map(int, input_str.split())\n    return str(a + b)\n";
-    const client = this.client();
-    let selfTestId: string;
-    try {
-      // 评测协议 v3：自测必须显式带 version_id，不能静默绑定最新版
-      selfTestId = (await createSelfTest(client, target.reference, {
-        language: "python3",
-        code,
-        file_name: "main.py",
-        version_id: target.versionId,
-      })).id;
-    } catch (error) {
-      this.required(
-        "evaluation",
-        false,
-        error instanceof Error ? error.message : String(error),
-      );
-      return;
+    private get fetch(): typeof fetch {
+        return this.opts.fetch;
     }
 
-    const now = this.opts.now ?? (() => Date.now());
-    const sleep = this.opts.sleep ??
-      ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
-    const deadline = now() + (this.opts.evaluationTimeoutMs ?? 10 * 60 * 1000);
-    let status = "";
-    let resultStatus: string | null = null;
-    let score: number | null = null;
-    while (now() < deadline) {
-      await sleep(this.opts.pollIntervalMs ?? 5000);
-      let detail: Record<string, unknown>;
-      try {
-        detail = await getSelfTest(client, selfTestId);
-      } catch (error) {
+    private get base(): string {
+        return this.opts.baseUrl.replace(/\/+$/, "");
+    }
+
+    private log(line: string): void {
+        this.opts.log?.(line);
+    }
+
+    /** 记录一步（与原实现同样的 `{step,status,detail}` 形状）。 */
+    record(step: string, status: VerifyStep["status"], detail: string): void {
+        this.steps.push({ step, status, detail });
+        this.log(JSON.stringify({ step, status, detail }));
+    }
+
+    /** 记录一个**必需**步骤；失败即置位短路标记。 */
+    required(step: string, ok: boolean, detail: string): void {
+        this.record(step, ok ? "passed" : "failed", detail);
+        if (!ok) this.requiredFailure = true;
+    }
+
+    get failed(): boolean {
+        return this.requiredFailure;
+    }
+
+    /** 与生产一致的认证凭据；历史 core 直接在 JSON 响应返回 token。 */
+    private async api(
+        method: string,
+        path: string,
+        init: RequestInit = {},
+    ): Promise<Response> {
+        const headers = new Headers(init.headers);
+        if (this.authCookie) headers.set("Cookie", this.authCookie);
+        if (this.authToken) {
+            headers.set("Authorization", `Bearer ${this.authToken}`);
+        }
+        return await this.fetch(`${this.base}${path}`, {
+            method,
+            ...init,
+            headers,
+        });
+    }
+
+    /** 域题目契约客户端（路径定义只有一处，见 `problem/client.ts`）。 */
+    private client(): DomainProblemClientDeps {
+        return {
+            baseUrl: this.base,
+            fetch: this.fetch,
+            domain: this.opts.domain ?? "main",
+            headers: () => {
+                const headers: Record<string, string> = {};
+                if (this.authCookie) headers.Cookie = this.authCookie;
+                if (this.authToken) {
+                    headers.Authorization = `Bearer ${this.authToken}`;
+                }
+                return headers;
+            },
+        };
+    }
+
+    /** 兼容 Cookie 与 JSON token 两种登录响应（原实现 `captureAuth` 的等价）。 */
+    private captureAuth(res: Response, payload: unknown): void {
+        const setCookie = res.headers.get("set-cookie") ?? "";
+        const match = setCookie.match(/(?:^|[,\s])noj:token=([^;,\s]+)/);
+        if (match) {
+            this.authToken = match[1]!;
+            this.authCookie = `noj:token=${this.authToken}`;
+            return;
+        }
+        const candidate =
+            (payload as { data?: { token?: unknown }; token?: unknown })?.data
+                ?.token ?? (payload as { token?: unknown })?.token;
+        if (typeof candidate === "string" && candidate) {
+            this.authToken = candidate;
+        }
+    }
+
+    /** 登录演练管理员账号（由编排层经 SQL 注入并授予 admin 角色）。 */
+    async stepLogin(): Promise<void> {
+        const res = await this.api("POST", "/auth/login", {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                login: this.opts.adminUser ?? DRILL_ADMIN_USER,
+                password: this.opts.adminPassword ?? DRILL_ADMIN_PASSWORD,
+            }),
+        });
+        if (res.status !== 200) {
+            this.required(
+                "login",
+                false,
+                `POST /auth/login 返回 HTTP ${res.status}`,
+            );
+            return;
+        }
+        const payload = await res.json();
+        this.captureAuth(res, payload);
+        const username =
+            (payload as { data?: { username?: string } })?.data?.username ??
+                this.opts.adminUser ?? DRILL_ADMIN_USER;
         this.required(
-          "evaluation",
-          false,
-          error instanceof Error ? error.message : String(error),
+            "login",
+            Boolean(this.authToken),
+            `管理员 ${username} 登录成功并取得认证令牌`,
         );
-        return;
-      }
-      status = typeof detail.status === "string" ? detail.status : "";
-      resultStatus = typeof detail.result_status === "string"
-        ? detail.result_status
-        : null;
-      score = typeof detail.score === "number" ? detail.score : null;
-      if (status === "finished" || status === "error") break;
     }
-    const ok = status === "finished" && resultStatus === "finished" &&
-      score !== null && score > 0;
-    this.required(
-      "evaluation",
-      ok,
-      ok
-        ? `自测 ${selfTestId} 评测成功：status=${status}，得分 ${score}`
-        : `自测 ${selfTestId} 未通过：status=${status}，result_status=${resultStatus}，score=${score}`,
-    );
-  }
 
-  /** 额外观察项：注册链路。受邮件提供方影响，失败只记 warning 不影响结论。 */
-  async stepRegisterProbe(): Promise<void> {
-    const suffix = (this.opts.now ?? (() => Date.now()))().toString(36);
-    const res = await this.api("POST", "/auth/register", {
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: `drill_${suffix}`.slice(0, 30),
-        email: `drill-${suffix}@${DRILL_ADMIN_EMAIL_DOMAIN}`,
-        password: DRILL_ADMIN_PASSWORD,
-        // PIPL 同意硬门槛：不带该字段注册恒 400，探针会被永久
-        // 降级成 warning，且归因误导为"邮件提供方问题"。
-        accepted_legal: true,
-      }),
-    });
-    if (res.status === 201) {
-      this.record("register_probe", "passed", "注册接口返回 201");
-    } else {
-      this.record(
-        "register_probe",
-        "warning",
-        `POST /auth/register 返回 HTTP ${res.status}；注册链路受邮件提供方影响，不计入演练结论`,
-      );
+    /** 题目读取（域入口）：列表 + （有引用时）题目详情。 */
+    async stepProblemRead(reference: number | null): Promise<void> {
+        const client = this.client();
+        let total = 0;
+        try {
+            total = (await listProblems(client)).total;
+        } catch (error) {
+            this.required(
+                "problem_read",
+                false,
+                error instanceof Error ? error.message : String(error),
+            );
+            return;
+        }
+        if (reference === null) {
+            this.required(
+                "problem_read",
+                true,
+                `域题目列表正常返回（当前可见题目数：${total}）`,
+            );
+            return;
+        }
+        try {
+            await readProblem(client, reference);
+            this.required(
+                "problem_read",
+                true,
+                `域题目列表正常（可见题目数：${total}），题目详情 ${reference} 读取正常`,
+            );
+        } catch (error) {
+            this.required(
+                "problem_read",
+                false,
+                error instanceof Error ? error.message : String(error),
+            );
+        }
     }
-  }
 
-  /**
-   * 导入演练题目包并**显式发布**（admin 权限）：同时验证对象存储写入与数据库写入。
-   *
-   * 0.11 起无域 `POST /problems/import-bundle` 已删除，旧 multipart `publish=true`
-   * 约定也不再存在：必须先导入草稿，再用 `If-Match: <draft_revision>` 调发布端点
-   * （2026-11-02 审计 F3 直接对应此处）。
-   */
-  async stepImportBundle(): Promise<
-    { reference: number; versionId: string } | null
-  > {
-    const evaluator = this.opts.evaluatorImage ?? DEFAULT_EVALUATOR_IMAGE;
-    const solution = this.opts.solutionImage ?? DEFAULT_SOLUTION_IMAGE;
-    const bundle = buildDrillBundle(evaluator, solution);
-    const client = this.client();
-    try {
-      const imported = await importProblemBundle(client, {
-        name: "noj-drill-bundle.zip",
-        data: bundle,
-      });
-      this.record(
-        "problem_import",
-        "passed",
-        `演练题目导入草稿成功：${imported.problem_id}（题号 ${imported.number}，revision ${imported.draft_revision}）`,
-      );
-      const published = await publishProblemVersion(
-        client,
-        imported.number,
-        imported.draft_revision,
-        "恢复演练自动发布",
-      );
-      this.record(
-        "problem_publish",
-        "passed",
-        published.unchanged
-          ? `演练题目已是最新版本 V${published.version}`
-          : `演练题目发布成功：V${published.version}（${published.version_id}）`,
-      );
-      return { reference: imported.number, versionId: published.version_id };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.required("problem_import", false, message);
-      return null;
+    /** 附件下载：经 core 代理从恢复后的对象存储下载支持包。 */
+    async stepAttachmentDownload(reference: number): Promise<void> {
+        try {
+            const bytes = await downloadSupportPackage(
+                this.client(),
+                reference,
+            );
+            const zipMagic = bytes[0] === 0x50 && bytes[1] === 0x4b;
+            this.required(
+                "attachment_download",
+                bytes.length > 0 && zipMagic,
+                `支持包下载成功：${bytes.length} 字节，zip 头校验${
+                    zipMagic ? "通过" : "失败"
+                }`,
+            );
+        } catch (error) {
+            this.required(
+                "attachment_download",
+                false,
+                error instanceof Error ? error.message : String(error),
+            );
+        }
     }
-  }
+
+    /**
+     * 真实评测：提交 A+B 正确解并轮询自测结果。
+     * 走完整链路：core 入队 → judge 沙箱 → Evaluator + Solution 双容器 → 结果回写。
+     */
+    async stepEvaluation(
+        target: { reference: number; versionId: string },
+    ): Promise<void> {
+        if (this.opts.skipEvaluation === true) {
+            this.record(
+                "evaluation",
+                "skipped",
+                "演练以 --skip-judge 运行，未执行真实评测",
+            );
+            return;
+        }
+        const code =
+            "def solve(input_str: str) -> str:\n    a, b = map(int, input_str.split())\n    return str(a + b)\n";
+        const client = this.client();
+        let selfTestId: string;
+        try {
+            // 评测协议 v3：自测必须显式带 version_id，不能静默绑定最新版
+            selfTestId = (await createSelfTest(client, target.reference, {
+                language: "python3",
+                code,
+                file_name: "main.py",
+                version_id: target.versionId,
+            })).id;
+        } catch (error) {
+            this.required(
+                "evaluation",
+                false,
+                error instanceof Error ? error.message : String(error),
+            );
+            return;
+        }
+
+        const now = this.opts.now ?? (() => Date.now());
+        const sleep = this.opts.sleep ??
+            ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+        const deadline = now() +
+            (this.opts.evaluationTimeoutMs ?? 10 * 60 * 1000);
+        let status = "";
+        let resultStatus: string | null = null;
+        let score: number | null = null;
+        while (now() < deadline) {
+            await sleep(this.opts.pollIntervalMs ?? 5000);
+            let detail: Record<string, unknown>;
+            try {
+                detail = await getSelfTest(client, selfTestId);
+            } catch (error) {
+                this.required(
+                    "evaluation",
+                    false,
+                    error instanceof Error ? error.message : String(error),
+                );
+                return;
+            }
+            status = typeof detail.status === "string" ? detail.status : "";
+            resultStatus = typeof detail.result_status === "string"
+                ? detail.result_status
+                : null;
+            score = typeof detail.score === "number" ? detail.score : null;
+            if (status === "finished" || status === "error") break;
+        }
+        const ok = status === "finished" && resultStatus === "finished" &&
+            score !== null && score > 0;
+        this.required(
+            "evaluation",
+            ok,
+            ok
+                ? `自测 ${selfTestId} 评测成功：status=${status}，得分 ${score}`
+                : `自测 ${selfTestId} 未通过：status=${status}，result_status=${resultStatus}，score=${score}`,
+        );
+    }
+
+    /** 额外观察项：注册链路。受邮件提供方影响，失败只记 warning 不影响结论。 */
+    async stepRegisterProbe(): Promise<void> {
+        const suffix = (this.opts.now ?? (() => Date.now()))().toString(36);
+        const res = await this.api("POST", "/auth/register", {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: `drill_${suffix}`.slice(0, 30),
+                email: `drill-${suffix}@${DRILL_ADMIN_EMAIL_DOMAIN}`,
+                password: DRILL_ADMIN_PASSWORD,
+                // PIPL 同意硬门槛：不带该字段注册恒 400，探针会被永久
+                // 降级成 warning，且归因误导为"邮件提供方问题"。
+                accepted_legal: true,
+            }),
+        });
+        if (res.status === 201) {
+            this.record("register_probe", "passed", "注册接口返回 201");
+        } else {
+            this.record(
+                "register_probe",
+                "warning",
+                `POST /auth/register 返回 HTTP ${res.status}；注册链路受邮件提供方影响，不计入演练结论`,
+            );
+        }
+    }
+
+    /**
+     * 导入演练题目包并**显式发布**（admin 权限）：同时验证对象存储写入与数据库写入。
+     *
+     * 0.11 起无域 `POST /problems/import-bundle` 已删除，旧 multipart `publish=true`
+     * 约定也不再存在：必须先导入草稿，再用 `If-Match: <draft_revision>` 调发布端点
+     * （2026-11-02 审计 F3 直接对应此处）。
+     */
+    async stepImportBundle(): Promise<
+        { reference: number; versionId: string } | null
+    > {
+        const evaluator = this.opts.evaluatorImage ?? DEFAULT_EVALUATOR_IMAGE;
+        const solution = this.opts.solutionImage ?? DEFAULT_SOLUTION_IMAGE;
+        const bundle = buildDrillBundle(evaluator, solution);
+        const client = this.client();
+        try {
+            const imported = await importProblemBundle(client, {
+                name: "noj-drill-bundle.zip",
+                data: bundle,
+            });
+            this.record(
+                "problem_import",
+                "passed",
+                `演练题目导入草稿成功：${imported.problem_id}（题号 ${imported.number}，revision ${imported.draft_revision}）`,
+            );
+            const published = await publishProblemVersion(
+                client,
+                imported.number,
+                imported.draft_revision,
+                "恢复演练自动发布",
+            );
+            this.record(
+                "problem_publish",
+                "passed",
+                published.unchanged
+                    ? `演练题目已是最新版本 V${published.version}`
+                    : `演练题目发布成功：V${published.version}（${published.version_id}）`,
+            );
+            return {
+                reference: imported.number,
+                versionId: published.version_id,
+            };
+        } catch (error) {
+            const message = error instanceof Error
+                ? error.message
+                : String(error);
+            this.required("problem_import", false, message);
+            return null;
+        }
+    }
 }
 
 /**
@@ -474,42 +491,42 @@ class Verifier {
  * 3. 否则：导入演练题 → 题目详情 → 附件下载 → 真实评测 → 注册探针。
  */
 export async function runBusinessVerification(
-  opts: VerifyOptions,
+    opts: VerifyOptions,
 ): Promise<VerifyResult> {
-  const v = new Verifier(opts);
+    const v = new Verifier(opts);
 
-  await v.stepLogin();
-  if (v.failed) {
-    return finish(v);
-  }
+    await v.stepLogin();
+    if (v.failed) {
+        return finish(v);
+    }
 
-  if (opts.skipEvaluation === true) {
-    await v.stepProblemRead(null);
+    if (opts.skipEvaluation === true) {
+        await v.stepProblemRead(null);
+        await v.stepRegisterProbe();
+        return finish(v);
+    }
+
+    const imported = await v.stepImportBundle();
+    if (imported) {
+        await v.stepProblemRead(imported.reference);
+        await v.stepAttachmentDownload(imported.reference);
+        await v.stepEvaluation(imported);
+    } else {
+        await v.stepProblemRead(null);
+    }
     await v.stepRegisterProbe();
     return finish(v);
-  }
-
-  const imported = await v.stepImportBundle();
-  if (imported) {
-    await v.stepProblemRead(imported.reference);
-    await v.stepAttachmentDownload(imported.reference);
-    await v.stepEvaluation(imported);
-  } else {
-    await v.stepProblemRead(null);
-  }
-  await v.stepRegisterProbe();
-  return finish(v);
 }
 
 /** 汇总（原实现 `finish()` 的等价，但返回结构而非 `Deno.exit`）。 */
 function finish(v: Verifier): VerifyResult {
-  const passed = !v.failed;
-  const firstFailure = v.steps.find((s) => s.status === "failed")?.detail ??
-    null;
-  v.record(
-    "summary",
-    passed ? "passed" : "failed",
-    passed ? "全部必需步骤通过" : `首个失败：${firstFailure ?? "未知"}`,
-  );
-  return { passed, steps: v.steps, firstFailure };
+    const passed = !v.failed;
+    const firstFailure = v.steps.find((s) => s.status === "failed")?.detail ??
+        null;
+    v.record(
+        "summary",
+        passed ? "passed" : "failed",
+        passed ? "全部必需步骤通过" : `首个失败：${firstFailure ?? "未知"}`,
+    );
+    return { passed, steps: v.steps, firstFailure };
 }

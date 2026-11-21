@@ -5,6 +5,6 @@
  * 不进入 contests 公共门面，也不承载任何写入能力。
  */
 export {
-  resolveProblemTemplate,
-  resolveProblemUiHtml,
+    resolveProblemTemplate,
+    resolveProblemUiHtml,
 } from "../services/support-package.ts";

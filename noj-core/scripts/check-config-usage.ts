@@ -44,11 +44,11 @@ const REPO_ROOT = new URL("../../", import.meta.url);
 const CORE_ROOT = new URL("../", import.meta.url);
 
 export interface UsageFinding {
-  key: string;
-  /** 校验方向：dead=runtime/bootstrap 键无读取点；blind=代码读但未登记 */
-  kind: "dead" | "blind";
-  reason: string;
-  hint: string;
+    key: string;
+    /** 校验方向：dead=runtime/bootstrap 键无读取点；blind=代码读但未登记 */
+    kind: "dead" | "blind";
+    reason: string;
+    hint: string;
 }
 
 /**
@@ -65,90 +65,90 @@ const ENV_ACCESSORS = ["Deno.env.get", "envInt", "envBool"] as const;
  * 这些路径里的字符串出现不代表行为被配置驱动。
  */
 const NON_CONSUMER_PATTERNS: RegExp[] = [
-  // 注册表本体与其 bootstrap 半区：仅声明、不消费。二者都必须排除，否则
-  // 声明里的键名字面量会被当成「读取点」，让所有死键自动"通过"（假绿灯）。
-  /shared\/config\/settings-registry(-bootstrap)?\.ts$/,
-  /shared\/config\/production-config\.ts$/,
-  /scripts\/check-env\.ts$/,
-  /scripts\/check-config-usage\.ts$/,
-  /scripts\/test-launcher(?:-[^/]+)?\.ts$/,
-  // 设置 KV 存储自身的实现与其**校验分支**（如 `key === "smtp_from"` 只做 email
-  // 格式校验，不代表该键被消费）。审计口径明确把这类「能存/能校验」排除在消费之外，
-  // 否则 smtp_from 这类死键会被自己的校验分支掩盖（实测漏报）。
-  /domains\/system\/services\/system-settings\.ts$/,
-  // 管理后台通用设置页：对任何键一视同仁，不构成消费
-  /noj-ui\/pages\/admin\/settings\.vue$/,
+    // 注册表本体与其 bootstrap 半区：仅声明、不消费。二者都必须排除，否则
+    // 声明里的键名字面量会被当成「读取点」，让所有死键自动"通过"（假绿灯）。
+    /shared\/config\/settings-registry(-bootstrap)?\.ts$/,
+    /shared\/config\/production-config\.ts$/,
+    /scripts\/check-env\.ts$/,
+    /scripts\/check-config-usage\.ts$/,
+    /scripts\/test-launcher(?:-[^/]+)?\.ts$/,
+    // 设置 KV 存储自身的实现与其**校验分支**（如 `key === "smtp_from"` 只做 email
+    // 格式校验，不代表该键被消费）。审计口径明确把这类「能存/能校验」排除在消费之外，
+    // 否则 smtp_from 这类死键会被自己的校验分支掩盖（实测漏报）。
+    /domains\/system\/services\/system-settings\.ts$/,
+    // 管理后台通用设置页：对任何键一视同仁，不构成消费
+    /noj-ui\/pages\/admin\/settings\.vue$/,
 ];
 
 /** 测试文件一律不算消费 */
 function isTestFile(path: string): boolean {
-  return /(^|\/)(tests?)\//.test(path) || /_test\.ts$/.test(path) ||
-    /\.(test|spec)\.ts$/.test(path);
+    return /(^|\/)(tests?)\//.test(path) || /_test\.ts$/.test(path) ||
+        /\.(test|spec)\.ts$/.test(path);
 }
 
 /** 递归收集源文件（只取 .ts/.vue），跳过 node_modules 与构建产物 */
 async function collectFiles(
-  dir: string,
-  out: string[] = [],
+    dir: string,
+    out: string[] = [],
 ): Promise<string[]> {
-  for await (const entry of Deno.readDir(dir)) {
-    const full = `${dir}/${entry.name}`;
-    if (entry.isDirectory) {
-      if (
-        ["node_modules", ".git", ".output", ".deno", "dist", "coverage"]
-          .includes(entry.name)
-      ) {
-        continue;
-      }
-      await collectFiles(full, out);
-    } else if (/\.(ts|vue)$/.test(entry.name)) {
-      out.push(full);
+    for await (const entry of Deno.readDir(dir)) {
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory) {
+            if (
+                ["node_modules", ".git", ".output", ".deno", "dist", "coverage"]
+                    .includes(entry.name)
+            ) {
+                continue;
+            }
+            await collectFiles(full, out);
+        } else if (/\.(ts|vue)$/.test(entry.name)) {
+            out.push(full);
+        }
     }
-  }
-  return out;
+    return out;
 }
 
 interface SourceFile {
-  /** 相对仓库根的路径（用于排除规则与报错定位） */
-  path: string;
-  text: string;
+    /** 相对仓库根的路径（用于排除规则与报错定位） */
+    path: string;
+    text: string;
 }
 
 async function loadSources(roots: URL[]): Promise<SourceFile[]> {
-  const files: SourceFile[] = [];
-  for (const root of roots) {
-    const abs = root.pathname.replace(/\/$/, "");
-    let collected: string[] = [];
-    try {
-      collected = await collectFiles(abs);
-    } catch {
-      // 该服务目录不存在（如未初始化的可选模块）时跳过
-      continue;
+    const files: SourceFile[] = [];
+    for (const root of roots) {
+        const abs = root.pathname.replace(/\/$/, "");
+        let collected: string[] = [];
+        try {
+            collected = await collectFiles(abs);
+        } catch {
+            // 该服务目录不存在（如未初始化的可选模块）时跳过
+            continue;
+        }
+        for (const full of collected) {
+            const rel = full.replace(REPO_ROOT.pathname, "").replace(/^\//, "");
+            files.push({ path: rel, text: await Deno.readTextFile(full) });
+        }
     }
-    for (const full of collected) {
-      const rel = full.replace(REPO_ROOT.pathname, "").replace(/^\//, "");
-      files.push({ path: rel, text: await Deno.readTextFile(full) });
-    }
-  }
-  return files;
+    return files;
 }
 
 /** 文件是否声明了「本文件的 env 读取与配置面无关」 */
 function hasExemptFileAnnotation(text: string): boolean {
-  return /\/\/\s*config-usage:\s*exempt-file\b/.test(text);
+    return /\/\/\s*config-usage:\s*exempt-file\b/.test(text);
 }
 
 /** 注册表条目是否声明了键级豁免 */
 function entryExemption(def: SettingDefinition): string | null {
-  const comment = (def as unknown as { description?: string }).description ??
-    "";
-  const m = comment.match(/config-usage:\s*exempt\s+(.+)/);
-  return m ? m[1]!.trim() : null;
+    const comment = (def as unknown as { description?: string }).description ??
+        "";
+    const m = comment.match(/config-usage:\s*exempt\s+(.+)/);
+    return m ? m[1]!.trim() : null;
 }
 
 /** 转义正则元字符 */
 function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -157,15 +157,15 @@ function escapeRe(s: string): string {
  * 会少识别一个读点，宁可漏报也不误报——漏报由反向检查与人工评审兜底）。
  */
 function stripComments(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    return text
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 /** 键名是否作为字符串字面量出现在文本中（去掉注释后） */
 function hasLiteralReference(text: string, name: string): boolean {
-  const re = new RegExp(`["'\`]${escapeRe(name)}["'\`]`);
-  return re.test(text);
+    const re = new RegExp(`["'\`]${escapeRe(name)}["'\`]`);
+    return re.test(text);
 }
 
 /**
@@ -177,27 +177,27 @@ function hasLiteralReference(text: string, name: string): boolean {
  * 二者都曾在实测中造成误报。
  */
 function collectEnvReads(files: SourceFile[]): Map<string, string[]> {
-  const reads = new Map<string, string[]>();
-  const add = (name: string, path: string) => {
-    const arr = reads.get(name) ?? [];
-    arr.push(path);
-    reads.set(name, arr);
-  };
+    const reads = new Map<string, string[]>();
+    const add = (name: string, path: string) => {
+        const arr = reads.get(name) ?? [];
+        arr.push(path);
+        reads.set(name, arr);
+    };
 
-  for (const f of files) {
-    for (const acc of ENV_ACCESSORS) {
-      const re = new RegExp(
-        `${escapeRe(acc)}\\(\\s*["'\`]([A-Z][A-Z0-9_]*)["'\`]`,
-        "g",
-      );
-      for (const m of f.text.matchAll(re)) add(m[1]!, f.path);
+    for (const f of files) {
+        for (const acc of ENV_ACCESSORS) {
+            const re = new RegExp(
+                `${escapeRe(acc)}\\(\\s*["'\`]([A-Z][A-Z0-9_]*)["'\`]`,
+                "g",
+            );
+            for (const m of f.text.matchAll(re)) add(m[1]!, f.path);
+        }
+        // 网关风格：`env.NOJ_LLM_XXX`（loadConfig 的注入参数）
+        for (const m of f.text.matchAll(/\benv\.([A-Z][A-Z0-9_]{2,})\b/g)) {
+            add(m[1]!, f.path);
+        }
     }
-    // 网关风格：`env.NOJ_LLM_XXX`（loadConfig 的注入参数）
-    for (const m of f.text.matchAll(/\benv\.([A-Z][A-Z0-9_]{2,})\b/g)) {
-      add(m[1]!, f.path);
-    }
-  }
-  return reads;
+    return reads;
 }
 
 /**
@@ -209,113 +209,117 @@ function collectEnvReads(files: SourceFile[]): Map<string, string[]> {
  * @returns 发现的问题（空数组表示通过）
  */
 export function inspectConfigUsage(
-  defs: readonly SettingDefinition[],
-  gatewayDefs: readonly GatewayEnvDefinition[],
-  files: SourceFile[],
+    defs: readonly SettingDefinition[],
+    gatewayDefs: readonly GatewayEnvDefinition[],
+    files: SourceFile[],
 ): UsageFinding[] {
-  const findings: UsageFinding[] = [];
-  const consumerFiles = files.filter(
-    (f) =>
-      !isTestFile(f.path) &&
-      !NON_CONSUMER_PATTERNS.some((re) => re.test(f.path)) &&
-      // 文件级豁免注解：声明该文件的 env 读取与配置面无关
-      // （必须在剥离注释**之前**判定，否则注解本身会被删掉）
-      !hasExemptFileAnnotation(f.text),
-  ).map((f) => ({ path: f.path, text: stripComments(f.text) }));
+    const findings: UsageFinding[] = [];
+    const consumerFiles = files.filter(
+        (f) =>
+            !isTestFile(f.path) &&
+            !NON_CONSUMER_PATTERNS.some((re) => re.test(f.path)) &&
+            // 文件级豁免注解：声明该文件的 env 读取与配置面无关
+            // （必须在剥离注释**之前**判定，否则注解本身会被删掉）
+            !hasExemptFileAnnotation(f.text),
+    ).map((f) => ({ path: f.path, text: stripComments(f.text) }));
 
-  // ── 正向：每个可见键都要有读取点 ──
-  for (const def of defs) {
-    if (def.visible === false) continue;
-    const exempt = entryExemption(def);
-    if (exempt) continue;
+    // ── 正向：每个可见键都要有读取点 ──
+    for (const def of defs) {
+        if (def.visible === false) continue;
+        const exempt = entryExemption(def);
+        if (exempt) continue;
 
-    const names = [def.key, def.envKey, def.envFallback].filter(
-      (n): n is string => Boolean(n),
-    );
-    // 判定：键名作为字符串字面量出现在消费文件中（含访问器调用与映射表等间接形态）
-    const found = consumerFiles.some((f) =>
-      names.some((n) => hasLiteralReference(f.text, n))
-    );
-    if (found) continue;
+        const names = [def.key, def.envKey, def.envFallback].filter(
+            (n): n is string => Boolean(n),
+        );
+        // 判定：键名作为字符串字面量出现在消费文件中（含访问器调用与映射表等间接形态）
+        const found = consumerFiles.some((f) =>
+            names.some((n) => hasLiteralReference(f.text, n))
+        );
+        if (found) continue;
 
-    // 动态构造的键：只要有前缀字面量即视为已接线（集合一致性由枚举测试保证）
-    const prefix = (def as unknown as { dynamicPrefix?: string })
-      .dynamicPrefix;
-    if (prefix) {
-      const hasPrefix = consumerFiles.some((f) => f.text.includes(prefix));
-      if (hasPrefix) continue;
+        // 动态构造的键：只要有前缀字面量即视为已接线（集合一致性由枚举测试保证）
+        const prefix = (def as unknown as { dynamicPrefix?: string })
+            .dynamicPrefix;
+        if (prefix) {
+            const hasPrefix = consumerFiles.some((f) =>
+                f.text.includes(prefix)
+            );
+            if (hasPrefix) continue;
+        }
+
+        findings.push({
+            key: def.key,
+            kind: "dead",
+            reason:
+                `${def.scope} 键在 noj-core / noj-ui 中没有任何读取点（只登记、不消费）`,
+            hint:
+                "要么接线（真正读取该键）、要么从注册表删除、要么用 `// config-usage: exempt <理由>` 显式豁免",
+        });
     }
 
-    findings.push({
-      key: def.key,
-      kind: "dead",
-      reason:
-        `${def.scope} 键在 noj-core / noj-ui 中没有任何读取点（只登记、不消费）`,
-      hint:
-        "要么接线（真正读取该键）、要么从注册表删除、要么用 `// config-usage: exempt <理由>` 显式豁免",
-    });
-  }
-
-  // ── 正向：网关侧声明同样要有读取点 ──
-  for (const def of gatewayDefs) {
-    if (def.readMode === "dynamic") {
-      // 动态前缀：源码里应存在前缀字面量；集合一致性由网关枚举测试保证
-      if (
-        def.dynamicPrefix &&
-        consumerFiles.some((f) => f.text.includes(def.dynamicPrefix!))
-      ) {
-        continue;
-      }
+    // ── 正向：网关侧声明同样要有读取点 ──
+    for (const def of gatewayDefs) {
+        if (def.readMode === "dynamic") {
+            // 动态前缀：源码里应存在前缀字面量；集合一致性由网关枚举测试保证
+            if (
+                def.dynamicPrefix &&
+                consumerFiles.some((f) => f.text.includes(def.dynamicPrefix!))
+            ) {
+                continue;
+            }
+        }
+        if (consumerFiles.some((f) => hasLiteralReference(f.text, def.key))) {
+            continue;
+        }
+        findings.push({
+            key: def.key,
+            kind: "dead",
+            reason: "网关声明的 env 在 noj-llm-gateway 中没有任何读取点",
+            hint: "要么接线、要么从网关声明删除、要么显式豁免",
+        });
     }
-    if (consumerFiles.some((f) => hasLiteralReference(f.text, def.key))) {
-      continue;
+
+    // ── 反向：代码读到的 env 必须有声明 ──
+    const declared = new Set<string>();
+    for (const def of defs) {
+        if (def.envKey) declared.add(def.envKey);
+        if (def.envFallback) declared.add(def.envFallback);
+        declared.add(def.key);
     }
-    findings.push({
-      key: def.key,
-      kind: "dead",
-      reason: "网关声明的 env 在 noj-llm-gateway 中没有任何读取点",
-      hint: "要么接线、要么从网关声明删除、要么显式豁免",
-    });
-  }
+    for (const def of gatewayDefs) declared.add(def.key);
 
-  // ── 反向：代码读到的 env 必须有声明 ──
-  const declared = new Set<string>();
-  for (const def of defs) {
-    if (def.envKey) declared.add(def.envKey);
-    if (def.envFallback) declared.add(def.envFallback);
-    declared.add(def.key);
-  }
-  for (const def of gatewayDefs) declared.add(def.key);
+    const reads = collectEnvReads(consumerFiles);
+    for (const [name, paths] of reads) {
+        if (declared.has(name) || REVERSE_EXEMPT.has(name)) continue;
+        // 前缀声明的动态键：形如 NOJ_LLM_DEFAULT_* 由网关声明覆盖
+        const coveredByPrefix = gatewayDefs.some(
+            (d) => d.dynamicPrefix && name.startsWith(d.dynamicPrefix),
+        );
+        if (coveredByPrefix) continue;
+        findings.push({
+            key: name,
+            kind: "blind",
+            reason: `代码读取但未在任何配置声明中登记（首次出现于 ${
+                paths[0]
+            }）`,
+            hint:
+                "登记入对应服务的配置声明（谁读谁声明），或在 REVERSE_EXEMPT / exempt-file 中显式豁免",
+        });
+    }
 
-  const reads = collectEnvReads(consumerFiles);
-  for (const [name, paths] of reads) {
-    if (declared.has(name) || REVERSE_EXEMPT.has(name)) continue;
-    // 前缀声明的动态键：形如 NOJ_LLM_DEFAULT_* 由网关声明覆盖
-    const coveredByPrefix = gatewayDefs.some(
-      (d) => d.dynamicPrefix && name.startsWith(d.dynamicPrefix),
-    );
-    if (coveredByPrefix) continue;
-    findings.push({
-      key: name,
-      kind: "blind",
-      reason: `代码读取但未在任何配置声明中登记（首次出现于 ${paths[0]}）`,
-      hint:
-        "登记入对应服务的配置声明（谁读谁声明），或在 REVERSE_EXEMPT / exempt-file 中显式豁免",
-    });
-  }
-
-  return findings;
+    return findings;
 }
 
 /** 网关侧 env 声明条目（结构镜像 core 注册表的最小集） */
 export interface GatewayEnvDefinition {
-  key: string;
-  description: string;
-  isSecret: boolean;
-  /** static=源码字面量读取；dynamic=由前缀模板生成读取 */
-  readMode: "static" | "dynamic";
-  /** dynamic 时的前缀，供本脚本与枚举测试核对 */
-  dynamicPrefix?: string;
+    key: string;
+    description: string;
+    isSecret: boolean;
+    /** static=源码字面量读取；dynamic=由前缀模板生成读取 */
+    readMode: "static" | "dynamic";
+    /** dynamic 时的前缀，供本脚本与枚举测试核对 */
+    dynamicPrefix?: string;
 }
 
 /**
@@ -325,85 +329,85 @@ export interface GatewayEnvDefinition {
  * 避免长期的「未登记」状态掩盖真正遗漏。
  */
 export const REVERSE_EXEMPT = new Set([
-  // 部署编排（compose/脚本注入，非应用读取）
-  "NOJ_VERSION",
-  "POSTGRES_PASSWORD",
-  "POSTGRES_DB",
-  "POSTGRES_USER",
-  "REDIS_PASSWORD",
-  "MINIO_ROOT_USER",
-  "MINIO_ROOT_PASSWORD",
-  "NODE_ENV",
-  "NUXT_API_BASE",
-  "NUXT_NOJ_ENV",
-  "NUXT_ALLOW_INSECURE_HTTP",
-  // sitemap/canonical 的权威站点地址（nuxt.config.ts 读取，2026-09-12 评审 §4.2）
-  "NUXT_SITE_URL",
-  // 开发/测试工具链
-  "NOJ_PROJECT_ROOT",
-  "NOJ_BACKUP_PASSPHRASE_FILE",
-  "NOJ_RUN_BROWSER_E2E",
-  "NOJ_RUN_E2E",
-  "E2E_BASE_URL",
-  "E2E_UI_URL",
-  "E2E_ADMIN_EMAIL",
-  "E2E_ADMIN_PASS",
-  "DEEPSEEK_API_KEY",
-  "DEEPSEEK_BASE_URL",
-  "BCRYPT_SALT_ROUNDS",
-  // 网关自身的非配额配置（由 loadConfig 读取，见网关 .env.example）
-  "NOJ_LLM_PORT",
-  "NOJ_LLM_LOG_LEVEL",
-  "NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE",
-  "NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE",
-  "NOJ_LLM_SERVICE_TOKEN",
-  "NOJ_LLM_STORE_KEY",
-  "NOJ_LLM_DATABASE_URL",
-  "NOJ_LLM_REDIS_URL",
-  "NOJ_LLM_MAX_CALLS_PER_MINUTE",
-  "NOJ_LLM_MAX_TOKENS_PER_MINUTE",
+    // 部署编排（compose/脚本注入，非应用读取）
+    "NOJ_VERSION",
+    "POSTGRES_PASSWORD",
+    "POSTGRES_DB",
+    "POSTGRES_USER",
+    "REDIS_PASSWORD",
+    "MINIO_ROOT_USER",
+    "MINIO_ROOT_PASSWORD",
+    "NODE_ENV",
+    "NUXT_API_BASE",
+    "NUXT_NOJ_ENV",
+    "NUXT_ALLOW_INSECURE_HTTP",
+    // sitemap/canonical 的权威站点地址（nuxt.config.ts 读取，2026-09-12 评审 §4.2）
+    "NUXT_SITE_URL",
+    // 开发/测试工具链
+    "NOJ_PROJECT_ROOT",
+    "NOJ_BACKUP_PASSPHRASE_FILE",
+    "NOJ_RUN_BROWSER_E2E",
+    "NOJ_RUN_E2E",
+    "E2E_BASE_URL",
+    "E2E_UI_URL",
+    "E2E_ADMIN_EMAIL",
+    "E2E_ADMIN_PASS",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "BCRYPT_SALT_ROUNDS",
+    // 网关自身的非配额配置（由 loadConfig 读取，见网关 .env.example）
+    "NOJ_LLM_PORT",
+    "NOJ_LLM_LOG_LEVEL",
+    "NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE",
+    "NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE",
+    "NOJ_LLM_SERVICE_TOKEN",
+    "NOJ_LLM_STORE_KEY",
+    "NOJ_LLM_DATABASE_URL",
+    "NOJ_LLM_REDIS_URL",
+    "NOJ_LLM_MAX_CALLS_PER_MINUTE",
+    "NOJ_LLM_MAX_TOKENS_PER_MINUTE",
 ]);
 
 /** 默认扫描范围：core + noj-ui + 网关 */
 export async function defaultSourceFiles(): Promise<SourceFile[]> {
-  return await loadSources([
-    new URL("src/", CORE_ROOT),
-    new URL("noj-ui/", REPO_ROOT),
-    new URL("noj-llm-gateway/src/", REPO_ROOT),
-  ]);
+    return await loadSources([
+        new URL("src/", CORE_ROOT),
+        new URL("noj-ui/", REPO_ROOT),
+        new URL("noj-llm-gateway/src/", REPO_ROOT),
+    ]);
 }
 
 if (import.meta.main) {
-  const { GATEWAY_CONFIG_DEFINITIONS } = await import(
-    "../../noj-llm-gateway/src/config-registry.ts"
-  );
-  const files = await defaultSourceFiles();
-  const findings = inspectConfigUsage(
-    CONFIG_DEFINITIONS,
-    GATEWAY_CONFIG_DEFINITIONS,
-    files,
-  );
-
-  if (findings.length === 0) {
-    console.log(
-      `[check:config-usage] 通过：${CONFIG_DEFINITIONS.length} 个 core 注册表键 + ` +
-        `${GATEWAY_CONFIG_DEFINITIONS.length} 个网关声明键均有读取点，` +
-        `未发现未登记 env`,
+    const { GATEWAY_CONFIG_DEFINITIONS } = await import(
+        "../../noj-llm-gateway/src/config-registry.ts"
     );
-    Deno.exit(0);
-  }
+    const files = await defaultSourceFiles();
+    const findings = inspectConfigUsage(
+        CONFIG_DEFINITIONS,
+        GATEWAY_CONFIG_DEFINITIONS,
+        files,
+    );
 
-  const dead = findings.filter((f) => f.kind === "dead");
-  const blind = findings.filter((f) => f.kind === "blind");
-  console.error(
-    `[check:config-usage] 发现 ${findings.length} 个问题：` +
-      `死键 ${dead.length} / 未登记 ${blind.length}\n`,
-  );
-  for (const f of findings) {
-    const tag = f.kind === "dead" ? "死键" : "未登记";
-    console.error(`  [${tag}] ${f.key}`);
-    console.error(`      ${f.reason}`);
-    console.error(`      → ${f.hint}\n`);
-  }
-  Deno.exit(1);
+    if (findings.length === 0) {
+        console.log(
+            `[check:config-usage] 通过：${CONFIG_DEFINITIONS.length} 个 core 注册表键 + ` +
+                `${GATEWAY_CONFIG_DEFINITIONS.length} 个网关声明键均有读取点，` +
+                `未发现未登记 env`,
+        );
+        Deno.exit(0);
+    }
+
+    const dead = findings.filter((f) => f.kind === "dead");
+    const blind = findings.filter((f) => f.kind === "blind");
+    console.error(
+        `[check:config-usage] 发现 ${findings.length} 个问题：` +
+            `死键 ${dead.length} / 未登记 ${blind.length}\n`,
+    );
+    for (const f of findings) {
+        const tag = f.kind === "dead" ? "死键" : "未登记";
+        console.error(`  [${tag}] ${f.key}`);
+        console.error(`      ${f.reason}`);
+        console.error(`      → ${f.hint}\n`);
+    }
+    Deno.exit(1);
 }

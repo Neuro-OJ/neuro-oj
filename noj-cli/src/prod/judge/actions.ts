@@ -30,78 +30,78 @@ import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 import {
-  assertDedicatedSocket,
-  assertJudgeConfigValues,
-  assertJudgeEnvFileMode,
-  checkJudgeHost,
-  type HostProbe,
-  JUDGE_COMPOSE_MODE,
-  type JudgePaths,
-  judgePaths,
-  readJudgeEnv,
-  writeJudgeEnv,
+    assertDedicatedSocket,
+    assertJudgeConfigValues,
+    assertJudgeEnvFileMode,
+    checkJudgeHost,
+    type HostProbe,
+    JUDGE_COMPOSE_MODE,
+    type JudgePaths,
+    judgePaths,
+    readJudgeEnv,
+    writeJudgeEnv,
 } from "./config.ts";
 import {
-  checkJudgeImageArchitecture,
-  checkJudgeRedis,
-  checkStandaloneJudgeSocket,
-  judgeComposeArgs,
-  redactUrl,
-  renderJudgeCompose,
+    checkJudgeImageArchitecture,
+    checkJudgeRedis,
+    checkStandaloneJudgeSocket,
+    judgeComposeArgs,
+    redactUrl,
+    renderJudgeCompose,
 } from "./compose.ts";
 import {
-  computeJudgeStopTimeoutSeconds,
-  readJudgeComposeEnv,
+    computeJudgeStopTimeoutSeconds,
+    readJudgeComposeEnv,
 } from "./reset-config-helpers.ts";
 import { isFile } from "../../util/fs.ts";
 
 /** 所有动作的公共注入点。 */
 export interface JudgeActionOptions {
-  /** Judge 运行目录（`--dir`）。 */
-  dir: string;
-  /** 配置文件覆盖（`--env-file`）。 */
-  envFile?: string;
-  /** Compose 文件覆盖（`--compose-file`）。 */
-  composeFile?: string;
-  /** 命令注入点。 */
-  runner: CommandRunner;
-  /** docker 可执行名。 */
-  dockerBin?: string;
-  /** 只显示动作，不做任何修改。 */
-  dryRun?: boolean;
-  /** 人类日志汇聚点。 */
-  log?: (line: string) => void;
-  /** 时间源（测试注入）。 */
-  now?: () => Date;
+    /** Judge 运行目录（`--dir`）。 */
+    dir: string;
+    /** 配置文件覆盖（`--env-file`）。 */
+    envFile?: string;
+    /** Compose 文件覆盖（`--compose-file`）。 */
+    composeFile?: string;
+    /** 命令注入点。 */
+    runner: CommandRunner;
+    /** docker 可执行名。 */
+    dockerBin?: string;
+    /** 只显示动作，不做任何修改。 */
+    dryRun?: boolean;
+    /** 人类日志汇聚点。 */
+    log?: (line: string) => void;
+    /** 时间源（测试注入）。 */
+    now?: () => Date;
 }
 
 /** 动作结果的公共形状。 */
 export interface JudgeActionResult {
-  /** 0 / 1 / 2。 */
-  exitCode: number;
-  /** 面向用户的一句话结论。 */
-  message: string;
-  /** 参与本次动作的路径。 */
-  paths: JudgePaths;
+    /** 0 / 1 / 2。 */
+    exitCode: number;
+    /** 面向用户的一句话结论。 */
+    message: string;
+    /** 参与本次动作的路径。 */
+    paths: JudgePaths;
 }
 
 /** `install` 的注入点。 */
 export interface JudgeInstallOptions
-  extends JudgeActionOptions, JudgeSocketProbes {
-  /** 版本（`--version`）；缺省用既有配置里的值。 */
-  version?: string;
-  /** Redis URL（非交互必填）。 */
-  redisUrl?: string;
-  /** Redis 检查 URL（缺省等于 `redisUrl`）。 */
-  redisCheckUrl?: string;
-  /** 专用 socket 路径（缺省 `/run/noj-judge/docker.sock`）。 */
-  socketPath?: string;
-  /** socket GID（缺省 10001）。 */
-  socketGid?: string;
-  /** 额外的配置覆盖（队列名、并发数等）。 */
-  values?: Record<string, string>;
-  /** 宿主探测（平台/docker 可用性）。 */
-  host?: HostProbe;
+    extends JudgeActionOptions, JudgeSocketProbes {
+    /** 版本（`--version`）；缺省用既有配置里的值。 */
+    version?: string;
+    /** Redis URL（非交互必填）。 */
+    redisUrl?: string;
+    /** Redis 检查 URL（缺省等于 `redisUrl`）。 */
+    redisCheckUrl?: string;
+    /** 专用 socket 路径（缺省 `/run/noj-judge/docker.sock`）。 */
+    socketPath?: string;
+    /** socket GID（缺省 10001）。 */
+    socketGid?: string;
+    /** 额外的配置覆盖（队列名、并发数等）。 */
+    values?: Record<string, string>;
+    /** 宿主探测（平台/docker 可用性）。 */
+    host?: HostProbe;
 }
 
 /**
@@ -131,49 +131,49 @@ export interface JudgeInstallOptions
  *    环境已就绪。
  */
 export async function judgeInstallEnv(
-  opts: JudgeActionOptions & { host?: HostProbe },
+    opts: JudgeActionOptions & { host?: HostProbe },
 ): Promise<JudgeActionResult> {
-  const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
-  const log = opts.log ?? (() => {});
+    const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
+    const log = opts.log ?? (() => {});
 
-  // ---- 依赖与宿主检查（只读；不安装任何东西）----
-  const host = await checkJudgeHost(opts.host ?? {});
-  if (!host.ok) {
-    return fail(paths, 1, host.error ?? "宿主环境不满足要求");
-  }
+    // ---- 依赖与宿主检查（只读；不安装任何东西）----
+    const host = await checkJudgeHost(opts.host ?? {});
+    if (!host.ok) {
+        return fail(paths, 1, host.error ?? "宿主环境不满足要求");
+    }
 
-  const dockerBin = opts.dockerBin ?? "docker";
-  const daemon = await opts.runner.run(dockerBin, ["info"]);
-  if (daemon.code !== 0) {
-    const detail = daemon.stderr.trim();
-    return fail(
-      paths,
-      1,
-      "Docker daemon 未运行或当前用户无权限" +
-        (detail === "" ? "" : `：${detail}`),
+    const dockerBin = opts.dockerBin ?? "docker";
+    const daemon = await opts.runner.run(dockerBin, ["info"]);
+    if (daemon.code !== 0) {
+        const detail = daemon.stderr.trim();
+        return fail(
+            paths,
+            1,
+            "Docker daemon 未运行或当前用户无权限" +
+                (detail === "" ? "" : `：${detail}`),
+        );
+    }
+    const compose = await opts.runner.run(dockerBin, ["compose", "version"]);
+    if (compose.code !== 0) {
+        return fail(paths, 1, "Docker Compose v2 不可用");
+    }
+    log("✓ Docker daemon 与 Compose 可用");
+
+    // ---- 四条隔离条件 ----
+    log("");
+    log("请确认已准备以下隔离条件：");
+    log("  1. 只服务于 Judge 的 rootless Docker daemon；");
+    log("  2. 独立 Unix socket（例如 /run/noj-judge/docker.sock）；");
+    log("  3. Worker 用户的 UID/GID 及 socket group 权限；");
+    log("  4. 与 noj-core 使用同一 Redis、任务队列和结果队列。");
+    log("");
+    // 安全边界的对外声明：读起来像说明文字，但它界定了本工具**不会**做什么。
+    log(
+        "本工具不会自动安装或替换 Docker daemon，" +
+            "也不会把 /var/run/docker.sock 提供给 Judge。",
     );
-  }
-  const compose = await opts.runner.run(dockerBin, ["compose", "version"]);
-  if (compose.code !== 0) {
-    return fail(paths, 1, "Docker Compose v2 不可用");
-  }
-  log("✓ Docker daemon 与 Compose 可用");
 
-  // ---- 四条隔离条件 ----
-  log("");
-  log("请确认已准备以下隔离条件：");
-  log("  1. 只服务于 Judge 的 rootless Docker daemon；");
-  log("  2. 独立 Unix socket（例如 /run/noj-judge/docker.sock）；");
-  log("  3. Worker 用户的 UID/GID 及 socket group 权限；");
-  log("  4. 与 noj-core 使用同一 Redis、任务队列和结果队列。");
-  log("");
-  // 安全边界的对外声明：读起来像说明文字，但它界定了本工具**不会**做什么。
-  log(
-    "本工具不会自动安装或替换 Docker daemon，" +
-      "也不会把 /var/run/docker.sock 提供给 Judge。",
-  );
-
-  return { exitCode: 0, message: "Judge 部署依赖检查通过", paths };
+    return { exitCode: 0, message: "Judge 部署依赖检查通过", paths };
 }
 
 /**
@@ -185,126 +185,129 @@ export async function judgeInstallEnv(
  * 紧随其后的 `checkJudgeSocket` 是运行期复核（socket 可能刚被创建/改权限）。
  */
 export async function judgeInstall(
-  opts: JudgeInstallOptions,
+    opts: JudgeInstallOptions,
 ): Promise<JudgeActionResult> {
-  const log = opts.log ?? (() => {});
-  const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
+    const log = opts.log ?? (() => {});
+    const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
 
-  // ---- 宿主探测（只读；不安装/不配置 daemon）----
-  const host = await checkJudgeHost(opts.host ?? {});
-  if (!host.ok) {
-    return fail(paths, 2, host.error ?? "宿主环境不满足要求");
-  }
+    // ---- 宿主探测（只读；不安装/不配置 daemon）----
+    const host = await checkJudgeHost(opts.host ?? {});
+    if (!host.ok) {
+        return fail(paths, 2, host.error ?? "宿主环境不满足要求");
+    }
 
-  // ---- 配置：写或保留 ----
-  let env: Record<string, string>;
-  try {
-    const existing = await readJudgeEnv(paths.envFile);
-    const values: Record<string, string> = { ...(opts.values ?? {}) };
-    // `--version` 是**显式**的版本变更：
-    // 走 updateVersion 而非塞进 values，否则复用一份基线配置对象的调用会静默
-    // 覆盖用户既有版本。首装时更新 version 也从这里取。
-    const explicitVersion = opts.version !== undefined && opts.version !== ""
-      ? opts.version
-      : undefined;
-    if (explicitVersion !== undefined) values["NOJ_VERSION"] = explicitVersion;
-    if (opts.redisUrl !== undefined && opts.redisUrl !== "") {
-      values["REDIS_URL"] = opts.redisUrl;
-      values["REDIS_CHECK_URL"] = opts.redisCheckUrl ?? opts.redisUrl;
+    // ---- 配置：写或保留 ----
+    let env: Record<string, string>;
+    try {
+        const existing = await readJudgeEnv(paths.envFile);
+        const values: Record<string, string> = { ...(opts.values ?? {}) };
+        // `--version` 是**显式**的版本变更：
+        // 走 updateVersion 而非塞进 values，否则复用一份基线配置对象的调用会静默
+        // 覆盖用户既有版本。首装时更新 version 也从这里取。
+        const explicitVersion =
+            opts.version !== undefined && opts.version !== ""
+                ? opts.version
+                : undefined;
+        if (explicitVersion !== undefined) {
+            values["NOJ_VERSION"] = explicitVersion;
+        }
+        if (opts.redisUrl !== undefined && opts.redisUrl !== "") {
+            values["REDIS_URL"] = opts.redisUrl;
+            values["REDIS_CHECK_URL"] = opts.redisCheckUrl ?? opts.redisUrl;
+        }
+        if (opts.socketPath !== undefined && opts.socketPath !== "") {
+            values["JUDGE_DOCKER_SOCKET"] = opts.socketPath;
+        }
+        if (opts.socketGid !== undefined && opts.socketGid !== "") {
+            values["JUDGE_DOCKER_SOCKET_GID"] = opts.socketGid;
+        }
+        if (opts.dryRun === true) {
+            // dry-run：只校验既有配置（若有），不写任何文件
+            env = Object.keys(existing).length > 0 ? existing : values;
+            if (Object.keys(existing).length === 0) {
+                assertJudgeConfigValues({ ...defaultsForDryRun(), ...values });
+            } else {
+                assertJudgeConfigValues(env);
+            }
+            log(`[dry-run] 将创建或更新配置：${paths.envFile}`);
+            log(`[dry-run] 将生成 Compose 配置：${paths.composeFile}`);
+            log("[dry-run] 将启动 Judge 容器（compose up -d）");
+            return {
+                exitCode: 0,
+                message: "[dry-run] 安装流程校验通过，未做任何修改",
+                paths,
+            };
+        }
+        const written = await writeJudgeEnv({
+            path: paths.envFile,
+            values: Object.keys(values).length > 0 ? values : undefined,
+            updateVersion: explicitVersion,
+        });
+        env = written.env;
+        log(
+            written.written
+                ? `✓ 配置就绪：${paths.envFile}`
+                : `✓ 保留已有配置：${paths.envFile}`,
+        );
+        // **必须显式提示被保留覆盖的键**：既有配置优先时，
+        // `--redis-url` / `--socket-path` / `--socket-gid` 会被静默丢弃，
+        // 用户以为改了实际没改。静默忽略与"旗标被吞"属同一类缺陷。
+        const ignoredKeys = Object.keys(written.ignored);
+        if (ignoredKeys.length > 0) {
+            log(
+                `! 以下旗标未生效（既有配置优先，需手工修改 ${paths.envFile}）：` +
+                    ignoredKeys.join("、"),
+            );
+        }
+    } catch (err) {
+        return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
     }
-    if (opts.socketPath !== undefined && opts.socketPath !== "") {
-      values["JUDGE_DOCKER_SOCKET"] = opts.socketPath;
-    }
-    if (opts.socketGid !== undefined && opts.socketGid !== "") {
-      values["JUDGE_DOCKER_SOCKET_GID"] = opts.socketGid;
-    }
-    if (opts.dryRun === true) {
-      // dry-run：只校验既有配置（若有），不写任何文件
-      env = Object.keys(existing).length > 0 ? existing : values;
-      if (Object.keys(existing).length === 0) {
-        assertJudgeConfigValues({ ...defaultsForDryRun(), ...values });
-      } else {
-        assertJudgeConfigValues(env);
-      }
-      log(`[dry-run] 将创建或更新配置：${paths.envFile}`);
-      log(`[dry-run] 将生成 Compose 配置：${paths.composeFile}`);
-      log("[dry-run] 将启动 Judge 容器（compose up -d）");
-      return {
-        exitCode: 0,
-        message: "[dry-run] 安装流程校验通过，未做任何修改",
-        paths,
-      };
-    }
-    const written = await writeJudgeEnv({
-      path: paths.envFile,
-      values: Object.keys(values).length > 0 ? values : undefined,
-      updateVersion: explicitVersion,
+
+    // ---- 安全复核：socket 必须可用（共享 socket 已在写配置前被拒）----
+    const socket = await checkStandaloneJudgeSocket(env, {
+        runner: opts.runner,
+        dockerBin: opts.dockerBin,
+        socketGid: opts.probeSocketGid,
+        socketMode: opts.probeSocketMode,
+        isSocket: opts.probeIsSocket,
+        isReadWritable: opts.probeReadWritable,
     });
-    env = written.env;
-    log(
-      written.written
-        ? `✓ 配置就绪：${paths.envFile}`
-        : `✓ 保留已有配置：${paths.envFile}`,
-    );
-    // **必须显式提示被保留覆盖的键**：既有配置优先时，
-    // `--redis-url` / `--socket-path` / `--socket-gid` 会被静默丢弃，
-    // 用户以为改了实际没改。静默忽略与"旗标被吞"属同一类缺陷。
-    const ignoredKeys = Object.keys(written.ignored);
-    if (ignoredKeys.length > 0) {
-      log(
-        `! 以下旗标未生效（既有配置优先，需手工修改 ${paths.envFile}）：` +
-          ignoredKeys.join("、"),
-      );
+    if (!socket.ok) {
+        return fail(paths, 2, socket.error ?? "专用 Docker socket 校验失败");
     }
-  } catch (err) {
-    return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
-  }
+    if (socket.detail !== null) log(`✓ ${socket.detail}`);
 
-  // ---- 安全复核：socket 必须可用（共享 socket 已在写配置前被拒）----
-  const socket = await checkStandaloneJudgeSocket(env, {
-    runner: opts.runner,
-    dockerBin: opts.dockerBin,
-    socketGid: opts.probeSocketGid,
-    socketMode: opts.probeSocketMode,
-    isSocket: opts.probeIsSocket,
-    isReadWritable: opts.probeReadWritable,
-  });
-  if (!socket.ok) {
-    return fail(paths, 2, socket.error ?? "专用 Docker socket 校验失败");
-  }
-  if (socket.detail !== null) log(`✓ ${socket.detail}`);
+    // ---- 渲染 Compose（纯函数）+ 落盘 600 ----
+    try {
+        const yaml = renderJudgeCompose(env);
+        await Deno.writeTextFile(paths.composeFile, yaml);
+        await Deno.chmod(paths.composeFile, JUDGE_COMPOSE_MODE);
+        log(`✓ 已生成 Compose 配置：${paths.composeFile}`);
+    } catch (err) {
+        return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
+    }
 
-  // ---- 渲染 Compose（纯函数）+ 落盘 600 ----
-  try {
-    const yaml = renderJudgeCompose(env);
-    await Deno.writeTextFile(paths.composeFile, yaml);
-    await Deno.chmod(paths.composeFile, JUDGE_COMPOSE_MODE);
-    log(`✓ 已生成 Compose 配置：${paths.composeFile}`);
-  } catch (err) {
-    return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
-  }
+    // ---- compose config --quiet（只读解析）----
+    const configCode = await runCompose(
+        opts,
+        paths,
+        ["config", "--quiet"],
+    );
+    if (configCode !== 0) {
+        return fail(paths, 1, "独立 Judge Compose 配置无效");
+    }
 
-  // ---- compose config --quiet（只读解析）----
-  const configCode = await runCompose(
-    opts,
-    paths,
-    ["config", "--quiet"],
-  );
-  if (configCode !== 0) {
-    return fail(paths, 1, "独立 Judge Compose 配置无效");
-  }
-
-  // ---- 拉镜像 + 启动 ----
-  const pullCode = await runCompose(opts, paths, ["pull"]);
-  if (pullCode !== 0) {
-    return fail(paths, 1, "拉取 Judge 镜像失败");
-  }
-  const upCode = await runCompose(opts, paths, ["up", "-d"]);
-  if (upCode !== 0) {
-    return fail(paths, 1, "启动 Judge 失败");
-  }
-  log("✓ Judge 已启动");
-  return { exitCode: 0, message: "Judge 安装完成并已启动", paths };
+    // ---- 拉镜像 + 启动 ----
+    const pullCode = await runCompose(opts, paths, ["pull"]);
+    if (pullCode !== 0) {
+        return fail(paths, 1, "拉取 Judge 镜像失败");
+    }
+    const upCode = await runCompose(opts, paths, ["up", "-d"]);
+    if (upCode !== 0) {
+        return fail(paths, 1, "启动 Judge 失败");
+    }
+    log("✓ Judge 已启动");
+    return { exitCode: 0, message: "Judge 安装完成并已启动", paths };
 }
 
 /**
@@ -314,23 +317,23 @@ export async function judgeInstall(
  * 的 Unix socket 与对应 GID，只能注入。
  */
 export interface JudgeSocketProbes {
-  /** 探针：读 socket 的实际 GID（**不是**配置值 `socketGid`，后者是字符串）。 */
-  probeSocketGid?: (path: string) => Promise<number | null>;
-  /** 探针：读 socket 权限串。 */
-  probeSocketMode?: (path: string) => Promise<string | null>;
-  /** 探针：判定是否为 Unix socket。 */
-  probeIsSocket?: (path: string) => Promise<boolean>;
-  /** 探针：判定当前用户可读写。 */
-  probeReadWritable?: (path: string) => Promise<boolean>;
+    /** 探针：读 socket 的实际 GID（**不是**配置值 `socketGid`，后者是字符串）。 */
+    probeSocketGid?: (path: string) => Promise<number | null>;
+    /** 探针：读 socket 权限串。 */
+    probeSocketMode?: (path: string) => Promise<string | null>;
+    /** 探针：判定是否为 Unix socket。 */
+    probeIsSocket?: (path: string) => Promise<boolean>;
+    /** 探针：判定当前用户可读写。 */
+    probeReadWritable?: (path: string) => Promise<boolean>;
 }
 
 /** `check` 的注入点。 */
 export interface JudgeCheckOptions
-  extends JudgeActionOptions, JudgeSocketProbes {
-  /** `redis-cli` 是否可用（缺省按不可用处理 → 走容器回退）。 */
-  redisCliAvailable?: boolean;
-  /** 宿主机架构探测（`uname -m`）。 */
-  hostArch?: () => Promise<string>;
+    extends JudgeActionOptions, JudgeSocketProbes {
+    /** `redis-cli` 是否可用（缺省按不可用处理 → 走容器回退）。 */
+    redisCliAvailable?: boolean;
+    /** 宿主机架构探测（`uname -m`）。 */
+    hostArch?: () => Promise<string>;
 }
 
 /**
@@ -341,102 +344,102 @@ export interface JudgeCheckOptions
  * 因此配置问题能在"拉镜像"之前被发现。
  */
 export async function judgeCheck(
-  opts: JudgeCheckOptions,
+    opts: JudgeCheckOptions,
 ): Promise<JudgeActionResult> {
-  const log = opts.log ?? (() => {});
-  const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
+    const log = opts.log ?? (() => {});
+    const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
 
-  let env: Record<string, string>;
-  try {
-    await assertJudgeEnvFileMode(paths.envFile);
-    if (!(await isFile(paths.composeFile))) {
-      throw new UsageError(
-        `找不到 Compose 配置：${paths.composeFile}，请先执行 install`,
-      );
+    let env: Record<string, string>;
+    try {
+        await assertJudgeEnvFileMode(paths.envFile);
+        if (!(await isFile(paths.composeFile))) {
+            throw new UsageError(
+                `找不到 Compose 配置：${paths.composeFile}，请先执行 install`,
+            );
+        }
+        env = await readJudgeEnv(paths.envFile);
+        assertJudgeConfigValues(env);
+    } catch (err) {
+        return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
     }
-    env = await readJudgeEnv(paths.envFile);
-    assertJudgeConfigValues(env);
-  } catch (err) {
-    return fail(paths, isUsage(err) ? 2 : 1, (err as Error).message);
-  }
 
-  const socket = await checkStandaloneJudgeSocket(env, {
-    runner: opts.runner,
-    dockerBin: opts.dockerBin,
-    socketGid: opts.probeSocketGid,
-    socketMode: opts.probeSocketMode,
-    isSocket: opts.probeIsSocket,
-    isReadWritable: opts.probeReadWritable,
-  });
-  if (!socket.ok) {
-    return fail(paths, 2, socket.error ?? "专用 Docker socket 校验失败");
-  }
-  log(`✓ ${socket.detail ?? "专用 socket 可用"}`);
+    const socket = await checkStandaloneJudgeSocket(env, {
+        runner: opts.runner,
+        dockerBin: opts.dockerBin,
+        socketGid: opts.probeSocketGid,
+        socketMode: opts.probeSocketMode,
+        isSocket: opts.probeIsSocket,
+        isReadWritable: opts.probeReadWritable,
+    });
+    if (!socket.ok) {
+        return fail(paths, 2, socket.error ?? "专用 Docker socket 校验失败");
+    }
+    log(`✓ ${socket.detail ?? "专用 socket 可用"}`);
 
-  if (opts.dryRun === true) {
-    log("[dry-run] 跳过 Redis、镜像和 Compose 实际连接检查");
-    return { exitCode: 0, message: "[dry-run] Judge 配置检查通过", paths };
-  }
+    if (opts.dryRun === true) {
+        log("[dry-run] 跳过 Redis、镜像和 Compose 实际连接检查");
+        return { exitCode: 0, message: "[dry-run] Judge 配置检查通过", paths };
+    }
 
-  const redis = await checkJudgeRedis(env, {
-    runner: opts.runner,
-    dockerBin: opts.dockerBin,
-    redisCliAvailable: opts.redisCliAvailable,
-  });
-  if (!redis.ok) {
-    return fail(paths, 2, redis.error ?? "Redis 校验失败");
-  }
-  log(`✓ Redis 可连接：${redis.host}`);
+    const redis = await checkJudgeRedis(env, {
+        runner: opts.runner,
+        dockerBin: opts.dockerBin,
+        redisCliAvailable: opts.redisCliAvailable,
+    });
+    if (!redis.ok) {
+        return fail(paths, 2, redis.error ?? "Redis 校验失败");
+    }
+    log(`✓ Redis 可连接：${redis.host}`);
 
-  const arch = await checkJudgeImageArchitecture(env, {
-    runner: opts.runner,
-    dockerBin: opts.dockerBin,
-    hostArch: opts.hostArch ?? (() => Promise.resolve(hostArchDefault())),
-  });
-  if (!arch.ok) {
-    return fail(paths, 2, arch.error ?? "镜像架构校验失败");
-  }
+    const arch = await checkJudgeImageArchitecture(env, {
+        runner: opts.runner,
+        dockerBin: opts.dockerBin,
+        hostArch: opts.hostArch ?? (() => Promise.resolve(hostArchDefault())),
+    });
+    if (!arch.ok) {
+        return fail(paths, 2, arch.error ?? "镜像架构校验失败");
+    }
 
-  const code = await runCompose(opts, paths, ["config", "--quiet"]);
-  if (code !== 0) {
-    return fail(paths, 1, "独立 Judge Compose 配置无效");
-  }
-  log("✓ Judge 配置检查通过");
-  return { exitCode: 0, message: "Judge 配置检查通过", paths };
+    const code = await runCompose(opts, paths, ["config", "--quiet"]);
+    if (code !== 0) {
+        return fail(paths, 1, "独立 Judge Compose 配置无效");
+    }
+    log("✓ Judge 配置检查通过");
+    return { exitCode: 0, message: "Judge 配置检查通过", paths };
 }
 
 /** `start` / `stop` / `upgrade` / `reset-config` 的公共前置。 */
 export async function prepareExisting(
-  opts: JudgeActionOptions,
+    opts: JudgeActionOptions,
 ): Promise<
-  | { ok: true; paths: JudgePaths; env: Record<string, string> }
-  | { ok: false; result: JudgeActionResult }
+    | { ok: true; paths: JudgePaths; env: Record<string, string> }
+    | { ok: false; result: JudgeActionResult }
 > {
-  const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
-  try {
-    await assertJudgeEnvFileMode(paths.envFile);
-    if (!(await isFile(paths.composeFile))) {
-      throw new UsageError(
-        `找不到 Compose 配置：${paths.composeFile}，请先执行 install`,
-      );
+    const paths = judgePaths(opts.dir, opts.envFile, opts.composeFile);
+    try {
+        await assertJudgeEnvFileMode(paths.envFile);
+        if (!(await isFile(paths.composeFile))) {
+            throw new UsageError(
+                `找不到 Compose 配置：${paths.composeFile}，请先执行 install`,
+            );
+        }
+        const env = await readJudgeEnv(paths.envFile);
+        assertJudgeConfigValues(env);
+        // **配置文件本身也必须过共享 socket 守卫**：
+        // 此前只有 `check`/`install` 会调 `assertDedicatedSocket`，而
+        // `start`/`stop`/`status`/`logs`/`upgrade` 走 `prepareExisting`——
+        // 于是**手工把 `JUDGE_DOCKER_SOCKET` 改成宿主 socket 后，
+        // `judge start` 会照常启动**（实测：`judge check` 正确拒绝，
+        // `judge start` 却继续拉起容器）。守卫必须是"加载既有配置"的固有一步，
+        // 而不是某几个子命令各自记得调用。
+        assertDedicatedSocket(env["JUDGE_DOCKER_SOCKET"] ?? "");
+        return { ok: true, paths, env };
+    } catch (err) {
+        return {
+            ok: false,
+            result: fail(paths, isUsage(err) ? 2 : 1, (err as Error).message),
+        };
     }
-    const env = await readJudgeEnv(paths.envFile);
-    assertJudgeConfigValues(env);
-    // **配置文件本身也必须过共享 socket 守卫**：
-    // 此前只有 `check`/`install` 会调 `assertDedicatedSocket`，而
-    // `start`/`stop`/`status`/`logs`/`upgrade` 走 `prepareExisting`——
-    // 于是**手工把 `JUDGE_DOCKER_SOCKET` 改成宿主 socket 后，
-    // `judge start` 会照常启动**（实测：`judge check` 正确拒绝，
-    // `judge start` 却继续拉起容器）。守卫必须是"加载既有配置"的固有一步，
-    // 而不是某几个子命令各自记得调用。
-    assertDedicatedSocket(env["JUDGE_DOCKER_SOCKET"] ?? "");
-    return { ok: true, paths, env };
-  } catch (err) {
-    return {
-      ok: false,
-      result: fail(paths, isUsage(err) ? 2 : 1, (err as Error).message),
-    };
-  }
 }
 
 /**
@@ -446,21 +449,21 @@ export async function prepareExisting(
  * 只做前置 + 启动。这样"重新启动"不会意外覆盖用户改过的文件。
  */
 export async function judgeStart(
-  opts: JudgeActionOptions,
+    opts: JudgeActionOptions,
 ): Promise<JudgeActionResult> {
-  const log = opts.log ?? (() => {});
-  const prepared = await prepareExisting(opts);
-  if (!prepared.ok) return prepared.result;
-  const { paths } = prepared;
+    const log = opts.log ?? (() => {});
+    const prepared = await prepareExisting(opts);
+    if (!prepared.ok) return prepared.result;
+    const { paths } = prepared;
 
-  if (opts.dryRun === true) {
-    log("[dry-run] 将启动 Judge 容器（compose up -d）");
-    return { exitCode: 0, message: "[dry-run] 未启动任何容器", paths };
-  }
-  const code = await runCompose(opts, paths, ["up", "-d"]);
-  if (code !== 0) return fail(paths, 1, "启动 Judge 失败");
-  log("✓ Judge 已启动");
-  return { exitCode: 0, message: "Judge 已启动", paths };
+    if (opts.dryRun === true) {
+        log("[dry-run] 将启动 Judge 容器（compose up -d）");
+        return { exitCode: 0, message: "[dry-run] 未启动任何容器", paths };
+    }
+    const code = await runCompose(opts, paths, ["up", "-d"]);
+    if (code !== 0) return fail(paths, 1, "启动 Judge 失败");
+    log("✓ Judge 已启动");
+    return { exitCode: 0, message: "Judge 已启动", paths };
 }
 
 /**
@@ -470,44 +473,46 @@ export async function judgeStart(
  * 丢掉缓存卷里的内容——重启后重新拉取会浪费时间，而 `stop` 完全够用。
  */
 export async function judgeStop(
-  opts: JudgeActionOptions,
+    opts: JudgeActionOptions,
 ): Promise<JudgeActionResult> {
-  const log = opts.log ?? (() => {});
-  const prepared = await prepareExisting(opts);
-  if (!prepared.ok) return prepared.result;
-  const { paths, env } = prepared;
+    const log = opts.log ?? (() => {});
+    const prepared = await prepareExisting(opts);
+    if (!prepared.ok) return prepared.result;
+    const { paths, env } = prepared;
 
-  let composeEnv: Record<string, string> | null = null;
-  try {
-    const composeText = await Deno.readTextFile(paths.composeFile);
-    composeEnv = readJudgeComposeEnv(composeText, env, Deno.env.toObject());
-  } catch {
-    composeEnv = null;
-  }
-  const stopTimeoutSeconds = computeJudgeStopTimeoutSeconds(composeEnv ?? env);
-
-  if (opts.dryRun === true) {
-    log(
-      `[dry-run] 将停止 Judge 容器（compose stop -t ${stopTimeoutSeconds}）`,
+    let composeEnv: Record<string, string> | null = null;
+    try {
+        const composeText = await Deno.readTextFile(paths.composeFile);
+        composeEnv = readJudgeComposeEnv(composeText, env, Deno.env.toObject());
+    } catch {
+        composeEnv = null;
+    }
+    const stopTimeoutSeconds = computeJudgeStopTimeoutSeconds(
+        composeEnv ?? env,
     );
-    return { exitCode: 0, message: "[dry-run] 未停止任何容器", paths };
-  }
-  const code = await runCompose(opts, paths, [
-    "stop",
-    "-t",
-    String(stopTimeoutSeconds),
-  ]);
-  if (code !== 0) return fail(paths, 1, "停止 Judge 失败");
-  log("✓ Judge 已停止（配置、缓存与 Redis 任务均已保留）");
-  return { exitCode: 0, message: "Judge 已停止（数据已保留）", paths };
+
+    if (opts.dryRun === true) {
+        log(
+            `[dry-run] 将停止 Judge 容器（compose stop -t ${stopTimeoutSeconds}）`,
+        );
+        return { exitCode: 0, message: "[dry-run] 未停止任何容器", paths };
+    }
+    const code = await runCompose(opts, paths, [
+        "stop",
+        "-t",
+        String(stopTimeoutSeconds),
+    ]);
+    if (code !== 0) return fail(paths, 1, "停止 Judge 失败");
+    log("✓ Judge 已停止（配置、缓存与 Redis 任务均已保留）");
+    return { exitCode: 0, message: "Judge 已停止（数据已保留）", paths };
 }
 
 /** `status` 的结果（在公共形状上追加脱敏摘要）。 */
 export interface JudgeStatusResult extends JudgeActionResult {
-  /** 脱敏后的配置摘要（**绝不含口令/token**）。 */
-  summary: string[];
-  /** `compose ps` 的原始输出。 */
-  psOutput: string;
+    /** 脱敏后的配置摘要（**绝不含口令/token**）。 */
+    summary: string[];
+    /** `compose ps` 的原始输出。 */
+    psOutput: string;
 }
 
 /**
@@ -518,45 +523,45 @@ export interface JudgeStatusResult extends JudgeActionResult {
  * `redactUrl` 处理；测试对"输出不含配置里的口令"有直接断言。
  */
 export async function judgeStatus(
-  opts: JudgeActionOptions,
+    opts: JudgeActionOptions,
 ): Promise<JudgeStatusResult> {
-  const log = opts.log ?? (() => {});
-  const prepared = await prepareExisting(opts);
-  if (!prepared.ok) {
-    return { ...prepared.result, summary: [], psOutput: "" };
-  }
-  const { paths, env } = prepared;
-  const summary = renderStatusSummary(env);
+    const log = opts.log ?? (() => {});
+    const prepared = await prepareExisting(opts);
+    if (!prepared.ok) {
+        return { ...prepared.result, summary: [], psOutput: "" };
+    }
+    const { paths, env } = prepared;
+    const summary = renderStatusSummary(env);
 
-  if (opts.dryRun === true) {
-    log("[dry-run] 将查询 Judge 状态");
+    if (opts.dryRun === true) {
+        log("[dry-run] 将查询 Judge 状态");
+        for (const line of summary) log(line);
+        return {
+            exitCode: 0,
+            message: "[dry-run] 未查询容器状态",
+            paths,
+            summary,
+            psOutput: "",
+        };
+    }
+
+    const res = await runComposeCapture(opts, paths, ["ps"]);
+    if (res.code !== 0) {
+        return {
+            ...fail(paths, 1, "查询 Judge 状态失败"),
+            summary,
+            psOutput: "",
+        };
+    }
     for (const line of summary) log(line);
+    if (res.stdout !== "") log(res.stdout);
     return {
-      exitCode: 0,
-      message: "[dry-run] 未查询容器状态",
-      paths,
-      summary,
-      psOutput: "",
+        exitCode: 0,
+        message: "已输出 Judge 状态",
+        paths,
+        summary,
+        psOutput: res.stdout,
     };
-  }
-
-  const res = await runComposeCapture(opts, paths, ["ps"]);
-  if (res.code !== 0) {
-    return {
-      ...fail(paths, 1, "查询 Judge 状态失败"),
-      summary,
-      psOutput: "",
-    };
-  }
-  for (const line of summary) log(line);
-  if (res.stdout !== "") log(res.stdout);
-  return {
-    exitCode: 0,
-    message: "已输出 Judge 状态",
-    paths,
-    summary,
-    psOutput: res.stdout,
-  };
 }
 
 /**
@@ -567,39 +572,39 @@ export async function judgeStatus(
  * "password" 字样。
  */
 export function renderStatusSummary(env: Record<string, string>): string[] {
-  const safeKeys = [
-    "NOJ_VERSION",
-    "JUDGE_QUEUE",
-    "RESULT_QUEUE",
-    "WORK_DIR",
-    ...Object.keys(SCHEDULING_ENV_DEFAULTS),
-    "JUDGE_IMAGE_PREFIX",
-    "JUDGE_IMAGE_REGISTRY",
-    "JUDGE_DOCKER_SOCKET",
-    "JUDGE_DOCKER_SOCKET_GID",
-    "JUDGE_DOCKER_HOST",
-    "JUDGE_REQUIRE_ISOLATED_DOCKER",
-    "JUDGE_UID",
-    "JUDGE_GID",
-  ];
-  const lines = safeKeys
-    .filter((key) => (env[key] ?? "") !== "")
-    .map((key) => `${key}=${env[key]}`);
-  // URL 类值再脱敏一层：即便 REDIS_URL 将来被加进白名单，口令也不会泄露。
-  const urlKeys = ["REDIS_URL", "REDIS_CHECK_URL"];
-  for (const key of urlKeys) {
-    const value = env[key] ?? "";
-    if (value !== "") lines.push(`${key}=${redactUrl(value)}`);
-  }
-  return lines;
+    const safeKeys = [
+        "NOJ_VERSION",
+        "JUDGE_QUEUE",
+        "RESULT_QUEUE",
+        "WORK_DIR",
+        ...Object.keys(SCHEDULING_ENV_DEFAULTS),
+        "JUDGE_IMAGE_PREFIX",
+        "JUDGE_IMAGE_REGISTRY",
+        "JUDGE_DOCKER_SOCKET",
+        "JUDGE_DOCKER_SOCKET_GID",
+        "JUDGE_DOCKER_HOST",
+        "JUDGE_REQUIRE_ISOLATED_DOCKER",
+        "JUDGE_UID",
+        "JUDGE_GID",
+    ];
+    const lines = safeKeys
+        .filter((key) => (env[key] ?? "") !== "")
+        .map((key) => `${key}=${env[key]}`);
+    // URL 类值再脱敏一层：即便 REDIS_URL 将来被加进白名单，口令也不会泄露。
+    const urlKeys = ["REDIS_URL", "REDIS_CHECK_URL"];
+    for (const key of urlKeys) {
+        const value = env[key] ?? "";
+        if (value !== "") lines.push(`${key}=${redactUrl(value)}`);
+    }
+    return lines;
 }
 
 /** `logs` 的注入点。 */
 export interface JudgeLogsOptions extends JudgeActionOptions {
-  /** 是否 `--follow`。 */
-  follow?: boolean;
-  /** 尾部行数（缺省 200，与生产 logs 同一默认）。 */
-  tail?: number;
+    /** 是否 `--follow`。 */
+    follow?: boolean;
+    /** 尾部行数（缺省 200，与生产 logs 同一默认）。 */
+    tail?: number;
 }
 
 /**
@@ -610,55 +615,55 @@ export interface JudgeLogsOptions extends JudgeActionOptions {
  * 不静默退化成"看起来卡住"的缓冲调用。
  */
 export async function judgeLogs(
-  opts: JudgeLogsOptions,
+    opts: JudgeLogsOptions,
 ): Promise<JudgeActionResult> {
-  const log = opts.log ?? (() => {});
-  const prepared = await prepareExisting(opts);
-  if (!prepared.ok) return prepared.result;
-  const { paths } = prepared;
+    const log = opts.log ?? (() => {});
+    const prepared = await prepareExisting(opts);
+    if (!prepared.ok) return prepared.result;
+    const { paths } = prepared;
 
-  const command = ["logs", `--tail=${opts.tail ?? 200}`];
-  if (opts.follow === true) command.push("--follow");
-  const args = judgeComposeArgs(paths, command);
+    const command = ["logs", `--tail=${opts.tail ?? 200}`];
+    if (opts.follow === true) command.push("--follow");
+    const args = judgeComposeArgs(paths, command);
 
-  if (opts.dryRun === true) {
-    log(`[dry-run] 将执行：docker ${args.join(" ")}`);
-    return { exitCode: 0, message: "[dry-run] 未读取日志", paths };
-  }
-
-  if (opts.follow === true) {
-    if (opts.runner.stream === undefined) {
-      return fail(
-        paths,
-        1,
-        "当前运行时不支持实时日志（CommandRunner.stream 缺失）",
-      );
+    if (opts.dryRun === true) {
+        log(`[dry-run] 将执行：docker ${args.join(" ")}`);
+        return { exitCode: 0, message: "[dry-run] 未读取日志", paths };
     }
-    const code = await opts.runner.stream(
-      opts.dockerBin ?? "docker",
-      args,
-      (line) => log(line),
-      // `--json` 时人类日志走 stderr（`log` 已按该契约分发），stderr 行的
-      // 路由与 stdout 一致即可；显式给出以表明"诊断输出也必须可见且不污染
-      // stdout"（缺省转发是安全默认，但显式更清晰）。
-      { onStderr: (line) => log(line) },
-    );
-    if (code !== 0) {
-      return fail(paths, 1, `查看 Judge 日志失败（退出码 ${code}）`);
-    }
-    return { exitCode: 0, message: "已跟随 Judge 日志", paths };
-  }
 
-  const res = await runComposeCapture(opts, paths, command);
-  if (res.stdout !== "") log(res.stdout);
-  if (res.code !== 0) {
-    return fail(
-      paths,
-      1,
-      `查看 Judge 日志失败（docker compose 退出码 ${res.code}）`,
-    );
-  }
-  return { exitCode: 0, message: "已输出 Judge 日志", paths };
+    if (opts.follow === true) {
+        if (opts.runner.stream === undefined) {
+            return fail(
+                paths,
+                1,
+                "当前运行时不支持实时日志（CommandRunner.stream 缺失）",
+            );
+        }
+        const code = await opts.runner.stream(
+            opts.dockerBin ?? "docker",
+            args,
+            (line) => log(line),
+            // `--json` 时人类日志走 stderr（`log` 已按该契约分发），stderr 行的
+            // 路由与 stdout 一致即可；显式给出以表明"诊断输出也必须可见且不污染
+            // stdout"（缺省转发是安全默认，但显式更清晰）。
+            { onStderr: (line) => log(line) },
+        );
+        if (code !== 0) {
+            return fail(paths, 1, `查看 Judge 日志失败（退出码 ${code}）`);
+        }
+        return { exitCode: 0, message: "已跟随 Judge 日志", paths };
+    }
+
+    const res = await runComposeCapture(opts, paths, command);
+    if (res.stdout !== "") log(res.stdout);
+    if (res.code !== 0) {
+        return fail(
+            paths,
+            1,
+            `查看 Judge 日志失败（docker compose 退出码 ${res.code}）`,
+        );
+    }
+    return { exitCode: 0, message: "已输出 Judge 日志", paths };
 }
 
 /**
@@ -669,126 +674,130 @@ export async function judgeLogs(
  * 而那属于生产侧 `update --latest` 的职责。
  */
 export async function judgeUpgrade(
-  opts: JudgeActionOptions,
+    opts: JudgeActionOptions,
 ): Promise<JudgeActionResult> {
-  const log = opts.log ?? (() => {});
-  const prepared = await prepareExisting(opts);
-  if (!prepared.ok) return prepared.result;
-  const { paths, env } = prepared;
+    const log = opts.log ?? (() => {});
+    const prepared = await prepareExisting(opts);
+    if (!prepared.ok) return prepared.result;
+    const { paths, env } = prepared;
 
-  const version = env["NOJ_VERSION"] ?? "";
-  if (version === "") {
-    return fail(paths, 2, "配置缺少 NOJ_VERSION，无法升级");
-  }
-  log(`✓ 目标版本：${version}`);
+    const version = env["NOJ_VERSION"] ?? "";
+    if (version === "") {
+        return fail(paths, 2, "配置缺少 NOJ_VERSION，无法升级");
+    }
+    log(`✓ 目标版本：${version}`);
 
-  if (opts.dryRun === true) {
-    log("[dry-run] 将重渲染 Compose（写入目标版本）并重建 Judge 容器");
-    return { exitCode: 0, message: `[dry-run] 将升级到 ${version}`, paths };
-  }
+    if (opts.dryRun === true) {
+        log("[dry-run] 将重渲染 Compose（写入目标版本）并重建 Judge 容器");
+        return { exitCode: 0, message: `[dry-run] 将升级到 ${version}`, paths };
+    }
 
-  // ---- write_compose----
-  // **必须先重渲染**：`renderJudgeCompose` 把版本**烘成字面量**
-  // （`image: "…/noj-judge:${version}"`），不像
-  // `docker-compose.prod.yml` 用 `${NOJ_VERSION}` 插值。因此只改
-  // `NOJ_VERSION` 再 pull/up，拉到的仍是**旧 tag** 的镜像——
-  // 结果是"报成功但版本没变"的空升级。
-  // 因此升级时必须重新渲染 Compose。
-  try {
-    const yaml = renderJudgeCompose(env);
-    await Deno.writeTextFile(paths.composeFile, yaml);
-    await Deno.chmod(paths.composeFile, JUDGE_COMPOSE_MODE);
-    log(`✓ 已重渲染 Compose 配置：${paths.composeFile}`);
-  } catch (err) {
-    return fail(paths, 1, `重渲染 Compose 配置失败：${(err as Error).message}`);
-  }
+    // ---- write_compose----
+    // **必须先重渲染**：`renderJudgeCompose` 把版本**烘成字面量**
+    // （`image: "…/noj-judge:${version}"`），不像
+    // `docker-compose.prod.yml` 用 `${NOJ_VERSION}` 插值。因此只改
+    // `NOJ_VERSION` 再 pull/up，拉到的仍是**旧 tag** 的镜像——
+    // 结果是"报成功但版本没变"的空升级。
+    // 因此升级时必须重新渲染 Compose。
+    try {
+        const yaml = renderJudgeCompose(env);
+        await Deno.writeTextFile(paths.composeFile, yaml);
+        await Deno.chmod(paths.composeFile, JUDGE_COMPOSE_MODE);
+        log(`✓ 已重渲染 Compose 配置：${paths.composeFile}`);
+    } catch (err) {
+        return fail(
+            paths,
+            1,
+            `重渲染 Compose 配置失败：${(err as Error).message}`,
+        );
+    }
 
-  if (await runCompose(opts, paths, ["pull"]) !== 0) {
-    return fail(paths, 1, "拉取 Judge 镜像失败");
-  }
-  if (await runCompose(opts, paths, ["up", "-d", "--force-recreate"]) !== 0) {
-    return fail(paths, 1, "重建 Judge 容器失败");
-  }
-  log(`✓ Judge 已升级到 ${version}`);
-  return { exitCode: 0, message: `Judge 已升级到 ${version}`, paths };
+    if (await runCompose(opts, paths, ["pull"]) !== 0) {
+        return fail(paths, 1, "拉取 Judge 镜像失败");
+    }
+    if (await runCompose(opts, paths, ["up", "-d", "--force-recreate"]) !== 0) {
+        return fail(paths, 1, "重建 Judge 容器失败");
+    }
+    log(`✓ Judge 已升级到 ${version}`);
+    return { exitCode: 0, message: `Judge 已升级到 ${version}`, paths };
 }
 
 // ---------------- 内部辅助 ----------------
 
 /** 执行一条 compose 子命令，返回退出码（dry-run 时**不调用** runner）。 */
 export async function runCompose(
-  opts: JudgeActionOptions,
-  paths: JudgePaths,
-  command: string[],
+    opts: JudgeActionOptions,
+    paths: JudgePaths,
+    command: string[],
 ): Promise<number> {
-  if (opts.dryRun === true) return 0;
-  const args = judgeComposeArgs(paths, command);
-  try {
-    return (await opts.runner.run(opts.dockerBin ?? "docker", args)).code;
-  } catch {
-    return 1;
-  }
+    if (opts.dryRun === true) return 0;
+    const args = judgeComposeArgs(paths, command);
+    try {
+        return (await opts.runner.run(opts.dockerBin ?? "docker", args)).code;
+    } catch {
+        return 1;
+    }
 }
 
 /** 执行一条 compose 子命令并捕获输出（仅用于文本查询）。 */
 async function runComposeCapture(
-  opts: JudgeActionOptions,
-  paths: JudgePaths,
-  command: string[],
+    opts: JudgeActionOptions,
+    paths: JudgePaths,
+    command: string[],
 ): Promise<{ code: number; stdout: string }> {
-  if (opts.dryRun === true) return { code: 0, stdout: "" };
-  const args = judgeComposeArgs(paths, command);
-  try {
-    const res = await opts.runner.run(opts.dockerBin ?? "docker", args);
-    return { code: res.code, stdout: res.stdout };
-  } catch {
-    return { code: 1, stdout: "" };
-  }
+    if (opts.dryRun === true) return { code: 0, stdout: "" };
+    const args = judgeComposeArgs(paths, command);
+    try {
+        const res = await opts.runner.run(opts.dockerBin ?? "docker", args);
+        return { code: res.code, stdout: res.stdout };
+    } catch {
+        return { code: 1, stdout: "" };
+    }
 }
 
 /** 构造失败结果并写人类日志。 */
 function fail(
-  paths: JudgePaths,
-  exitCode: number,
-  message: string,
+    paths: JudgePaths,
+    exitCode: number,
+    message: string,
 ): JudgeActionResult {
-  return { exitCode, message, paths };
+    return { exitCode, message, paths };
 }
 
 /** 是否属于"用法/前置错误"（退出码 2）。 */
 function isUsage(err: unknown): boolean {
-  return err instanceof UsageError;
+    return err instanceof UsageError;
 }
 
 /** `uname -m` 的缺省实现。 */
 function hostArchDefault(): string {
-  switch (Deno.build.arch) {
-    case "x86_64":
-      return "x86_64";
-    case "aarch64":
-      return "aarch64";
-    default:
-      return Deno.build.arch;
-  }
+    switch (Deno.build.arch) {
+        case "x86_64":
+            return "x86_64";
+        case "aarch64":
+            return "aarch64";
+        default:
+            return Deno.build.arch;
+    }
 }
 
 /** dry-run 首装时用于校验的默认值集合（不落盘）。 */
 function defaultsForDryRun(): Record<string, string> {
-  return {
-    NOJ_VERSION: "v0.10.5",
-    REDIS_URL: "redis://127.0.0.1:6379/0",
-    REDIS_CHECK_URL: "redis://127.0.0.1:6379/0",
-    JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
-    JUDGE_DOCKER_SOCKET_GID: "10001",
-    JUDGE_QUEUE: "noj:judge:queue",
-    RESULT_QUEUE: "noj:judge:results",
-    WORK_DIR: "/tmp/noj-judge",
-    ...SCHEDULING_ENV_DEFAULTS,
-    JUDGE_IMAGE_PREFIX: "noj-",
-    JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
-    JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
-    JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
-    JUDGE_UID: "10001",
-    JUDGE_GID: "10001",
-  };
+    return {
+        NOJ_VERSION: "v0.10.5",
+        REDIS_URL: "redis://127.0.0.1:6379/0",
+        REDIS_CHECK_URL: "redis://127.0.0.1:6379/0",
+        JUDGE_DOCKER_SOCKET: "/run/noj-judge/docker.sock",
+        JUDGE_DOCKER_SOCKET_GID: "10001",
+        JUDGE_QUEUE: "noj:judge:queue",
+        RESULT_QUEUE: "noj:judge:results",
+        WORK_DIR: "/tmp/noj-judge",
+        ...SCHEDULING_ENV_DEFAULTS,
+        JUDGE_IMAGE_PREFIX: "noj-",
+        JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
+        JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
+        JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
+        JUDGE_UID: "10001",
+        JUDGE_GID: "10001",
+    };
 }

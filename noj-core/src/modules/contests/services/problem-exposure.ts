@@ -31,20 +31,20 @@ import { runningWindowCondition } from "./contest-window.ts";
  * @returns 命中"进行中竞赛"的题目 id 集合。
  */
 export async function filterProblemsInRunningContest(
-  problemIds: string[],
-  domainId: string = DEFAULT_DOMAIN_ID,
+    problemIds: string[],
+    domainId: string = DEFAULT_DOMAIN_ID,
 ): Promise<Set<string>> {
-  if (problemIds.length === 0) return new Set();
-  const rows = await getDb()
-    .selectDistinct({ problem_id: contestProblems.problem_id })
-    .from(contestProblems)
-    .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
-    .where(and(
-      inArray(contestProblems.problem_id, problemIds),
-      sql`COALESCE(${contests.domain_id}, ${DEFAULT_DOMAIN_ID}) = ${domainId}`,
-      runningWindowCondition(contests.start_time, contests.end_time),
-    ));
-  return new Set(rows.map((row) => row.problem_id));
+    if (problemIds.length === 0) return new Set();
+    const rows = await getDb()
+        .selectDistinct({ problem_id: contestProblems.problem_id })
+        .from(contestProblems)
+        .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
+        .where(and(
+            inArray(contestProblems.problem_id, problemIds),
+            sql`COALESCE(${contests.domain_id}, ${DEFAULT_DOMAIN_ID}) = ${domainId}`,
+            runningWindowCondition(contests.start_time, contests.end_time),
+        ));
+    return new Set(rows.map((row) => row.problem_id));
 }
 
 /**
@@ -54,9 +54,9 @@ export async function filterProblemsInRunningContest(
  * @returns 处于进行中竞赛时为 true。
  */
 export async function isProblemInRunningContest(
-  problemId: string,
-  domainId: string = DEFAULT_DOMAIN_ID,
+    problemId: string,
+    domainId: string = DEFAULT_DOMAIN_ID,
 ): Promise<boolean> {
-  const result = await filterProblemsInRunningContest([problemId], domainId);
-  return result.has(problemId);
+    const result = await filterProblemsInRunningContest([problemId], domainId);
+    return result.has(problemId);
 }

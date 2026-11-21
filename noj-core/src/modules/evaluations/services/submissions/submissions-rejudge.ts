@@ -20,16 +20,16 @@ import { eq } from "drizzle-orm";
 import type { UserActor } from "../../../access/contracts/actor.ts";
 import { logAudit } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
-  type AcceptJobResult,
-  acceptRejudgeJob,
-  getRejudgeJob,
+    type AcceptJobResult,
+    acceptRejudgeJob,
+    getRejudgeJob,
 } from "../versioning/rejudge-jobs.ts";
 
 const logger = getLogger(["noj", "submission"]);
 
 /** 兼容入口每次调用生成独立幂等键（等价于"这次点击是一次新任务"）。 */
 function legacyIdempotencyKey(): string {
-  return `legacy-rejudge-${crypto.randomUUID()}`;
+    return `legacy-rejudge-${crypto.randomUUID()}`;
 }
 
 /**
@@ -39,30 +39,33 @@ function legacyIdempotencyKey(): string {
  * @returns 受理结果（任务 ID、状态、条目数）
  */
 export async function rejudgeSubmission(
-  id: string,
-  actor: UserActor,
+    id: string,
+    actor: UserActor,
 ): Promise<AcceptJobResult> {
-  const actorId = actor.userId;
-  const accepted = await acceptRejudgeJob(
-    actorId,
-    {
-      kind: "rejudge",
-      scope: {
-        type: "selected",
-        submissions: [{ kind: "submission", id }],
-      },
-      target: { mode: "submitted" },
-    },
-    legacyIdempotencyKey(),
-  );
+    const actorId = actor.userId;
+    const accepted = await acceptRejudgeJob(
+        actorId,
+        {
+            kind: "rejudge",
+            scope: {
+                type: "selected",
+                submissions: [{ kind: "submission", id }],
+            },
+            target: { mode: "submitted" },
+        },
+        legacyIdempotencyKey(),
+    );
 
-  await logAudit(
-    "submissions.rejudge",
-    { action: "submissions.rejudge", submission_id: id },
-    { type: "submission", id },
-  );
-  logger.info("单条重测已受理", { submission_id: id, job_id: accepted.job_id });
-  return accepted;
+    await logAudit(
+        "submissions.rejudge",
+        { action: "submissions.rejudge", submission_id: id },
+        { type: "submission", id },
+    );
+    logger.info("单条重测已受理", {
+        submission_id: id,
+        job_id: accepted.job_id,
+    });
+    return accepted;
 }
 
 /**
@@ -75,42 +78,42 @@ export async function rejudgeSubmission(
  * @returns 受理结果（任务 ID、状态、条目数）
  */
 export async function rejudgeProblemSubmissions(
-  problemId: string,
-  actor: UserActor,
+    problemId: string,
+    actor: UserActor,
 ): Promise<AcceptJobResult> {
-  const actorId = actor.userId;
-  const accepted = await acceptRejudgeJob(
-    actorId,
-    {
-      kind: "rejudge",
-      scope: { type: "problem", problem_id: problemId },
-      target: { mode: "submitted" },
-    },
-    legacyIdempotencyKey(),
-  );
+    const actorId = actor.userId;
+    const accepted = await acceptRejudgeJob(
+        actorId,
+        {
+            kind: "rejudge",
+            scope: { type: "problem", problem_id: problemId },
+            target: { mode: "submitted" },
+        },
+        legacyIdempotencyKey(),
+    );
 
-  const db = getDb();
-  const [problem] = await db.select({
-    title: problems.title,
-    number: problems.number,
-  }).from(problems).where(eq(problems.id, problemId)).limit(1);
+    const db = getDb();
+    const [problem] = await db.select({
+        title: problems.title,
+        number: problems.number,
+    }).from(problems).where(eq(problems.id, problemId)).limit(1);
 
-  await logAudit(
-    "submissions.rejudge",
-    {
-      action: "submissions.rejudge",
-      problem_id: problemId,
-      count: accepted.total_items,
-    },
-    { type: "problem", id: problemId },
-  );
-  logger.info("整题重测已受理", {
-    problem_id: problemId,
-    display_id: problem ? `main:${problem.number}` : undefined,
-    job_id: accepted.job_id,
-    total_items: accepted.total_items,
-  });
-  return accepted;
+    await logAudit(
+        "submissions.rejudge",
+        {
+            action: "submissions.rejudge",
+            problem_id: problemId,
+            count: accepted.total_items,
+        },
+        { type: "problem", id: problemId },
+    );
+    logger.info("整题重测已受理", {
+        problem_id: problemId,
+        display_id: problem ? `main:${problem.number}` : undefined,
+        job_id: accepted.job_id,
+        total_items: accepted.total_items,
+    });
+    return accepted;
 }
 
 /** 读取任务详情（管理端轮询进度用；非本次受理返回 null）。 */

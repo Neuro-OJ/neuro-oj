@@ -1,14 +1,14 @@
 import { publishQueueChange } from "../services/queue.ts";
 import {
-  projectMeteringDetails,
-  projectOiDetails,
-  projectOiSelfTestDetails,
+    projectMeteringDetails,
+    projectOiDetails,
+    projectOiSelfTestDetails,
 } from "../services/submissions/oi-details.ts";
 import {
-  type ConsumerHandle,
-  type ConsumerOptions,
-  createConsumer,
-  requestConsumerShutdown,
+    type ConsumerHandle,
+    type ConsumerOptions,
+    createConsumer,
+    requestConsumerShutdown,
 } from "../../../shared/mq/base-consumer.ts";
 import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
 import { saveEvaluationResultCommand } from "../../application/evaluations.ts";
@@ -36,30 +36,30 @@ export const MAX_RESULT_CONSUMER_CONCURRENCY = 16;
 
 /** judge details 允许的顶层键（按当前 evaluate.py 契约白名单化）。 */
 const JUDGE_DETAIL_ALLOWED_KEYS = new Set([
-  "run_id",
-  "oi",
-  "metering",
-  "cases",
-  "score",
-  "score_content",
-  "score_format",
-  "hidden_provided",
-  "summary",
+    "run_id",
+    "oi",
+    "metering",
+    "cases",
+    "score",
+    "score_content",
+    "score_format",
+    "hidden_provided",
+    "summary",
 ]);
 
 /** 单个用例对象允许的键。 */
 const JUDGE_CASE_ALLOWED_KEYS = new Set([
-  "case_id",
-  "status",
-  "visibility",
-  "hidden",
-  "time_ms",
-  // 用例级内存（KB）。此前缺失导致 `details.cases[].memory_kb` 在落库前
-  // 被静默丢弃，与 Evaluator SDK 文档契约不符（2026-09-24 审计 A2-1）。
-  "memory_kb",
-  "input",
-  "expected_output",
-  "actual_output",
+    "case_id",
+    "status",
+    "visibility",
+    "hidden",
+    "time_ms",
+    // 用例级内存（KB）。此前缺失导致 `details.cases[].memory_kb` 在落库前
+    // 被静默丢弃，与 Evaluator SDK 文档契约不符（2026-09-24 审计 A2-1）。
+    "memory_kb",
+    "input",
+    "expected_output",
+    "actual_output",
 ]);
 
 /** 单个值序列化后的最大字节数，超出即丢弃（防超大恶意字段）。 */
@@ -71,45 +71,49 @@ const MAX_DETAIL_VALUE_BYTES = 64 * 1024;
  * 仅保留安全键；每条用例只保留白名单字段；任一值超过 64KB 丢弃。
  */
 export function sanitizeJudgeDetails(
-  details: Record<string, unknown>,
-  selfTest = false,
+    details: Record<string, unknown>,
+    selfTest = false,
 ): Record<string, unknown> {
-  if (!details || typeof details !== "object" || Array.isArray(details)) {
-    return {};
-  }
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(details)) {
-    if (!JUDGE_DETAIL_ALLOWED_KEYS.has(key)) continue;
-    const normalized = key === "oi"
-      ? (selfTest ? projectOiSelfTestDetails(value) : projectOiDetails(value))
-      : key === "metering"
-      ? projectMeteringDetails(value)
-      : key === "cases" && Array.isArray(value)
-      ? value.map(sanitizeCase)
-      : value;
-    const serialized = JSON.stringify(normalized);
-    if (
-      serialized !== undefined &&
-      serialized.length >
-        (selfTest && key === "oi" ? 4 * 1024 * 1024 : MAX_DETAIL_VALUE_BYTES)
-    ) {
-      continue;
+    if (!details || typeof details !== "object" || Array.isArray(details)) {
+        return {};
     }
-    result[key] = normalized;
-  }
-  return result;
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(details)) {
+        if (!JUDGE_DETAIL_ALLOWED_KEYS.has(key)) continue;
+        const normalized = key === "oi"
+            ? (selfTest
+                ? projectOiSelfTestDetails(value)
+                : projectOiDetails(value))
+            : key === "metering"
+            ? projectMeteringDetails(value)
+            : key === "cases" && Array.isArray(value)
+            ? value.map(sanitizeCase)
+            : value;
+        const serialized = JSON.stringify(normalized);
+        if (
+            serialized !== undefined &&
+            serialized.length >
+                (selfTest && key === "oi"
+                    ? 4 * 1024 * 1024
+                    : MAX_DETAIL_VALUE_BYTES)
+        ) {
+            continue;
+        }
+        result[key] = normalized;
+    }
+    return result;
 }
 
 function sanitizeCase(value: unknown): unknown {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return value;
-  }
-  const caseObj = value as Record<string, unknown>;
-  const result: Record<string, unknown> = {};
-  for (const [key, field] of Object.entries(caseObj)) {
-    if (JUDGE_CASE_ALLOWED_KEYS.has(key)) result[key] = field;
-  }
-  return result;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return value;
+    }
+    const caseObj = value as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (const [key, field] of Object.entries(caseObj)) {
+        if (JUDGE_CASE_ALLOWED_KEYS.has(key)) result[key] = field;
+    }
+    return result;
 }
 
 /**
@@ -117,13 +121,13 @@ function sanitizeCase(value: unknown): unknown {
  * 非正整数、超出上限或无法解析时回退到安全默认值。
  */
 export function parseResultConsumerConcurrency(
-  raw: string | undefined = Deno.env.get("RESULT_CONSUMER_CONCURRENCY"),
+    raw: string | undefined = Deno.env.get("RESULT_CONSUMER_CONCURRENCY"),
 ): number {
-  const value = raw === undefined ? NaN : Number(raw);
-  return Number.isInteger(value) && value >= 1 &&
-      value <= MAX_RESULT_CONSUMER_CONCURRENCY
-    ? value
-    : DEFAULT_RESULT_CONSUMER_CONCURRENCY;
+    const value = raw === undefined ? NaN : Number(raw);
+    return Number.isInteger(value) && value >= 1 &&
+            value <= MAX_RESULT_CONSUMER_CONCURRENCY
+        ? value
+        : DEFAULT_RESULT_CONSUMER_CONCURRENCY;
 }
 
 /**
@@ -134,18 +138,18 @@ export const consumerAlive = { value: false };
 
 /** 结果消费者工厂，测试可注入以验证消费者池的编排行为。 */
 export type ResultConsumerFactory = (
-  options: ConsumerOptions,
+    options: ConsumerOptions,
 ) => () => Promise<void>;
 
 /** 可停止的消费者工厂（P2a 结果池使用，返回带 requestShutdown 的句柄）。 */
 export type ManagedResultConsumerFactory = (
-  options: ConsumerOptions,
+    options: ConsumerOptions,
 ) => ConsumerHandle;
 
 /** 结果消费者池启动选项（`consumerFactory` 仅供测试注入）。 */
 export interface ResultConsumerPoolOptions {
-  concurrency?: number;
-  consumerFactory?: ManagedResultConsumerFactory;
+    concurrency?: number;
+    consumerFactory?: ManagedResultConsumerFactory;
 }
 
 /**
@@ -155,34 +159,34 @@ export interface ResultConsumerPoolOptions {
  * 消费者仍在运行，consumerAlive 就保持为 true。
  */
 export function createResultConsumerPool(
-  concurrency: number,
-  consumerFactory: ResultConsumerFactory = createConsumer,
+    concurrency: number,
+    consumerFactory: ResultConsumerFactory = createConsumer,
 ): () => Promise<void> {
-  const states = Array.from({ length: concurrency }, () => false);
-  consumerAlive.value = false;
-  const aliveRefs = states.map((_, index) => ({
-    get value(): boolean {
-      return states[index] ?? false;
-    },
-    set value(value: boolean) {
-      states[index] = value;
-      consumerAlive.value = states.some(Boolean);
-    },
-  }));
+    const states = Array.from({ length: concurrency }, () => false);
+    consumerAlive.value = false;
+    const aliveRefs = states.map((_, index) => ({
+        get value(): boolean {
+            return states[index] ?? false;
+        },
+        set value(value: boolean) {
+            states[index] = value;
+            consumerAlive.value = states.some(Boolean);
+        },
+    }));
 
-  const consumers = aliveRefs.map((aliveRef, index) =>
-    consumerFactory({
-      queueName: RESULT_QUEUE,
-      logLabel: `结果-${index + 1}/${concurrency}`,
-      aliveRef,
-      handleMessage: handleResultMessage,
-      requeueOnError: true,
-    })
-  );
+    const consumers = aliveRefs.map((aliveRef, index) =>
+        consumerFactory({
+            queueName: RESULT_QUEUE,
+            logLabel: `结果-${index + 1}/${concurrency}`,
+            aliveRef,
+            handleMessage: handleResultMessage,
+            requeueOnError: true,
+        })
+    );
 
-  return async () => {
-    await Promise.all(consumers.map((start) => start()));
-  };
+    return async () => {
+        await Promise.all(consumers.map((start) => start()));
+    };
 }
 
 /**
@@ -194,105 +198,111 @@ export function createResultConsumerPool(
  * 传入一个结构化结果（TS2345）。这里显式做形状收窄。
  */
 export async function handleResultMessage(data: unknown): Promise<void> {
-  if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    logger.error("评测结果消息格式非法，跳过", { kind: typeof data });
-    return;
-  }
-  const record = data as Record<string, unknown>;
-  if (record.kind === "oi_progress") {
-    await saveOiProgress(record);
-    return;
-  }
-  const judgeResult = record as unknown as JudgeResult;
-
-  if (!judgeResult.submission_id) {
-    logger.error("评测结果缺少 submission_id，跳过");
-    return;
-  }
-
-  // F-11：落库前白名单化 details（未知 key / 超大值一律丢弃）。
-  judgeResult.details = sanitizeJudgeDetails(
-    judgeResult.details ?? {},
-    judgeResult.submission_id.startsWith(SELF_TEST_ID_PREFIX),
-  );
-
-  metrics.inc("noj_evaluation_results_total");
-
-  logger.info("收到评测结果", {
-    submission_id: judgeResult.submission_id,
-    status: judgeResult.status,
-    score: judgeResult.score,
-  });
-
-  const isSelfTest = judgeResult.submission_id.startsWith(SELF_TEST_ID_PREFIX);
-
-  // NOJ-074：写库失败必须向上抛出让消费者重投，
-  // 不再吞掉错误导致提交永久停留在 judging。
-  try {
-    if (isSelfTest) {
-      const applied = await saveSelfTestResult(judgeResult);
-      if (!applied) {
-        logger.info("重复/过时自测结果，已幂等忽略", {
-          self_test_id: judgeResult.submission_id,
-          rejudge_seq: judgeResult.rejudge_seq ?? 0,
-        });
+    if (typeof data !== "object" || data === null || Array.isArray(data)) {
+        logger.error("评测结果消息格式非法，跳过", { kind: typeof data });
         return;
-      }
-      await clearResultTaskMarker(judgeResult);
-      logger.info("自测结果已持久化", {
-        self_test_id: judgeResult.submission_id,
-      });
-      // 自测：保持原有轻量事件（自测不参与榜单/竞赛，队列事件允许轮询兜底）。
-      await publishQueueChange(judgeResult.submission_id);
-      return;
+    }
+    const record = data as Record<string, unknown>;
+    if (record.kind === "oi_progress") {
+        await saveOiProgress(record);
+        return;
+    }
+    const judgeResult = record as unknown as JudgeResult;
+
+    if (!judgeResult.submission_id) {
+        logger.error("评测结果缺少 submission_id，跳过");
+        return;
     }
 
-    const applied = await saveEvaluationResultCommand(
-      { kind: "system", purpose: "background_task" },
-      judgeResult,
+    // F-11：落库前白名单化 details（未知 key / 超大值一律丢弃）。
+    judgeResult.details = sanitizeJudgeDetails(
+        judgeResult.details ?? {},
+        judgeResult.submission_id.startsWith(SELF_TEST_ID_PREFIX),
     );
-    if (!applied.applied) {
-      logger.info("评测结果为重复/过时消息，已幂等忽略", {
+
+    metrics.inc("noj_evaluation_results_total");
+
+    logger.info("收到评测结果", {
         submission_id: judgeResult.submission_id,
-        rejudge_seq: judgeResult.rejudge_seq ?? 0,
-      });
-      return;
-    }
-
-    await clearResultTaskMarker(judgeResult);
-
-    // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
-    // 已调度自动重试的平台错误不是最终结果，不计入。
-    if (applied.created_at && !applied.is_rejudge && !applied.auto_retry) {
-      const startedMs = Date.parse(applied.created_at);
-      if (Number.isFinite(startedMs)) {
-        metrics.observe(
-          "noj_submission_e2e_duration_seconds",
-          Math.max(0, (Date.now() - startedMs) / 1000),
-          { result: judgeResult.status },
-        );
-      }
-    }
-
-    logger.info("评测结果已持久化", {
-      submission_id: judgeResult.submission_id,
-      kind: "submission",
+        status: judgeResult.status,
+        score: judgeResult.score,
     });
 
-    // 正式提交：评测结果相关事件已在业务事务内写入 sse_events（事务性 Outbox），
-    // 这里只发布 Redis 实时通知，不再重复写库。
-    for (const event of applied.outbox_events) {
-      publishSseEventAfterTx(event.channel, event.payload, event.event_id);
+    const isSelfTest = judgeResult.submission_id.startsWith(
+        SELF_TEST_ID_PREFIX,
+    );
+
+    // NOJ-074：写库失败必须向上抛出让消费者重投，
+    // 不再吞掉错误导致提交永久停留在 judging。
+    try {
+        if (isSelfTest) {
+            const applied = await saveSelfTestResult(judgeResult);
+            if (!applied) {
+                logger.info("重复/过时自测结果，已幂等忽略", {
+                    self_test_id: judgeResult.submission_id,
+                    rejudge_seq: judgeResult.rejudge_seq ?? 0,
+                });
+                return;
+            }
+            await clearResultTaskMarker(judgeResult);
+            logger.info("自测结果已持久化", {
+                self_test_id: judgeResult.submission_id,
+            });
+            // 自测：保持原有轻量事件（自测不参与榜单/竞赛，队列事件允许轮询兜底）。
+            await publishQueueChange(judgeResult.submission_id);
+            return;
+        }
+
+        const applied = await saveEvaluationResultCommand(
+            { kind: "system", purpose: "background_task" },
+            judgeResult,
+        );
+        if (!applied.applied) {
+            logger.info("评测结果为重复/过时消息，已幂等忽略", {
+                submission_id: judgeResult.submission_id,
+                rejudge_seq: judgeResult.rejudge_seq ?? 0,
+            });
+            return;
+        }
+
+        await clearResultTaskMarker(judgeResult);
+
+        // 首次评测结果：记录从提交创建到结果落库的端到端延迟。
+        // 已调度自动重试的平台错误不是最终结果，不计入。
+        if (applied.created_at && !applied.is_rejudge && !applied.auto_retry) {
+            const startedMs = Date.parse(applied.created_at);
+            if (Number.isFinite(startedMs)) {
+                metrics.observe(
+                    "noj_submission_e2e_duration_seconds",
+                    Math.max(0, (Date.now() - startedMs) / 1000),
+                    { result: judgeResult.status },
+                );
+            }
+        }
+
+        logger.info("评测结果已持久化", {
+            submission_id: judgeResult.submission_id,
+            kind: "submission",
+        });
+
+        // 正式提交：评测结果相关事件已在业务事务内写入 sse_events（事务性 Outbox），
+        // 这里只发布 Redis 实时通知，不再重复写库。
+        for (const event of applied.outbox_events) {
+            publishSseEventAfterTx(
+                event.channel,
+                event.payload,
+                event.event_id,
+            );
+        }
+
+        // 业务重试的派发任务已在结果事务内登记，由持久 worker 恢复。
+
+        // 队列变化通知（全局刷新类，允许轮询兜底；不要求与业务同事务）
+        await publishQueueChange(judgeResult.submission_id);
+    } catch (err) {
+        metrics.inc("noj_evaluation_consumer_errors_total");
+        throw err;
     }
-
-    // 业务重试的派发任务已在结果事务内登记，由持久 worker 恢复。
-
-    // 队列变化通知（全局刷新类，允许轮询兜底；不要求与业务同事务）
-    await publishQueueChange(judgeResult.submission_id);
-  } catch (err) {
-    metrics.inc("noj_evaluation_consumer_errors_total");
-    throw err;
-  }
 }
 
 /**
@@ -302,16 +312,16 @@ export async function handleResultMessage(data: unknown): Promise<void> {
  * 这里只记录告警并继续完成消费确认。
  */
 async function clearResultTaskMarker(result: JudgeResult): Promise<void> {
-  const runId = result.run_id ?? result.attempt_id;
-  if (!runId) return;
-  try {
-    await clearJudgeTaskMarker(runId);
-  } catch (err) {
-    logger.warn("评测结果已落库但派发标记清理失败，等待 TTL", {
-      run_id: runId,
-      err,
-    });
-  }
+    const runId = result.run_id ?? result.attempt_id;
+    if (!runId) return;
+    try {
+        await clearJudgeTaskMarker(runId);
+    } catch (err) {
+        logger.warn("评测结果已落库但派发标记清理失败，等待 TTL", {
+            run_id: runId,
+            err,
+        });
+    }
 }
 
 /**
@@ -327,64 +337,66 @@ async function clearResultTaskMarker(result: JudgeResult): Promise<void> {
  * @returns 可停止、可等待的消费者池句柄
  */
 export function startResultConsumerPool(
-  options: ResultConsumerPoolOptions = {},
+    options: ResultConsumerPoolOptions = {},
 ): ManagedTask {
-  const concurrency = options.concurrency ?? parseResultConsumerConcurrency();
-  const consumerFactory = options.consumerFactory ?? createConsumer;
-  logger.info("评测结果消费者池已配置", { concurrency });
-  // 每个消费者独立 aliveRef，汇总为"任一副本仍存活即健康"；否则单个消费者
-  // 退出会把整个池误报为不可用。
-  const states = Array.from({ length: concurrency }, () => false);
-  consumerAlive.value = false;
-  const aliveRefs = states.map((_, index) => ({
-    get value(): boolean {
-      return states[index] ?? false;
-    },
-    set value(value: boolean) {
-      states[index] = value;
-      consumerAlive.value = states.some(Boolean);
-    },
-  }));
-  const handles = aliveRefs.map((aliveRef) =>
-    consumerFactory({
-      queueName: RESULT_QUEUE,
-      logLabel: "评测结果",
-      aliveRef,
-      handleMessage: handleResultMessage,
-      requeueOnError: true,
-    })
-  );
-  // 关键：用 allSettled 等待**全部**消费者退出。Promise.all 会在任一连接失败时
-  // 提前 reject，此时其他消费者仍可能正在处理消息，done 却已 resolve。
-  const started = (async () => {
-    const results = await Promise.allSettled(handles.map((start) => start()));
-    const failures = results
-      .filter((result): result is PromiseRejectedResult =>
-        result.status === "rejected"
-      )
-      .map((result) => result.reason);
-    if (failures.length > 0) {
-      const detail = failures
-        .map((reason) =>
-          reason instanceof Error ? reason.message : String(reason)
-        )
-        .join("; ");
-      throw new AggregateError(
-        failures,
-        `评测结果消费者池有 ${failures.length} 个实例异常退出：${detail}`,
-      );
-    }
-  })();
-  // 先挂 no-op handler 防止早期无人 await 时触发 unhandledRejection；
-  // done 仍保留原拒绝供任务组汇总。
-  started.catch(() => {});
-  return {
-    name: "result-consumer-pool",
-    stop: () => {
-      for (const handle of handles) handle.requestShutdown();
-    },
-    done: started,
-  };
+    const concurrency = options.concurrency ?? parseResultConsumerConcurrency();
+    const consumerFactory = options.consumerFactory ?? createConsumer;
+    logger.info("评测结果消费者池已配置", { concurrency });
+    // 每个消费者独立 aliveRef，汇总为"任一副本仍存活即健康"；否则单个消费者
+    // 退出会把整个池误报为不可用。
+    const states = Array.from({ length: concurrency }, () => false);
+    consumerAlive.value = false;
+    const aliveRefs = states.map((_, index) => ({
+        get value(): boolean {
+            return states[index] ?? false;
+        },
+        set value(value: boolean) {
+            states[index] = value;
+            consumerAlive.value = states.some(Boolean);
+        },
+    }));
+    const handles = aliveRefs.map((aliveRef) =>
+        consumerFactory({
+            queueName: RESULT_QUEUE,
+            logLabel: "评测结果",
+            aliveRef,
+            handleMessage: handleResultMessage,
+            requeueOnError: true,
+        })
+    );
+    // 关键：用 allSettled 等待**全部**消费者退出。Promise.all 会在任一连接失败时
+    // 提前 reject，此时其他消费者仍可能正在处理消息，done 却已 resolve。
+    const started = (async () => {
+        const results = await Promise.allSettled(
+            handles.map((start) => start()),
+        );
+        const failures = results
+            .filter((result): result is PromiseRejectedResult =>
+                result.status === "rejected"
+            )
+            .map((result) => result.reason);
+        if (failures.length > 0) {
+            const detail = failures
+                .map((reason) =>
+                    reason instanceof Error ? reason.message : String(reason)
+                )
+                .join("; ");
+            throw new AggregateError(
+                failures,
+                `评测结果消费者池有 ${failures.length} 个实例异常退出：${detail}`,
+            );
+        }
+    })();
+    // 先挂 no-op handler 防止早期无人 await 时触发 unhandledRejection；
+    // done 仍保留原拒绝供任务组汇总。
+    started.catch(() => {});
+    return {
+        name: "result-consumer-pool",
+        stop: () => {
+            for (const handle of handles) handle.requestShutdown();
+        },
+        done: started,
+    };
 }
 
 export { requestConsumerShutdown as requestResultConsumerShutdown };

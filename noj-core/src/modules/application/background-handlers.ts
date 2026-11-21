@@ -8,14 +8,14 @@
  * 永远停在 pending，形成"看起来在跑、实际不处理"的假绿。
  */
 import type {
-  TaskHandler,
-  TaskHandlerMap,
-  TaskType,
+    TaskHandler,
+    TaskHandlerMap,
+    TaskType,
 } from "../runtime/tasks/contracts.ts";
 import { TASK_TYPES } from "../runtime/tasks/contracts.ts";
 import {
-  collectFeatureTasks,
-  type FeatureDefinition,
+    collectFeatureTasks,
+    type FeatureDefinition,
 } from "../../shared/feature.ts";
 import { FEATURES } from "../../features.ts";
 import { handleSearchIndexTask } from "./search-handlers.ts";
@@ -29,39 +29,39 @@ import { handleEducationTask } from "./education-handlers.ts";
  * 完成而事实没有生效。
  */
 export function createBackgroundHandlers(
-  features: readonly FeatureDefinition[] = FEATURES,
+    features: readonly FeatureDefinition[] = FEATURES,
 ): TaskHandlerMap {
-  const handlers: Record<TaskType, TaskHandler> = {
-    "search.index": (task) =>
-      handleSearchIndexTask(
-        task as Parameters<typeof handleSearchIndexTask>[0],
-      ),
-    "evaluation.dispatch": (task, signal) =>
-      handleEvaluationDispatchTask(
-        task as Parameters<typeof handleEvaluationDispatchTask>[0],
-        signal,
-      ),
-    // 教学任务只调度旧 outbox 的单页适配器；旧 progress worker 不再启动。
-    "education.recompute": handleEducationTask,
-    // 对象回收在 application 组合层实现（引用守卫 + 域计数释放）。
-    "storage.reclaim": () =>
-      Promise.reject(new Error("storage.reclaim 处理器尚未接入")),
-    // 邮件通知允许重复风险，由 application 注入真实发送实现后启用。
-    "notification.email": () =>
-      Promise.reject(new Error("notification.email 处理器尚未接入")),
-  };
-  // 功能自声明的任务：冲突或重复在此处启动期失败。
-  return {
-    ...handlers,
-    ...collectFeatureTasks(features, TASK_TYPES),
-  } as unknown as TaskHandlerMap;
+    const handlers: Record<TaskType, TaskHandler> = {
+        "search.index": (task) =>
+            handleSearchIndexTask(
+                task as Parameters<typeof handleSearchIndexTask>[0],
+            ),
+        "evaluation.dispatch": (task, signal) =>
+            handleEvaluationDispatchTask(
+                task as Parameters<typeof handleEvaluationDispatchTask>[0],
+                signal,
+            ),
+        // 教学任务只调度旧 outbox 的单页适配器；旧 progress worker 不再启动。
+        "education.recompute": handleEducationTask,
+        // 对象回收在 application 组合层实现（引用守卫 + 域计数释放）。
+        "storage.reclaim": () =>
+            Promise.reject(new Error("storage.reclaim 处理器尚未接入")),
+        // 邮件通知允许重复风险，由 application 注入真实发送实现后启用。
+        "notification.email": () =>
+            Promise.reject(new Error("notification.email 处理器尚未接入")),
+    };
+    // 功能自声明的任务：冲突或重复在此处启动期失败。
+    return {
+        ...handlers,
+        ...collectFeatureTasks(features, TASK_TYPES),
+    } as unknown as TaskHandlerMap;
 }
 
 /** 校验 handler 表覆盖全部任务类型；返回缺失类型列表。 */
 export function missingTaskHandlers(
-  handlers: Partial<Record<TaskType, unknown>>,
+    handlers: Partial<Record<TaskType, unknown>>,
 ): TaskType[] {
-  return TASK_TYPES.filter((taskType) =>
-    typeof handlers[taskType] !== "function"
-  );
+    return TASK_TYPES.filter((taskType) =>
+        typeof handlers[taskType] !== "function"
+    );
 }

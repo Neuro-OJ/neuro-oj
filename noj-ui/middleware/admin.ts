@@ -14,18 +14,18 @@
 import { isAdminUser } from '~/utils/auth/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
-  const { isLoggedIn, user, ensureAuthReady } = useAuth();
+    const { isLoggedIn, user, ensureAuthReady } = useAuth();
 
-  // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
-  await ensureAuthReady();
+    // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
+    await ensureAuthReady();
 
-  // 未登录 → 去登录页
-  if (!isLoggedIn.value) {
-    return navigateTo('/login');
-  }
+    // 未登录 → 去登录页
+    if (!isLoggedIn.value) {
+        return navigateTo('/login');
+    }
 
-  // 非管理员 → 重定向首页（不给提示，静默拦截）
-  if (!isAdminUser(user.value)) {
-    return navigateTo('/');
-  }
+    // 非管理员 → 重定向首页（不给提示，静默拦截）
+    if (!isAdminUser(user.value)) {
+        return navigateTo('/');
+    }
 });

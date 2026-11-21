@@ -3,8 +3,8 @@ import { useOverlay } from '@nuxt/ui/composables';
 import type { ReportCategory } from '~/utils/domain/community/reportCategories';
 
 export interface ReportResult {
-  category: ReportCategory;
-  reason: string;
+    category: ReportCategory;
+    reason: string;
 }
 
 /**
@@ -13,14 +13,14 @@ export interface ReportResult {
  * - 返回 null：用户取消
  */
 export function useReportModal() {
-  const overlay = useOverlay();
+    const overlay = useOverlay();
 
-  async function open(): Promise<ReportResult | null> {
-    if (import.meta.server) return null;
-    const instance = overlay.create(ReportModal);
-    const res = await instance.open();
-    return res;
-  }
+    async function open(): Promise<ReportResult | null> {
+        if (import.meta.server) return null;
+        const instance = overlay.create(ReportModal);
+        const res = await instance.open();
+        return res;
+    }
 
-  return { open };
+    return { open };
 }

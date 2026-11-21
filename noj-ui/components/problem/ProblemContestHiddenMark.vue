@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CONTEST_HIDDEN_TIP } from '~/utils/domain/contest/contestHidden'
+import { CONTEST_HIDDEN_TIP } from '~/utils/domain/contest/contestHidden';
 
 /**
  * 「被公开赛收编」视觉标识（VULN-07）。
@@ -15,12 +15,12 @@ import { CONTEST_HIDDEN_TIP } from '~/utils/domain/contest/contestHidden'
 </script>
 
 <template>
-  <UTooltip :text="CONTEST_HIDDEN_TIP" :delay-duration="100">
-    <span
-      class="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-text-secondary"
-    >
+    <UTooltip :text="CONTEST_HIDDEN_TIP" :delay-duration="100">
+        <span
+            class="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-text-secondary"
+        >
       <UIcon name="i-lucide-eye-off" class="size-3" />
       已收编
     </span>
-  </UTooltip>
+    </UTooltip>
 </template>

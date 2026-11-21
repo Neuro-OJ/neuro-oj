@@ -13,11 +13,15 @@ import { pathExists } from "../../util/fs.ts";
  * `list`/`prune` 无需感知容器细节。
  */
 export function containerFileName(ts: Date): string {
-  const p = (n: number, w = 2): string => String(n).padStart(w, "0");
-  const stamp =
-    `${ts.getUTCFullYear()}${p(ts.getUTCMonth() + 1)}${p(ts.getUTCDate())}` +
-    `-${p(ts.getUTCHours())}${p(ts.getUTCMinutes())}${p(ts.getUTCSeconds())}`;
-  return `snapshot-${stamp}${BACKUP_SUFFIX}`;
+    const p = (n: number, w = 2): string => String(n).padStart(w, "0");
+    const stamp =
+        `${ts.getUTCFullYear()}${p(ts.getUTCMonth() + 1)}${
+            p(ts.getUTCDate())
+        }` +
+        `-${p(ts.getUTCHours())}${p(ts.getUTCMinutes())}${
+            p(ts.getUTCSeconds())
+        }`;
+    return `snapshot-${stamp}${BACKUP_SUFFIX}`;
 }
 
 /**
@@ -27,22 +31,22 @@ export function containerFileName(ts: Date): string {
  * 保证既不覆盖既有快照，也不因并发创建而互相踩踏。
  */
 export async function allocateContainerPath(
-  backupDir: string,
-  ts: Date,
+    backupDir: string,
+    ts: Date,
 ): Promise<string> {
-  const base = containerFileName(ts).slice(0, -BACKUP_SUFFIX.length);
-  let candidate = join(backupDir, base + BACKUP_SUFFIX);
-  let index = 1;
-  while (await pathExists(candidate)) {
-    candidate = join(backupDir, `${base}-${index}${BACKUP_SUFFIX}`);
-    index++;
-  }
-  return candidate;
+    const base = containerFileName(ts).slice(0, -BACKUP_SUFFIX.length);
+    let candidate = join(backupDir, base + BACKUP_SUFFIX);
+    let index = 1;
+    while (await pathExists(candidate)) {
+        candidate = join(backupDir, `${base}-${index}${BACKUP_SUFFIX}`);
+        index++;
+    }
+    return candidate;
 }
 
 /** 格式化为 `YYYY-MM-DDTHH:MM:SSZ` 的 UTC 时间戳。 */
 export function utcTimestamp(ts: Date): string {
-  return ts.toISOString().replace(/\.\d{3}Z$/, "Z");
+    return ts.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 /**
@@ -50,20 +54,20 @@ export function utcTimestamp(ts: Date): string {
  * 与 manifest 各自的调用点决定）。
  */
 export async function listFiles(
-  dir: string,
-  base = "",
+    dir: string,
+    base = "",
 ): Promise<string[]> {
-  const out: string[] = [];
-  const entries = await Array.fromAsync(Deno.readDir(dir));
-  for (const entry of entries) {
-    const rel = `${base}${entry.name}`;
-    if (entry.isDirectory) {
-      out.push(...await listFiles(join(dir, entry.name), `${rel}/`));
-    } else {
-      out.push(rel);
+    const out: string[] = [];
+    const entries = await Array.fromAsync(Deno.readDir(dir));
+    for (const entry of entries) {
+        const rel = `${base}${entry.name}`;
+        if (entry.isDirectory) {
+            out.push(...await listFiles(join(dir, entry.name), `${rel}/`));
+        } else {
+            out.push(rel);
+        }
     }
-  }
-  return out;
+    return out;
 }
 
 /**
@@ -73,8 +77,8 @@ export async function listFiles(
  * 且失败清理时有明确的识别标志。
  */
 export function tempContainerPath(finalPath: string): string {
-  return join(
-    dirname(finalPath),
-    `.nojbackup-${Deno.pid}-${crypto.randomUUID()}.tmp`,
-  );
+    return join(
+        dirname(finalPath),
+        `.nojbackup-${Deno.pid}-${crypto.randomUUID()}.tmp`,
+    );
 }

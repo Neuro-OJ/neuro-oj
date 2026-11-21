@@ -23,30 +23,30 @@
  * `noj-test-jwt-secret-fixed-value-with-32-chars-min` 的固定测试密钥不会被误杀。
  */
 export const PLACEHOLDER_PATTERNS: readonly RegExp[] = [
-  /^change-?this/i,
-  /^change-?me/i,
-  /^changeme$/i,
-  /^example$/i,
-  /^test$/i,
-  /^xxx+$/i,
-  /^placeholder/i,
-  /your[-_]?(secret|password|key)/i,
-  /replace-?me/i,
-  /TODO/i,
-  // 审计 NOJ-131：仓库历史模板中公开过的默认管理员凭据
-  /^admin@noj\.local$/i,
-  /^AdminPass123!$/i,
-  // 补充：文案里常见的"随机串提示"本身就是占位值
-  /^random[-_ ]?string/i,
-  /^at-least-\d+/i,
+    /^change-?this/i,
+    /^change-?me/i,
+    /^changeme$/i,
+    /^example$/i,
+    /^test$/i,
+    /^xxx+$/i,
+    /^placeholder/i,
+    /your[-_]?(secret|password|key)/i,
+    /replace-?me/i,
+    /TODO/i,
+    // 审计 NOJ-131：仓库历史模板中公开过的默认管理员凭据
+    /^admin@noj\.local$/i,
+    /^AdminPass123!$/i,
+    // 补充：文案里常见的"随机串提示"本身就是占位值
+    /^random[-_ ]?string/i,
+    /^at-least-\d+/i,
 ];
 
 /**
  * 判断给定值是否为占位值（空/未设置也算"未配置"，返回 true）。
  */
 export function isPlaceholderSecret(value: string | null | undefined): boolean {
-  if (!value) return true;
-  return PLACEHOLDER_PATTERNS.some((p) => p.test(value));
+    if (!value) return true;
+    return PLACEHOLDER_PATTERNS.some((p) => p.test(value));
 }
 
 /**
@@ -55,11 +55,11 @@ export function isPlaceholderSecret(value: string | null | undefined): boolean {
  * 返回原因而不是抛错，便于调用方决定是"记日志 + 退出"还是"收集为巡检发现"。
  */
 export function describePlaceholderSecret(
-  name: string,
-  value: string | null | undefined,
+    name: string,
+    value: string | null | undefined,
 ): string | null {
-  if (!value) return `${name} 未设置`;
-  const hit = PLACEHOLDER_PATTERNS.find((p) => p.test(value));
-  if (!hit) return null;
-  return `${name} 命中占位值黑名单（模式 ${hit}）——它可能来自示例文件，攻击者可据此伪造任意用户 token`;
+    if (!value) return `${name} 未设置`;
+    const hit = PLACEHOLDER_PATTERNS.find((p) => p.test(value));
+    if (!hit) return null;
+    return `${name} 命中占位值黑名单（模式 ${hit}）——它可能来自示例文件，攻击者可据此伪造任意用户 token`;
 }

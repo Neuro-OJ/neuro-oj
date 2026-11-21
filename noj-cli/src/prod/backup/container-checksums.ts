@@ -13,8 +13,8 @@ export { fileSha256HexStreaming };
 
 /** staging 内一个文件的相对路径与摘要。 */
 export interface ChecksumEntry {
-  relPath: string;
-  sha256: string;
+    relPath: string;
+    sha256: string;
 }
 
 /**
@@ -28,11 +28,11 @@ export interface ChecksumEntry {
  *   路径的差异，这里显式按码点比较并注明）。
  */
 export function renderChecksums(entries: readonly ChecksumEntry[]): string {
-  const sorted = [...entries].sort((a, b) =>
-    a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0
-  );
-  return sorted.map((e) => `${e.sha256}  ${e.relPath}`).join("\n") +
-    (sorted.length > 0 ? "\n" : "");
+    const sorted = [...entries].sort((a, b) =>
+        a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0
+    );
+    return sorted.map((e) => `${e.sha256}  ${e.relPath}`).join("\n") +
+        (sorted.length > 0 ? "\n" : "");
 }
 
 /**
@@ -42,17 +42,17 @@ export function renderChecksums(entries: readonly ChecksumEntry[]): string {
  * 故不能用 `split(" ")`）。格式非法即抛错——静默跳过会让校验形同虚设。
  */
 export function parseChecksums(text: string): ChecksumEntry[] {
-  const out: ChecksumEntry[] = [];
-  for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
-    const sep = line.indexOf("  ");
-    if (sep <= 0) throw new Error(`sha256sums.txt 行格式非法：${line}`);
-    const sha256 = line.slice(0, sep);
-    const relPath = line.slice(sep + 2);
-    if (!/^[0-9a-f]{64}$/.test(sha256)) {
-      throw new Error(`sha256sums.txt 摘要非法：${line}`);
+    const out: ChecksumEntry[] = [];
+    for (const line of text.split("\n")) {
+        if (line.trim() === "") continue;
+        const sep = line.indexOf("  ");
+        if (sep <= 0) throw new Error(`sha256sums.txt 行格式非法：${line}`);
+        const sha256 = line.slice(0, sep);
+        const relPath = line.slice(sep + 2);
+        if (!/^[0-9a-f]{64}$/.test(sha256)) {
+            throw new Error(`sha256sums.txt 摘要非法：${line}`);
+        }
+        out.push({ relPath, sha256 });
     }
-    out.push({ relPath, sha256 });
-  }
-  return out;
+    return out;
 }

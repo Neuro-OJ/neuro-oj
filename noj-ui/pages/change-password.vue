@@ -1,6 +1,7 @@
 <template>
     <div class="w-full max-w-[380px] relative">
-        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
+        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error"
+            @close="clearError" />
         <div class="bg-white border border-border noj-panel p-8">
             <h1 class="text-22px font-bold text-center mb-6 text-text">修改密码</h1>
 
@@ -27,7 +28,8 @@
                         </template>
                     </UInput>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.oldPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.oldPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.oldPassword"
+                            class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.oldPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
@@ -54,7 +56,8 @@
                         </template>
                     </UInput>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.newPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.newPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.newPassword"
+                            class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.newPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
@@ -80,121 +83,122 @@
                         </template>
                     </UInput>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.confirmPassword"
+                            class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
-                <UButton color="primary" size="md" block type="submit"  :disabled="loading">
+                <UButton color="primary" size="md" block type="submit" :disabled="loading">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? '提交中...' : '提交' }}
                 </UButton>
             </form>
 
             <p class="text-center mt-5 text-sm text-text-secondary">
-                <UButton type="button" variant="link" color="primary" size="xs" class="p-0 font-semibold" @click="handleLogout">使用其他账号登录</UButton>
+                <UButton type="button" variant="link" color="primary" size="xs" class="p-0 font-semibold"
+                    @click="handleLogout">使用其他账号登录</UButton>
             </p>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
-import { useToast } from '~/composables/useToast'
+import { useToast } from '~/composables/useToast';
 
-import { validatePassword, validatePasswordMatch } from "~/utils/auth/validatePassword"
-import { extractApiError } from "~/utils/server/apiError"
+import { validatePassword, validatePasswordMatch } from '~/utils/auth/validatePassword';
+import { extractApiError } from '~/utils/server/apiError';
 
-definePageMeta({ layout: "auth" })
+definePageMeta({ layout: 'auth' });
 
-const router = useRouter()
-const auth = useAuth()
-const { showToast } = useToast()
+const router = useRouter();
+const auth = useAuth();
+const { showToast } = useToast();
 
 const form = reactive({
-    oldPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-})
-const loading = ref(false)
-const showOldPassword = ref(false)
-const showNewPassword = ref(false)
-const showConfirmPassword = ref(false)
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+});
+const loading = ref(false);
+const showOldPassword = ref(false);
+const showNewPassword = ref(false);
+const showConfirmPassword = ref(false);
 
-const { error, setError, clearError } = useFormError(3000)
+const { error, setError, clearError } = useFormError(3000);
 
 const fieldErrors = reactive({
-    oldPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-})
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+});
 
 function validate(): boolean {
-    let valid = true
-    fieldErrors.oldPassword = ""
-    fieldErrors.newPassword = ""
-    fieldErrors.confirmPassword = ""
+    let valid = true;
+    fieldErrors.oldPassword = '';
+    fieldErrors.newPassword = '';
+    fieldErrors.confirmPassword = '';
 
     if (!form.oldPassword) {
-        fieldErrors.oldPassword = "请输入原密码"
-        valid = false
+        fieldErrors.oldPassword = '请输入原密码';
+        valid = false;
     }
 
     if (!validateNewPasswordField()) {
-        valid = false
+        valid = false;
     }
 
     if (form.newPassword && form.newPassword === form.oldPassword) {
-        fieldErrors.newPassword = "新密码不能与原密码相同"
-        valid = false
+        fieldErrors.newPassword = '新密码不能与原密码相同';
+        valid = false;
     }
 
     if (!form.confirmPassword) {
-        fieldErrors.confirmPassword = "请确认密码"
-        valid = false
+        fieldErrors.confirmPassword = '请确认密码';
+        valid = false;
     } else {
-        const matchError = validatePasswordMatch(form.newPassword, form.confirmPassword)
+        const matchError = validatePasswordMatch(form.newPassword, form.confirmPassword);
         if (matchError) {
-            fieldErrors.confirmPassword = matchError
-            valid = false
+            fieldErrors.confirmPassword = matchError;
+            valid = false;
         }
     }
 
-    return valid
+    return valid;
 }
 
 function validateNewPasswordField(): boolean {
     const pwResult = validatePassword(form.newPassword, {
         username: auth.user.value?.username,
         email: auth.user.value?.email,
-    })
-    fieldErrors.newPassword = pwResult.valid ? "" : pwResult.message
-    return pwResult.valid
+    });
+    fieldErrors.newPassword = pwResult.valid ? '' : pwResult.message;
+    return pwResult.valid;
 }
 
 async function handleSubmit() {
-    setError("")
+    setError('');
 
-    if (!validate()) return
+    if (!validate()) return;
 
-    loading.value = true
+    loading.value = true;
     try {
-        await auth.changePassword(form.oldPassword, form.newPassword)
+        await auth.changePassword(form.oldPassword, form.newPassword);
         // useAuth.changePassword() 内部已更新本地 user 状态（must_change_password=false）
         // 并由 Nitro 代理同步替换 noj:token Cookie（旧 token 已被后端撤销）。
         // 无需再走 /login，直接回首页即可。
-        showToast("success", "密码修改成功")
-        router.replace("/settings")
+        showToast('success', '密码修改成功');
+        router.replace('/settings');
     } catch (e: unknown) {
-        setError(extractApiError(e).message)
+        setError(extractApiError(e).message);
     } finally {
-        loading.value = false
+        loading.value = false;
     }
 }
 
 async function handleLogout() {
-    await auth.logout()
-    router.replace("/login")
+    await auth.logout();
+    router.replace('/login');
 }
 </script>
 

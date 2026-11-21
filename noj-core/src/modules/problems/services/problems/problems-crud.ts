@@ -17,20 +17,20 @@
  */
 
 export {
-  createDomainProblem,
-  createDomainProblemForActor,
-  createProblem,
-  createProblemForActor,
+    createDomainProblem,
+    createDomainProblemForActor,
+    createProblem,
+    createProblemForActor,
 } from "./problem-create.ts";
 export { updateProblem, updateProblemForActor } from "./problem-update.ts";
 export {
-  deleteProblemOwnedRowsTx,
-  type DeleteProblemTxResult,
-  finalizeDeletedProblem,
-  prepareProblemDeletionTx,
+    deleteProblemOwnedRowsTx,
+    type DeleteProblemTxResult,
+    finalizeDeletedProblem,
+    prepareProblemDeletionTx,
 } from "./problem-delete.ts";
 export {
-  assertProblemEditPermission,
-  assertProblemEditPermissionForActor,
+    assertProblemEditPermission,
+    assertProblemEditPermissionForActor,
 } from "./problem-edit-permission.ts";
 export { mergeProblemContentPatch } from "./problem-content-patch.ts";

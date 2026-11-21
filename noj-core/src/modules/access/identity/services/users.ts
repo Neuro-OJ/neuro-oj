@@ -8,22 +8,22 @@
  * - users-search.ts            用户名搜索
  */
 export {
-  clearUserAvatar,
-  deleteAvatarIfUnreferenced,
-  getUserAvatarBytes,
-  MAX_AVATAR_SIZE,
-  sameStorageObject,
-  updateUserAvatar,
+    clearUserAvatar,
+    deleteAvatarIfUnreferenced,
+    getUserAvatarBytes,
+    MAX_AVATAR_SIZE,
+    sameStorageObject,
+    updateUserAvatar,
 } from "./users/users-avatar.ts";
 export {
-  banUser,
-  getLatestActiveBanId,
-  getUserBanHistory,
-  unbanUser,
+    banUser,
+    getLatestActiveBanId,
+    getUserBanHistory,
+    unbanUser,
 } from "./users/users-bans.ts";
 export type { BanRecord } from "./users/users-bans.ts";
 export { resolveUserId } from "./users/users-id.ts";
 export {
-  adminUpdateUserProfile,
-  updateUserProfile,
+    adminUpdateUserProfile,
+    updateUserProfile,
 } from "./users/users-profile-edit.ts";

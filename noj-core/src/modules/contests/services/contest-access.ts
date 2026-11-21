@@ -16,13 +16,13 @@
 import type { DbTx, Executor } from "../../../shared/db/executor.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import {
-  guestActor,
-  userActorFromAuthenticatedId,
+    guestActor,
+    userActorFromAuthenticatedId,
 } from "../../access/contracts/actor.ts";
 import {
-  ForbiddenError,
-  NotFoundError,
-  UnauthorizedError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import { verifyContestAccess as verifyContestAccessPolicy } from "../../access/contest-policy.ts";
 import type { ContestAccessInfo } from "../contracts/read.ts";
@@ -38,41 +38,41 @@ import type { ContestAccessInfo } from "../contracts/read.ts";
  * 竞赛不存在、跨域、非成员、非参赛者一律 fail-closed 返回 `allowed: false`。
  */
 export async function verifyContestAccess(
-  userId: string | null,
-  contestId: string,
-  problemId: string,
-  options: { domainId?: string; executor?: Executor } = {},
+    userId: string | null,
+    contestId: string,
+    problemId: string,
+    options: { domainId?: string; executor?: Executor } = {},
 ): Promise<ContestAccessInfo> {
-  const actor = userId === null
-    ? guestActor()
-    : userActorFromAuthenticatedId(userId);
-  let policy: Awaited<ReturnType<typeof verifyContestAccessPolicy>>;
-  try {
-    policy = await verifyContestAccessPolicy(actor, contestId, problemId, {
-      // 旧语义：未显式传域名时按默认域 `main` 固定（不能退化成"任意域"）。
-      // access 版把"缺省"理解为"不限定域"，两者必须在这里对齐。
-      domainId: options.domainId ?? DEFAULT_DOMAIN_ID,
-      // 兼容期：旧调用方可能传根连接（`Executor`）。两者都提供 select/execute，
-      // 且本路径不申请事务锁，因此运行时等价；待 `Executor` 别名删除时一并收紧。
-      executor: options.executor as DbTx | undefined,
-    });
-  } catch (error) {
-    // 与旧实现一致的 fail-closed：域不存在、域政策拒绝、账号不可用都按"不可访问"
-    // 返回，而不是把内部错误抛给调用方（调用方据此决定 403/404 话术）。
-    if (
-      error instanceof NotFoundError || error instanceof ForbiddenError ||
-      error instanceof UnauthorizedError
-    ) {
-      return { contestId, allowed: false, running: false };
+    const actor = userId === null
+        ? guestActor()
+        : userActorFromAuthenticatedId(userId);
+    let policy: Awaited<ReturnType<typeof verifyContestAccessPolicy>>;
+    try {
+        policy = await verifyContestAccessPolicy(actor, contestId, problemId, {
+            // 旧语义：未显式传域名时按默认域 `main` 固定（不能退化成"任意域"）。
+            // access 版把"缺省"理解为"不限定域"，两者必须在这里对齐。
+            domainId: options.domainId ?? DEFAULT_DOMAIN_ID,
+            // 兼容期：旧调用方可能传根连接（`Executor`）。两者都提供 select/execute，
+            // 且本路径不申请事务锁，因此运行时等价；待 `Executor` 别名删除时一并收紧。
+            executor: options.executor as DbTx | undefined,
+        });
+    } catch (error) {
+        // 与旧实现一致的 fail-closed：域不存在、域政策拒绝、账号不可用都按"不可访问"
+        // 返回，而不是把内部错误抛给调用方（调用方据此决定 403/404 话术）。
+        if (
+            error instanceof NotFoundError || error instanceof ForbiddenError ||
+            error instanceof UnauthorizedError
+        ) {
+            return { contestId, allowed: false, running: false };
+        }
+        throw error;
     }
-    throw error;
-  }
-  return {
-    contestId: policy.contestId,
-    allowed: policy.allowed,
-    running: policy.running,
-    type: policy.type,
-    organizer: policy.organizer === true,
-    pinnedVersionId: policy.pinnedVersionId ?? null,
-  };
+    return {
+        contestId: policy.contestId,
+        allowed: policy.allowed,
+        running: policy.running,
+        type: policy.type,
+        organizer: policy.organizer === true,
+        pinnedVersionId: policy.pinnedVersionId ?? null,
+    };
 }

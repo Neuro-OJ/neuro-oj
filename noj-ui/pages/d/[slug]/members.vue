@@ -7,5 +7,5 @@ await navigateTo(workspacePath(slug, 'settings/members'), { replace: true });
 </script>
 
 <template>
-  <div />
+    <div />
 </template>

@@ -20,9 +20,9 @@ export const OBJECTIVE_SCORE_PENDING_TEXT = '成绩待公布';
 
 /** 单题判定最小形状（与 `QuestionJudgement` 结构兼容，避免 utils 依赖 composable）。 */
 export interface ObjectiveJudgementLike {
-  /** 缺失表示判定未公布（竞赛进行中），**不等价于 false**。 */
-  correct?: boolean;
-  given: (string | boolean)[];
+    /** 缺失表示判定未公布（竞赛进行中），**不等价于 false**。 */
+    correct?: boolean;
+    given: (string | boolean)[];
 }
 
 /**
@@ -34,21 +34,21 @@ export interface ObjectiveJudgementLike {
  * @param details 提交回执/历史里的逐题判定表。
  */
 export function correctnessByQuestion(
-  details: Record<string, ObjectiveJudgementLike> | null | undefined,
+    details: Record<string, ObjectiveJudgementLike> | null | undefined,
 ): Map<string, boolean> {
-  const result = new Map<string, boolean>();
-  for (const [questionId, detail] of Object.entries(details ?? {})) {
-    if (typeof detail?.correct === 'boolean') result.set(questionId, detail.correct);
-  }
-  return result;
+    const result = new Map<string, boolean>();
+    for (const [questionId, detail] of Object.entries(details ?? {})) {
+        if (typeof detail?.correct === 'boolean') result.set(questionId, detail.correct);
+    }
+    return result;
 }
 
 /** 提交回执的分数区展示视图。 */
 export interface ObjectiveScoreView {
-  /** 成绩是否尚未公布（竞赛进行中）。 */
-  pending: boolean;
-  /** 成绩行文案；`pending` 时为 null（调用方改用 `OBJECTIVE_PENDING_HINT`）。 */
-  text: string | null;
+    /** 成绩是否尚未公布（竞赛进行中）。 */
+    pending: boolean;
+    /** 成绩行文案；`pending` 时为 null（调用方改用 `OBJECTIVE_PENDING_HINT`）。 */
+    text: string | null;
 }
 
 /**
@@ -59,15 +59,15 @@ export interface ObjectiveScoreView {
  * @param totalCount 题数。
  */
 export function objectiveScoreView(
-  score: number | null,
-  correctCount: number | null,
-  totalCount: number,
+    score: number | null,
+    correctCount: number | null,
+    totalCount: number,
 ): ObjectiveScoreView {
-  if (score === null) return { pending: true, text: null };
-  return {
-    pending: false,
-    text: `本次得分：${score.toFixed(0)} 分（${correctCount ?? '—'}/${totalCount}）`,
-  };
+    if (score === null) return { pending: true, text: null };
+    return {
+        pending: false,
+        text: `本次得分：${score.toFixed(0)} 分（${correctCount ?? '—'}/${totalCount}）`,
+    };
 }
 
 /**
@@ -76,14 +76,14 @@ export function objectiveScoreView(
  * @param score 百分制分数；null 表示成绩未公布。
  */
 export function objectiveSubmissionScoreText(score: number | null): string {
-  return score === null ? OBJECTIVE_SCORE_PENDING_TEXT : `${(score / 100).toFixed(0)} 分`;
+    return score === null ? OBJECTIVE_SCORE_PENDING_TEXT : `${(score / 100).toFixed(0)} 分`;
 }
 
 /**
  * 历史列表里是否存在"成绩未公布"的提交（用于给出统一说明）。
  */
 export function hasPendingObjectiveScore(
-  submissions: readonly { score: number | null }[],
+    submissions: readonly { score: number | null }[],
 ): boolean {
-  return submissions.some((submission) => submission.score === null);
+    return submissions.some((submission) => submission.score === null);
 }

@@ -1,6 +1,7 @@
 <template>
     <div class="w-full max-w-[380px] relative">
-        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
+        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error"
+            @close="clearError" />
         <div class="bg-white border border-border noj-panel p-8">
             <h1 class="text-22px font-bold text-center mb-6 text-text">{{ t('auth.register') }}</h1>
 
@@ -15,7 +16,8 @@
                 </div>
             </div>
 
-            <p class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
+            <p
+                class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
             <form @submit.prevent="handleRegister">
                 <div class="mb-7">
                     <AuthTextInput
@@ -28,7 +30,9 @@
                         :error="fieldErrors.username"
                         @focus="fieldErrors.username = ''"
                     >
-                        <template #icon><UIcon name="i-lucide-user" class="size-4.5" /></template>
+                        <template #icon>
+                            <UIcon name="i-lucide-user" class="size-4.5" />
+                        </template>
                     </AuthTextInput>
                 </div>
 
@@ -44,7 +48,9 @@
                         :error="fieldErrors.email"
                         @focus="fieldErrors.email = ''"
                     >
-                        <template #icon><UIcon name="i-lucide-mail" class="size-4.5" /></template>
+                        <template #icon>
+                            <UIcon name="i-lucide-mail" class="size-4.5" />
+                        </template>
                     </AuthTextInput>
                 </div>
 
@@ -93,7 +99,8 @@
                     </span>
                 </div>
 
-                <UButton color="primary" size="md" block type="submit"  :disabled="loading || !!registerRestricted || !acceptedLegal">
+                <UButton color="primary" size="md" block type="submit"
+                    :disabled="loading || !!registerRestricted || !acceptedLegal">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? t('auth.registering') : t('auth.register') }}
                 </UButton>
@@ -124,160 +131,163 @@
 </template>
 
 <script setup lang="ts">
-import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/auth/validatePassword"
-import { extractApiError } from "~/utils/server/apiError"
-import { submitRegistration } from "~/utils/auth/registerFlow"
-import { workspaceInvitationToken, workspacePath } from "~/utils/domain/workspace/workspace"
-import type { WorkspaceInvitationPreview } from "~/utils/domain/workspace/workspace"
+import { validateEmail, validatePassword, validatePasswordMatch } from '~/utils/auth/validatePassword';
+import { extractApiError } from '~/utils/server/apiError';
+import { submitRegistration } from '~/utils/auth/registerFlow';
+import { workspaceInvitationToken, workspacePath } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceInvitationPreview } from '~/utils/domain/workspace/workspace';
 
-definePageMeta({ layout: "auth" })
+definePageMeta({ layout: 'auth' });
 
-const router = useRouter()
-const route = useRoute()
-const auth = useAuth()
-const { api } = useApi()
-const invitationToken = ref("")
-const invitation = ref<WorkspaceInvitationPreview | null>(null)
+const router = useRouter();
+const route = useRoute();
+const auth = useAuth();
+const { api } = useApi();
+const invitationToken = ref('');
+const invitation = ref<WorkspaceInvitationPreview | null>(null);
 const isEmailLocked = computed(() =>
-    invitation.value?.mode === 'email' && typeof invitation.value.email === 'string' && invitation.value.email.length > 0
-)
-const { t } = useI18n()
-const oauthProviders = ref<Array<{ id: string; name: string }>>([])
-const oauthLoading = ref(false)
+    invitation.value?.mode === 'email' && typeof invitation.value.email === 'string' &&
+    invitation.value.email.length > 0
+);
+const { t } = useI18n();
+const oauthProviders = ref<Array<{ id: string; name: string }>>([]);
+const oauthLoading = ref(false);
 
 // issue #426：注册受限原因（空串表示可正常注册）
-const registerRestricted = ref("正在检查注册政策…")
+const registerRestricted = ref('正在检查注册政策…');
 
 onMounted(async () => {
     try {
-        invitationToken.value = workspaceInvitationToken(route.hash) ?? ""
-        if (new URLSearchParams(route.hash.replace(/^#/, "")).has("invitation") && !invitationToken.value) throw new Error("邀请链接无效")
+        invitationToken.value = workspaceInvitationToken(route.hash) ?? '';
+        if (new URLSearchParams(route.hash.replace(/^#/, '')).has('invitation') && !invitationToken.value) {
+            throw new Error('邀请链接无效');
+        }
         if (invitationToken.value) {
             const preview = (await api.post<{ data: WorkspaceInvitationPreview }>(
-                "/api/v1/auth/domain-invitation",
+                '/api/v1/auth/domain-invitation',
                 { token: invitationToken.value },
-                { silent: true }
-            )).data
-            invitation.value = preview
+                { silent: true },
+            )).data;
+            invitation.value = preview;
             if (preview.mode === 'email' && typeof preview.email === 'string') {
-                form.email = preview.email
+                form.email = preview.email;
             }
         }
         const [providers, status] = await Promise.all([
             auth.getOAuthProviders(),
             auth.getRegisterStatus(),
-        ])
-        oauthProviders.value = invitationToken.value ? [] : providers
-        if (status.reason === "register_disabled") {
-            registerRestricted.value = t('auth.registerDisabled')
-        } else if (status.reason === "email_unconfigured") {
-            registerRestricted.value = t('auth.emailUnconfigured')
-        } else if (status.reason === "admin_only") {
-            registerRestricted.value = "此实例由平台管理员开设账号"
-        } else if (status.reason === "invitation_required" && !invitation.value?.can_register) {
-            registerRestricted.value = "注册需要有效邀请"
+        ]);
+        oauthProviders.value = invitationToken.value ? [] : providers;
+        if (status.reason === 'register_disabled') {
+            registerRestricted.value = t('auth.registerDisabled');
+        } else if (status.reason === 'email_unconfigured') {
+            registerRestricted.value = t('auth.emailUnconfigured');
+        } else if (status.reason === 'admin_only') {
+            registerRestricted.value = '此实例由平台管理员开设账号';
+        } else if (status.reason === 'invitation_required' && !invitation.value?.can_register) {
+            registerRestricted.value = '注册需要有效邀请';
         } else if (invitation.value && !invitation.value.can_register) {
-            registerRestricted.value = "此邀请不能用于创建账号，请使用已有账号登录"
+            registerRestricted.value = '此邀请不能用于创建账号，请使用已有账号登录';
         } else {
-            registerRestricted.value = ""
+            registerRestricted.value = '';
         }
     } catch (cause) {
-        oauthProviders.value = []
-        registerRestricted.value = extractApiError(cause).message
+        oauthProviders.value = [];
+        registerRestricted.value = extractApiError(cause).message;
     }
-})
+});
 
 function startOAuth(provider: string) {
     // PIPL：注册页 OAuth 属新建账号入口，须先同意条款（后端亦强校验）
     if (!acceptedLegal.value) {
-        setError("请先阅读并同意《服务条款》与《隐私政策》")
-        return
+        setError('请先阅读并同意《服务条款》与《隐私政策》');
+        return;
     }
-    oauthLoading.value = true
+    oauthLoading.value = true;
     window.location.assign(
-        `/api/v1/auth/oauth/${encodeURIComponent(provider)}?accepted_legal=true`
-    )
+        `/api/v1/auth/oauth/${encodeURIComponent(provider)}?accepted_legal=true`,
+    );
 }
 
 const form = reactive({
-    username: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-})
-const loading = ref(false)
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+});
+const loading = ref(false);
 
 // 已同意服务条款与隐私政策（PIPL 硬门槛；未勾选禁止提交）
-const acceptedLegal = ref(false)
+const acceptedLegal = ref(false);
 
-const { error, setError, clearError } = useFormError(3000)
+const { error, setError, clearError } = useFormError(3000);
 
 const fieldErrors = reactive({
-    username: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-})
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+});
 
 function validate(): boolean {
-    let valid = true
-    fieldErrors.username = ""
-    fieldErrors.email = ""
-    fieldErrors.password = ""
-    fieldErrors.confirmPassword = ""
+    let valid = true;
+    fieldErrors.username = '';
+    fieldErrors.email = '';
+    fieldErrors.password = '';
+    fieldErrors.confirmPassword = '';
 
     if (!form.username.trim()) {
-        fieldErrors.username = "请输入用户名"
-        valid = false
+        fieldErrors.username = '请输入用户名';
+        valid = false;
     } else if (!/^[a-zA-Z0-9_]{3,30}$/.test(form.username.trim())) {
-        fieldErrors.username = "用户名仅允许字母、数字和下划线，长度 3-30"
-        valid = false
+        fieldErrors.username = '用户名仅允许字母、数字和下划线，长度 3-30';
+        valid = false;
     }
 
-    const emailError = validateEmail(form.email)
+    const emailError = validateEmail(form.email);
     if (emailError) {
-        fieldErrors.email = emailError
-        valid = false
+        fieldErrors.email = emailError;
+        valid = false;
     }
 
     if (!validatePasswordField()) {
-        valid = false
+        valid = false;
     }
 
     if (!form.confirmPassword) {
-        fieldErrors.confirmPassword = "请确认密码"
-        valid = false
+        fieldErrors.confirmPassword = '请确认密码';
+        valid = false;
     } else {
-        const matchError = validatePasswordMatch(form.password, form.confirmPassword)
+        const matchError = validatePasswordMatch(form.password, form.confirmPassword);
         if (matchError) {
-            fieldErrors.confirmPassword = matchError
-            valid = false
+            fieldErrors.confirmPassword = matchError;
+            valid = false;
         }
     }
 
-    return valid
+    return valid;
 }
 
 function validatePasswordField(): boolean {
     const pwResult = validatePassword(form.password, {
         username: form.username.trim(),
         email: form.email.trim(),
-    })
-    fieldErrors.password = pwResult.valid ? "" : pwResult.message
-    return pwResult.valid
+    });
+    fieldErrors.password = pwResult.valid ? '' : pwResult.message;
+    return pwResult.valid;
 }
 
 async function handleRegister() {
-    setError("")
+    setError('');
 
-    if (!validate()) return
+    if (!validate()) return;
 
     if (!acceptedLegal.value) {
-        setError("请先阅读并同意《服务条款》与《隐私政策》")
-        return
+        setError('请先阅读并同意《服务条款》与《隐私政策》');
+        return;
     }
 
-    loading.value = true
+    loading.value = true;
     try {
         // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/auth/registerFlow.ts）
         const result = await submitRegistration(
@@ -290,16 +300,16 @@ async function handleRegister() {
             form.email.trim(),
             form.password,
             acceptedLegal.value,
-        )
+        );
         if (result) {
-            const destination = new URL(result.destination, window.location.origin)
-            if (invitation.value) destination.searchParams.set("redirect", workspacePath(invitation.value.domain_slug))
-            router.replace(destination.pathname + destination.search)
+            const destination = new URL(result.destination, window.location.origin);
+            if (invitation.value) destination.searchParams.set('redirect', workspacePath(invitation.value.domain_slug));
+            router.replace(destination.pathname + destination.search);
         }
     } catch (e: unknown) {
-        setError(extractApiError(e).message)
+        setError(extractApiError(e).message);
     } finally {
-        loading.value = false
+        loading.value = false;
     }
 }
 </script>

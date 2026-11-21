@@ -10,5 +10,5 @@ import type { SystemActor, SystemPurpose } from "../access/contracts/actor.ts";
 
 /** 仅由启动、迁移和受管后台任务创建系统身份。 */
 export function createSystemActor(purpose: SystemPurpose): SystemActor {
-  return Object.freeze({ kind: "system", purpose });
+    return Object.freeze({ kind: "system", purpose });
 }

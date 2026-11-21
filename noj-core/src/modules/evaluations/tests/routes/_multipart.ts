@@ -24,16 +24,16 @@ export type { FakeRedis } from "../mq/_setup.ts";
  * @returns fn 的返回值
  */
 export async function withoutSubmissionRateLimit<T>(
-  fn: () => Promise<T>,
+    fn: () => Promise<T>,
 ): Promise<T> {
-  const previous = Deno.env.get("RATE_LIMIT_ENABLED");
-  Deno.env.set("RATE_LIMIT_ENABLED", "false");
-  try {
-    return await fn();
-  } finally {
-    if (previous === undefined) Deno.env.delete("RATE_LIMIT_ENABLED");
-    else Deno.env.set("RATE_LIMIT_ENABLED", previous);
-  }
+    const previous = Deno.env.get("RATE_LIMIT_ENABLED");
+    Deno.env.set("RATE_LIMIT_ENABLED", "false");
+    try {
+        return await fn();
+    } finally {
+        if (previous === undefined) Deno.env.delete("RATE_LIMIT_ENABLED");
+        else Deno.env.set("RATE_LIMIT_ENABLED", previous);
+    }
 }
 
 /**
@@ -47,33 +47,33 @@ export async function withoutSubmissionRateLimit<T>(
  * @returns 路由响应
  */
 export function multipartRequest(
-  // Hono 实例泛型多变体，测试 helper 用 any 保持与 jsonRequest 同级别宽松。
-  // deno-lint-ignore no-explicit-any
-  app: any,
-  path: string,
-  fields: Record<string, string>,
-  file: { name: string; data: Uint8Array; type?: string },
-  token?: string,
+    // Hono 实例泛型多变体，测试 helper 用 any 保持与 jsonRequest 同级别宽松。
+    // deno-lint-ignore no-explicit-any
+    app: any,
+    path: string,
+    fields: Record<string, string>,
+    file: { name: string; data: Uint8Array; type?: string },
+    token?: string,
 ): Promise<Response> {
-  const fd = new FormData();
-  for (const [key, value] of Object.entries(fields)) fd.append(key, value);
-  // .buffer cast：规避 Deno 2.x 下 Uint8Array<ArrayBufferLike> 与 BlobPart
-  // 的泛型不兼容（TS2322），行为等价。
-  fd.append(
-    "file",
-    new File([file.data.buffer as ArrayBuffer], file.name, {
-      type: file.type ?? "application/octet-stream",
-    }),
-  );
+    const fd = new FormData();
+    for (const [key, value] of Object.entries(fields)) fd.append(key, value);
+    // .buffer cast：规避 Deno 2.x 下 Uint8Array<ArrayBufferLike> 与 BlobPart
+    // 的泛型不兼容（TS2322），行为等价。
+    fd.append(
+        "file",
+        new File([file.data.buffer as ArrayBuffer], file.name, {
+            type: file.type ?? "application/octet-stream",
+        }),
+    );
 
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+    const headers: Record<string, string> = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
 
-  return app.fetch(
-    new Request(`http://localhost${path}`, {
-      method: "POST",
-      headers,
-      body: fd,
-    }),
-  );
+    return app.fetch(
+        new Request(`http://localhost${path}`, {
+            method: "POST",
+            headers,
+            body: fd,
+        }),
+    );
 }

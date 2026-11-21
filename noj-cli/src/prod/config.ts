@@ -18,66 +18,66 @@
 // 签名保持不变。
 
 export {
-  generateSecret,
-  isIpv4Address,
-  isSiteAddress,
+    generateSecret,
+    isIpv4Address,
+    isSiteAddress,
 } from "./config/checks.ts";
 export {
-  checkJudgeSocket,
-  checkPortValue,
-  checkRequiredValues,
-  DEFAULT_PANEL_COMMAND,
-  DEFAULT_PANEL_ROOT,
-  detectPanel,
-  PANEL_GUIDANCE_OK_LINE,
-  panelGuidance,
-  showPanelGuidance,
+    checkJudgeSocket,
+    checkPortValue,
+    checkRequiredValues,
+    DEFAULT_PANEL_COMMAND,
+    DEFAULT_PANEL_ROOT,
+    detectPanel,
+    PANEL_GUIDANCE_OK_LINE,
+    panelGuidance,
+    showPanelGuidance,
 } from "./config/checks.ts";
 export {
-  runConfigWizard,
-  toEntries,
-  wizardNeedsInteractiveInput,
+    runConfigWizard,
+    toEntries,
+    wizardNeedsInteractiveInput,
 } from "./config/wizard.ts";
 export {
-  backupPassphrasePath,
-  DEFAULT_BACKUP_PASSPHRASE_FILE,
-  ensureBackupPassphrase,
-  PASSPHRASE_ALLOWED_MODES,
-  passphraseFileMode,
+    backupPassphrasePath,
+    DEFAULT_BACKUP_PASSPHRASE_FILE,
+    ensureBackupPassphrase,
+    PASSPHRASE_ALLOWED_MODES,
+    passphraseFileMode,
 } from "./config/passphrase.ts";
 export {
-  DEFAULT_COSIGN_IDENTITY_REGEX,
-  DEFAULT_COSIGN_OIDC_ISSUER,
-  DEFAULT_IMAGE_REGISTRY,
-  DEPLOYMENT_MANIFEST_FILE,
-  JUDGE_IMAGES,
-  PROD_IMAGES,
-  recordDeploymentMetadata,
-  verifyImageSignatures,
+    DEFAULT_COSIGN_IDENTITY_REGEX,
+    DEFAULT_COSIGN_OIDC_ISSUER,
+    DEFAULT_IMAGE_REGISTRY,
+    DEPLOYMENT_MANIFEST_FILE,
+    JUDGE_IMAGES,
+    PROD_IMAGES,
+    recordDeploymentMetadata,
+    verifyImageSignatures,
 } from "./config/images.ts";
 
 export type { EnvValues } from "./config/checks.ts";
 export type {
-  JudgeSocketOptions,
-  JudgeSocketResult,
-  PanelMode,
-  PanelName,
-  PanelPaths,
-  PanelProbe,
-  PortCheckOptions,
-  PortCheckResult,
-  RequiredValuesReport,
+    JudgeSocketOptions,
+    JudgeSocketResult,
+    PanelMode,
+    PanelName,
+    PanelPaths,
+    PanelProbe,
+    PortCheckOptions,
+    PortCheckResult,
+    RequiredValuesReport,
 } from "./config/checks.ts";
 export type {
-  EnsurePassphraseOptions,
-  EnsurePassphraseResult,
-  PassphrasePathOptions,
+    EnsurePassphraseOptions,
+    EnsurePassphraseResult,
+    PassphrasePathOptions,
 } from "./config/passphrase.ts";
 export type {
-  RecordMetadataOptions,
-  RecordMetadataResult,
-  VerifiedDigest,
-  VerifyImageOptions,
-  VerifyImageResult,
+    RecordMetadataOptions,
+    RecordMetadataResult,
+    VerifiedDigest,
+    VerifyImageOptions,
+    VerifyImageResult,
 } from "./config/images.ts";
 export type { WizardOptions, WizardResult } from "./config/wizard.ts";

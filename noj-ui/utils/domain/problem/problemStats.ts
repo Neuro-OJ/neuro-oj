@@ -12,15 +12,15 @@
  * 通过率恰为 `accepted_count / submit_count`，只抑制 rate 会被算术还原。
  */
 export interface PublicProblemStats {
-  attempt_count: number;
-  /** 提交总数；竞赛进行中时为 null（与 rate 同步抑制，防算术还原）。 */
-  submit_count: number | null;
-  /** 通过数；竞赛进行中时为 null（与 rate 同步抑制，防算术还原）。 */
-  accepted_count: number | null;
-  /** 通过率（0-1）；竞赛进行中时为 null。 */
-  acceptance_rate: number | null;
-  /** 通过率被抑制的原因；未抑制时为 null。 */
-  suppressed_reason: 'running_contest' | null;
+    attempt_count: number;
+    /** 提交总数；竞赛进行中时为 null（与 rate 同步抑制，防算术还原）。 */
+    submit_count: number | null;
+    /** 通过数；竞赛进行中时为 null（与 rate 同步抑制，防算术还原）。 */
+    accepted_count: number | null;
+    /** 通过率（0-1）；竞赛进行中时为 null。 */
+    acceptance_rate: number | null;
+    /** 通过率被抑制的原因；未抑制时为 null。 */
+    suppressed_reason: 'running_contest' | null;
 }
 
 /**
@@ -30,36 +30,36 @@ export interface PublicProblemStats {
  * 三项恒为具体数值，可空类型只会在此处制造无谓的空值判断。
  */
 export interface ProblemStatsDetail {
-  attempt_count: number;
-  submit_count: number;
-  accepted_count: number;
-  acceptance_rate: number | null;
-  suppressed_reason: 'running_contest' | null;
-  status_distribution: Record<string, number>;
-  case_failure_distribution: Array<{
-    case_id: string;
-    failed: number;
-    hidden: boolean;
-  }>;
-  first_ac_median_ms: number | null;
-  sample_size: number;
-  truncated: boolean;
-  window_days: number;
+    attempt_count: number;
+    submit_count: number;
+    accepted_count: number;
+    acceptance_rate: number | null;
+    suppressed_reason: 'running_contest' | null;
+    status_distribution: Record<string, number>;
+    case_failure_distribution: Array<{
+        case_id: string;
+        failed: number;
+        hidden: boolean;
+    }>;
+    first_ac_median_ms: number | null;
+    sample_size: number;
+    truncated: boolean;
+    window_days: number;
 }
 
 /** 评测状态分布：按次数降序，便于一眼看出主要失败原因。 */
 export function sortedStatusDistribution(
-  entry: Record<string, number>,
+    entry: Record<string, number>,
 ): Array<[string, number]> {
-  return Object.entries(entry).sort((a, b) => b[1] - a[1]);
+    return Object.entries(entry).sort((a, b) => b[1] - a[1]);
 }
 
 /** 用例失败分布取前 N 条（后端已按失败次数降序）。 */
 export function topFailedCases(
-  entry: ProblemStatsDetail['case_failure_distribution'],
-  limit = 10,
+    entry: ProblemStatsDetail['case_failure_distribution'],
+    limit = 10,
 ): ProblemStatsDetail['case_failure_distribution'] {
-  return entry.slice(0, limit);
+    return entry.slice(0, limit);
 }
 
 /**
@@ -70,12 +70,12 @@ export function topFailedCases(
  * （如 5 → 500%）而溢出容器。
  */
 export function caseBarWidth(
-  failed: number,
-  list: ProblemStatsDetail['case_failure_distribution'],
+    failed: number,
+    list: ProblemStatsDetail['case_failure_distribution'],
 ): string {
-  const max = Math.max(1, ...list.map((item) => item.failed));
-  const percent = Math.min(100, Math.round((failed / max) * 100));
-  return `${Math.max(4, percent)}%`;
+    const max = Math.max(1, ...list.map((item) => item.failed));
+    const percent = Math.min(100, Math.round((failed / max) * 100));
+    return `${Math.max(4, percent)}%`;
 }
 
 /**
@@ -85,8 +85,8 @@ export function caseBarWidth(
  * @returns 形如「12.3s」；无数据时为「—」而非「0s」（避免误读为"立刻通过"）。
  */
 export function formatFirstAcMedian(ms: number | null): string {
-  if (ms === null || !Number.isFinite(ms)) return '—';
-  return `${(ms / 1000).toFixed(1)}s`;
+    if (ms === null || !Number.isFinite(ms)) return '—';
+    return `${(ms / 1000).toFixed(1)}s`;
 }
 
 /**
@@ -98,11 +98,11 @@ export function formatFirstAcMedian(ms: number | null): string {
  * @returns 展示文案；未加载时为 null（调用方据此不渲染）。
  */
 export function describeAcceptance(stats?: PublicProblemStats | null): string | null {
-  if (!stats) return null;
-  if (stats.suppressed_reason === 'running_contest') {
-    return '竞赛进行中，暂不显示通过率';
-  }
-  if (stats.submit_count === 0) return '暂无通过记录';
-  const rate = ((stats.acceptance_rate ?? 0) * 100).toFixed(1);
-  return `通过率 ${rate}% · ${stats.accepted_count}/${stats.submit_count}`;
+    if (!stats) return null;
+    if (stats.suppressed_reason === 'running_contest') {
+        return '竞赛进行中，暂不显示通过率';
+    }
+    if (stats.submit_count === 0) return '暂无通过记录';
+    const rate = ((stats.acceptance_rate ?? 0) * 100).toFixed(1);
+    return `通过率 ${rate}% · ${stats.accepted_count}/${stats.submit_count}`;
 }

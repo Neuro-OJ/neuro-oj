@@ -8,10 +8,10 @@ import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { createUserToken, jsonRequest } from "../../../../../tests/helper.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  problems,
-  problemVersions,
-  submissions,
-  users,
+    problems,
+    problemVersions,
+    submissions,
+    users,
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 
@@ -20,320 +20,346 @@ await resetDbForTest();
 await initRedisForTest();
 
 Deno.test({
-  name:
-    "submissions route: POST /api/v1/submissions 已删除（0.11 起只有域入口）",
-  fn: async () => {
-    const app = createApp();
-    // 无域提交入口在 0.11 被删除：不再区分"未登录 401 / 缺字段 400"，
-    // 任何请求都落到 404。真正的提交契约由
-    // `/api/v1/domains/:slug/submissions` 覆盖（见 domain-submissions 测试）。
-    for (const token of [undefined, "invalid-token-here"]) {
-      const res = await jsonRequest(app, "/api/v1/submissions", {
-        method: "POST",
-        body: { problem_id: "1001", language: "python3", code: "print('hi')" },
-        ...(token ? { token } : {}),
-      });
-      assertEquals(res.status, 404);
-    }
-  },
+    name:
+        "submissions route: POST /api/v1/submissions 已删除（0.11 起只有域入口）",
+    fn: async () => {
+        const app = createApp();
+        // 无域提交入口在 0.11 被删除：不再区分"未登录 401 / 缺字段 400"，
+        // 任何请求都落到 404。真正的提交契约由
+        // `/api/v1/domains/:slug/submissions` 覆盖（见 domain-submissions 测试）。
+        for (const token of [undefined, "invalid-token-here"]) {
+            const res = await jsonRequest(app, "/api/v1/submissions", {
+                method: "POST",
+                body: {
+                    problem_id: "1001",
+                    language: "python3",
+                    code: "print('hi')",
+                },
+                ...(token ? { token } : {}),
+            });
+            assertEquals(res.status, 404);
+        }
+    },
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions/:id 无 token 返回 404",
-  fn: async () => {
-    const app = createApp();
-    // GET /:id 路由使用 optionalAuthMiddleware：无 token 时不抛 401，
-    // 由 service 层对不存在的 id 抛 NotFoundError → 404
-    const res = await jsonRequest(app, "/api/v1/submissions/123");
-    assertEquals(res.status, 404);
-  },
+    name: "submissions route: GET /api/v1/submissions/:id 无 token 返回 404",
+    fn: async () => {
+        const app = createApp();
+        // GET /:id 路由使用 optionalAuthMiddleware：无 token 时不抛 401，
+        // 由 service 层对不存在的 id 抛 NotFoundError → 404
+        const res = await jsonRequest(app, "/api/v1/submissions/123");
+        assertEquals(res.status, 404);
+    },
 });
 
 Deno.test({
-  name:
-    "submissions route: GET /api/v1/submissions/:id 有效 token 但提交不存在返回 404",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/submissions/nonexistent-id", {
-      token,
-    });
-    assertEquals(res.status, 404);
-    const body = await res.json();
-    assertEquals(body.error, "提交不存在");
-  },
+    name:
+        "submissions route: GET /api/v1/submissions/:id 有效 token 但提交不存在返回 404",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken();
+        const res = await jsonRequest(
+            app,
+            "/api/v1/submissions/nonexistent-id",
+            {
+                token,
+            },
+        );
+        assertEquals(res.status, 404);
+        const body = await res.json();
+        assertEquals(body.error, "提交不存在");
+    },
 });
 
 // ── 提交列表 ──
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions 无 token 返回 401",
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/submissions");
-    assertEquals(res.status, 401);
-  },
+    name: "submissions route: GET /api/v1/submissions 无 token 返回 401",
+    fn: async () => {
+        const app = createApp();
+        const res = await jsonRequest(app, "/api/v1/submissions");
+        assertEquals(res.status, 401);
+    },
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions 无效 token 返回 401",
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/submissions", {
-      token: "invalid-token",
-    });
-    assertEquals(res.status, 401);
-  },
+    name: "submissions route: GET /api/v1/submissions 无效 token 返回 401",
+    fn: async () => {
+        const app = createApp();
+        const res = await jsonRequest(app, "/api/v1/submissions", {
+            token: "invalid-token",
+        });
+        assertEquals(res.status, 401);
+    },
 });
 
 Deno.test({
-  name:
-    "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    // 认证中间件会实时校验账号状态，测试令牌必须对应真实活跃用户。
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/submissions", { token });
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(Array.isArray(body.data), true);
-    assertEquals(body.data.length, 0);
-    assertExists(body.pagination);
-    assertEquals(body.pagination.page, 1);
-    assertEquals(body.pagination.per_page, 20);
-    assertEquals(body.pagination.total, 0);
-    assertEquals(body.pagination.total_pages, 0);
-  },
+    name:
+        "submissions route: GET /api/v1/submissions 无数据时返回空列表和分页信息",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const app = createApp();
+        // 认证中间件会实时校验账号状态，测试令牌必须对应真实活跃用户。
+        const token = await createUserToken();
+        const res = await jsonRequest(app, "/api/v1/submissions", { token });
+        assertEquals(res.status, 200);
+        const body = await res.json();
+        assertEquals(Array.isArray(body.data), true);
+        assertEquals(body.data.length, 0);
+        assertExists(body.pagination);
+        assertEquals(body.pagination.page, 1);
+        assertEquals(body.pagination.per_page, 20);
+        assertEquals(body.pagination.total, 0);
+        assertEquals(body.pagination.total_pages, 0);
+    },
 });
 
 Deno.test({
-  name:
-    "submissions route: GET /api/v1/submissions 按 status 筛选返回错误状态值时 400",
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/submissions?status=invalid", {
-      token,
-    });
-    assertEquals(res.status, 400);
-  },
+    name:
+        "submissions route: GET /api/v1/submissions 按 status 筛选返回错误状态值时 400",
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken();
+        const res = await jsonRequest(
+            app,
+            "/api/v1/submissions?status=invalid",
+            {
+                token,
+            },
+        );
+        assertEquals(res.status, 400);
+    },
 });
 
 Deno.test({
-  name: "submissions route: GET /api/v1/submissions per_page 超过上限自动限制",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/submissions?per_page=999", {
-      token,
-    });
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.pagination.per_page, 100);
-  },
+    name:
+        "submissions route: GET /api/v1/submissions per_page 超过上限自动限制",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken();
+        const res = await jsonRequest(app, "/api/v1/submissions?per_page=999", {
+            token,
+        });
+        assertEquals(res.status, 200);
+        const body = await res.json();
+        assertEquals(body.pagination.per_page, 100);
+    },
 });
 
 // ── 管理员提交列表 ──
 
 Deno.test({
-  name:
-    "admin submissions: GET /api/v1/admin/submission/submissions 无 token 返回 401",
-  fn: async () => {
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/submission/submissions");
-    assertEquals(res.status, 401);
-  },
+    name:
+        "admin submissions: GET /api/v1/admin/submission/submissions 无 token 返回 401",
+    fn: async () => {
+        const app = createApp();
+        const res = await jsonRequest(
+            app,
+            "/api/v1/admin/submission/submissions",
+        );
+        assertEquals(res.status, 401);
+    },
 });
 
 Deno.test({
-  name:
-    "admin submissions: GET /api/v1/admin/submission/submissions 普通用户返回 403",
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(app, "/api/v1/admin/submission/submissions", {
-      token,
-    });
-    assertEquals(res.status, 403);
-    const body = await res.json();
-    assertEquals(body.error, "需要管理员权限");
-  },
+    name:
+        "admin submissions: GET /api/v1/admin/submission/submissions 普通用户返回 403",
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken();
+        const res = await jsonRequest(
+            app,
+            "/api/v1/admin/submission/submissions",
+            {
+                token,
+            },
+        );
+        assertEquals(res.status, 403);
+        const body = await res.json();
+        assertEquals(body.error, "需要管理员权限");
+    },
 });
 
 Deno.test({
-  name:
-    "admin submissions: GET /api/v1/admin/submission/submissions 管理员查看所有提交",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken("admin");
-    const res = await jsonRequest(app, "/api/v1/admin/submission/submissions", {
-      token,
-    });
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(Array.isArray(body.data), true);
-    assertExists(body.pagination);
-  },
+    name:
+        "admin submissions: GET /api/v1/admin/submission/submissions 管理员查看所有提交",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken("admin");
+        const res = await jsonRequest(
+            app,
+            "/api/v1/admin/submission/submissions",
+            {
+                token,
+            },
+        );
+        assertEquals(res.status, 200);
+        const body = await res.json();
+        assertEquals(Array.isArray(body.data), true);
+        assertExists(body.pagination);
+    },
 });
 
 Deno.test({
-  name:
-    "admin submissions: GET /api/v1/admin/submission/submissions 按 user_id 筛选",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken("admin");
-    const res = await jsonRequest(
-      app,
-      "/api/v1/admin/submission/submissions?user_id=nonexistent-user",
-      { token },
-    );
-    assertEquals(res.status, 200);
-    const body = await res.json();
-    assertEquals(body.data.length, 0);
-    assertEquals(body.pagination.total, 0);
-  },
+    name:
+        "admin submissions: GET /api/v1/admin/submission/submissions 按 user_id 筛选",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken("admin");
+        const res = await jsonRequest(
+            app,
+            "/api/v1/admin/submission/submissions?user_id=nonexistent-user",
+            { token },
+        );
+        assertEquals(res.status, 200);
+        const body = await res.json();
+        assertEquals(body.data.length, 0);
+        assertEquals(body.pagination.total, 0);
+    },
 });
 
 Deno.test({
-  name:
-    "submissions route: GET /api/v1/submissions/:id/status 提交不存在时返回 404 + code + request_id",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const app = createApp();
-    const token = await createUserToken();
-    const res = await jsonRequest(
-      app,
-      "/api/v1/submissions/nonexistent-id/status",
-      { token },
-    );
-    assertEquals(res.status, 404);
-    const body = await res.json();
-    assertEquals(body.error, "提交不存在");
-    assertEquals(body.code, "NOT_FOUND");
-    assertExists(body.request_id);
-  },
+    name:
+        "submissions route: GET /api/v1/submissions/:id/status 提交不存在时返回 404 + code + request_id",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const app = createApp();
+        const token = await createUserToken();
+        const res = await jsonRequest(
+            app,
+            "/api/v1/submissions/nonexistent-id/status",
+            { token },
+        );
+        assertEquals(res.status, 404);
+        const body = await res.json();
+        assertEquals(body.error, "提交不存在");
+        assertEquals(body.code, "NOT_FOUND");
+        assertExists(body.request_id);
+    },
 });
 
 Deno.test({
-  name: "submissions route: 版本/有效性/可升级筛选与非法参数校验",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const db = getDb();
-    const app = createApp();
-    const userId = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const problemId = crypto.randomUUID();
-    const v1 = `${problemId}-v1`;
-    const v2 = `${problemId}-v2`;
+    name: "submissions route: 版本/有效性/可升级筛选与非法参数校验",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const db = getDb();
+        const app = createApp();
+        const userId = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const problemId = crypto.randomUUID();
+        const v1 = `${problemId}-v1`;
+        const v2 = `${problemId}-v2`;
 
-    await db.insert(users).values({
-      id: userId,
-      username: `sub-filter-${Date.now()}`,
-      email: `${userId}@test.local`,
-      password_hash: "x",
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(problems).values({
-      domain_id: DEFAULT_DOMAIN_ID,
-      id: problemId,
-      title: "筛选测试题",
-      description: "d",
-      number: 988000 + (Date.now() % 1000),
-      owner_id: "0",
-      difficulty: "easy",
-      created_at: now,
-      updated_at: now,
-    });
-    await db.insert(problemVersions).values([
-      {
-        id: v1,
-        problem_id: problemId,
-        version: 1,
-        origin: "published",
-        content: { kind: "ai", title: "筛选测试题" },
-        published_at: now,
-      },
-      {
-        id: v2,
-        problem_id: problemId,
-        version: 2,
-        origin: "published",
-        content: { kind: "ai", title: "筛选测试题" },
-        published_at: now,
-      },
-    ]);
-    await db.update(problems).set({ latest_version_id: v2 }).where(
-      eq(problems.id, problemId),
-    );
-    await db.insert(submissions).values([
-      {
-        ...await problemExecutionForTest(problemId),
-        id: "filter-s-v1",
-        user_id: userId,
-        problem_id: problemId,
-        language: "python3",
-        code: "print(1)",
-        submitted_version_id: v1,
-        version_origin: "known",
-        is_valid: true,
-        is_accepted: true,
-        created_at: now,
-      },
-      {
-        ...await problemExecutionForTest(problemId),
-        id: "filter-s-v2",
-        user_id: userId,
-        problem_id: problemId,
-        language: "python3",
-        code: "print(2)",
-        submitted_version_id: v2,
-        version_origin: "known",
-        created_at: now,
-      },
-    ]);
+        await db.insert(users).values({
+            id: userId,
+            username: `sub-filter-${Date.now()}`,
+            email: `${userId}@test.local`,
+            password_hash: "x",
+            created_at: now,
+            updated_at: now,
+        });
+        await db.insert(problems).values({
+            domain_id: DEFAULT_DOMAIN_ID,
+            id: problemId,
+            title: "筛选测试题",
+            description: "d",
+            number: 988000 + (Date.now() % 1000),
+            owner_id: "0",
+            difficulty: "easy",
+            created_at: now,
+            updated_at: now,
+        });
+        await db.insert(problemVersions).values([
+            {
+                id: v1,
+                problem_id: problemId,
+                version: 1,
+                origin: "published",
+                content: { kind: "ai", title: "筛选测试题" },
+                published_at: now,
+            },
+            {
+                id: v2,
+                problem_id: problemId,
+                version: 2,
+                origin: "published",
+                content: { kind: "ai", title: "筛选测试题" },
+                published_at: now,
+            },
+        ]);
+        await db.update(problems).set({ latest_version_id: v2 }).where(
+            eq(problems.id, problemId),
+        );
+        await db.insert(submissions).values([
+            {
+                ...await problemExecutionForTest(problemId),
+                id: "filter-s-v1",
+                user_id: userId,
+                problem_id: problemId,
+                language: "python3",
+                code: "print(1)",
+                submitted_version_id: v1,
+                version_origin: "known",
+                is_valid: true,
+                is_accepted: true,
+                created_at: now,
+            },
+            {
+                ...await problemExecutionForTest(problemId),
+                id: "filter-s-v2",
+                user_id: userId,
+                problem_id: problemId,
+                language: "python3",
+                code: "print(2)",
+                submitted_version_id: v2,
+                version_origin: "known",
+                created_at: now,
+            },
+        ]);
 
-    const token = await signToken({ sub: userId, role: "user" });
-    const idsOf = async (query: string): Promise<string[]> => {
-      const res = await jsonRequest(
-        app,
-        `/api/v1/submissions?problem_id=${problemId}&${query}`,
-        { token },
-      );
-      assertEquals(res.status, 200);
-      return (await res.json()).data.map((item: { id: string }) => item.id);
-    };
+        const token = await signToken({ sub: userId, role: "user" });
+        const idsOf = async (query: string): Promise<string[]> => {
+            const res = await jsonRequest(
+                app,
+                `/api/v1/submissions?problem_id=${problemId}&${query}`,
+                { token },
+            );
+            assertEquals(res.status, 200);
+            return (await res.json()).data.map((item: { id: string }) =>
+                item.id
+            );
+        };
 
-    assertEquals(await idsOf("upgradable=1"), ["filter-s-v1"]);
-    assertEquals(
-      await idsOf("version_origin=known").then((ids) => ids.sort()),
-      [
-        "filter-s-v1",
-        "filter-s-v2",
-      ],
-    );
-    assertEquals(await idsOf(`version_id=${v1}`), ["filter-s-v1"]);
-    assertEquals(await idsOf("valid_only=1"), ["filter-s-v1"]);
-    assertEquals(await idsOf("accepted_only=1"), ["filter-s-v1"]);
+        assertEquals(await idsOf("upgradable=1"), ["filter-s-v1"]);
+        assertEquals(
+            await idsOf("version_origin=known").then((ids) => ids.sort()),
+            [
+                "filter-s-v1",
+                "filter-s-v2",
+            ],
+        );
+        assertEquals(await idsOf(`version_id=${v1}`), ["filter-s-v1"]);
+        assertEquals(await idsOf("valid_only=1"), ["filter-s-v1"]);
+        assertEquals(await idsOf("accepted_only=1"), ["filter-s-v1"]);
 
-    // 非法版本来源属于客户端错误，必须 400 而不是静默忽略筛选
-    const bad = await jsonRequest(
-      app,
-      `/api/v1/submissions?version_origin=bogus`,
-      { token },
-    );
-    assertEquals(bad.status, 400);
-  },
+        // 非法版本来源属于客户端错误，必须 400 而不是静默忽略筛选
+        const bad = await jsonRequest(
+            app,
+            `/api/v1/submissions?version_origin=bogus`,
+            { token },
+        );
+        assertEquals(bad.status, 400);
+    },
 });

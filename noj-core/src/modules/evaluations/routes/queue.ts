@@ -10,30 +10,30 @@ const router = new Hono<AuthEnv>();
 /** 新客户端显式指定域，实例概览不依赖用户能否进入默认域。 */
 export const domainQueueRouter = new Hono<AuthEnv>();
 domainQueueRouter.get("/domains/:slug/queue", authMiddleware, async (c) => {
-  const access = await loadWorkspace(c.req.param("slug")!, c.var.userId);
-  c.header("Cache-Control", "no-store");
-  return c.json(
-    await getQueueOverview(access.platformAdmin, c.var.userId, {
-      domainId: access.domain.id,
-      member: !!access.membership || access.platformAdmin,
-    }),
-  );
+    const access = await loadWorkspace(c.req.param("slug")!, c.var.userId);
+    c.header("Cache-Control", "no-store");
+    return c.json(
+        await getQueueOverview(access.platformAdmin, c.var.userId, {
+            domainId: access.domain.id,
+            member: !!access.membership || access.platformAdmin,
+        }),
+    );
 });
 domainQueueRouter.get("/instance/queue", authMiddleware, async (c) => {
-  await assertActiveInstanceAccount(c.var.userId);
-  const isAdmin = (await getUserPermissions(c.var.userId)).has(
-    "admin:full_access",
-  );
-  c.header("Cache-Control", "no-store");
-  return c.json(
-    await getQueueOverview(isAdmin, c.var.userId, {
-      domainId: "",
-      member: false,
-      instance: true,
-      viewerId: c.var.userId,
-      platformAdmin: isAdmin,
-    }),
-  );
+    await assertActiveInstanceAccount(c.var.userId);
+    const isAdmin = (await getUserPermissions(c.var.userId)).has(
+        "admin:full_access",
+    );
+    c.header("Cache-Control", "no-store");
+    return c.json(
+        await getQueueOverview(isAdmin, c.var.userId, {
+            domainId: "",
+            member: false,
+            instance: true,
+            viewerId: c.var.userId,
+            platformAdmin: isAdmin,
+        }),
+    );
 });
 
 export default router;

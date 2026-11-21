@@ -1,34 +1,34 @@
 import {
-  and,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  ne,
-  or,
-  type SQL,
-  sql,
+    and,
+    desc,
+    eq,
+    ilike,
+    inArray,
+    ne,
+    or,
+    type SQL,
+    sql,
 } from "drizzle-orm";
 import { communityPosts, users } from "../../../../../shared/db/schema.ts";
 import type { CommunityPostType } from "../../types/community.ts";
 import {
-  assertCommunityEnabled,
-  getCommunityConfig,
+    assertCommunityEnabled,
+    getCommunityConfig,
 } from "./community-config.ts";
 import {
-  notGatedContestContent,
-  resolveProblemId,
+    notGatedContestContent,
+    resolveProblemId,
 } from "./community-post-common.ts";
 import {
-  authorProjection,
-  postStatsProjection,
+    authorProjection,
+    postStatsProjection,
 } from "./community-post-select.ts";
 import {
-  communityDb,
-  communityDomainWhere,
-  communityResourceVisible,
-  type CommunityScope,
-  resolveCommunityProblem,
+    communityDb,
+    communityDomainWhere,
+    communityResourceVisible,
+    type CommunityScope,
+    resolveCommunityProblem,
 } from "./community-scope.ts";
 
 /**
@@ -38,212 +38,211 @@ import {
  * @returns 分页结果：data 为帖子列表，next_cursor 为下一页游标（无更多时为 null）。
  */
 export async function listPosts(
-  options: {
-    type?: CommunityPostType;
-    problemId?: string;
-    boardId?: string;
-    authorId?: string;
-    query?: string;
-    cursor?: string;
-    limit?: number;
-    viewerId?: string;
-    moderator?: boolean;
-    scope?: CommunityScope;
-  },
+    options: {
+        type?: CommunityPostType;
+        problemId?: string;
+        boardId?: string;
+        authorId?: string;
+        query?: string;
+        cursor?: string;
+        limit?: number;
+        viewerId?: string;
+        moderator?: boolean;
+        scope?: CommunityScope;
+    },
 ) {
-  const db = communityDb(options.scope);
-  // 元素可能为 undefined（drizzle 的 or/and 允许），and(...) 会自行忽略
-  const conditions: (SQL | undefined)[] = [
-    communityDomainWhere(communityPosts.domain_id, options.scope),
-    communityResourceVisible(options.scope),
-  ];
-  if (options.type) conditions.push(eq(communityPosts.type, options.type));
-  // 未指定类型时仅返回启用模块的内容；审核员查询不受模块开关限制（需审核历史内容）
-  if (!options.type && !options.moderator) {
-    const enabledTypes: CommunityPostType[] = [];
-    const config = getCommunityConfig();
-    if (config.solutions_enabled) enabledTypes.push("solution");
-    if (config.discussions_enabled) enabledTypes.push("discussion");
-    if (enabledTypes.length > 0) {
-      conditions.push(inArray(communityPosts.type, enabledTypes));
-    } else {
-      conditions.push(sql`false`);
+    const db = communityDb(options.scope);
+    // 元素可能为 undefined（drizzle 的 or/and 允许），and(...) 会自行忽略
+    const conditions: (SQL | undefined)[] = [
+        communityDomainWhere(communityPosts.domain_id, options.scope),
+        communityResourceVisible(options.scope),
+    ];
+    if (options.type) conditions.push(eq(communityPosts.type, options.type));
+    // 未指定类型时仅返回启用模块的内容；审核员查询不受模块开关限制（需审核历史内容）
+    if (!options.type && !options.moderator) {
+        const enabledTypes: CommunityPostType[] = [];
+        const config = getCommunityConfig();
+        if (config.solutions_enabled) enabledTypes.push("solution");
+        if (config.discussions_enabled) enabledTypes.push("discussion");
+        if (enabledTypes.length > 0) {
+            conditions.push(inArray(communityPosts.type, enabledTypes));
+        } else {
+            conditions.push(sql`false`);
+        }
     }
-  }
-  if (options.problemId) {
-    // 支持 UUID / display_id（P1001）/ 纯数字引用，题目不存在时返回空结果
-    const resolvedProblemId = options.scope
-      ? (await resolveCommunityProblem(options.problemId, options.scope))
-        .problem.id
-      : await resolveProblemId(options.problemId);
-    if (resolvedProblemId) {
-      conditions.push(eq(communityPosts.problem_id, resolvedProblemId));
-    } else {
-      conditions.push(sql`false`);
+    if (options.problemId) {
+        // 支持 UUID / display_id（P1001）/ 纯数字引用，题目不存在时返回空结果
+        const resolvedProblemId = options.scope
+            ? (await resolveCommunityProblem(options.problemId, options.scope))
+                .problem.id
+            : await resolveProblemId(options.problemId);
+        if (resolvedProblemId) {
+            conditions.push(eq(communityPosts.problem_id, resolvedProblemId));
+        } else {
+            conditions.push(sql`false`);
+        }
     }
-  }
-  if (options.boardId) {
-    conditions.push(eq(communityPosts.board_id, options.boardId));
-  }
-  if (options.authorId) {
-    conditions.push(eq(communityPosts.author_id, options.authorId));
-  }
-  if (options.query) {
-    const keyword = `%${options.query}%`;
-    conditions.push(or(
-      ilike(communityPosts.title, keyword),
-      ilike(communityPosts.content, keyword),
-    ));
-  }
-  if (!options.moderator) {
-    // 非审核员仅可见已发布内容；作者本人可见自己的非删除内容（含新用户预审的
-    // pending 与被隐藏的 hidden），否则预审期发帖会在列表里凭空消失，
-    // 用户只能看到"已提交审核"却找不到自己的内容（与评论列表同一口径）。
-    conditions.push(
-      options.viewerId
-        ? or(
-          eq(communityPosts.status, "published"),
-          and(
-            eq(communityPosts.author_id, options.viewerId),
-            ne(communityPosts.status, "deleted"),
-          ),
-        ) ?? sql`false`
-        : eq(communityPosts.status, "published"),
-    );
-  } else {
-    // moderator 跳过 published 过滤以看到 pending/hidden（管理后台审核用），
-    // 但已删除内容仍应在任何列表中隐藏，避免删除后仍出现在社区主页。
-    conditions.push(ne(communityPosts.status, "deleted"));
-  }
-  // 公开赛保密门控：归属于尚未结束的公开赛（含赛前筹备期）的题解与讨论，
-  // 对普通用户整体不可见（审计 VULN-02；判定收敛于 contest 域单一真相源）
-  if (!options.moderator) {
-    conditions.push(notGatedContestContent(options.scope));
-  }
-  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
-  const cursorParts = options.cursor ? parsePostCursor(options.cursor) : null;
+    if (options.boardId) {
+        conditions.push(eq(communityPosts.board_id, options.boardId));
+    }
+    if (options.authorId) {
+        conditions.push(eq(communityPosts.author_id, options.authorId));
+    }
+    if (options.query) {
+        const keyword = `%${options.query}%`;
+        conditions.push(or(
+            ilike(communityPosts.title, keyword),
+            ilike(communityPosts.content, keyword),
+        ));
+    }
+    if (!options.moderator) {
+        // 非审核员仅可见已发布内容；作者本人可见自己的非删除内容（含新用户预审的
+        // pending 与被隐藏的 hidden），否则预审期发帖会在列表里凭空消失，
+        // 用户只能看到"已提交审核"却找不到自己的内容（与评论列表同一口径）。
+        conditions.push(
+            options.viewerId
+                ? or(
+                    eq(communityPosts.status, "published"),
+                    and(
+                        eq(communityPosts.author_id, options.viewerId),
+                        ne(communityPosts.status, "deleted"),
+                    ),
+                ) ?? sql`false`
+                : eq(communityPosts.status, "published"),
+        );
+    } else {
+        // moderator 跳过 published 过滤以看到 pending/hidden（管理后台审核用），
+        // 但已删除内容仍应在任何列表中隐藏，避免删除后仍出现在社区主页。
+        conditions.push(ne(communityPosts.status, "deleted"));
+    }
+    // 公开赛保密门控：归属于尚未结束的公开赛（含赛前筹备期）的题解与讨论，
+    // 对普通用户整体不可见（审计 VULN-02；判定收敛于 contest 域单一真相源）
+    if (!options.moderator) {
+        conditions.push(notGatedContestContent(options.scope));
+    }
+    const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+    const cursorParts = options.cursor ? parsePostCursor(options.cursor) : null;
 
-  // ── 两段式 keyset 分页：固定置顶区 + 普通帖区 ──
-  //
-  // 排序键含 is_official / is_pinned，而游标此前只沿 created_at 推进。若第一页
-  // 被置顶/官方帖填满，第二页仍以"置顶帖的最后时间"过滤且强制 is_pinned=false，
-  // 就会跳过其后**时间更近的普通帖**——它们永远不会出现在任何一页（评审 #4）。
-  // 修复：把排序**阶段**编进游标，两个阶段各用与自身排序一致的复合 keyset；
-  // 从置顶段跨入普通段时，普通段从头开始（不带普通段游标）。
-  const promotedCondition = or(
-    eq(communityPosts.is_pinned, true),
-    eq(communityPosts.is_official, true),
-  )!;
-  const normalCondition = and(
-    eq(communityPosts.is_pinned, false),
-    eq(communityPosts.is_official, false),
-  )!;
-  const pinnedOrder = [
-    // 官方题解置顶（题解质量优先于普通置顶与时间）
-    desc(communityPosts.is_official),
-    desc(communityPosts.is_pinned),
-    desc(communityPosts.created_at),
-    // id 决胜键：created_at 相同的多条若无稳定次序，游标分页会在页边界
-    // 丢条目/重复条目（SQL 不保证同键行的返回顺序）。与 next_cursor 编码的
-    // 复合 keyset 必须成对存在，否则游标比较与排序不一致。
-    desc(communityPosts.id),
-  ];
-  const normalOrder = [
-    desc(communityPosts.created_at),
-    desc(communityPosts.id),
-  ];
-  // async 而非直接返回 builder：让返回类型是真正的 Promise<Row[]>，
-  // `Awaited<ReturnType<...>>` 才能正确取到行数组类型（builder 是 thenable）。
-  const fetchRows = async (
-    phaseCondition: SQL,
-    cursorCondition: SQL | null,
-    order: SQL[],
-    take: number,
-  ) =>
-    await db.select({
-      post: communityPosts,
-      author: authorProjection,
-      ...postStatsProjection,
+    // ── 两段式 keyset 分页：固定置顶区 + 普通帖区 ──
+    //
+    // 排序键含 is_official / is_pinned，而游标此前只沿 created_at 推进。若第一页
+    // 被置顶/官方帖填满，第二页仍以"置顶帖的最后时间"过滤且强制 is_pinned=false，
+    // 就会跳过其后**时间更近的普通帖**——它们永远不会出现在任何一页（评审 #4）。
+    // 修复：把排序**阶段**编进游标，两个阶段各用与自身排序一致的复合 keyset；
+    // 从置顶段跨入普通段时，普通段从头开始（不带普通段游标）。
+    const promotedCondition = or(
+        eq(communityPosts.is_pinned, true),
+        eq(communityPosts.is_official, true),
+    )!;
+    const normalCondition = and(
+        eq(communityPosts.is_pinned, false),
+        eq(communityPosts.is_official, false),
+    )!;
+    const pinnedOrder = [
+        // 官方题解置顶（题解质量优先于普通置顶与时间）
+        desc(communityPosts.is_official),
+        desc(communityPosts.is_pinned),
+        desc(communityPosts.created_at),
+        // id 决胜键：created_at 相同的多条若无稳定次序，游标分页会在页边界
+        // 丢条目/重复条目（SQL 不保证同键行的返回顺序）。与 next_cursor 编码的
+        // 复合 keyset 必须成对存在，否则游标比较与排序不一致。
+        desc(communityPosts.id),
+    ];
+    const normalOrder = [
+        desc(communityPosts.created_at),
+        desc(communityPosts.id),
+    ];
+    // async 而非直接返回 builder：让返回类型是真正的 Promise<Row[]>，
+    // `Awaited<ReturnType<...>>` 才能正确取到行数组类型（builder 是 thenable）。
+    const fetchRows = async (
+        phaseCondition: SQL,
+        cursorCondition: SQL | null,
+        order: SQL[],
+        take: number,
+    ) => await db.select({
+        post: communityPosts,
+        author: authorProjection,
+        ...postStatsProjection,
     }).from(communityPosts).innerJoin(
-      users,
-      eq(users.id, communityPosts.author_id),
+        users,
+        eq(users.id, communityPosts.author_id),
     ).where(and(
-      ...conditions,
-      phaseCondition,
-      ...(cursorCondition ? [cursorCondition] : []),
+        ...conditions,
+        phaseCondition,
+        ...(cursorCondition ? [cursorCondition] : []),
     )).orderBy(...order).limit(take);
 
-  const phase: PostSortPhase = cursorParts?.phase ?? "pinned";
-  const collected: Awaited<ReturnType<typeof fetchRows>> = [];
-  let pinnedFetched = 0;
-  if (phase === "pinned") {
-    const rows = await fetchRows(
-      promotedCondition,
-      cursorParts?.phase === "pinned"
-        ? pinnedKeysetCondition(cursorParts)
-        : null,
-      pinnedOrder,
-      limit + 1,
-    );
-    pinnedFetched = rows.length;
-    collected.push(...rows);
-  }
-  // 置顶段未填满本页 → 用普通段补齐（从普通段头部开始，除非游标本就在普通段）
-  if (collected.length <= limit) {
-    const rows = await fetchRows(
-      normalCondition,
-      cursorParts?.phase === "normal"
-        ? normalKeysetCondition(cursorParts)
-        : null,
-      normalOrder,
-      limit + 1 - collected.length,
-    );
-    collected.push(...rows);
-  }
-  const hasMore = collected.length > limit;
-  const data = hasMore ? collected.slice(0, limit) : collected;
-  const last = data.at(-1)?.post;
-  let next_cursor: string | null = null;
-  if (hasMore && last) {
-    // 本页最后一条落在哪个阶段，决定下一页从哪个阶段续取
-    next_cursor = data.length - 1 < pinnedFetched
-      ? formatPinnedCursor(last)
-      : formatNormalCursor(last);
-  }
-  return { data, next_cursor };
+    const phase: PostSortPhase = cursorParts?.phase ?? "pinned";
+    const collected: Awaited<ReturnType<typeof fetchRows>> = [];
+    let pinnedFetched = 0;
+    if (phase === "pinned") {
+        const rows = await fetchRows(
+            promotedCondition,
+            cursorParts?.phase === "pinned"
+                ? pinnedKeysetCondition(cursorParts)
+                : null,
+            pinnedOrder,
+            limit + 1,
+        );
+        pinnedFetched = rows.length;
+        collected.push(...rows);
+    }
+    // 置顶段未填满本页 → 用普通段补齐（从普通段头部开始，除非游标本就在普通段）
+    if (collected.length <= limit) {
+        const rows = await fetchRows(
+            normalCondition,
+            cursorParts?.phase === "normal"
+                ? normalKeysetCondition(cursorParts)
+                : null,
+            normalOrder,
+            limit + 1 - collected.length,
+        );
+        collected.push(...rows);
+    }
+    const hasMore = collected.length > limit;
+    const data = hasMore ? collected.slice(0, limit) : collected;
+    const last = data.at(-1)?.post;
+    let next_cursor: string | null = null;
+    if (hasMore && last) {
+        // 本页最后一条落在哪个阶段，决定下一页从哪个阶段续取
+        next_cursor = data.length - 1 < pinnedFetched
+            ? formatPinnedCursor(last)
+            : formatNormalCursor(last);
+    }
+    return { data, next_cursor };
 }
 
 /** 统计各类型已发布帖子的数量，供社区首页 Tab 计数。 */
 export async function countPostsByType(scope?: CommunityScope): Promise<
-  Record<CommunityPostType, number>
+    Record<CommunityPostType, number>
 > {
-  assertCommunityEnabled();
-  const db = communityDb(scope);
-  const config = getCommunityConfig();
-  const enabledTypes: CommunityPostType[] = [];
-  if (config.solutions_enabled) enabledTypes.push("solution");
-  if (config.discussions_enabled) enabledTypes.push("discussion");
-  const result: Record<CommunityPostType, number> = {
-    solution: 0,
-    discussion: 0,
-  };
-  // 全部模块关闭时直接返回全零，避免空 IN 列表的 SQL 错误
-  if (enabledTypes.length === 0) return result;
-  const rows = await db.select({
-    type: communityPosts.type,
-    count: sql<number>`count(*)::int`,
-  }).from(communityPosts).where(and(
-    eq(communityPosts.status, "published"),
-    communityDomainWhere(communityPosts.domain_id, scope),
-    communityResourceVisible(scope),
-    inArray(communityPosts.type, enabledTypes),
-    // 被门控的题解/讨论不计入 Tab 计数（否则计数与列表不一致，暴露内容存在性）
-    notGatedContestContent(scope),
-  )).groupBy(communityPosts.type);
-  for (const row of rows) {
-    result[row.type as CommunityPostType] = Number(row.count);
-  }
-  return result;
+    assertCommunityEnabled();
+    const db = communityDb(scope);
+    const config = getCommunityConfig();
+    const enabledTypes: CommunityPostType[] = [];
+    if (config.solutions_enabled) enabledTypes.push("solution");
+    if (config.discussions_enabled) enabledTypes.push("discussion");
+    const result: Record<CommunityPostType, number> = {
+        solution: 0,
+        discussion: 0,
+    };
+    // 全部模块关闭时直接返回全零，避免空 IN 列表的 SQL 错误
+    if (enabledTypes.length === 0) return result;
+    const rows = await db.select({
+        type: communityPosts.type,
+        count: sql<number>`count(*)::int`,
+    }).from(communityPosts).where(and(
+        eq(communityPosts.status, "published"),
+        communityDomainWhere(communityPosts.domain_id, scope),
+        communityResourceVisible(scope),
+        inArray(communityPosts.type, enabledTypes),
+        // 被门控的题解/讨论不计入 Tab 计数（否则计数与列表不一致，暴露内容存在性）
+        notGatedContestContent(scope),
+    )).groupBy(communityPosts.type);
+    for (const row of rows) {
+        result[row.type as CommunityPostType] = Number(row.count);
+    }
+    return result;
 }
 
 /** 分页阶段：置顶/官方帖区（pinned）与普通帖区（normal）。 */
@@ -251,12 +250,12 @@ type PostSortPhase = "pinned" | "normal";
 
 /** 解析后的帖子列表游标。 */
 interface PostCursorParts {
-  phase: PostSortPhase;
-  at: string;
-  id?: string;
-  /** pinned 阶段专用：游标行的 is_official / is_pinned，构成四元组 keyset。 */
-  is_official?: boolean;
-  is_pinned?: boolean;
+    phase: PostSortPhase;
+    at: string;
+    id?: string;
+    /** pinned 阶段专用：游标行的 is_official / is_pinned，构成四元组 keyset。 */
+    is_official?: boolean;
+    is_pinned?: boolean;
 }
 
 /**
@@ -269,21 +268,21 @@ interface PostCursorParts {
  * 字段均不含 `|`（ISO 时间无、UUID 无、布尔编码为 0/1），故 `split("|")` 安全。
  */
 function formatPinnedCursor(row: {
-  created_at: string;
-  id: string;
-  is_official: boolean;
-  is_pinned: boolean;
+    created_at: string;
+    id: string;
+    is_official: boolean;
+    is_pinned: boolean;
 }): string {
-  return `p:${row.created_at}|${row.id}|${row.is_official ? 1 : 0}|${
-    row.is_pinned ? 1 : 0
-  }`;
+    return `p:${row.created_at}|${row.id}|${row.is_official ? 1 : 0}|${
+        row.is_pinned ? 1 : 0
+    }`;
 }
 
 /** 编码普通帖区游标。 */
 function formatNormalCursor(
-  row: { created_at: string; id: string },
+    row: { created_at: string; id: string },
 ): string {
-  return `n:${row.created_at}|${row.id}`;
+    return `n:${row.created_at}|${row.id}`;
 }
 
 /**
@@ -293,20 +292,20 @@ function formatNormalCursor(
  *   `created_at` 推进，故游标指向的是**普通帖区**，这里映射为 normal 阶段。
  */
 function parsePostCursor(cursor: string): PostCursorParts {
-  if (cursor.startsWith("p:")) {
-    const parts = cursor.slice(2).split("|");
-    return {
-      phase: "pinned",
-      at: parts[0] ?? "",
-      id: parts[1] || undefined,
-      is_official: parts[2] === "1",
-      is_pinned: parts[3] === "1",
-    };
-  }
-  const body = cursor.startsWith("n:") ? cursor.slice(2) : cursor;
-  const sep = body.lastIndexOf("|");
-  if (sep === -1) return { phase: "normal", at: body };
-  return { phase: "normal", at: body.slice(0, sep), id: body.slice(sep + 1) };
+    if (cursor.startsWith("p:")) {
+        const parts = cursor.slice(2).split("|");
+        return {
+            phase: "pinned",
+            at: parts[0] ?? "",
+            id: parts[1] || undefined,
+            is_official: parts[2] === "1",
+            is_pinned: parts[3] === "1",
+        };
+    }
+    const body = cursor.startsWith("n:") ? cursor.slice(2) : cursor;
+    const sep = body.lastIndexOf("|");
+    if (sep === -1) return { phase: "normal", at: body };
+    return { phase: "normal", at: body.slice(0, sep), id: body.slice(sep + 1) };
 }
 
 /**
@@ -316,8 +315,8 @@ function parsePostCursor(cursor: string): PostCursorParts {
  * 必须四列一起比较：只比 `created_at` 会漏掉同刻但排序靠后的置顶帖。
  */
 function pinnedKeysetCondition(parts: PostCursorParts): SQL {
-  if (!parts.id) return sql`${communityPosts.created_at} < ${parts.at}`;
-  return sql`(${communityPosts.is_official}, ${communityPosts.is_pinned},
+    if (!parts.id) return sql`${communityPosts.created_at} < ${parts.at}`;
+    return sql`(${communityPosts.is_official}, ${communityPosts.is_pinned},
       ${communityPosts.created_at}, ${communityPosts.id})
     < (${parts.is_official ?? false}::boolean,
        ${parts.is_pinned ?? false}::boolean,
@@ -326,7 +325,7 @@ function pinnedKeysetCondition(parts: PostCursorParts): SQL {
 
 /** normal 阶段的 keyset 条件：`(created_at, id)` 严格小于游标行。 */
 function normalKeysetCondition(parts: PostCursorParts): SQL {
-  if (!parts.id) return sql`${communityPosts.created_at} < ${parts.at}`;
-  return sql`(${communityPosts.created_at}, ${communityPosts.id})
+    if (!parts.id) return sql`${communityPosts.created_at} < ${parts.at}`;
+    return sql`(${communityPosts.created_at}, ${communityPosts.id})
     < (${parts.at}::text, ${parts.id}::text)`;
 }

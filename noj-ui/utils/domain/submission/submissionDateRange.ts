@@ -11,9 +11,9 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** 本地日期 `YYYY-MM-DD` + 本地时刻 → UTC ISO；格式非法返回 null。 */
 function localDateToIso(date: string, time: string): string | null {
-  if (!DATE_RE.test(date)) return null;
-  const d = new Date(`${date}T${time}`);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    if (!DATE_RE.test(date)) return null;
+    const d = new Date(`${date}T${time}`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 /**
@@ -21,18 +21,18 @@ function localDateToIso(date: string, time: string): string | null {
  * 起止颠倒时自动交换，避免用户误选后得到无提示的空列表。
  */
 export function buildDateRangeParams(
-  fromDate: string,
-  toDate: string,
+    fromDate: string,
+    toDate: string,
 ): { from?: string; to?: string } {
-  let start = fromDate;
-  let end = toDate;
-  if (DATE_RE.test(start) && DATE_RE.test(end) && start > end) {
-    [start, end] = [end, start];
-  }
-  const from = start ? localDateToIso(start, '00:00:00.000') : null;
-  const to = end ? localDateToIso(end, '23:59:59.999') : null;
-  return {
-    ...(from ? { from } : {}),
-    ...(to ? { to } : {}),
-  };
+    let start = fromDate;
+    let end = toDate;
+    if (DATE_RE.test(start) && DATE_RE.test(end) && start > end) {
+        [start, end] = [end, start];
+    }
+    const from = start ? localDateToIso(start, '00:00:00.000') : null;
+    const to = end ? localDateToIso(end, '23:59:59.999') : null;
+    return {
+        ...(from ? { from } : {}),
+        ...(to ? { to } : {}),
+    };
 }

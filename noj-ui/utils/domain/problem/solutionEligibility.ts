@@ -4,17 +4,17 @@
  * 独立声明而不从 composable 引入：utils 需能在 Deno 单测中直接类型检查。
  */
 export interface SolutionConfig {
-  solutions_enabled: boolean;
-  read_only: boolean;
-  solution_requires_accepted: boolean;
-  permissions: Record<string, boolean>;
-  /** 赛时社区全局静默（非审核员且存在未结束公开赛）。 */
-  contest_silence?: boolean;
+    solutions_enabled: boolean;
+    read_only: boolean;
+    solution_requires_accepted: boolean;
+    permissions: Record<string, boolean>;
+    /** 赛时社区全局静默（非审核员且存在未结束公开赛）。 */
+    contest_silence?: boolean;
 }
 
 /** 是否还需要查询「当前用户是否通过本题」：门槛开启且非审核员时才需要。 */
 export function needsAcceptedCheck(config: SolutionConfig | null): boolean {
-  return !!config?.solution_requires_accepted && !config.permissions.moderate;
+    return !!config?.solution_requires_accepted && !config.permissions.moderate;
 }
 
 /**
@@ -24,14 +24,14 @@ export function needsAcceptedCheck(config: SolutionConfig | null): boolean {
  * `accepted` 为 null 表示尚未查询；需要门槛判定时按「不可发布」处理，避免先显示后消失。
  */
 export function canPublishSolution(
-  config: SolutionConfig | null,
-  accepted: boolean | null,
+    config: SolutionConfig | null,
+    accepted: boolean | null,
 ): boolean {
-  if (!config) return false;
-  const moderator = !!config.permissions.moderate;
-  if (!config.solutions_enabled || config.contest_silence) return false;
-  if (config.read_only && !moderator) return false;
-  if (!config.permissions.solution && !moderator) return false;
-  if (needsAcceptedCheck(config) && accepted !== true) return false;
-  return true;
+    if (!config) return false;
+    const moderator = !!config.permissions.moderate;
+    if (!config.solutions_enabled || config.contest_silence) return false;
+    if (config.read_only && !moderator) return false;
+    if (!config.permissions.solution && !moderator) return false;
+    if (needsAcceptedCheck(config) && accepted !== true) return false;
+    return true;
 }

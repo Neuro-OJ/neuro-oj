@@ -11,16 +11,16 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "system"]);
 
 export interface MockEmail {
-  to: string;
-  subject: string;
-  html: string;
+    to: string;
+    subject: string;
+    html: string;
 }
 
 const mockMailbox: MockEmail[] = [];
 
 /** 仅供测试读取并清空 mock 邮箱。 */
 export function takeMockEmailsForTest(): MockEmail[] {
-  return mockMailbox.splice(0);
+    return mockMailbox.splice(0);
 }
 
 /**
@@ -31,50 +31,51 @@ export function takeMockEmailsForTest(): MockEmail[] {
  * @param expiresInMinutes - 过期时间（分钟），用于日志展示
  */
 function redactResetToken(resetLink: string): string {
-  return resetLink.replace(
-    /([?&](?:token|reset_token)=)[^&#]*/gi,
-    "$1[REDACTED]",
-  );
+    return resetLink.replace(
+        /([?&](?:token|reset_token)=)[^&#]*/gi,
+        "$1[REDACTED]",
+    );
 }
 
 export const sendPasswordResetEmail: SendPasswordResetEmail = (
-  email: string,
-  resetLink: string,
-  expiresInMinutes = 15,
+    email: string,
+    resetLink: string,
+    expiresInMinutes = 15,
 ) => {
-  // NOJ-005：mock 仅用于开发/测试。生产环境可使用 disabled 关闭邮件，
-  // 或配置真实 Provider；
-  // 禁止把含明文重置令牌的链接写入日志。
-  const nojEnv = Deno.env.get("NOJ_ENV");
-  if (nojEnv === "production") {
-    throw new Error(
-      "EMAIL_PROVIDER=mock 在生产环境不可用，请配置 aliyun、tencent 或 disabled 邮件服务",
-    );
-  }
-  // 本地开发/测试需要从日志拿到完整链接才能完成重置；未知的非生产环境保守脱敏。
-  const isDevOrTest = nojEnv === "development" || nojEnv === "test" || !nojEnv;
-  const link = isDevOrTest ? resetLink : redactResetToken(resetLink);
-  logger.info("密码重置邮件（mock）", {
-    module: "email-mock",
-    event: "password_reset",
-    to: email,
-    link,
-    expiresIn: `${expiresInMinutes} minutes`,
-  });
-  return Promise.resolve();
+    // NOJ-005：mock 仅用于开发/测试。生产环境可使用 disabled 关闭邮件，
+    // 或配置真实 Provider；
+    // 禁止把含明文重置令牌的链接写入日志。
+    const nojEnv = Deno.env.get("NOJ_ENV");
+    if (nojEnv === "production") {
+        throw new Error(
+            "EMAIL_PROVIDER=mock 在生产环境不可用，请配置 aliyun、tencent 或 disabled 邮件服务",
+        );
+    }
+    // 本地开发/测试需要从日志拿到完整链接才能完成重置；未知的非生产环境保守脱敏。
+    const isDevOrTest = nojEnv === "development" || nojEnv === "test" ||
+        !nojEnv;
+    const link = isDevOrTest ? resetLink : redactResetToken(resetLink);
+    logger.info("密码重置邮件（mock）", {
+        module: "email-mock",
+        event: "password_reset",
+        to: email,
+        link,
+        expiresIn: `${expiresInMinutes} minutes`,
+    });
+    return Promise.resolve();
 };
 
 export const sendEmail: SendEmail = (email, subject, html) => {
-  if (Deno.env.get("NOJ_ENV") === "production") {
-    throw new Error("EMAIL_PROVIDER=mock 在生产环境不可用");
-  }
-  mockMailbox.push({ to: email, subject, html });
-  logger.info("邮件（mock）", {
-    module: "email-mock",
-    event: "email",
-    to: email,
-    subject,
-    html,
-  });
-  return Promise.resolve(true);
+    if (Deno.env.get("NOJ_ENV") === "production") {
+        throw new Error("EMAIL_PROVIDER=mock 在生产环境不可用");
+    }
+    mockMailbox.push({ to: email, subject, html });
+    logger.info("邮件（mock）", {
+        module: "email-mock",
+        event: "email",
+        to: email,
+        subject,
+        html,
+    });
+    return Promise.resolve(true);
 };

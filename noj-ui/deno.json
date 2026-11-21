@@ -34,10 +34,9 @@
       "**/*.vue",
       "**/*.ts"
     ],
-    "options": {
-      "singleQuote": true,
-      "lineWidth": 120
-    }
+    "singleQuote": true,
+    "lineWidth": 120,
+    "indentWidth": 4
   },
   "nodeModulesDir": "auto",
   "allowScripts": [

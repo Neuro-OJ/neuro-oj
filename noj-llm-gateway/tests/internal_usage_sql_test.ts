@@ -27,107 +27,107 @@ import type { Db } from "../src/db.ts";
 import type { GatewayConfig } from "../src/config.ts";
 
 interface Captured {
-  query: string;
-  params: unknown[];
+    query: string;
+    params: unknown[];
 }
 
 /** 构造一个只服务 `/internal/usage` 的 fake db。 */
 function makeCaptureDb(captured: Captured[]): Db {
-  const db = Object.assign(
-    (strings: TemplateStringsArray) => {
-      const query = strings.join("?");
-      captured.push({ query, params: [] });
-      return Promise.resolve([]);
-    },
-    {
-      unsafe: (query: string, params: unknown) => {
-        captured.push({ query, params: [...(params as unknown[])] });
-        return Promise.resolve([]);
-      },
-    },
-  );
-  return db as unknown as Db;
+    const db = Object.assign(
+        (strings: TemplateStringsArray) => {
+            const query = strings.join("?");
+            captured.push({ query, params: [] });
+            return Promise.resolve([]);
+        },
+        {
+            unsafe: (query: string, params: unknown) => {
+                captured.push({ query, params: [...(params as unknown[])] });
+                return Promise.resolve([]);
+            },
+        },
+    );
+    return db as unknown as Db;
 }
 
 const testConfig = {
-  serviceToken: "test-service-token",
-  storeKey: "test-store-key",
+    serviceToken: "test-service-token",
+    storeKey: "test-store-key",
 } as unknown as GatewayConfig;
 
 /** 发起一次 `/internal/usage` 请求并返回捕获到的 SQL。 */
 async function callUsage(query: string): Promise<Captured> {
-  const captured: Captured[] = [];
-  const app = createInternalRouter({
-    config: testConfig,
-    db: makeCaptureDb(captured),
-  });
-  const res = await app.request(`/internal/usage${query}`, {
-    headers: { authorization: `Bearer ${testConfig.serviceToken}` },
-  });
-  assertEquals(res.status, 200);
-  assertEquals(
-    captured.length,
-    1,
-    `应恰好执行 1 条 SQL，实得 ${captured.length}`,
-  );
-  return captured[0]!;
+    const captured: Captured[] = [];
+    const app = createInternalRouter({
+        config: testConfig,
+        db: makeCaptureDb(captured),
+    });
+    const res = await app.request(`/internal/usage${query}`, {
+        headers: { authorization: `Bearer ${testConfig.serviceToken}` },
+    });
+    assertEquals(res.status, 200);
+    assertEquals(
+        captured.length,
+        1,
+        `应恰好执行 1 条 SQL，实得 ${captured.length}`,
+    );
+    return captured[0]!;
 }
 
 Deno.test("internal/usage: 占位符序号连续且与绑定值一一对应（无筛选）", async () => {
-  const { query, params } = await callUsage("?limit=100&page=1");
-  // LIMIT/OFFSET 都必须是 `$n` 形式（此前 OFFSET 漏了 `$`，渲染成 `OFFSET 0`）
-  assertStringIncludes(query, "LIMIT $2");
-  assertStringIncludes(query, "OFFSET $3");
-  assertEquals(params.length, 3, `绑定值数量应与占位符一致，query=${query}`);
-  // 值必须是**数字**（字符串会让 postgres.js 发 unknown → 42P18）
-  assertEquals(typeof params[1], "number");
-  assertEquals(typeof params[2], "number");
+    const { query, params } = await callUsage("?limit=100&page=1");
+    // LIMIT/OFFSET 都必须是 `$n` 形式（此前 OFFSET 漏了 `$`，渲染成 `OFFSET 0`）
+    assertStringIncludes(query, "LIMIT $2");
+    assertStringIncludes(query, "OFFSET $3");
+    assertEquals(params.length, 3, `绑定值数量应与占位符一致，query=${query}`);
+    // 值必须是**数字**（字符串会让 postgres.js 发 unknown → 42P18）
+    assertEquals(typeof params[1], "number");
+    assertEquals(typeof params[2], "number");
 });
 
 Deno.test("internal/usage: 有筛选时占位符序号不跳号", async () => {
-  const { query, params } = await callUsage(
-    "?submission_id=s1&limit=20&page=3",
-  );
-  assertStringIncludes(query, "submission_id = $2");
-  assertStringIncludes(query, "LIMIT $3");
-  assertStringIncludes(query, "OFFSET $4");
-  assertEquals(params.length, 4);
-  assertEquals(params[2], 20);
-  assertEquals(params[3], 40, "page=3, limit=20 → offset=40");
+    const { query, params } = await callUsage(
+        "?submission_id=s1&limit=20&page=3",
+    );
+    assertStringIncludes(query, "submission_id = $2");
+    assertStringIncludes(query, "LIMIT $3");
+    assertStringIncludes(query, "OFFSET $4");
+    assertEquals(params.length, 4);
+    assertEquals(params[2], 20);
+    assertEquals(params[3], 40, "page=3, limit=20 → offset=40");
 });
 
 Deno.test("internal/usage: 每个 $n 都出现在 SQL 中且不超出绑定数量", async () => {
-  for (
-    const q of [
-      "?limit=100&page=1",
-      "?submission_id=s1&limit=20&page=2",
-      "?user_id=u1&problem_id=p1&status=ok&limit=5&page=9",
-    ]
-  ) {
-    const { query, params } = await callUsage(q);
-    // SQL 中出现的全部 `$n`（含 `$n::type` 形式）
-    const refs = [...query.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
-    const max = Math.max(...refs);
-    assertEquals(
-      max,
-      params.length,
-      `最大占位符序号应等于绑定值数量（query=${query}, params=${params.length}）`,
-    );
-    // 序号必须从 1 连续到 max（跳号意味着某个绑定值没被引用 → 42P18）
-    assertEquals(
-      [...new Set(refs)].sort((a, b) => a - b),
-      Array.from({ length: max }, (_, i) => i + 1),
-      `占位符序号必须连续（query=${query}）`,
-    );
-  }
+    for (
+        const q of [
+            "?limit=100&page=1",
+            "?submission_id=s1&limit=20&page=2",
+            "?user_id=u1&problem_id=p1&status=ok&limit=5&page=9",
+        ]
+    ) {
+        const { query, params } = await callUsage(q);
+        // SQL 中出现的全部 `$n`（含 `$n::type` 形式）
+        const refs = [...query.matchAll(/\$(\d+)/g)].map((m) => Number(m[1]));
+        const max = Math.max(...refs);
+        assertEquals(
+            max,
+            params.length,
+            `最大占位符序号应等于绑定值数量（query=${query}, params=${params.length}）`,
+        );
+        // 序号必须从 1 连续到 max（跳号意味着某个绑定值没被引用 → 42P18）
+        assertEquals(
+            [...new Set(refs)].sort((a, b) => a - b),
+            Array.from({ length: max }, (_, i) => i + 1),
+            `占位符序号必须连续（query=${query}）`,
+        );
+    }
 });
 
 Deno.test("internal/usage: 超大 page 被夹取到上界且仍是数字参数", async () => {
-  const { query, params } = await callUsage("?limit=100&page=1e30");
-  assertStringIncludes(query, "LIMIT $2");
-  assertStringIncludes(query, "OFFSET $3");
-  assertEquals(typeof params[2], "number");
-  // 上界夹取：offset 不应是 Infinity/NaN（否则 PG 仍会报错）
-  assertEquals(Number.isFinite(params[2] as number), true);
-  assertEquals(Number.isFinite(params[1] as number), true);
+    const { query, params } = await callUsage("?limit=100&page=1e30");
+    assertStringIncludes(query, "LIMIT $2");
+    assertStringIncludes(query, "OFFSET $3");
+    assertEquals(typeof params[2], "number");
+    // 上界夹取：offset 不应是 Infinity/NaN（否则 PG 仍会报错）
+    assertEquals(Number.isFinite(params[2] as number), true);
+    assertEquals(Number.isFinite(params[1] as number), true);
 });

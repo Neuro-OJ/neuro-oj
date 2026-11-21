@@ -1,123 +1,130 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-  BadRequestError,
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-  UnauthorizedError,
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
 } from "../../../shared/base/errors.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import type {
-  ContestType,
-  KaggleProblemScore,
-  KaggleRankingRow,
-  RankingVisibility,
+    ContestType,
+    KaggleProblemScore,
+    KaggleRankingRow,
+    RankingVisibility,
 } from "../types/contests.ts";
 import { getContest } from "./contests.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
-  contestProblems,
-  contestRankingSnapshots,
-  contests,
-  problems,
+    contestProblems,
+    contestRankingSnapshots,
+    contests,
+    problems,
 } from "../../../shared/db/schema.ts";
 import { logAudit } from "../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { getFormatRanking } from "./format-ranking.ts";
 
 export async function publishContestRankingSnapshot(
-  contestId: string,
-  actorId: string,
-  note = "",
-  options: { allowFailed?: boolean; executor?: Executor } = {},
+    contestId: string,
+    actorId: string,
+    note = "",
+    options: { allowFailed?: boolean; executor?: Executor } = {},
 ): Promise<
-  { id: string; version: number; rows: KaggleRankingRow[]; created_at: string }
+    {
+        id: string;
+        version: number;
+        rows: KaggleRankingRow[];
+        created_at: string;
+    }
 > {
-  const db = options.executor ?? getDb();
-  const created_at = new Date().toISOString();
-  const id = crypto.randomUUID();
-  const result = await db.transaction(async (tx) => {
-    const refs = await tx.select({ problem_id: contestProblems.problem_id })
-      .from(contestProblems).where(eq(contestProblems.contest_id, contestId));
-    const ids = refs.map((row) => row.problem_id).sort();
-    if (ids.length) {
-      await tx.select({ id: problems.id }).from(problems).where(
-        inArray(problems.id, ids),
-      ).orderBy(problems.id).for("share");
-    }
-    await tx.select({ id: contests.id }).from(contests).where(
-      eq(contests.id, contestId),
-    ).for("update");
-    const contest = await getContest(contestId, undefined, tx);
-    if (contest.status !== "ended") {
-      throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
-    }
-    const settlement = await getContestSettlementStatus(contestId, tx);
-    if (settlement.pending_count) {
-      throw new ConflictError(
-        `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
-      );
-    }
-    if (settlement.failed_count && (!options.allowFailed || !note.trim())) {
-      throw new ConflictError(
-        `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
-      );
-    }
-    const rows = await getKaggleRanking(contestId, undefined, true, tx);
-    const [latest] = await tx.select({
-      version: contestRankingSnapshots.version,
-    })
-      .from(contestRankingSnapshots)
-      .where(eq(contestRankingSnapshots.contest_id, contestId))
-      .orderBy(desc(contestRankingSnapshots.version)).limit(1);
-    const nextVersion = (latest?.version ?? 0) + 1;
-    if (latest && !note.trim()) {
-      throw new ConflictError("重新发布正式成绩必须填写原因");
-    }
-    await tx.insert(contestRankingSnapshots).values({
-      id,
-      contest_id: contest.id,
-      version: nextVersion,
-      status: "published",
-      note,
-      rows,
-      created_by: actorId,
-      created_at,
+    const db = options.executor ?? getDb();
+    const created_at = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const result = await db.transaction(async (tx) => {
+        const refs = await tx.select({ problem_id: contestProblems.problem_id })
+            .from(contestProblems).where(
+                eq(contestProblems.contest_id, contestId),
+            );
+        const ids = refs.map((row) => row.problem_id).sort();
+        if (ids.length) {
+            await tx.select({ id: problems.id }).from(problems).where(
+                inArray(problems.id, ids),
+            ).orderBy(problems.id).for("share");
+        }
+        await tx.select({ id: contests.id }).from(contests).where(
+            eq(contests.id, contestId),
+        ).for("update");
+        const contest = await getContest(contestId, undefined, tx);
+        if (contest.status !== "ended") {
+            throw new ConflictError("竞赛尚未结束，不能发布正式成绩");
+        }
+        const settlement = await getContestSettlementStatus(contestId, tx);
+        if (settlement.pending_count) {
+            throw new ConflictError(
+                `仍有 ${settlement.pending_count} 条评测待处理，请完成评测后再结算`,
+            );
+        }
+        if (settlement.failed_count && (!options.allowFailed || !note.trim())) {
+            throw new ConflictError(
+                `发现 ${settlement.failed_count} 条失败评测；请处理失败任务，或填写说明并明确允许带失败评测发布`,
+            );
+        }
+        const rows = await getKaggleRanking(contestId, undefined, true, tx);
+        const [latest] = await tx.select({
+            version: contestRankingSnapshots.version,
+        })
+            .from(contestRankingSnapshots)
+            .where(eq(contestRankingSnapshots.contest_id, contestId))
+            .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+        const nextVersion = (latest?.version ?? 0) + 1;
+        if (latest && !note.trim()) {
+            throw new ConflictError("重新发布正式成绩必须填写原因");
+        }
+        await tx.insert(contestRankingSnapshots).values({
+            id,
+            contest_id: contest.id,
+            version: nextVersion,
+            status: "published",
+            note,
+            rows,
+            created_by: actorId,
+            created_at,
+        });
+        return { version: nextVersion, rows, settlement };
     });
-    return { version: nextVersion, rows, settlement };
-  });
-  const { version, rows, settlement } = result;
-  await logAudit("contest.ranking_snapshot", {
-    action: "contest.ranking_snapshot",
-    contest_id: contestId,
-    version,
-    note,
-    previous_version: version > 1 ? version - 1 : null,
-    failed_count: settlement.failed_count,
-  }, { type: "contest", id: contestId });
-  return { id, version, rows, created_at };
+    const { version, rows, settlement } = result;
+    await logAudit("contest.ranking_snapshot", {
+        action: "contest.ranking_snapshot",
+        contest_id: contestId,
+        version,
+        note,
+        previous_version: version > 1 ? version - 1 : null,
+        failed_count: settlement.failed_count,
+    }, { type: "contest", id: contestId });
+    return { id, version, rows, created_at };
 }
 
 export interface ContestSettlementItem {
-  submission_id: string;
-  user_id: string;
-  username: string;
-  problem_id: string;
-  problem_title: string;
-  status: string;
-  result_status: string | null;
-  created_at: string;
-  kind: "submission" | "objective";
+    submission_id: string;
+    user_id: string;
+    username: string;
+    problem_id: string;
+    problem_title: string;
+    status: string;
+    result_status: string | null;
+    created_at: string;
+    kind: "submission" | "objective";
 }
 
 export interface ContestSettlementStatus {
-  contest_id: string;
-  contest_status: "pending" | "running" | "ended";
-  pending_count: number;
-  failed_count: number;
-  ready: boolean;
-  items: ContestSettlementItem[];
-  truncated: boolean;
+    contest_id: string;
+    contest_status: "pending" | "running" | "ended";
+    pending_count: number;
+    failed_count: number;
+    ready: boolean;
+    items: ContestSettlementItem[];
+    truncated: boolean;
 }
 
 /**
@@ -135,7 +142,7 @@ export interface ContestSettlementStatus {
  * 若只看最近终态/有效指针就会漏掉正在跑的评测。
  */
 function contestTasksCte(contestId: string) {
-  return sql`
+    return sql`
     WITH contest_tasks AS (
       SELECT s.id AS submission_id, s.user_id, u.username, s.problem_id,
         p.title AS problem_title,
@@ -201,12 +208,12 @@ const OPEN_JOB_ITEM_STATUSES = sql`('pending', 'preparing', 'dispatched')`;
  * 该查询只读，不会改变队列或提交状态，管理员可据此决定处理或带说明发布。
  */
 export async function getContestSettlementStatus(
-  contestId: string,
-  executor?: Executor,
+    contestId: string,
+    executor?: Executor,
 ): Promise<ContestSettlementStatus> {
-  const db = executor ?? getDb();
-  const contest = await getContest(contestId, undefined, db);
-  const result = await db.execute(sql`
+    const db = executor ?? getDb();
+    const contest = await getContest(contestId, undefined, db);
+    const result = await db.execute(sql`
     ${contestTasksCte(contestId)}
     SELECT
       -- 已判定为失败的提交不重复计入待处理
@@ -214,34 +221,34 @@ export async function getContestSettlementStatus(
       COUNT(*) FILTER (WHERE failed)::int AS failed_count
     FROM classified
   `);
-  const [counts] = unwrapRows<Record<string, unknown>>(result as never);
-  // 批任务在**受理事务**里就落库条目（可能还没有 attempt_id），因此
-  // pending/preparing/dispatched 都必须进入结算门禁（缺陷 #46）。
-  const jobs = await db.execute(
-    sql`SELECT count(*)::int AS pending FROM submission_job_items ji
+    const [counts] = unwrapRows<Record<string, unknown>>(result as never);
+    // 批任务在**受理事务**里就落库条目（可能还没有 attempt_id），因此
+    // pending/preparing/dispatched 都必须进入结算门禁（缺陷 #46）。
+    const jobs = await db.execute(
+        sql`SELECT count(*)::int AS pending FROM submission_job_items ji
     LEFT JOIN submissions s ON ji.source_kind = 'submission' AND ji.source_id = s.id
     LEFT JOIN objective_submissions os ON ji.source_kind = 'objective' AND ji.source_id = os.id
     WHERE ji.status IN ${OPEN_JOB_ITEM_STATUSES}
       AND coalesce(s.contest_id, os.contest_id) = ${contestId}`,
-  );
-  const pendingCount = Number(counts?.pending_count ?? 0) +
-    Number(unwrapRows<{ pending: number }>(jobs as never)[0]?.pending ?? 0);
-  const failedCount = Number(counts?.failed_count ?? 0);
+    );
+    const pendingCount = Number(counts?.pending_count ?? 0) +
+        Number(unwrapRows<{ pending: number }>(jobs as never)[0]?.pending ?? 0);
+    const failedCount = Number(counts?.failed_count ?? 0);
 
-  // 没有待处理/失败任务时无需再查明细，避免大竞赛每次 readiness 都扫描 500 行。
-  if (pendingCount === 0 && failedCount === 0) {
-    return {
-      contest_id: contestId,
-      contest_status: contest.status,
-      pending_count: pendingCount,
-      failed_count: failedCount,
-      ready: contest.status === "ended" && pendingCount === 0,
-      items: [],
-      truncated: false,
-    };
-  }
+    // 没有待处理/失败任务时无需再查明细，避免大竞赛每次 readiness 都扫描 500 行。
+    if (pendingCount === 0 && failedCount === 0) {
+        return {
+            contest_id: contestId,
+            contest_status: contest.status,
+            pending_count: pendingCount,
+            failed_count: failedCount,
+            ready: contest.status === "ended" && pendingCount === 0,
+            items: [],
+            truncated: false,
+        };
+    }
 
-  const itemResult = await db.execute(sql`
+    const itemResult = await db.execute(sql`
     ${contestTasksCte(contestId)}
     SELECT submission_id, user_id, username, problem_id, problem_title,
       submission_status AS status, result_status, created_at, kind
@@ -250,44 +257,44 @@ export async function getContestSettlementStatus(
     ORDER BY created_at ASC, submission_id ASC
     LIMIT 501
   `);
-  const rawItems = unwrapRows<Record<string, unknown>>(itemResult as never);
-  const truncated = rawItems.length > 500;
-  const items = rawItems.slice(0, 500).map(
-    (row) => ({
-      submission_id: String(row.submission_id),
-      user_id: String(row.user_id),
-      username: String(row.username),
-      problem_id: String(row.problem_id),
-      problem_title: String(row.problem_title),
-      status: String(row.status),
-      result_status: row.result_status === null
-        ? null
-        : String(row.result_status),
-      created_at: String(row.created_at),
-      kind: row.kind === "objective"
-        ? "objective" as const
-        : "submission" as const,
-    }),
-  );
-  return {
-    contest_id: contestId,
-    contest_status: contest.status,
-    pending_count: pendingCount,
-    failed_count: failedCount,
-    ready: contest.status === "ended" && pendingCount === 0,
-    items,
-    truncated,
-  };
+    const rawItems = unwrapRows<Record<string, unknown>>(itemResult as never);
+    const truncated = rawItems.length > 500;
+    const items = rawItems.slice(0, 500).map(
+        (row) => ({
+            submission_id: String(row.submission_id),
+            user_id: String(row.user_id),
+            username: String(row.username),
+            problem_id: String(row.problem_id),
+            problem_title: String(row.problem_title),
+            status: String(row.status),
+            result_status: row.result_status === null
+                ? null
+                : String(row.result_status),
+            created_at: String(row.created_at),
+            kind: row.kind === "objective"
+                ? "objective" as const
+                : "submission" as const,
+        }),
+    );
+    return {
+        contest_id: contestId,
+        contest_status: contest.status,
+        pending_count: pendingCount,
+        failed_count: failedCount,
+        ready: contest.status === "ended" && pendingCount === 0,
+        items,
+        truncated,
+    };
 }
 
 export async function getLatestContestRankingSnapshot(
-  contestId: string,
-  executor: Executor = getDb(),
+    contestId: string,
+    executor: Executor = getDb(),
 ) {
-  const [snapshot] = await executor.select().from(contestRankingSnapshots)
-    .where(eq(contestRankingSnapshots.contest_id, contestId))
-    .orderBy(desc(contestRankingSnapshots.version)).limit(1);
-  return snapshot ?? null;
+    const [snapshot] = await executor.select().from(contestRankingSnapshots)
+        .where(eq(contestRankingSnapshots.contest_id, contestId))
+        .orderBy(desc(contestRankingSnapshots.version)).limit(1);
+    return snapshot ?? null;
 }
 
 /**
@@ -302,34 +309,34 @@ export async function getLatestContestRankingSnapshot(
  * @returns 快照行（含 rows），不存在时为 null
  */
 export async function getContestRankingSnapshotByVersion(
-  contestId: string,
-  version: number,
+    contestId: string,
+    version: number,
 ) {
-  const [snapshot] = await getDb().select().from(contestRankingSnapshots)
-    .where(
-      and(
-        eq(contestRankingSnapshots.contest_id, contestId),
-        eq(contestRankingSnapshots.version, version),
-      ),
-    )
-    .limit(1);
-  return snapshot ?? null;
+    const [snapshot] = await getDb().select().from(contestRankingSnapshots)
+        .where(
+            and(
+                eq(contestRankingSnapshots.contest_id, contestId),
+                eq(contestRankingSnapshots.version, version),
+            ),
+        )
+        .limit(1);
+    return snapshot ?? null;
 }
 
 /** 返回竞赛全部正式成绩版本，供修订历史和审计核对使用。 */
 export async function listContestRankingSnapshots(contestId: string) {
-  await getContest(contestId);
-  return await getDb().select({
-    id: contestRankingSnapshots.id,
-    contest_id: contestRankingSnapshots.contest_id,
-    version: contestRankingSnapshots.version,
-    status: contestRankingSnapshots.status,
-    note: contestRankingSnapshots.note,
-    created_by: contestRankingSnapshots.created_by,
-    created_at: contestRankingSnapshots.created_at,
-  }).from(contestRankingSnapshots)
-    .where(eq(contestRankingSnapshots.contest_id, contestId))
-    .orderBy(desc(contestRankingSnapshots.version));
+    await getContest(contestId);
+    return await getDb().select({
+        id: contestRankingSnapshots.id,
+        contest_id: contestRankingSnapshots.contest_id,
+        version: contestRankingSnapshots.version,
+        status: contestRankingSnapshots.status,
+        note: contestRankingSnapshots.note,
+        created_by: contestRankingSnapshots.created_by,
+        created_at: contestRankingSnapshots.created_at,
+    }).from(contestRankingSnapshots)
+        .where(eq(contestRankingSnapshots.contest_id, contestId))
+        .orderBy(desc(contestRankingSnapshots.version));
 }
 
 /**
@@ -339,16 +346,16 @@ export async function listContestRankingSnapshots(contestId: string) {
  * @returns 解析后的元素数组
  */
 function parseJsonArray<T>(value: unknown): T[] {
-  if (Array.isArray(value)) return value as T[];
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed as T[] : [];
-    } catch {
-      return [];
+    if (Array.isArray(value)) return value as T[];
+    if (typeof value === "string") {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed as T[] : [];
+        } catch {
+            return [];
+        }
     }
-  }
-  return [];
+    return [];
 }
 
 /**
@@ -361,17 +368,22 @@ function parseJsonArray<T>(value: unknown): T[] {
  * - 前三字段均相同时按 registered_at ASC, user_id ASC 稳定排序
  */
 export async function getKaggleRanking(
-  contestId: string,
-  cutoffTime?: string,
-  includeDetails = false,
-  executor?: Executor,
+    contestId: string,
+    cutoffTime?: string,
+    includeDetails = false,
+    executor?: Executor,
 ): Promise<KaggleRankingRow[]> {
-  const db = executor ?? getDb();
-  const contest = await getContest(contestId, undefined, db);
-  if (contest.type !== "kaggle") {
-    return await getFormatRanking(contestId, cutoffTime, includeDetails, db);
-  }
-  const result = await db.execute(sql`
+    const db = executor ?? getDb();
+    const contest = await getContest(contestId, undefined, db);
+    if (contest.type !== "kaggle") {
+        return await getFormatRanking(
+            contestId,
+            cutoffTime,
+            includeDetails,
+            db,
+        );
+    }
+    const result = await db.execute(sql`
     WITH contest_data AS (
       SELECT id, start_time, end_time
       FROM contests
@@ -562,78 +574,81 @@ export async function getKaggleRanking(
     ORDER BY rank
   `);
 
-  return unwrapRows<Record<string, unknown>>(result as never).map((row) => {
-    const problemScores = parseJsonArray<KaggleProblemScore>(
-      row.problem_scores,
-    );
-    return {
-      rank: Number(row.rank),
-      user_id: row.user_id as string,
-      username: row.username as string,
-      avatar_url: (row.avatar_url as string | null) ?? null,
-      total_score: Number(row.total_score),
-      last_submission_at: row.last_submission_at === null
-        ? null
-        : String(row.last_submission_at),
-      problem_scores: includeDetails
-        ? problemScores
-        : problemScores.map((ps) => ({
-          label: ps.label,
-          best_score: ps.best_score,
-          attempts: ps.attempts,
-          last_best_at: ps.last_best_at,
-        })),
-    };
-  });
+    return unwrapRows<Record<string, unknown>>(result as never).map((row) => {
+        const problemScores = parseJsonArray<KaggleProblemScore>(
+            row.problem_scores,
+        );
+        return {
+            rank: Number(row.rank),
+            user_id: row.user_id as string,
+            username: row.username as string,
+            avatar_url: (row.avatar_url as string | null) ?? null,
+            total_score: Number(row.total_score),
+            last_submission_at: row.last_submission_at === null
+                ? null
+                : String(row.last_submission_at),
+            problem_scores: includeDetails
+                ? problemScores
+                : problemScores.map((ps) => ({
+                    label: ps.label,
+                    best_score: ps.best_score,
+                    attempts: ps.attempts,
+                    last_best_at: ps.last_best_at,
+                })),
+        };
+    });
 }
 
 export type ContestRankingView = "live" | "frozen" | "official";
 
 export interface ContestRankingResult {
-  rows: KaggleRankingRow[];
-  view: ContestRankingView;
-  ranking_visibility: RankingVisibility;
-  freeze_start_time: string | null;
-  freeze_end_time: string;
-  settlement_pending: boolean;
+    rows: KaggleRankingRow[];
+    view: ContestRankingView;
+    ranking_visibility: RankingVisibility;
+    freeze_start_time: string | null;
+    freeze_end_time: string;
+    settlement_pending: boolean;
 }
 
 /** 统一计算封榜边界，起点包含、终点不包含。 */
 export function getContestFreezeWindow(contest: {
-  end_time: string;
-  freeze_start_time: string | null;
-  freeze_duration_seconds: number;
+    end_time: string;
+    freeze_start_time: string | null;
+    freeze_duration_seconds: number;
 }): { start: string | null; end: string } {
-  const end = new Date(contest.end_time).toISOString();
-  if (contest.freeze_start_time) {
-    return { start: new Date(contest.freeze_start_time).toISOString(), end };
-  }
-  if (contest.freeze_duration_seconds <= 0) return { start: null, end };
-  const startMs = Date.parse(contest.end_time) -
-    contest.freeze_duration_seconds * 1000;
-  return { start: new Date(startMs).toISOString(), end };
+    const end = new Date(contest.end_time).toISOString();
+    if (contest.freeze_start_time) {
+        return {
+            start: new Date(contest.freeze_start_time).toISOString(),
+            end,
+        };
+    }
+    if (contest.freeze_duration_seconds <= 0) return { start: null, end };
+    const startMs = Date.parse(contest.end_time) -
+        contest.freeze_duration_seconds * 1000;
+    return { start: new Date(startMs).toISOString(), end };
 }
 
 export function isContestFrozen(
-  window: { start: string | null; end: string },
-  now = Date.now(),
+    window: { start: string | null; end: string },
+    now = Date.now(),
 ): boolean {
-  if (!window.start) return false;
-  return now >= Date.parse(window.start) && now < Date.parse(window.end);
+    if (!window.start) return false;
+    return now >= Date.parse(window.start) && now < Date.parse(window.end);
 }
 
 function assertRankingVisibility(
-  visibility: RankingVisibility,
-  isAdmin: boolean,
-  viewerId: string | undefined,
-  registered: boolean,
+    visibility: RankingVisibility,
+    isAdmin: boolean,
+    viewerId: string | undefined,
+    registered: boolean,
 ): void {
-  if (isAdmin) return;
-  if (visibility === "hidden") throw new NotFoundError("竞赛排名不可见");
-  if (visibility === "participants" && !registered) {
-    if (!viewerId) throw new UnauthorizedError("登录后才可查看竞赛排名");
-    throw new ForbiddenError("仅参赛者可查看竞赛排名");
-  }
+    if (isAdmin) return;
+    if (visibility === "hidden") throw new NotFoundError("竞赛排名不可见");
+    if (visibility === "participants" && !registered) {
+        if (!viewerId) throw new UnauthorizedError("登录后才可查看竞赛排名");
+        throw new ForbiddenError("仅参赛者可查看竞赛排名");
+    }
 }
 
 /**
@@ -645,113 +660,113 @@ function assertRankingVisibility(
  * 身份（登录 / 参赛）与单人过滤守卫先于视图状态判定执行。
  */
 export async function getContestRankingView(
-  contestId: string,
-  type: ContestType,
-  isAdmin = false,
-  viewerId?: string,
-  executor: Executor = getDb(),
+    contestId: string,
+    type: ContestType,
+    isAdmin = false,
+    viewerId?: string,
+    executor: Executor = getDb(),
 ): Promise<ContestRankingResult> {
-  const contest = await getContest(contestId, viewerId, executor);
-  if (contest.type !== type) {
-    throw new BadRequestError("排名类型与竞赛赛制不一致");
-  }
-  const window = getContestFreezeWindow(contest);
-  if (!isAdmin && contest.type === "oi" && contest.status === "running") {
-    throw new NotFoundError("OI 赛时成绩榜不可见");
-  }
-  const selfOnly = contest.type === "kaggle" &&
-    contest.config.scoreboard_scope !== "full";
-  assertRankingVisibility(
-    contest.ranking_visibility,
-    isAdmin,
-    viewerId,
-    contest.is_registered === true,
-  );
-
-  if (isAdmin) {
-    return {
-      rows: await getKaggleRanking(contestId, undefined, true, executor),
-      view: "live",
-      ranking_visibility: contest.ranking_visibility,
-      freeze_start_time: window.start,
-      freeze_end_time: window.end,
-      settlement_pending: contest.status === "ended" &&
-        !await getLatestContestRankingSnapshot(contestId, executor),
-    };
-  }
-
-  const snapshot = contest.status === "ended"
-    ? await getLatestContestRankingSnapshot(contestId, executor)
-    : null;
-  if (snapshot) {
-    return {
-      rows: snapshot.rows as KaggleRankingRow[],
-      view: "official",
-      ranking_visibility: contest.ranking_visibility,
-      freeze_start_time: window.start,
-      freeze_end_time: window.end,
-      settlement_pending: false,
-    };
-  }
-
-  // ── 非管理员：身份与隐私守卫必须**先于**视图状态判定（审计 VULN-09）──
-  //
-  // 修复前：封榜窗口一到，代码在鉴权与"仅返回本人一行"过滤**之前**就直接 return
-  // 全量 Kaggle 榜。于是"平时看不到别人成绩"的选手，一旦进入封榜期，排行榜反而
-  // 向全员（含未登录匿名访客）透出全场所有选手封榜前的分数、提交尝试次数、
-  // 最后得分时间与名次——权限与隐私完全倒挂。
-  //
-  // 封榜窗口（freeze_start_time ~ end_time）是 running 的**子区间**，路由契约明确
-  // "进行中非管理员仅返回自己的排名"，因此守卫必须对封榜状态同样生效。
-  if (contest.status === "running" && !viewerId) {
-    throw new UnauthorizedError("竞赛进行期间需登录查看排名");
-  }
-  if (contest.status === "running" && contest.is_registered !== true) {
-    throw new ForbiddenError("仅参赛者可查看进行中的排名");
-  }
-
-  const frozen = isContestFrozen(window) ||
-    (contest.status === "ended" && window.start !== null);
-  if (frozen) {
-    // 非管理员：只返回本人一行；匿名（无 viewerId）自然得到空列表，
-    // 而不是他人成绩 —— 隐私策略在封榜期与赛期完全一致。
-    const frozenRows = await getKaggleRanking(
-      contestId,
-      window.start!,
-      false,
-      executor,
+    const contest = await getContest(contestId, viewerId, executor);
+    if (contest.type !== type) {
+        throw new BadRequestError("排名类型与竞赛赛制不一致");
+    }
+    const window = getContestFreezeWindow(contest);
+    if (!isAdmin && contest.type === "oi" && contest.status === "running") {
+        throw new NotFoundError("OI 赛时成绩榜不可见");
+    }
+    const selfOnly = contest.type === "kaggle" &&
+        contest.config.scoreboard_scope !== "full";
+    assertRankingVisibility(
+        contest.ranking_visibility,
+        isAdmin,
+        viewerId,
+        contest.is_registered === true,
     );
+
+    if (isAdmin) {
+        return {
+            rows: await getKaggleRanking(contestId, undefined, true, executor),
+            view: "live",
+            ranking_visibility: contest.ranking_visibility,
+            freeze_start_time: window.start,
+            freeze_end_time: window.end,
+            settlement_pending: contest.status === "ended" &&
+                !await getLatestContestRankingSnapshot(contestId, executor),
+        };
+    }
+
+    const snapshot = contest.status === "ended"
+        ? await getLatestContestRankingSnapshot(contestId, executor)
+        : null;
+    if (snapshot) {
+        return {
+            rows: snapshot.rows as KaggleRankingRow[],
+            view: "official",
+            ranking_visibility: contest.ranking_visibility,
+            freeze_start_time: window.start,
+            freeze_end_time: window.end,
+            settlement_pending: false,
+        };
+    }
+
+    // ── 非管理员：身份与隐私守卫必须**先于**视图状态判定（审计 VULN-09）──
+    //
+    // 修复前：封榜窗口一到，代码在鉴权与"仅返回本人一行"过滤**之前**就直接 return
+    // 全量 Kaggle 榜。于是"平时看不到别人成绩"的选手，一旦进入封榜期，排行榜反而
+    // 向全员（含未登录匿名访客）透出全场所有选手封榜前的分数、提交尝试次数、
+    // 最后得分时间与名次——权限与隐私完全倒挂。
+    //
+    // 封榜窗口（freeze_start_time ~ end_time）是 running 的**子区间**，路由契约明确
+    // "进行中非管理员仅返回自己的排名"，因此守卫必须对封榜状态同样生效。
+    if (contest.status === "running" && !viewerId) {
+        throw new UnauthorizedError("竞赛进行期间需登录查看排名");
+    }
+    if (contest.status === "running" && contest.is_registered !== true) {
+        throw new ForbiddenError("仅参赛者可查看进行中的排名");
+    }
+
+    const frozen = isContestFrozen(window) ||
+        (contest.status === "ended" && window.start !== null);
+    if (frozen) {
+        // 非管理员：只返回本人一行；匿名（无 viewerId）自然得到空列表，
+        // 而不是他人成绩 —— 隐私策略在封榜期与赛期完全一致。
+        const frozenRows = await getKaggleRanking(
+            contestId,
+            window.start!,
+            false,
+            executor,
+        );
+        return {
+            rows: !selfOnly
+                ? frozenRows
+                : viewerId === undefined
+                ? []
+                : frozenRows.filter((row) => row.user_id === viewerId),
+            view: "frozen",
+            ranking_visibility: contest.ranking_visibility,
+            freeze_start_time: window.start,
+            freeze_end_time: window.end,
+            settlement_pending: contest.status === "ended",
+        };
+    }
+
+    if (contest.status === "ended") {
+        // 没有配置封榜时也不能因“结束”自动暴露尚未结算的实时榜。
+        throw new ConflictError("竞赛已结束，正式成绩尚未发布");
+    }
+
+    const rows = await getKaggleRanking(contestId, undefined, false, executor);
     return {
-      rows: !selfOnly
-        ? frozenRows
-        : viewerId === undefined
-        ? []
-        : frozenRows.filter((row) => row.user_id === viewerId),
-      view: "frozen",
-      ranking_visibility: contest.ranking_visibility,
-      freeze_start_time: window.start,
-      freeze_end_time: window.end,
-      settlement_pending: contest.status === "ended",
+        // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。
+        rows: contest.status === "running" && selfOnly
+            ? rows.filter((row) => row.user_id === viewerId)
+            : rows,
+        view: "live",
+        ranking_visibility: contest.ranking_visibility,
+        freeze_start_time: window.start,
+        freeze_end_time: window.end,
+        settlement_pending: false,
     };
-  }
-
-  if (contest.status === "ended") {
-    // 没有配置封榜时也不能因“结束”自动暴露尚未结算的实时榜。
-    throw new ConflictError("竞赛已结束，正式成绩尚未发布");
-  }
-
-  const rows = await getKaggleRanking(contestId, undefined, false, executor);
-  return {
-    // 进行中非管理员保持旧语义：只返回自己的排名，避免泄露他人实时成绩。
-    rows: contest.status === "running" && selfOnly
-      ? rows.filter((row) => row.user_id === viewerId)
-      : rows,
-    view: "live",
-    ranking_visibility: contest.ranking_visibility,
-    freeze_start_time: window.start,
-    freeze_end_time: window.end,
-    settlement_pending: false,
-  };
 }
 
 /**
@@ -763,30 +778,31 @@ export async function getContestRankingView(
  * （#656）；未配置封榜的「已结束未结算」则按结算门禁抛 `ConflictError`。
  */
 export async function getContestRanking(
-  contestId: string,
-  type: ContestType,
-  isAdmin = false,
-  viewerId?: string,
+    contestId: string,
+    type: ContestType,
+    isAdmin = false,
+    viewerId?: string,
 ): Promise<KaggleRankingRow[]> {
-  // 不得为「已结束但无快照」提前 return 全量榜：那会绕过
-  // getContestRankingView 的封榜/待结算隐私守卫（#656）。
-  const result = await getContestRankingView(
-    contestId,
-    type,
-    isAdmin,
-    viewerId,
-  );
-  if (isAdmin || result.ranking_visibility === "public") {
-    // 保留旧服务函数的进行中“仅返回本人”语义；REST 路由使用带元数据的
-    // getContestRankingView，可按显式 public 策略返回公开榜。
-    const contest = await getContest(contestId, viewerId);
-    if (
-      !isAdmin && contest.status === "running" &&
-      contest.type === "kaggle" && contest.config.scoreboard_scope !== "full"
-    ) {
-      return result.rows.filter((row) => row.user_id === viewerId);
+    // 不得为「已结束但无快照」提前 return 全量榜：那会绕过
+    // getContestRankingView 的封榜/待结算隐私守卫（#656）。
+    const result = await getContestRankingView(
+        contestId,
+        type,
+        isAdmin,
+        viewerId,
+    );
+    if (isAdmin || result.ranking_visibility === "public") {
+        // 保留旧服务函数的进行中“仅返回本人”语义；REST 路由使用带元数据的
+        // getContestRankingView，可按显式 public 策略返回公开榜。
+        const contest = await getContest(contestId, viewerId);
+        if (
+            !isAdmin && contest.status === "running" &&
+            contest.type === "kaggle" &&
+            contest.config.scoreboard_scope !== "full"
+        ) {
+            return result.rows.filter((row) => row.user_id === viewerId);
+        }
+        return result.rows;
     }
-    return result.rows;
-  }
-  return result.rows.filter((row) => row.user_id === viewerId);
+    return result.rows.filter((row) => row.user_id === viewerId);
 }

@@ -8,23 +8,23 @@ import type { UpgradeState } from "../upgrade-state.ts";
  * `null`，由调用方重新下载候选发布文件。
  */
 export async function reusableCandidateDir(
-  state: UpgradeState | null,
+    state: UpgradeState | null,
 ): Promise<string | null> {
-  if (state === null || state.files_staged_dir === null) return null;
-  const dir = state.files_staged_dir;
-  try {
-    const info = await Deno.stat(dir);
-    if (!info.isDirectory) return null;
-    const actual = await digestCandidateFiles(dir);
-    const expected = state.files;
-    if (actual.length !== expected.length) return null;
-    const intact = actual.every((file, index) => {
-      const reference = expected[index];
-      return reference !== undefined && file.name === reference.name &&
-        file.sha256 === reference.sha256;
-    });
-    return intact ? dir : null;
-  } catch {
-    return null;
-  }
+    if (state === null || state.files_staged_dir === null) return null;
+    const dir = state.files_staged_dir;
+    try {
+        const info = await Deno.stat(dir);
+        if (!info.isDirectory) return null;
+        const actual = await digestCandidateFiles(dir);
+        const expected = state.files;
+        if (actual.length !== expected.length) return null;
+        const intact = actual.every((file, index) => {
+            const reference = expected[index];
+            return reference !== undefined && file.name === reference.name &&
+                file.sha256 === reference.sha256;
+        });
+        return intact ? dir : null;
+    } catch {
+        return null;
+    }
 }

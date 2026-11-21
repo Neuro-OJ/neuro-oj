@@ -1,100 +1,100 @@
 import { type Context, Hono } from "hono";
 import { parseJsonBody } from "../../../../shared/http/request.ts";
 import {
-  enforceReportRateLimit,
+    enforceReportRateLimit,
 } from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
 import {
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
-  UnauthorizedError,
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
 import {
-  resolvePermissions,
+    resolvePermissions,
 } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
-  assertWorkspacePermission,
-  loadWorkspace,
+    assertWorkspacePermission,
+    loadWorkspace,
 } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
-  domainRoleCapabilities,
-  resolveEffectiveDomainRole,
+    domainRoleCapabilities,
+    resolveEffectiveDomainRole,
 } from "../../../../shared/access/roles.ts";
 import {
-  DEFAULT_DOMAIN_ID,
-  DEFAULT_DOMAIN_SLUG,
+    DEFAULT_DOMAIN_ID,
+    DEFAULT_DOMAIN_SLUG,
 } from "../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspace } from "../../../access/domains.ts";
 import { createSystemActor } from "../../../runtime/system-actors.ts";
 import {
-  authMiddleware,
-  optionalAuthMiddleware,
+    authMiddleware,
+    optionalAuthMiddleware,
 } from "../../../access/identity/middleware/auth.ts";
 import { type OptionalAuthEnv } from "../../../../shared/http/hono-env.ts";
 import type {
-  CommunityPostInput,
-  CommunityPostType,
+    CommunityPostInput,
+    CommunityPostType,
 } from "../types/community.ts";
 import { parseQueryLimit } from "../services/community/query-limit.ts";
 import {
-  assertCommunityEnabled,
-  assertCommunityWritable,
-  changePostStatus,
-  countPostsByType,
-  createComment,
-  createPost,
-  createReport,
-  deleteComment,
-  getCommunityConfig,
-  getPost,
-  getReportDetail,
-  hasAcceptedSolution,
-  listBoards,
-  listComments,
-  listPosts,
-  publicationStatus,
-  resolvePostId,
-  resolveProblemId,
-  setPostOfficial,
-  updateComment,
-  updatePost,
+    assertCommunityEnabled,
+    assertCommunityWritable,
+    changePostStatus,
+    countPostsByType,
+    createComment,
+    createPost,
+    createReport,
+    deleteComment,
+    getCommunityConfig,
+    getPost,
+    getReportDetail,
+    hasAcceptedSolution,
+    listBoards,
+    listComments,
+    listPosts,
+    publicationStatus,
+    resolvePostId,
+    resolveProblemId,
+    setPostOfficial,
+    updateComment,
+    updatePost,
 } from "../services/community/community.ts";
 import {
-  hasUnendedPublicContest,
-  isProblemInUnendedPublicContest,
+    hasUnendedPublicContest,
+    isProblemInUnendedPublicContest,
 } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import { withDefaultCommunity } from "../services/community/domain-community.ts";
 import type {
-  CommunityCapability,
-  CommunityScope,
+    CommunityCapability,
+    CommunityScope,
 } from "../services/community/community-scope.ts";
 
 interface CommunityEnv extends OptionalAuthEnv {
-  Variables: OptionalAuthEnv["Variables"] & {
-    communityScope: CommunityScope;
-    /** 请求级审核员判定，避免同一请求重复解析默认域角色。 */
-    communityModerator: boolean;
-  };
+    Variables: OptionalAuthEnv["Variables"] & {
+        communityScope: CommunityScope;
+        /** 请求级审核员判定，避免同一请求重复解析默认域角色。 */
+        communityModerator: boolean;
+    };
 }
 const router = new Hono<CommunityEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
-  const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path);
-  if (!accountRoute) {
-    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
-    const moderator = !!c.var.userId && await isModerator(c);
-    await withDefaultCommunity(c.var.userId ?? null, {
-      write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
-      moderator,
-    }, async (scope) => {
-      c.set("communityScope", scope);
-      c.set("communityModerator", moderator);
-      await next();
-      // Hono 在 next 内转换异常为响应，事务仍需回滚原异常。
-      if (c.error) throw c.error;
-    });
-    return;
-  }
-  await next();
+    const accountRoute = /\/(?:notifications|reports)(?:\/|$)/.test(c.req.path);
+    if (!accountRoute) {
+        await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+        const moderator = !!c.var.userId && await isModerator(c);
+        await withDefaultCommunity(c.var.userId ?? null, {
+            write: !["GET", "HEAD", "OPTIONS"].includes(c.req.method),
+            moderator,
+        }, async (scope) => {
+            c.set("communityScope", scope);
+            c.set("communityModerator", moderator);
+            await next();
+            // Hono 在 next 内转换异常为响应，事务仍需回滚原异常。
+            if (c.error) throw c.error;
+        });
+        return;
+    }
+    await next();
 });
 
 /**
@@ -104,14 +104,14 @@ router.use("*", optionalAuthMiddleware, async (c, next) => {
  * @throws {ForbiddenError} 未登录时抛出。
  */
 function userId(c: { get: (key: "userId") => string | undefined }): string {
-  const id = c.get("userId");
-  if (!id) throw new ForbiddenError("请先登录");
-  return id;
+    const id = c.get("userId");
+    if (!id) throw new ForbiddenError("请先登录");
+    return id;
 }
 
 /** 请求级审核员标志（中间件已解析，undefined 视作非审核员）。 */
 function moderatorFlag(c: { get: (key: "communityModerator") => boolean }) {
-  return c.get("communityModerator") === true;
+    return c.get("communityModerator") === true;
 }
 
 /**
@@ -124,18 +124,18 @@ function moderatorFlag(c: { get: (key: "communityModerator") => boolean }) {
  * @returns 是否为审核员。
  */
 async function isModerator(
-  c: Context,
+    c: Context,
 ): Promise<boolean> {
-  const userId = c.get("userId");
-  if (!userId) return false;
-  if ((await resolvePermissions(c)).has("admin:full_access")) return true;
-  const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId);
-  const role = resolveEffectiveDomainRole(
-    userId,
-    workspace.domain,
-    workspace.membership,
-  );
-  return domainRoleCapabilities(role).has("community:moderate");
+    const userId = c.get("userId");
+    if (!userId) return false;
+    if ((await resolvePermissions(c)).has("admin:full_access")) return true;
+    const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, userId);
+    const role = resolveEffectiveDomainRole(
+        userId,
+        workspace.domain,
+        workspace.membership,
+    );
+    return domainRoleCapabilities(role).has("community:moderate");
 }
 
 /**
@@ -147,18 +147,21 @@ async function isModerator(
  * @returns 是否具备该能力。
  */
 async function hasDefaultCommunityPermission(
-  c: Context,
-  permission: CommunityCapability,
+    c: Context,
+    permission: CommunityCapability,
 ): Promise<boolean> {
-  try {
-    const actorId = c.get("userId") as string | undefined;
-    const workspace = await loadWorkspace(DEFAULT_DOMAIN_SLUG, actorId ?? null);
-    assertWorkspacePermission(workspace.context, permission);
-    return true;
-  } catch (error) {
-    if (error instanceof ForbiddenError) return false;
-    throw error;
-  }
+    try {
+        const actorId = c.get("userId") as string | undefined;
+        const workspace = await loadWorkspace(
+            DEFAULT_DOMAIN_SLUG,
+            actorId ?? null,
+        );
+        assertWorkspacePermission(workspace.context, permission);
+        return true;
+    } catch (error) {
+        if (error instanceof ForbiddenError) return false;
+        throw error;
+    }
 }
 
 /**
@@ -168,21 +171,24 @@ async function hasDefaultCommunityPermission(
  * @throws {ForbiddenError} 不具备该能力时抛出。
  */
 async function assertDefaultCommunityPermission(
-  c: Context,
-  permission: CommunityCapability,
+    c: Context,
+    permission: CommunityCapability,
 ): Promise<void> {
-  if (!(await hasDefaultCommunityPermission(c, permission))) {
-    throw new ForbiddenError("工作空间权限不足", "DOMAIN_PERMISSION_DENIED");
-  }
+    if (!(await hasDefaultCommunityPermission(c, permission))) {
+        throw new ForbiddenError(
+            "工作空间权限不足",
+            "DOMAIN_PERMISSION_DENIED",
+        );
+    }
 }
 
 /** 访客读社区守卫：guest_read_enabled 关闭时未登录用户禁止访问 */
 function requireGuestRead(
-  c: { get: (key: "userId") => string | undefined },
+    c: { get: (key: "userId") => string | undefined },
 ): void {
-  if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
-    throw new UnauthorizedError("登录后可查看社区");
-  }
+    if (!getCommunityConfig().guest_read_enabled && !c.get("userId")) {
+        throw new UnauthorizedError("登录后可查看社区");
+    }
 }
 
 /**
@@ -191,7 +197,7 @@ function requireGuestRead(
  * @throws {ForbiddenError} 不具备 `community:create` 时抛出。
  */
 async function requirePostPermission(c: Context): Promise<void> {
-  await assertDefaultCommunityPermission(c, "community:create");
+    await assertDefaultCommunityPermission(c, "community:create");
 }
 
 /**
@@ -201,37 +207,39 @@ async function requirePostPermission(c: Context): Promise<void> {
  * `contest_silence` 为 true 时（存在未结束公开赛且非审核员），社区写入入口应禁用。
  */
 router.get("/config", optionalAuthMiddleware, async (c) => {
-  const config = getCommunityConfig();
-  const loggedIn = !!c.get("userId");
-  if (!config.enabled) return c.json({ data: { ...config, permissions: {} } });
-  const canWrite = loggedIn &&
-    await hasDefaultCommunityPermission(c, "community:create");
-  const permissions = loggedIn
-    ? {
-      solution: canWrite,
-      discussion: canWrite,
-      comment: canWrite,
-      report: canWrite,
-      moderate: moderatorFlag(c),
+    const config = getCommunityConfig();
+    const loggedIn = !!c.get("userId");
+    if (!config.enabled) {
+        return c.json({ data: { ...config, permissions: {} } });
     }
-    : {};
-  // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
-  // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
-  const contestSilence = !(loggedIn && moderatorFlag(c)) &&
-    await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
-  // 新用户预审：告知前端"此人现在发的内容会进 pending 队列"，让编辑区在提交前
-  // 就给出提示（提交后也只会收到 status=pending，缺少预期会让用户以为发布失败）。
-  const underReview = loggedIn && config.new_user_review_hours > 0 &&
-    await publicationStatus(c.get("userId")!).catch(() => "published") ===
-      "pending";
-  return c.json({
-    data: {
-      ...config,
-      permissions,
-      contest_silence: contestSilence,
-      under_review: underReview,
-    },
-  });
+    const canWrite = loggedIn &&
+        await hasDefaultCommunityPermission(c, "community:create");
+    const permissions = loggedIn
+        ? {
+            solution: canWrite,
+            discussion: canWrite,
+            comment: canWrite,
+            report: canWrite,
+            moderate: moderatorFlag(c),
+        }
+        : {};
+    // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
+    // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
+    const contestSilence = !(loggedIn && moderatorFlag(c)) &&
+        await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
+    // 新用户预审：告知前端"此人现在发的内容会进 pending 队列"，让编辑区在提交前
+    // 就给出提示（提交后也只会收到 status=pending，缺少预期会让用户以为发布失败）。
+    const underReview = loggedIn && config.new_user_review_hours > 0 &&
+        await publicationStatus(c.get("userId")!).catch(() => "published") ===
+            "pending";
+    return c.json({
+        data: {
+            ...config,
+            permissions,
+            contest_silence: contestSilence,
+            under_review: underReview,
+        },
+    });
 });
 
 /**
@@ -240,9 +248,9 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
  * 响应：{ data: 板块列表 }。
  */
 router.get("/boards", optionalAuthMiddleware, async (c) => {
-  assertCommunityEnabled("discussions_enabled");
-  requireGuestRead(c);
-  return c.json({ data: await listBoards(false, c.var.communityScope) });
+    assertCommunityEnabled("discussions_enabled");
+    requireGuestRead(c);
+    return c.json({ data: await listBoards(false, c.var.communityScope) });
 });
 
 /**
@@ -251,37 +259,37 @@ router.get("/boards", optionalAuthMiddleware, async (c) => {
  * 响应：{ data, next_cursor }。
  */
 router.get("/posts", optionalAuthMiddleware, async (c) => {
-  const type = c.req.query("type") as CommunityPostType | undefined;
-  const query = c.req.query("q")?.trim();
-  if (type && !["solution", "discussion"].includes(type)) {
-    throw new BadRequestError("无效内容类型");
-  }
-  if (query && query.length > 100) {
-    throw new BadRequestError("搜索关键词最多 100 个字符");
-  }
-  assertCommunityEnabled(
-    type === "solution"
-      ? "solutions_enabled"
-      : type === "discussion"
-      ? "discussions_enabled"
-      : undefined,
-  );
-  requireGuestRead(c);
-  const moderator = moderatorFlag(c);
-  return c.json(
-    await listPosts({
-      type,
-      problemId: c.req.query("problem_id"),
-      boardId: c.req.query("board_id"),
-      authorId: c.req.query("author_id"),
-      query,
-      cursor: c.req.query("cursor"),
-      limit: parseQueryLimit(c.req.query("limit"), { default: 20 }),
-      viewerId: c.get("userId"),
-      moderator,
-      scope: c.var.communityScope,
-    }),
-  );
+    const type = c.req.query("type") as CommunityPostType | undefined;
+    const query = c.req.query("q")?.trim();
+    if (type && !["solution", "discussion"].includes(type)) {
+        throw new BadRequestError("无效内容类型");
+    }
+    if (query && query.length > 100) {
+        throw new BadRequestError("搜索关键词最多 100 个字符");
+    }
+    assertCommunityEnabled(
+        type === "solution"
+            ? "solutions_enabled"
+            : type === "discussion"
+            ? "discussions_enabled"
+            : undefined,
+    );
+    requireGuestRead(c);
+    const moderator = moderatorFlag(c);
+    return c.json(
+        await listPosts({
+            type,
+            problemId: c.req.query("problem_id"),
+            boardId: c.req.query("board_id"),
+            authorId: c.req.query("author_id"),
+            query,
+            cursor: c.req.query("cursor"),
+            limit: parseQueryLimit(c.req.query("limit"), { default: 20 }),
+            viewerId: c.get("userId"),
+            moderator,
+            scope: c.var.communityScope,
+        }),
+    );
 });
 
 /**
@@ -290,9 +298,9 @@ router.get("/posts", optionalAuthMiddleware, async (c) => {
  * 响应：{ data: { solution, discussion } }。
  */
 router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
-  assertCommunityEnabled();
-  requireGuestRead(c);
-  return c.json({ data: await countPostsByType(c.var.communityScope) });
+    assertCommunityEnabled();
+    requireGuestRead(c);
+    return c.json({ data: await countPostsByType(c.var.communityScope) });
 });
 
 /**
@@ -300,51 +308,51 @@ router.get("/posts/counts", optionalAuthMiddleware, async (c) => {
  * 返回题解模块开关、门槛是否开启、当前用户是否已通过（finished 且 score>0）以及能否发布。
  */
 router.get("/solutions/eligibility", authMiddleware, async (c) => {
-  const problemRef = c.req.query("problem_id");
-  if (!problemRef) throw new BadRequestError("缺少 problem_id");
-  const problemId = await resolveProblemId(problemRef);
-  if (!problemId) throw new NotFoundError("题目不存在");
-  const actorId = userId(c);
-  const config = getCommunityConfig();
-  const requiresAccepted = config.solution_requires_accepted;
-  const accepted = requiresAccepted
-    ? await hasAcceptedSolution(actorId, problemId, c.var.communityScope)
-    : true;
-  // 公开赛保密门控（审计 VULN-02）：归属于**尚未结束**公开赛（含赛前筹备期）的
-  // 题目不开放题解发布，赛后自动恢复。此前只判 `running`，赛前筹备期完全放行。
-  // 审核员不受限（复核需要），与读路径门控口径一致；判据复用 contest 域单一真相源。
-  const moderator = moderatorFlag(c);
-  const inUnendedPublicContest = await isProblemInUnendedPublicContest(
-    problemId,
-    DEFAULT_DOMAIN_ID,
-  );
-  const blockedByContest = inUnendedPublicContest && !moderator;
-  // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
-  const blockedBySilence = !moderator && !blockedByContest &&
-    await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
-  const canCreate = config.solutions_enabled &&
-    (!config.read_only || moderator) &&
-    (await hasDefaultCommunityPermission(c, "community:create")) &&
-    (accepted || moderator) &&
-    !blockedByContest &&
-    !blockedBySilence;
-  return c.json({
-    data: {
-      enabled: config.solutions_enabled,
-      requires_accepted: requiresAccepted,
-      accepted,
-      can_create: canCreate,
-      // 供前端展示禁用原因，而非让用户点击后吃 403。
-      // 机器码保持 `running_contest` 以兼容既有前端分支；语义已扩展为
-      // "归属尚未结束的公开赛（赛前筹备期 + 赛中）"。
-      // `contest_silence`：本题不在赛中，但全站有未结束公开赛，暂停发布题解。
-      blocked_reason: blockedByContest
-        ? "running_contest"
-        : blockedBySilence
-        ? "contest_silence"
-        : null,
-    },
-  });
+    const problemRef = c.req.query("problem_id");
+    if (!problemRef) throw new BadRequestError("缺少 problem_id");
+    const problemId = await resolveProblemId(problemRef);
+    if (!problemId) throw new NotFoundError("题目不存在");
+    const actorId = userId(c);
+    const config = getCommunityConfig();
+    const requiresAccepted = config.solution_requires_accepted;
+    const accepted = requiresAccepted
+        ? await hasAcceptedSolution(actorId, problemId, c.var.communityScope)
+        : true;
+    // 公开赛保密门控（审计 VULN-02）：归属于**尚未结束**公开赛（含赛前筹备期）的
+    // 题目不开放题解发布，赛后自动恢复。此前只判 `running`，赛前筹备期完全放行。
+    // 审核员不受限（复核需要），与读路径门控口径一致；判据复用 contest 域单一真相源。
+    const moderator = moderatorFlag(c);
+    const inUnendedPublicContest = await isProblemInUnendedPublicContest(
+        problemId,
+        DEFAULT_DOMAIN_ID,
+    );
+    const blockedByContest = inUnendedPublicContest && !moderator;
+    // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
+    const blockedBySilence = !moderator && !blockedByContest &&
+        await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
+    const canCreate = config.solutions_enabled &&
+        (!config.read_only || moderator) &&
+        (await hasDefaultCommunityPermission(c, "community:create")) &&
+        (accepted || moderator) &&
+        !blockedByContest &&
+        !blockedBySilence;
+    return c.json({
+        data: {
+            enabled: config.solutions_enabled,
+            requires_accepted: requiresAccepted,
+            accepted,
+            can_create: canCreate,
+            // 供前端展示禁用原因，而非让用户点击后吃 403。
+            // 机器码保持 `running_contest` 以兼容既有前端分支；语义已扩展为
+            // "归属尚未结束的公开赛（赛前筹备期 + 赛中）"。
+            // `contest_silence`：本题不在赛中，但全站有未结束公开赛，暂停发布题解。
+            blocked_reason: blockedByContest
+                ? "running_contest"
+                : blockedBySilence
+                ? "contest_silence"
+                : null,
+        },
+    });
 });
 
 /**
@@ -353,17 +361,17 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
  * 响应：{ data: 帖子详情 }。
  */
 router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
-  assertCommunityEnabled();
-  requireGuestRead(c);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  return c.json({
-    data: await getPost(
-      postId,
-      c.get("userId"),
-      moderatorFlag(c),
-      c.var.communityScope,
-    ),
-  });
+    assertCommunityEnabled();
+    requireGuestRead(c);
+    const postId = await resolvePostId(c.req.param("postId") as string);
+    return c.json({
+        data: await getPost(
+            postId,
+            c.get("userId"),
+            moderatorFlag(c),
+            c.var.communityScope,
+        ),
+    });
 });
 
 /**
@@ -372,22 +380,22 @@ router.get("/posts/:postId", optionalAuthMiddleware, async (c) => {
  * 响应：201 { data: 新建帖子 }。
  */
 router.post("/posts", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  const input = await parseJsonBody<CommunityPostInput>(c);
-  if (!input || !["solution", "discussion"].includes(input.type)) {
-    throw new BadRequestError("仅支持讨论与题解");
-  }
-  await requirePostPermission(c);
-  await assertCommunityWritable(actorId, moderatorFlag(c), {
-    scope: c.var.communityScope,
-  });
-  const post = await createPost(
-    actorId,
-    input,
-    moderatorFlag(c),
-    c.var.communityScope,
-  );
-  return c.json({ data: post }, 201);
+    const actorId = userId(c);
+    const input = await parseJsonBody<CommunityPostInput>(c);
+    if (!input || !["solution", "discussion"].includes(input.type)) {
+        throw new BadRequestError("仅支持讨论与题解");
+    }
+    await requirePostPermission(c);
+    await assertCommunityWritable(actorId, moderatorFlag(c), {
+        scope: c.var.communityScope,
+    });
+    const post = await createPost(
+        actorId,
+        input,
+        moderatorFlag(c),
+        c.var.communityScope,
+    );
+    return c.json({ data: post }, 201);
 });
 
 /**
@@ -396,23 +404,23 @@ router.post("/posts", authMiddleware, async (c) => {
  * 响应：{ data: 更新后的帖子 }。
  */
 router.patch("/posts/:postId", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertCommunityWritable(actorId, moderatorFlag(c), {
-    scope: c.var.communityScope,
-  });
-  const input = await parseJsonBody<
-    Partial<Pick<CommunityPostInput, "title" | "content">>
-  >(c);
-  return c.json({
-    data: await updatePost(
-      postId,
-      actorId,
-      moderatorFlag(c),
-      input,
-      c.var.communityScope,
-    ),
-  });
+    const actorId = userId(c);
+    const postId = await resolvePostId(c.req.param("postId") as string);
+    await assertCommunityWritable(actorId, moderatorFlag(c), {
+        scope: c.var.communityScope,
+    });
+    const input = await parseJsonBody<
+        Partial<Pick<CommunityPostInput, "title" | "content">>
+    >(c);
+    return c.json({
+        data: await updatePost(
+            postId,
+            actorId,
+            moderatorFlag(c),
+            input,
+            c.var.communityScope,
+        ),
+    });
 });
 
 /**
@@ -426,26 +434,26 @@ router.patch("/posts/:postId", authMiddleware, async (c) => {
  * 标记他人题解）。此处补上唯一入口。
  */
 router.patch("/posts/:postId/official", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  const moderator = moderatorFlag(c);
-  await assertCommunityWritable(actorId, moderator, {
-    scope: c.var.communityScope,
-  });
-  const body = await parseJsonBody<{ value?: boolean }>(c);
-  if (typeof body.value !== "boolean") {
-    throw new BadRequestError("value 必须为布尔值");
-  }
-  await setPostOfficial(
-    postId,
-    actorId,
-    moderator,
-    body.value,
-    c.var.communityScope,
-  );
-  return c.json({
-    data: await getPost(postId, actorId, moderator, c.var.communityScope),
-  });
+    const actorId = userId(c);
+    const postId = await resolvePostId(c.req.param("postId") as string);
+    const moderator = moderatorFlag(c);
+    await assertCommunityWritable(actorId, moderator, {
+        scope: c.var.communityScope,
+    });
+    const body = await parseJsonBody<{ value?: boolean }>(c);
+    if (typeof body.value !== "boolean") {
+        throw new BadRequestError("value 必须为布尔值");
+    }
+    await setPostOfficial(
+        postId,
+        actorId,
+        moderator,
+        body.value,
+        c.var.communityScope,
+    );
+    return c.json({
+        data: await getPost(postId, actorId, moderator, c.var.communityScope),
+    });
 });
 
 /**
@@ -454,30 +462,30 @@ router.patch("/posts/:postId/official", authMiddleware, async (c) => {
  * 响应：{ data: 更新后的帖子 }。
  */
 router.delete("/posts/:postId", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  const post = await getPost(
-    postId,
-    actorId,
-    moderatorFlag(c),
-    c.var.communityScope,
-  );
-  if (post.post.author_id !== actorId && !moderatorFlag(c)) {
-    throw new ForbiddenError("无权删除该内容");
-  }
-  await assertCommunityWritable(actorId, moderatorFlag(c), {
-    allowSocialBan: true,
-    scope: c.var.communityScope,
-  });
-  return c.json({
-    data: await changePostStatus(
-      postId,
-      actorId,
-      "deleted",
-      undefined,
-      c.var.communityScope,
-    ),
-  });
+    const actorId = userId(c);
+    const postId = await resolvePostId(c.req.param("postId") as string);
+    const post = await getPost(
+        postId,
+        actorId,
+        moderatorFlag(c),
+        c.var.communityScope,
+    );
+    if (post.post.author_id !== actorId && !moderatorFlag(c)) {
+        throw new ForbiddenError("无权删除该内容");
+    }
+    await assertCommunityWritable(actorId, moderatorFlag(c), {
+        allowSocialBan: true,
+        scope: c.var.communityScope,
+    });
+    return c.json({
+        data: await changePostStatus(
+            postId,
+            actorId,
+            "deleted",
+            undefined,
+            c.var.communityScope,
+        ),
+    });
 });
 
 /**
@@ -486,20 +494,20 @@ router.delete("/posts/:postId", authMiddleware, async (c) => {
  * 响应：{ data: 评论列表 }。
  */
 router.get(
-  "/posts/:postId/comments",
-  optionalAuthMiddleware,
-  async (c) => {
-    requireGuestRead(c);
-    const postId = await resolvePostId(c.req.param("postId") as string);
-    return c.json({
-      data: await listComments(
-        postId,
-        c.get("userId"),
-        moderatorFlag(c),
-        c.var.communityScope,
-      ),
-    });
-  },
+    "/posts/:postId/comments",
+    optionalAuthMiddleware,
+    async (c) => {
+        requireGuestRead(c);
+        const postId = await resolvePostId(c.req.param("postId") as string);
+        return c.json({
+            data: await listComments(
+                postId,
+                c.get("userId"),
+                moderatorFlag(c),
+                c.var.communityScope,
+            ),
+        });
+    },
 );
 /**
  * POST /posts/:postId/comments — 创建评论（或回复一级评论）。
@@ -507,24 +515,26 @@ router.get(
  * 响应：201 { data: 新建评论 }。
  */
 router.post("/posts/:postId/comments", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  const postId = await resolvePostId(c.req.param("postId") as string);
-  await assertDefaultCommunityPermission(c, "community:comment");
-  await assertCommunityWritable(actorId, moderatorFlag(c), {
-    scope: c.var.communityScope,
-  });
-  const body = await parseJsonBody<{ content?: string; parent_id?: string }>(c);
-  if (!body.content) throw new BadRequestError("缺少评论内容");
-  return c.json({
-    data: await createComment(
-      actorId,
-      postId,
-      body.content,
-      body.parent_id,
-      moderatorFlag(c),
-      c.var.communityScope,
-    ),
-  }, 201);
+    const actorId = userId(c);
+    const postId = await resolvePostId(c.req.param("postId") as string);
+    await assertDefaultCommunityPermission(c, "community:comment");
+    await assertCommunityWritable(actorId, moderatorFlag(c), {
+        scope: c.var.communityScope,
+    });
+    const body = await parseJsonBody<{ content?: string; parent_id?: string }>(
+        c,
+    );
+    if (!body.content) throw new BadRequestError("缺少评论内容");
+    return c.json({
+        data: await createComment(
+            actorId,
+            postId,
+            body.content,
+            body.parent_id,
+            moderatorFlag(c),
+            c.var.communityScope,
+        ),
+    }, 201);
 });
 
 /**
@@ -533,21 +543,21 @@ router.post("/posts/:postId/comments", authMiddleware, async (c) => {
  * 响应：{ data: 更新后的评论 }。
  */
 router.patch("/comments/:commentId", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await assertCommunityWritable(actorId, moderatorFlag(c), {
-    scope: c.var.communityScope,
-  });
-  const body = await parseJsonBody<{ content?: string }>(c);
-  if (!body.content) throw new BadRequestError("缺少评论内容");
-  return c.json({
-    data: await updateComment(
-      c.req.param("commentId") as string,
-      actorId,
-      moderatorFlag(c),
-      body.content,
-      c.var.communityScope,
-    ),
-  });
+    const actorId = userId(c);
+    await assertCommunityWritable(actorId, moderatorFlag(c), {
+        scope: c.var.communityScope,
+    });
+    const body = await parseJsonBody<{ content?: string }>(c);
+    if (!body.content) throw new BadRequestError("缺少评论内容");
+    return c.json({
+        data: await updateComment(
+            c.req.param("commentId") as string,
+            actorId,
+            moderatorFlag(c),
+            body.content,
+            c.var.communityScope,
+        ),
+    });
 });
 /**
  * DELETE /comments/:commentId — 删除评论（软删除）。
@@ -555,19 +565,19 @@ router.patch("/comments/:commentId", authMiddleware, async (c) => {
  * 响应：{ data: 更新后的评论 }。
  */
 router.delete("/comments/:commentId", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await assertCommunityWritable(actorId, moderatorFlag(c), {
-    allowSocialBan: true,
-    scope: c.var.communityScope,
-  });
-  return c.json({
-    data: await deleteComment(
-      c.req.param("commentId") as string,
-      actorId,
-      moderatorFlag(c),
-      c.var.communityScope,
-    ),
-  });
+    const actorId = userId(c);
+    await assertCommunityWritable(actorId, moderatorFlag(c), {
+        allowSocialBan: true,
+        scope: c.var.communityScope,
+    });
+    return c.json({
+        data: await deleteComment(
+            c.req.param("commentId") as string,
+            actorId,
+            moderatorFlag(c),
+            c.var.communityScope,
+        ),
+    });
 });
 
 /**
@@ -576,28 +586,28 @@ router.delete("/comments/:commentId", authMiddleware, async (c) => {
  * 响应：201 { data: 新建举报 }。
  */
 router.post("/reports", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  await enforceReportRateLimit(actorId);
-  await assertDefaultCommunityPermission(c, "community:report");
-  // social 封禁用户不可提交举报（防止作为骚扰/滥用通道）
-  await assertCommunityWritable(actorId, moderatorFlag(c));
-  const body = await parseJsonBody<
-    {
-      post_id?: string;
-      comment_id?: string;
-      reason?: string;
-      category?: string;
-    }
-  >(c);
-  if (!body.reason?.trim()) throw new BadRequestError("缺少举报原因");
-  const report = await createReport(
-    actorId,
-    { ...body, reason: body.reason },
-    moderatorFlag(c),
-  );
-  // FC-05: 举报接口响应体中仅返回举报记录信息，严禁回显 content_snapshot 全文
-  const { content_snapshot: _stripped, ...safeReport } = report;
-  return c.json({ data: safeReport }, 201);
+    const actorId = userId(c);
+    await enforceReportRateLimit(actorId);
+    await assertDefaultCommunityPermission(c, "community:report");
+    // social 封禁用户不可提交举报（防止作为骚扰/滥用通道）
+    await assertCommunityWritable(actorId, moderatorFlag(c));
+    const body = await parseJsonBody<
+        {
+            post_id?: string;
+            comment_id?: string;
+            reason?: string;
+            category?: string;
+        }
+    >(c);
+    if (!body.reason?.trim()) throw new BadRequestError("缺少举报原因");
+    const report = await createReport(
+        actorId,
+        { ...body, reason: body.reason },
+        moderatorFlag(c),
+    );
+    // FC-05: 举报接口响应体中仅返回举报记录信息，严禁回显 content_snapshot 全文
+    const { content_snapshot: _stripped, ...safeReport } = report;
+    return c.json({ data: safeReport }, 201);
 });
 /**
  * GET /reports/:reportId — 获取举报工单详情。
@@ -605,21 +615,21 @@ router.post("/reports", authMiddleware, async (c) => {
  * 响应：{ data: 举报详情 }。
  */
 router.get("/reports/:reportId", authMiddleware, async (c) => {
-  const actorId = userId(c);
-  const isMod = moderatorFlag(c);
-  const detail = await getReportDetail(
-    c.req.param("reportId") as string,
-    actorId,
-    isMod,
-  );
-  if (detail.report.reporter_id !== actorId && !isMod) {
-    throw new ForbiddenError("无权查看该举报");
-  }
-  // 非审核员不返回被举报者的封禁元数据（避免泄露 scope/期限），仅保留处理结果摘要
-  if (detail.report.reporter_id === actorId && !isMod) {
-    detail.ban = null;
-  }
-  return c.json({ data: detail });
+    const actorId = userId(c);
+    const isMod = moderatorFlag(c);
+    const detail = await getReportDetail(
+        c.req.param("reportId") as string,
+        actorId,
+        isMod,
+    );
+    if (detail.report.reporter_id !== actorId && !isMod) {
+        throw new ForbiddenError("无权查看该举报");
+    }
+    // 非审核员不返回被举报者的封禁元数据（避免泄露 scope/期限），仅保留处理结果摘要
+    if (detail.report.reporter_id === actorId && !isMod) {
+        detail.ban = null;
+    }
+    return c.json({ data: detail });
 });
 
 export default router;

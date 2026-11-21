@@ -6,5 +6,5 @@
  * 生产目录由 `findProductionDir()` 单独负责，不放在上下文里。
  */
 export interface CommandContext {
-  cwd: string;
+    cwd: string;
 }

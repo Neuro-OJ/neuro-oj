@@ -4,15 +4,15 @@ import { optionalAuthMiddleware } from "../middleware/auth.ts";
 import { checkPermission } from "../services/security/permissions.ts";
 import { parseJsonBody } from "../../../../shared/http/request.ts";
 import {
-  BadRequestError,
-  ValidationError,
+    BadRequestError,
+    ValidationError,
 } from "../../../../shared/base/errors.ts";
 import {
-  clearUserAvatar,
-  getUserAvatarBytes,
-  resolveUserId,
-  updateUserAvatar,
-  updateUserProfile,
+    clearUserAvatar,
+    getUserAvatarBytes,
+    resolveUserId,
+    updateUserAvatar,
+    updateUserProfile,
 } from "../services/users.ts";
 import { getUserProfilePage } from "../../../application/user-profile.ts";
 import { deleteOwnAccount } from "../services/account-deletion.ts";
@@ -29,16 +29,19 @@ const users = new Hono<AuthEnv>();
  * ⚠️ 该路由必须在 `/:id/profile` 之前注册，避免 "me" 被匹配为 :id。
  */
 users.put("/me", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  await enforceRateLimit(`users-me:user:${userId}`, { windowSec: 30, max: 10 });
-  const body = await parseJsonBody<{ bio?: string }>(c);
+    const userId = c.get("userId") as string;
+    await enforceRateLimit(`users-me:user:${userId}`, {
+        windowSec: 30,
+        max: 10,
+    });
+    const body = await parseJsonBody<{ bio?: string }>(c);
 
-  if (body.bio === undefined) {
-    throw new ValidationError("缺少必填字段：bio");
-  }
+    if (body.bio === undefined) {
+        throw new ValidationError("缺少必填字段：bio");
+    }
 
-  const user = await updateUserProfile(userId, body.bio);
-  return c.json({ data: user }, 200);
+    const user = await updateUserProfile(userId, body.bio);
+    return c.json({ data: user }, 200);
 });
 
 /**
@@ -47,18 +50,18 @@ users.put("/me", authMiddleware, async (c) => {
  * multipart `file` 字段；校验 png/jpeg/webp、≤2MB、magic bytes。
  */
 users.post("/me/avatar", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  await enforceRateLimit(`users-avatar:user:${userId}`, {
-    windowSec: 60,
-    max: 5,
-  });
-  const body = await c.req.parseBody();
-  const file = body["file"];
-  if (!file || !(file instanceof File)) {
-    throw new BadRequestError("请上传有效的图片文件");
-  }
-  const result = await updateUserAvatar(userId, file);
-  return c.json({ data: result }, 200);
+    const userId = c.get("userId") as string;
+    await enforceRateLimit(`users-avatar:user:${userId}`, {
+        windowSec: 60,
+        max: 5,
+    });
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    if (!file || !(file instanceof File)) {
+        throw new BadRequestError("请上传有效的图片文件");
+    }
+    const result = await updateUserAvatar(userId, file);
+    return c.json({ data: result }, 200);
 });
 
 /**
@@ -66,25 +69,25 @@ users.post("/me/avatar", authMiddleware, async (c) => {
  * DELETE /api/v1/users/me/avatar
  */
 users.delete("/me/avatar", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  await enforceRateLimit(`users-avatar:user:${userId}`, {
-    windowSec: 60,
-    max: 5,
-  });
-  await clearUserAvatar(userId);
-  return c.body(null, 204);
+    const userId = c.get("userId") as string;
+    await enforceRateLimit(`users-avatar:user:${userId}`, {
+        windowSec: 60,
+        max: 5,
+    });
+    await clearUserAvatar(userId);
+    return c.body(null, 204);
 });
 
 /** 注销当前账户。需要再次确认当前密码。 */
 users.post("/me/delete-account", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  await enforceRateLimit(`users-delete:user:${userId}`, {
-    windowSec: 300,
-    max: 3,
-  });
-  const body = await parseJsonBody<{ password?: string }>(c);
-  await deleteOwnAccount(c.get("actor"), body.password ?? "", getClientIp(c));
-  return c.body(null, 204);
+    const userId = c.get("userId") as string;
+    await enforceRateLimit(`users-delete:user:${userId}`, {
+        windowSec: 300,
+        max: 3,
+    });
+    const body = await parseJsonBody<{ password?: string }>(c);
+    await deleteOwnAccount(c.get("actor"), body.password ?? "", getClientIp(c));
+    return c.body(null, 204);
 });
 
 /**
@@ -94,20 +97,20 @@ users.post("/me/delete-account", authMiddleware, async (c) => {
  * 低频重读端点，按用户维度限流。
  */
 users.get("/me/data-export", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  await enforceRateLimit(`data-export:user:${userId}`, {
-    windowSec: 60,
-    max: 5,
-  });
-  const data = await buildUserDataExport(userId);
-  if (!data) {
-    throw new BadRequestError("用户不存在");
-  }
-  c.header(
-    "Content-Disposition",
-    `attachment; filename="noj-data-export-${userId}.json"`,
-  );
-  return c.json({ data });
+    const userId = c.get("userId") as string;
+    await enforceRateLimit(`data-export:user:${userId}`, {
+        windowSec: 60,
+        max: 5,
+    });
+    const data = await buildUserDataExport(userId);
+    if (!data) {
+        throw new BadRequestError("用户不存在");
+    }
+    c.header(
+        "Content-Disposition",
+        `attachment; filename="noj-data-export-${userId}.json"`,
+    );
+    return c.json({ data });
 });
 
 /**
@@ -116,16 +119,16 @@ users.get("/me/data-export", authMiddleware, async (c) => {
  * 无头像 → 404；有 → 图片字节流 + 缓存头（ETag = 内容 checksum）。
  */
 users.get("/:id/avatar", async (c) => {
-  const userId = await resolveUserId(c.req.param("id") as string);
-  const { bytes, contentType, etag } = await getUserAvatarBytes(userId);
-  return new Response(bytes as BodyInit, {
-    status: 200,
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": "public, max-age=86400",
-      "ETag": etag,
-    },
-  });
+    const userId = await resolveUserId(c.req.param("id") as string);
+    const { bytes, contentType, etag } = await getUserAvatarBytes(userId);
+    return new Response(bytes as BodyInit, {
+        status: 200,
+        headers: {
+            "Content-Type": contentType,
+            "Cache-Control": "public, max-age=86400",
+            "ETag": etag,
+        },
+    });
 });
 
 /**
@@ -138,17 +141,17 @@ users.get("/:id/avatar", async (c) => {
  * 未登录时 `c.get("userId")` 为 undefined，`checkPermission` 权限集为空 → false。
  */
 users.get("/:id/profile", optionalAuthMiddleware, async (c) => {
-  const userId = await resolveUserId(c.req.param("id") as string);
-  // admin:full_access 通配放行由 checkPermission 内部处理
-  const moderator = await checkPermission(c, "community_moderation:review");
-  // 查看者上下文：非特权查看者看不到"被未结束公开赛保密的题目"的解题/提交记录
-  // （审计 VULN-07）。管理员判定走 submission:read_all（admin:full_access 通配）。
-  const viewer = {
-    viewerId: c.get("userId"),
-    isAdmin: await checkPermission(c, "submission:read_all"),
-  };
-  const profile = await getUserProfilePage(userId, moderator, viewer);
-  return c.json({ data: profile }, 200);
+    const userId = await resolveUserId(c.req.param("id") as string);
+    // admin:full_access 通配放行由 checkPermission 内部处理
+    const moderator = await checkPermission(c, "community_moderation:review");
+    // 查看者上下文：非特权查看者看不到"被未结束公开赛保密的题目"的解题/提交记录
+    // （审计 VULN-07）。管理员判定走 submission:read_all（admin:full_access 通配）。
+    const viewer = {
+        viewerId: c.get("userId"),
+        isAdmin: await checkPermission(c, "submission:read_all"),
+    };
+    const profile = await getUserProfilePage(userId, moderator, viewer);
+    return c.json({ data: profile }, 200);
 });
 
 export default users;

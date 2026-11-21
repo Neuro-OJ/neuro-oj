@@ -17,19 +17,19 @@ import type { EffectiveVersionMode } from "../../../shared/versioning/types.ts";
 
 /** 锁内读取到的「竞赛 × 题目」策略快照。 */
 export interface ContestProblemPolicySnapshot {
-  /** 固定作答版本；数据库列 NOT NULL。 */
-  readonly pinned_version_id: string;
-  readonly mode: EffectiveVersionMode;
-  readonly required_version_id: string | null;
-  readonly revision: number;
+    /** 固定作答版本；数据库列 NOT NULL。 */
+    readonly pinned_version_id: string;
+    readonly mode: EffectiveVersionMode;
+    readonly required_version_id: string | null;
+    readonly revision: number;
 }
 
 /** 策略列的原始写入形态；由调用方按已验证的策略构造。 */
 export interface ContestProblemPolicyColumns {
-  readonly effective_version_mode: EffectiveVersionMode;
-  readonly required_version_id: string | null;
-  /** 固定作答版本；数据库列 NOT NULL，所以这里也是必填。 */
-  readonly pinned_version_id: string;
+    readonly effective_version_mode: EffectiveVersionMode;
+    readonly required_version_id: string | null;
+    /** 固定作答版本；数据库列 NOT NULL，所以这里也是必填。 */
+    readonly pinned_version_id: string;
 }
 
 /**
@@ -39,42 +39,42 @@ export interface ContestProblemPolicyColumns {
  * 写入在锁内完成，中间不允许提交。
  */
 export async function lockContestProblemPolicyTx(
-  tx: DbTx,
-  contestId: string,
-  problemId: string,
+    tx: DbTx,
+    contestId: string,
+    problemId: string,
 ): Promise<ContestProblemPolicySnapshot | null> {
-  const [row] = await tx.select({
-    pinned_version_id: contestProblems.pinned_version_id,
-    mode: contestProblems.effective_version_mode,
-    required_version_id: contestProblems.required_version_id,
-    revision: contestProblems.effective_policy_revision,
-  }).from(contestProblems).where(
-    and(
-      eq(contestProblems.contest_id, contestId),
-      eq(contestProblems.problem_id, problemId),
-    ),
-  ).for("update");
-  return row ? { ...row, mode: row.mode as EffectiveVersionMode } : null;
+    const [row] = await tx.select({
+        pinned_version_id: contestProblems.pinned_version_id,
+        mode: contestProblems.effective_version_mode,
+        required_version_id: contestProblems.required_version_id,
+        revision: contestProblems.effective_policy_revision,
+    }).from(contestProblems).where(
+        and(
+            eq(contestProblems.contest_id, contestId),
+            eq(contestProblems.problem_id, problemId),
+        ),
+    ).for("update");
+    return row ? { ...row, mode: row.mode as EffectiveVersionMode } : null;
 }
 
 /** 只读策略快照（不加锁）；批量读取与投影计算使用。 */
 export async function readContestProblemPolicyTx(
-  tx: DbTx,
-  contestId: string,
-  problemId: string,
+    tx: DbTx,
+    contestId: string,
+    problemId: string,
 ): Promise<ContestProblemPolicySnapshot | null> {
-  const [row] = await tx.select({
-    pinned_version_id: contestProblems.pinned_version_id,
-    mode: contestProblems.effective_version_mode,
-    required_version_id: contestProblems.required_version_id,
-    revision: contestProblems.effective_policy_revision,
-  }).from(contestProblems).where(
-    and(
-      eq(contestProblems.contest_id, contestId),
-      eq(contestProblems.problem_id, problemId),
-    ),
-  ).limit(1);
-  return row ? { ...row, mode: row.mode as EffectiveVersionMode } : null;
+    const [row] = await tx.select({
+        pinned_version_id: contestProblems.pinned_version_id,
+        mode: contestProblems.effective_version_mode,
+        required_version_id: contestProblems.required_version_id,
+        revision: contestProblems.effective_policy_revision,
+    }).from(contestProblems).where(
+        and(
+            eq(contestProblems.contest_id, contestId),
+            eq(contestProblems.problem_id, problemId),
+        ),
+    ).limit(1);
+    return row ? { ...row, mode: row.mode as EffectiveVersionMode } : null;
 }
 
 /**
@@ -86,22 +86,22 @@ export async function readContestProblemPolicyTx(
  * @returns 写入后的新 revision
  */
 export async function writeContestProblemPolicyTx(
-  tx: DbTx,
-  contestId: string,
-  problemId: string,
-  columns: ContestProblemPolicyColumns,
-  nextRevision: number,
+    tx: DbTx,
+    contestId: string,
+    problemId: string,
+    columns: ContestProblemPolicyColumns,
+    nextRevision: number,
 ): Promise<number> {
-  await tx.update(contestProblems).set({
-    effective_version_mode: columns.effective_version_mode,
-    required_version_id: columns.required_version_id,
-    pinned_version_id: columns.pinned_version_id,
-    effective_policy_revision: nextRevision,
-  }).where(
-    and(
-      eq(contestProblems.contest_id, contestId),
-      eq(contestProblems.problem_id, problemId),
-    ),
-  );
-  return nextRevision;
+    await tx.update(contestProblems).set({
+        effective_version_mode: columns.effective_version_mode,
+        required_version_id: columns.required_version_id,
+        pinned_version_id: columns.pinned_version_id,
+        effective_policy_revision: nextRevision,
+    }).where(
+        and(
+            eq(contestProblems.contest_id, contestId),
+            eq(contestProblems.problem_id, problemId),
+        ),
+    );
+    return nextRevision;
 }

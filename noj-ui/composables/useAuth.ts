@@ -5,387 +5,387 @@ import { clearUserDrafts } from '~/utils/draft-storage';
 import type { AuthUser as UserResponse } from '~/utils/auth/auth-user';
 
 interface SessionData {
-  userId: string;
-  username: string;
-  role: string;
-  email: string;
-  avatar_url?: string | null;
-  is_admin: boolean;
-  must_change_password: boolean;
-  email_verified?: boolean;
-  has_local_password?: boolean;
-  tfa_enabled?: boolean;
+    userId: string;
+    username: string;
+    role: string;
+    email: string;
+    avatar_url?: string | null;
+    is_admin: boolean;
+    must_change_password: boolean;
+    email_verified?: boolean;
+    has_local_password?: boolean;
+    tfa_enabled?: boolean;
 }
 
 function sessionToUser(session: SessionData): UserResponse {
-  return {
-    id: session.userId,
-    username: session.username,
-    role: session.role,
-    email: session.email,
-    ...(session.avatar_url === undefined ? {} : { avatar_url: session.avatar_url }),
-    is_admin: session.is_admin ?? session.role === 'admin',
-    must_change_password: session.must_change_password ?? false,
-    email_verified: session.email_verified ?? true,
-    has_local_password: session.has_local_password ?? true,
-    tfa_enabled: session.tfa_enabled ?? false,
-    created_at: '',
-    updated_at: '',
-  };
+    return {
+        id: session.userId,
+        username: session.username,
+        role: session.role,
+        email: session.email,
+        ...(session.avatar_url === undefined ? {} : { avatar_url: session.avatar_url }),
+        is_admin: session.is_admin ?? session.role === 'admin',
+        must_change_password: session.must_change_password ?? false,
+        email_verified: session.email_verified ?? true,
+        has_local_password: session.has_local_password ?? true,
+        tfa_enabled: session.tfa_enabled ?? false,
+        created_at: '',
+        updated_at: '',
+    };
 }
 
 export function useAuth(targetRoute?: { path: string; fullPath: string }) {
-  const user = useState<UserResponse | null>('auth:user', () => null);
-  const loading = useState<boolean>('auth:loading', () => true);
+    const user = useState<UserResponse | null>('auth:user', () => null);
+    const loading = useState<boolean>('auth:loading', () => true);
 
-  // 可读 cookie：SSR 时服务端注入、水合后客户端读取（与 HTTP-only token cookie 配合）
-  // 不含敏感凭证，仅含基础用户信息
-  const session = useCookie<SessionData | null>(authCookieNames(useRuntimeConfig().public.authCookiePrefix).session, {
-    default: () => null,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24,
-  });
-
-  function clearSession() {
-    clearUserDrafts(user.value?.id ?? session.value?.userId);
-    user.value = null;
-    session.value = null;
-  }
-
-  if (import.meta.client) {
-    // 账号被替换时同样清理，覆盖登录切换和其他会话状态更新。
-    watch(() => user.value?.id, (next, previous) => {
-      if (previous && previous !== next) clearUserDrafts(previous);
-    }, { flush: 'sync' });
-    watch(() => session.value?.userId, (next, previous) => {
-      if (previous && !next) {
-        clearUserDrafts(previous);
-        user.value = null;
-      }
-    }, { flush: 'sync' });
-  }
-
-  // `token` 不再由客户端管理，Nitro 代理从 HTTP-only cookie 自动注入
-  // 保留 isLoggedIn 计算属性简化其他页面的访问
-  const isLoggedIn = computed(() => !!user.value);
-
-  // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
-  // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
-  const { api } = useApi(targetRoute);
-
-  /** /auth/me 的 SSR 异步数据（同一请求内按 key 复用，守卫与页面只拉一次） */
-  function meAsyncData() {
-    return useAsyncData(
-      'auth:me',
-      () =>
-        api.get<{ data: UserResponse }>('/api/v1/auth/me', {
-          silent: true,
-          redirectOnUnauthorized: false,
-        }),
-    );
-  }
-
-  // ── SSR 初始化：有 session 时通过 /auth/me 获取完整用户与权限 ──
-  // 回填必须等到数据真正 settle：SSR 挂载时 data/error 都还是 undefined，
-  // 若此刻就把 user 置空、loading 置 false，会在渲染前误判为「未登录」
-  // （路由守卫抢在 /auth/me 之前读到空用户，刷新 /admin/* 被踢回登录页）。
-  if (import.meta.server) {
-    if (session.value) {
-      const { data: meData, error: meError } = meAsyncData();
-      watch([meData, meError], ([val, err]) => {
-        if (val === undefined && err === undefined) return; // 仍在请求中
-        user.value = val?.data ?? null;
-        loading.value = false;
-      }, { immediate: true });
-    } else {
-      user.value = null;
-      loading.value = false;
-    }
-  }
-
-  // ── 客户端初始化 ──
-  if (import.meta.client) {
-    if (session.value && !user.value) {
-      // SSR 未执行（SPA 导航或水合延迟），从 cookie 恢复
-      user.value = sessionToUser(session.value);
-    }
-    loading.value = false;
-  }
-
-  /**
-   * 登录。remember=true 时后端签发长有效期 token（「记住我」），
-   * Nitro 代理按 token exp 同步延长 Cookie 有效期。
-   */
-  async function login(login: string, password: string, code?: string, remember = false) {
-    // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现
-    const res = await api.post<{ data: { user: UserResponse } }>(
-      '/api/v1/auth/login',
-      { login, password, ...(code ? { code } : {}), ...(remember ? { remember: true } : {}) },
-      { silent: true, timeout: 5000 },
-    );
-    // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
-    const userData = res.data.user;
-    user.value = userData;
-    return { user: userData };
-  }
-
-  async function register(
-    username: string,
-    email: string,
-    password: string,
-    acceptedLegal = false,
-    invitationToken?: string,
-  ) {
-    const res = await api.post<{ data: { email_verification_sent: boolean } }>(
-      '/api/v1/auth/register',
-      {
-        username,
-        email,
-        password,
-        accepted_legal: acceptedLegal,
-        ...(invitationToken ? { invitation_token: invitationToken } : {}),
-      },
-      {
-        silent: true,
-      },
-    );
-    return res.data.email_verification_sent;
-  }
-
-  /**
-   * 发起密码重置请求（issue #49）。
-   * 邮箱是否存在对前端透明：服务端统一返 200 + 同一消息（防枚举）。
-   */
-  async function forgotPassword(email: string) {
-    await api.post('/api/v1/auth/forgot-password', { email }, { silent: true });
-  }
-
-  /**
-   * 执行密码重置（issue #49）。
-   * @throws 令牌无效/过期/已用/弱密码时抛出错误（含后端 error 消息）
-   */
-  async function resetPassword(token: string, newPassword: string) {
-    await api.post(
-      '/api/v1/auth/reset-password',
-      { token, new_password: newPassword },
-      { silent: true },
-    );
-  }
-
-  async function verifyEmail(token: string) {
-    await api.post('/api/v1/auth/email/verify', { token }, { silent: true });
-    await fetchUser();
-  }
-
-  async function resendEmailVerification() {
-    const res = await api.post<{ data: { message: string; sent?: boolean } }>(
-      '/api/v1/auth/email/resend',
-      undefined,
-      { silent: true },
-    );
-    return res.data;
-  }
-
-  /**
-   * 公开注册可用状态（issue #426）。
-   * reason: null=可注册；register_disabled=注册已关闭；email_unconfigured=邮件未配置。
-   */
-  async function getRegisterStatus() {
-    const res = await api.get<{
-      data: {
-        allowed: boolean;
-        reason: 'register_disabled' | 'email_unconfigured' | 'admin_only' | 'invitation_required' | null;
-        mode: 'open' | 'invite' | 'admin_only';
-      };
-    }>('/api/v1/auth/register-status', { silent: true });
-    return res.data;
-  }
-
-  async function deleteAccount(password: string) {
-    await api.post('/api/v1/users/me/delete-account', { password }, {
-      silent: true,
+    // 可读 cookie：SSR 时服务端注入、水合后客户端读取（与 HTTP-only token cookie 配合）
+    // 不含敏感凭证，仅含基础用户信息
+    const session = useCookie<SessionData | null>(authCookieNames(useRuntimeConfig().public.authCookiePrefix).session, {
+        default: () => null,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24,
     });
-    await logout();
-  }
 
-  async function getOAuthProviders() {
-    const res = await api.get<{ data: Array<{ id: string; name: string }> }>(
-      '/api/v1/auth/oauth/providers',
-      { silent: true },
-    );
-    return res.data;
-  }
-
-  async function setPassword(newPassword: string) {
-    const res = await api.post<{ data: { user: UserResponse } }>(
-      '/api/v1/auth/set-password',
-      { new_password: newPassword },
-      { silent: true },
-    );
-    user.value = res.data.user;
-    return res.data.user;
-  }
-
-  async function getLinkedOAuthAccounts() {
-    const res = await api.get<{
-      data: Array<{
-        id: string;
-        provider: string;
-        provider_user_id: string;
-        provider_username: string | null;
-        created_at: string;
-      }>;
-    }>('/api/v1/auth/oauth/accounts', { silent: true });
-    return res.data;
-  }
-
-  async function beginOAuthLink(provider: string, password?: string) {
-    const res = await api.post<{ data: { authorization_url: string } }>(
-      `/api/v1/auth/oauth/${encodeURIComponent(provider)}/link`,
-      { password: password ?? '' },
-      { silent: true },
-    );
-    return res.data.authorization_url;
-  }
-
-  async function unlinkOAuthAccount(accountId: string, password?: string) {
-    await api.delete(
-      `/api/v1/auth/oauth/accounts/${encodeURIComponent(accountId)}`,
-      {
-        body: { password: password ?? '' },
-        silent: true,
-      },
-    );
-  }
-
-  async function fetchUser() {
-    if (!isLoggedIn.value) return null;
-    try {
-      // 5s 超时（评审修复 L2，与 middleware/auth.ts fetchUser 一致）
-      const res = await api.get<{ data: UserResponse }>(
-        '/api/v1/auth/me',
-        { silent: true, timeout: 5000 },
-      );
-      user.value = res.data;
-      return res.data;
-    } catch (err) {
-      // NOJ-209：仅在明确 401 时登出；网络错误/超时/5xx 保留本地会话。
-      const info = extractApiError(err);
-      if (info.status === 401) {
-        await logout();
-      }
-      return null;
-    }
-  }
-
-  /**
-   * 确保认证状态就绪（可 await），供路由守卫使用。
-   *
-   * 路由中间件在 SSR 阶段同样执行，而 `useAuth()` 的 SSR 初始化走
-   * `useAsyncData`（要等渲染阶段才 resolve）。守卫若直接读 `loading`/`user`，
-   * 会把已登录用户误判成未登录并重定向到 /login——这就是「管理员登录后刷新
-   * /admin/* 被踢回登录页」的根因，因此守卫统一 `await ensureAuthReady()`。
-   *
-   * - user 已就绪（SSR 已拉取 / 客户端已由 session cookie 恢复）→ 直接返回
-   * - 无可读 session cookie → 未登录
-   * - 有 session 但 user 未就绪 → 拉取 /api/v1/auth/me
-   *   （SSR 复用 `meAsyncData` 实例，客户端由浏览器自动携带 Cookie）
-   *   401 → 未登录；其他错误（网络/超时/5xx）→ 退回 session 快照，
-   *   真实鉴权仍由后端执行（与 NOJ-209 的取舍一致）。
-   */
-  async function ensureAuthReady(): Promise<void> {
-    if (user.value) {
-      loading.value = false;
-      return;
+    function clearSession() {
+        clearUserDrafts(user.value?.id ?? session.value?.userId);
+        user.value = null;
+        session.value = null;
     }
 
-    const snapshot = session.value;
-    if (!snapshot) {
-      user.value = null;
-      loading.value = false;
-      return;
+    if (import.meta.client) {
+        // 账号被替换时同样清理，覆盖登录切换和其他会话状态更新。
+        watch(() => user.value?.id, (next, previous) => {
+            if (previous && previous !== next) clearUserDrafts(previous);
+        }, { flush: 'sync' });
+        watch(() => session.value?.userId, (next, previous) => {
+            if (previous && !next) {
+                clearUserDrafts(previous);
+                user.value = null;
+            }
+        }, { flush: 'sync' });
     }
 
-    try {
-      if (import.meta.server) {
-        const { data: meData, error: meError } = await meAsyncData();
-        const fetched = meData.value?.data;
-        if (fetched) {
-          user.value = fetched;
-        } else if (meError.value && extractApiError(meError.value).status !== 401) {
-          // 后端不可达/超时：退回 session 快照，避免把已登录用户踢回登录页
-          user.value = sessionToUser(snapshot);
-        } else {
-          user.value = null;
-        }
-      } else {
-        const res = await api.get<{ data: UserResponse }>(
-          '/api/v1/auth/me',
-          { silent: true, redirectOnUnauthorized: false, timeout: 5000 },
+    // `token` 不再由客户端管理，Nitro 代理从 HTTP-only cookie 自动注入
+    // 保留 isLoggedIn 计算属性简化其他页面的访问
+    const isLoggedIn = computed(() => !!user.value);
+
+    // 认证类调用统一 silent：错误由认证页面内联展示（banner/表单错误），
+    // 避免「页面提示 + toast」双重提示（ui-api-layer 设计 D6）
+    const { api } = useApi(targetRoute);
+
+    /** /auth/me 的 SSR 异步数据（同一请求内按 key 复用，守卫与页面只拉一次） */
+    function meAsyncData() {
+        return useAsyncData(
+            'auth:me',
+            () =>
+                api.get<{ data: UserResponse }>('/api/v1/auth/me', {
+                    silent: true,
+                    redirectOnUnauthorized: false,
+                }),
         );
-        user.value = res.data ?? sessionToUser(snapshot);
-      }
-    } catch (err) {
-      const info = extractApiError(err);
-      if (info.status === 401) {
-        // user 尚未恢复时也使用 session 快照清理该账号草稿。
+    }
+
+    // ── SSR 初始化：有 session 时通过 /auth/me 获取完整用户与权限 ──
+    // 回填必须等到数据真正 settle：SSR 挂载时 data/error 都还是 undefined，
+    // 若此刻就把 user 置空、loading 置 false，会在渲染前误判为「未登录」
+    // （路由守卫抢在 /auth/me 之前读到空用户，刷新 /admin/* 被踢回登录页）。
+    if (import.meta.server) {
+        if (session.value) {
+            const { data: meData, error: meError } = meAsyncData();
+            watch([meData, meError], ([val, err]) => {
+                if (val === undefined && err === undefined) return; // 仍在请求中
+                user.value = val?.data ?? null;
+                loading.value = false;
+            }, { immediate: true });
+        } else {
+            user.value = null;
+            loading.value = false;
+        }
+    }
+
+    // ── 客户端初始化 ──
+    if (import.meta.client) {
+        if (session.value && !user.value) {
+            // SSR 未执行（SPA 导航或水合延迟），从 cookie 恢复
+            user.value = sessionToUser(session.value);
+        }
+        loading.value = false;
+    }
+
+    /**
+     * 登录。remember=true 时后端签发长有效期 token（「记住我」），
+     * Nitro 代理按 token exp 同步延长 Cookie 有效期。
+     */
+    async function login(login: string, password: string, code?: string, remember = false) {
+        // 5s 超时（评审修复 L2，与 fetchUser 一致），由 useApi timeout 选项实现
+        const res = await api.post<{ data: { user: UserResponse } }>(
+            '/api/v1/auth/login',
+            { login, password, ...(code ? { code } : {}), ...(remember ? { remember: true } : {}) },
+            { silent: true, timeout: 5000 },
+        );
+        // token 已由 Nitro 代理设置为 HTTP-only cookie，客户端不接收 token 字段
+        const userData = res.data.user;
+        user.value = userData;
+        return { user: userData };
+    }
+
+    async function register(
+        username: string,
+        email: string,
+        password: string,
+        acceptedLegal = false,
+        invitationToken?: string,
+    ) {
+        const res = await api.post<{ data: { email_verification_sent: boolean } }>(
+            '/api/v1/auth/register',
+            {
+                username,
+                email,
+                password,
+                accepted_legal: acceptedLegal,
+                ...(invitationToken ? { invitation_token: invitationToken } : {}),
+            },
+            {
+                silent: true,
+            },
+        );
+        return res.data.email_verification_sent;
+    }
+
+    /**
+     * 发起密码重置请求（issue #49）。
+     * 邮箱是否存在对前端透明：服务端统一返 200 + 同一消息（防枚举）。
+     */
+    async function forgotPassword(email: string) {
+        await api.post('/api/v1/auth/forgot-password', { email }, { silent: true });
+    }
+
+    /**
+     * 执行密码重置（issue #49）。
+     * @throws 令牌无效/过期/已用/弱密码时抛出错误（含后端 error 消息）
+     */
+    async function resetPassword(token: string, newPassword: string) {
+        await api.post(
+            '/api/v1/auth/reset-password',
+            { token, new_password: newPassword },
+            { silent: true },
+        );
+    }
+
+    async function verifyEmail(token: string) {
+        await api.post('/api/v1/auth/email/verify', { token }, { silent: true });
+        await fetchUser();
+    }
+
+    async function resendEmailVerification() {
+        const res = await api.post<{ data: { message: string; sent?: boolean } }>(
+            '/api/v1/auth/email/resend',
+            undefined,
+            { silent: true },
+        );
+        return res.data;
+    }
+
+    /**
+     * 公开注册可用状态（issue #426）。
+     * reason: null=可注册；register_disabled=注册已关闭；email_unconfigured=邮件未配置。
+     */
+    async function getRegisterStatus() {
+        const res = await api.get<{
+            data: {
+                allowed: boolean;
+                reason: 'register_disabled' | 'email_unconfigured' | 'admin_only' | 'invitation_required' | null;
+                mode: 'open' | 'invite' | 'admin_only';
+            };
+        }>('/api/v1/auth/register-status', { silent: true });
+        return res.data;
+    }
+
+    async function deleteAccount(password: string) {
+        await api.post('/api/v1/users/me/delete-account', { password }, {
+            silent: true,
+        });
+        await logout();
+    }
+
+    async function getOAuthProviders() {
+        const res = await api.get<{ data: Array<{ id: string; name: string }> }>(
+            '/api/v1/auth/oauth/providers',
+            { silent: true },
+        );
+        return res.data;
+    }
+
+    async function setPassword(newPassword: string) {
+        const res = await api.post<{ data: { user: UserResponse } }>(
+            '/api/v1/auth/set-password',
+            { new_password: newPassword },
+            { silent: true },
+        );
+        user.value = res.data.user;
+        return res.data.user;
+    }
+
+    async function getLinkedOAuthAccounts() {
+        const res = await api.get<{
+            data: Array<{
+                id: string;
+                provider: string;
+                provider_user_id: string;
+                provider_username: string | null;
+                created_at: string;
+            }>;
+        }>('/api/v1/auth/oauth/accounts', { silent: true });
+        return res.data;
+    }
+
+    async function beginOAuthLink(provider: string, password?: string) {
+        const res = await api.post<{ data: { authorization_url: string } }>(
+            `/api/v1/auth/oauth/${encodeURIComponent(provider)}/link`,
+            { password: password ?? '' },
+            { silent: true },
+        );
+        return res.data.authorization_url;
+    }
+
+    async function unlinkOAuthAccount(accountId: string, password?: string) {
+        await api.delete(
+            `/api/v1/auth/oauth/accounts/${encodeURIComponent(accountId)}`,
+            {
+                body: { password: password ?? '' },
+                silent: true,
+            },
+        );
+    }
+
+    async function fetchUser() {
+        if (!isLoggedIn.value) return null;
+        try {
+            // 5s 超时（评审修复 L2，与 middleware/auth.ts fetchUser 一致）
+            const res = await api.get<{ data: UserResponse }>(
+                '/api/v1/auth/me',
+                { silent: true, timeout: 5000 },
+            );
+            user.value = res.data;
+            return res.data;
+        } catch (err) {
+            // NOJ-209：仅在明确 401 时登出；网络错误/超时/5xx 保留本地会话。
+            const info = extractApiError(err);
+            if (info.status === 401) {
+                await logout();
+            }
+            return null;
+        }
+    }
+
+    /**
+     * 确保认证状态就绪（可 await），供路由守卫使用。
+     *
+     * 路由中间件在 SSR 阶段同样执行，而 `useAuth()` 的 SSR 初始化走
+     * `useAsyncData`（要等渲染阶段才 resolve）。守卫若直接读 `loading`/`user`，
+     * 会把已登录用户误判成未登录并重定向到 /login——这就是「管理员登录后刷新
+     * /admin/* 被踢回登录页」的根因，因此守卫统一 `await ensureAuthReady()`。
+     *
+     * - user 已就绪（SSR 已拉取 / 客户端已由 session cookie 恢复）→ 直接返回
+     * - 无可读 session cookie → 未登录
+     * - 有 session 但 user 未就绪 → 拉取 /api/v1/auth/me
+     *   （SSR 复用 `meAsyncData` 实例，客户端由浏览器自动携带 Cookie）
+     *   401 → 未登录；其他错误（网络/超时/5xx）→ 退回 session 快照，
+     *   真实鉴权仍由后端执行（与 NOJ-209 的取舍一致）。
+     */
+    async function ensureAuthReady(): Promise<void> {
+        if (user.value) {
+            loading.value = false;
+            return;
+        }
+
+        const snapshot = session.value;
+        if (!snapshot) {
+            user.value = null;
+            loading.value = false;
+            return;
+        }
+
+        try {
+            if (import.meta.server) {
+                const { data: meData, error: meError } = await meAsyncData();
+                const fetched = meData.value?.data;
+                if (fetched) {
+                    user.value = fetched;
+                } else if (meError.value && extractApiError(meError.value).status !== 401) {
+                    // 后端不可达/超时：退回 session 快照，避免把已登录用户踢回登录页
+                    user.value = sessionToUser(snapshot);
+                } else {
+                    user.value = null;
+                }
+            } else {
+                const res = await api.get<{ data: UserResponse }>(
+                    '/api/v1/auth/me',
+                    { silent: true, redirectOnUnauthorized: false, timeout: 5000 },
+                );
+                user.value = res.data ?? sessionToUser(snapshot);
+            }
+        } catch (err) {
+            const info = extractApiError(err);
+            if (info.status === 401) {
+                // user 尚未恢复时也使用 session 快照清理该账号草稿。
+                clearSession();
+            } else {
+                user.value = sessionToUser(snapshot);
+            }
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    async function changePassword(oldPassword: string, newPassword: string) {
+        // 后端在改密成功后：
+        //   1. 撤销旧 token 的 jti（写入 Redis 黑名单）
+        //   2. 签发新 token
+        //   3. 返回 { user, token }
+        // Nitro 代理同步用新 token 替换 noj:token Cookie（user.must_change_password=false）。
+        // 因此前端**不再需要** logout()+重登——直接更新本地 user 状态即可。
+        const res = await api.post<{ data: { user: UserResponse } }>(
+            '/api/v1/auth/change-password',
+            { old_password: oldPassword, new_password: newPassword },
+            { silent: true },
+        );
+        // 同步本地状态：must_change_password 现在是 false，前端路由守卫放行。
+        user.value = res.data.user;
+        return res.data.user;
+    }
+
+    async function logout() {
+        try {
+            // 本地注销端点（Nitro 删除 Cookie），非 /api/v1/ 前缀；失败静默
+            await api.post('/api/auth/logout', undefined, { silent: true });
+        } catch {
+            // 即使网络错误也要清除本地状态
+        }
         clearSession();
-      } else {
-        user.value = sessionToUser(snapshot);
-      }
-    } finally {
-      loading.value = false;
     }
-  }
 
-  async function changePassword(oldPassword: string, newPassword: string) {
-    // 后端在改密成功后：
-    //   1. 撤销旧 token 的 jti（写入 Redis 黑名单）
-    //   2. 签发新 token
-    //   3. 返回 { user, token }
-    // Nitro 代理同步用新 token 替换 noj:token Cookie（user.must_change_password=false）。
-    // 因此前端**不再需要** logout()+重登——直接更新本地 user 状态即可。
-    const res = await api.post<{ data: { user: UserResponse } }>(
-      '/api/v1/auth/change-password',
-      { old_password: oldPassword, new_password: newPassword },
-      { silent: true },
-    );
-    // 同步本地状态：must_change_password 现在是 false，前端路由守卫放行。
-    user.value = res.data.user;
-    return res.data.user;
-  }
-
-  async function logout() {
-    try {
-      // 本地注销端点（Nitro 删除 Cookie），非 /api/v1/ 前缀；失败静默
-      await api.post('/api/auth/logout', undefined, { silent: true });
-    } catch {
-      // 即使网络错误也要清除本地状态
-    }
-    clearSession();
-  }
-
-  return {
-    user,
-    isLoggedIn,
-    loading,
-    login,
-    register,
-    fetchUser,
-    ensureAuthReady,
-    changePassword,
-    logout,
-    forgotPassword,
-    resetPassword,
-    verifyEmail,
-    resendEmailVerification,
-    getRegisterStatus,
-    deleteAccount,
-    getOAuthProviders,
-    setPassword,
-    getLinkedOAuthAccounts,
-    beginOAuthLink,
-    unlinkOAuthAccount,
-  };
+    return {
+        user,
+        isLoggedIn,
+        loading,
+        login,
+        register,
+        fetchUser,
+        ensureAuthReady,
+        changePassword,
+        logout,
+        forgotPassword,
+        resetPassword,
+        verifyEmail,
+        resendEmailVerification,
+        getRegisterStatus,
+        deleteAccount,
+        getOAuthProviders,
+        setPassword,
+        getLinkedOAuthAccounts,
+        beginOAuthLink,
+        unlinkOAuthAccount,
+    };
 }

@@ -16,16 +16,16 @@
 
 /** 宿主推送给界面的运行状态。 */
 export interface UiFrameResult {
-  /** 'submit' 提交 / 'self-test' 自测 */
-  kind: 'submit' | 'self-test';
-  /** pending / judging / finished / error */
-  status: string;
-  /** 状态中文标签 */
-  label: string;
-  /** 总分（已换算，评测完成时有值） */
-  score: number | null;
-  /** 评测输出（自测时有值，已截断） */
-  output?: string | null;
+    /** 'submit' 提交 / 'self-test' 自测 */
+    kind: 'submit' | 'self-test';
+    /** pending / judging / finished / error */
+    status: string;
+    /** 状态中文标签 */
+    label: string;
+    /** 总分（已换算，评测完成时有值） */
+    score: number | null;
+    /** 评测输出（自测时有值，已截断） */
+    output?: string | null;
 }
 
 /**
@@ -33,7 +33,7 @@ export interface UiFrameResult {
  * 只允许内联脚本与样式，以及 data: 图片/字体/媒体。
  */
 export const UI_FRAME_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:";
 
 /** 注入到界面里的 SDK（`window.NOJ`）。 */
 const SDK = `(function () {
@@ -102,36 +102,36 @@ const SDK = `(function () {
  * 仍按 head 规则生效；SDK 放在最前面，保证界面脚本里 `window.NOJ` 已可用。
  */
 export function buildUiFrameDoc(html: string): string {
-  return (
-    '<!doctype html><html><head><meta charset="utf-8">' +
-    `<meta http-equiv="Content-Security-Policy" content="${UI_FRAME_CSP}">` +
-    `<script>${SDK}<\/script></head><body>` +
-    html +
-    '</body></html>'
-  );
+    return (
+        '<!doctype html><html><head><meta charset="utf-8">' +
+        `<meta http-equiv="Content-Security-Policy" content="${UI_FRAME_CSP}">` +
+        `<script>${SDK}<\/script></head><body>` +
+        html +
+        '</body></html>'
+    );
 }
 
 /** 顶层键排序后的稳定 JSON（历史对比与回滚的 diff 才不会因键序抖动）。 */
 export function stableStringify(values: Record<string, unknown>): string {
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(values).sort()) sorted[key] = values[key];
-  return JSON.stringify(sorted, null, 2);
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(values).sort()) sorted[key] = values[key];
+    return JSON.stringify(sorted, null, 2);
 }
 
 /** 解析宿主保存的参数文本；非对象/非法 JSON 一律视为空参数。 */
 export function parseValues(text: string): Record<string, unknown> {
-  if (!text.trim()) return {};
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
+    if (!text.trim()) return {};
+    try {
+        const parsed: unknown = JSON.parse(text);
+        return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+            ? (parsed as Record<string, unknown>)
+            : {};
+    } catch {
+        return {};
+    }
 }
 
 /** 两份参数是否等价（顶层键序无关）。 */
 export function sameValues(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
-  return stableStringify(a) === stableStringify(b);
+    return stableStringify(a) === stableStringify(b);
 }

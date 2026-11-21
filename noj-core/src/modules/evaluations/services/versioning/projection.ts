@@ -20,27 +20,27 @@ import { recordEvaluationChangeTx } from "../../../education/contracts/events.ts
 import { enqueueKnowledgeMasteryTaskTx } from "../../../runtime/knowledge-mastery-task.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import {
-  contestProblems,
-  contests,
-  domainProblemBindings,
-  domains,
-  evaluationAttempts,
-  objectiveSubmissions,
-  problems,
-  queryProjectionRevisions,
-  submissions,
-  submissionVersionResults,
+    contestProblems,
+    contests,
+    domainProblemBindings,
+    domains,
+    evaluationAttempts,
+    objectiveSubmissions,
+    problems,
+    queryProjectionRevisions,
+    submissions,
+    submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
 import {
-  type CurrentVersionResult,
-  type EffectiveSelection,
-  type EffectiveVersionPolicy,
-  EMPTY_EFFECTIVE_SELECTION,
+    type CurrentVersionResult,
+    type EffectiveSelection,
+    type EffectiveVersionPolicy,
+    EMPTY_EFFECTIVE_SELECTION,
 } from "../../../../shared/versioning/types.ts";
 import { policyFromColumns } from "../../../../shared/versioning/types.ts";
 import {
-  mergeSubmissionProjection,
-  selectEffectiveResults,
+    mergeSubmissionProjection,
+    selectEffectiveResults,
 } from "../../../../shared/versioning/effective-results.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
@@ -49,70 +49,72 @@ export type ProjectionSourceKind = "submission" | "objective";
 
 /** 投影来源。 */
 export interface ProjectionSource {
-  kind: ProjectionSourceKind;
-  id: string;
-  problem_id: string;
-  /**
-   * 竞赛上下文：`string` = 竞赛提交；`null` = 已确认的练习提交；
-   * `undefined` = 调用方未取该字段，投影计算会自行回查（安全兜底，多一次 PK 查询）。
-   */
-  contest_id?: string | null;
-  /** 使用域绑定；null 仅用于尚未回填的旧记录。 */
-  domain_problem_binding_id?: string | null;
+    kind: ProjectionSourceKind;
+    id: string;
+    problem_id: string;
+    /**
+     * 竞赛上下文：`string` = 竞赛提交；`null` = 已确认的练习提交；
+     * `undefined` = 调用方未取该字段，投影计算会自行回查（安全兜底，多一次 PK 查询）。
+     */
+    contest_id?: string | null;
+    /** 使用域绑定；null 仅用于尚未回填的旧记录。 */
+    domain_problem_binding_id?: string | null;
 }
 
 /** 写入统一锁顺序：持久提交所属域 → 题目 → 竞赛 → 提交。新提交的域锁由受理入口先持有。 */
 export async function lockProjectionHosts(
-  db: Executor,
-  source: ProjectionSource,
+    db: Executor,
+    source: ProjectionSource,
 ): Promise<void> {
-  const table = source.kind === "submission"
-    ? submissions
-    : objectiveSubmissions;
-  const [identity] = await db.select({ domainId: table.domain_id }).from(table)
-    .where(eq(table.id, source.id));
-  if (identity) {
-    await db.select({ id: domains.id }).from(domains).where(
-      eq(domains.id, identity.domainId ?? DEFAULT_DOMAIN_ID),
+    const table = source.kind === "submission"
+        ? submissions
+        : objectiveSubmissions;
+    const [identity] = await db.select({ domainId: table.domain_id }).from(
+        table,
+    )
+        .where(eq(table.id, source.id));
+    if (identity) {
+        await db.select({ id: domains.id }).from(domains).where(
+            eq(domains.id, identity.domainId ?? DEFAULT_DOMAIN_ID),
+        ).for("share");
+    }
+    await db.select({ id: problems.id }).from(problems).where(
+        eq(problems.id, source.problem_id),
     ).for("share");
-  }
-  await db.select({ id: problems.id }).from(problems).where(
-    eq(problems.id, source.problem_id),
-  ).for("share");
-  const contestId = source.contest_id === undefined
-    ? await loadSubmissionContestId(db, source)
-    : source.contest_id;
-  if (contestId) {
-    await db.select({ id: contests.id }).from(contests).where(
-      eq(contests.id, contestId),
-    ).for("share");
-  }
+    const contestId = source.contest_id === undefined
+        ? await loadSubmissionContestId(db, source)
+        : source.contest_id;
+    if (contestId) {
+        await db.select({ id: contests.id }).from(contests).where(
+            eq(contests.id, contestId),
+        ).for("share");
+    }
 }
 
 /** 单条提交的完整投影计算结果（未写入）。 */
 export interface SubmissionProjectionPlan {
-  source: ProjectionSource;
-  global: EffectiveSelection;
-  contest: EffectiveSelection;
-  /** 写回提交行的策略 revision（题库）。 */
-  global_policy_revision: number;
-  /** 写回提交行的策略 revision（竞赛×题目）；无竞赛上下文为 null。 */
-  contest_policy_revision: number | null;
+    source: ProjectionSource;
+    global: EffectiveSelection;
+    contest: EffectiveSelection;
+    /** 写回提交行的策略 revision（题库）。 */
+    global_policy_revision: number;
+    /** 写回提交行的策略 revision（竞赛×题目）；无竞赛上下文为 null。 */
+    contest_policy_revision: number | null;
 }
 
 /** 投影作用域键（缓存与物化视图用）。 */
 export function globalScopeKey(): string {
-  return "global";
+    return "global";
 }
 
 /** 题目作用域键。 */
 export function problemScopeKey(problemId: string): string {
-  return `problem:${problemId}`;
+    return `problem:${problemId}`;
 }
 
 /** 竞赛作用域键。 */
 export function contestScopeKey(contestId: string): string {
-  return `contest:${contestId}`;
+    return `contest:${contestId}`;
 }
 
 /**
@@ -122,20 +124,20 @@ export function contestScopeKey(contestId: string): string {
  * 而"策略立即生效"不允许依赖 TTL 或异步刷新。
  */
 export async function bumpProjectionRevision(
-  executor: Executor,
-  scopeKey: string,
+    executor: Executor,
+    scopeKey: string,
 ): Promise<number> {
-  const rows = await executor.insert(queryProjectionRevisions).values({
-    scope_key: scopeKey,
-    data_revision: 1,
-    materialized_revision: 0,
-  }).onConflictDoUpdate({
-    target: queryProjectionRevisions.scope_key,
-    set: {
-      data_revision: sql`${queryProjectionRevisions.data_revision} + 1`,
-    },
-  }).returning({ data_revision: queryProjectionRevisions.data_revision });
-  return rows[0]?.data_revision ?? 1;
+    const rows = await executor.insert(queryProjectionRevisions).values({
+        scope_key: scopeKey,
+        data_revision: 1,
+        materialized_revision: 0,
+    }).onConflictDoUpdate({
+        target: queryProjectionRevisions.scope_key,
+        set: {
+            data_revision: sql`${queryProjectionRevisions.data_revision} + 1`,
+        },
+    }).returning({ data_revision: queryProjectionRevisions.data_revision });
+    return rows[0]?.data_revision ?? 1;
 }
 
 /**
@@ -147,191 +149,195 @@ export async function bumpProjectionRevision(
  * 导致计数变化要等 TTL 才可见。
  */
 export async function bumpSubmissionCountRevisions(
-  executor: Executor,
-  scope: { problem_id: string; contest_id?: string | null },
+    executor: Executor,
+    scope: { problem_id: string; contest_id?: string | null },
 ): Promise<void> {
-  await bumpProjectionRevision(executor, problemScopeKey(scope.problem_id));
-  if (scope.contest_id) {
-    await bumpProjectionRevision(executor, contestScopeKey(scope.contest_id));
-  }
-  await bumpProjectionRevision(executor, globalScopeKey());
+    await bumpProjectionRevision(executor, problemScopeKey(scope.problem_id));
+    if (scope.contest_id) {
+        await bumpProjectionRevision(
+            executor,
+            contestScopeKey(scope.contest_id),
+        );
+    }
+    await bumpProjectionRevision(executor, globalScopeKey());
 }
 
 /** 读取当前题库策略（缺行/非法形态按 `any` 兜底）。 */
 async function loadProblemPolicy(
-  db: Executor,
-  problemId: string,
+    db: Executor,
+    problemId: string,
 ): Promise<{ policy: EffectiveVersionPolicy; revision: number }> {
-  const [row] = await db.select({
-    mode: problems.effective_version_mode,
-    required: problems.required_version_id,
-    revision: problems.effective_policy_revision,
-  }).from(problems).where(eq(problems.id, problemId)).limit(1);
-  return {
-    policy: policyFromColumns(row?.mode, row?.required) ?? { mode: "any" },
-    revision: row?.revision ?? 0,
-  };
+    const [row] = await db.select({
+        mode: problems.effective_version_mode,
+        required: problems.required_version_id,
+        revision: problems.effective_policy_revision,
+    }).from(problems).where(eq(problems.id, problemId)).limit(1);
+    return {
+        policy: policyFromColumns(row?.mode, row?.required) ?? { mode: "any" },
+        revision: row?.revision ?? 0,
+    };
 }
 
 /** 读取「竞赛×题目」策略；关联不存在时返回 null（该题不在竞赛中）。 */
 async function loadContestPolicy(
-  db: Executor,
-  contestId: string,
-  problemId: string,
+    db: Executor,
+    contestId: string,
+    problemId: string,
 ): Promise<{ policy: EffectiveVersionPolicy; revision: number } | null> {
-  const [row] = await db.select({
-    mode: contestProblems.effective_version_mode,
-    required: contestProblems.required_version_id,
-    revision: contestProblems.effective_policy_revision,
-  }).from(contestProblems).where(
-    and(
-      eq(contestProblems.contest_id, contestId),
-      eq(contestProblems.problem_id, problemId),
-    ),
-  ).limit(1);
-  if (!row) return null;
-  return {
-    policy: policyFromColumns(row.mode, row.required) ?? { mode: "any" },
-    revision: row.revision,
-  };
+    const [row] = await db.select({
+        mode: contestProblems.effective_version_mode,
+        required: contestProblems.required_version_id,
+        revision: contestProblems.effective_policy_revision,
+    }).from(contestProblems).where(
+        and(
+            eq(contestProblems.contest_id, contestId),
+            eq(contestProblems.problem_id, problemId),
+        ),
+    ).limit(1);
+    if (!row) return null;
+    return {
+        policy: policyFromColumns(row.mode, row.required) ?? { mode: "any" },
+        revision: row.revision,
+    };
 }
 
 type LoadedPolicy = {
-  policy: EffectiveVersionPolicy;
-  revision: number;
+    policy: EffectiveVersionPolicy;
+    revision: number;
 };
 
 interface ProjectionBatchContext {
-  problemPolicy: LoadedPolicy;
-  bindingPolicies: ReadonlyMap<string, LoadedPolicy>;
-  resultsBySource: ReadonlyMap<string, CurrentVersionResult[]>;
-  contestPolicies: ReadonlyMap<string, LoadedPolicy>;
+    problemPolicy: LoadedPolicy;
+    bindingPolicies: ReadonlyMap<string, LoadedPolicy>;
+    resultsBySource: ReadonlyMap<string, CurrentVersionResult[]>;
+    contestPolicies: ReadonlyMap<string, LoadedPolicy>;
 }
 
 /** 批量读查询的安全上限，避免 PostgreSQL 参数数量因大题目而溢出。 */
 const PROJECTION_QUERY_BATCH_SIZE = 5_000;
 
 function projectionSourceKey(source: ProjectionSource): string {
-  return `${source.kind}:${source.id}`;
+    return `${source.kind}:${source.id}`;
 }
 
 /** 批量读取一个题目的竞赛策略，避免按提交重复查询 contest_problems。 */
 async function loadContestPolicies(
-  db: Executor,
-  problemId: string,
-  contestIds: readonly string[],
+    db: Executor,
+    problemId: string,
+    contestIds: readonly string[],
 ): Promise<Map<string, LoadedPolicy>> {
-  const out = new Map<string, LoadedPolicy>();
-  const ids = [...new Set(contestIds)];
-  for (
-    let offset = 0;
-    offset < ids.length;
-    offset += PROJECTION_QUERY_BATCH_SIZE
-  ) {
-    const batch = ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE);
-    const rows = await db.select({
-      contest_id: contestProblems.contest_id,
-      mode: contestProblems.effective_version_mode,
-      required: contestProblems.required_version_id,
-      revision: contestProblems.effective_policy_revision,
-    }).from(contestProblems).where(
-      and(
-        eq(contestProblems.problem_id, problemId),
-        inArray(contestProblems.contest_id, batch),
-      ),
-    );
-    for (const row of rows) {
-      out.set(row.contest_id, {
-        policy: policyFromColumns(row.mode, row.required) ?? { mode: "any" },
-        revision: row.revision,
-      });
+    const out = new Map<string, LoadedPolicy>();
+    const ids = [...new Set(contestIds)];
+    for (
+        let offset = 0;
+        offset < ids.length;
+        offset += PROJECTION_QUERY_BATCH_SIZE
+    ) {
+        const batch = ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE);
+        const rows = await db.select({
+            contest_id: contestProblems.contest_id,
+            mode: contestProblems.effective_version_mode,
+            required: contestProblems.required_version_id,
+            revision: contestProblems.effective_policy_revision,
+        }).from(contestProblems).where(
+            and(
+                eq(contestProblems.problem_id, problemId),
+                inArray(contestProblems.contest_id, batch),
+            ),
+        );
+        for (const row of rows) {
+            out.set(row.contest_id, {
+                policy: policyFromColumns(row.mode, row.required) ??
+                    { mode: "any" },
+                revision: row.revision,
+            });
+        }
     }
-  }
-  return out;
+    return out;
 }
 
 /** 批量读取使用域策略，源域策略不能覆盖其他域的绑定。 */
 async function loadBindingPolicies(
-  db: Executor,
-  sources: readonly ProjectionSource[],
+    db: Executor,
+    sources: readonly ProjectionSource[],
 ): Promise<Map<string, LoadedPolicy>> {
-  const ids = [
-    ...new Set(
-      sources.flatMap((s) =>
-        s.domain_problem_binding_id ? [s.domain_problem_binding_id] : []
-      ),
-    ),
-  ];
-  const out = new Map<string, LoadedPolicy>();
-  for (
-    let offset = 0;
-    offset < ids.length;
-    offset += PROJECTION_QUERY_BATCH_SIZE
-  ) {
-    const rows = await db.select({
-      id: domainProblemBindings.id,
-      revision: domainProblemBindings.revision,
-      effective_version_mode: problems.effective_version_mode,
-      required_version_id: problems.required_version_id,
-    }).from(domainProblemBindings).innerJoin(
-      problems,
-      eq(problems.id, domainProblemBindings.problem_id),
-    ).where(
-      inArray(
-        domainProblemBindings.id,
-        ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE),
-      ),
-    );
-    for (const row of rows) {
-      out.set(row.id, {
-        policy: policyFromColumns(
-          row.effective_version_mode,
-          row.required_version_id,
-        )!,
-        revision: row.revision,
-      });
+    const ids = [
+        ...new Set(
+            sources.flatMap((s) =>
+                s.domain_problem_binding_id ? [s.domain_problem_binding_id] : []
+            ),
+        ),
+    ];
+    const out = new Map<string, LoadedPolicy>();
+    for (
+        let offset = 0;
+        offset < ids.length;
+        offset += PROJECTION_QUERY_BATCH_SIZE
+    ) {
+        const rows = await db.select({
+            id: domainProblemBindings.id,
+            revision: domainProblemBindings.revision,
+            effective_version_mode: problems.effective_version_mode,
+            required_version_id: problems.required_version_id,
+        }).from(domainProblemBindings).innerJoin(
+            problems,
+            eq(problems.id, domainProblemBindings.problem_id),
+        ).where(
+            inArray(
+                domainProblemBindings.id,
+                ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE),
+            ),
+        );
+        for (const row of rows) {
+            out.set(row.id, {
+                policy: policyFromColumns(
+                    row.effective_version_mode,
+                    row.required_version_id,
+                )!,
+                revision: row.revision,
+            });
+        }
     }
-  }
-  return out;
+    return out;
 }
 
 /** 用已批量读取的数据计算单条投影；此函数不再触发数据库查询。 */
 function buildSubmissionProjectionPlan(
-  source: ProjectionSource,
-  context: ProjectionBatchContext,
+    source: ProjectionSource,
+    context: ProjectionBatchContext,
 ): SubmissionProjectionPlan {
-  const contestId = source.contest_id ?? null;
-  const results = context.resultsBySource.get(projectionSourceKey(source)) ??
-    [];
-  const problemPolicy = source.domain_problem_binding_id
-    ? context.bindingPolicies.get(source.domain_problem_binding_id)
-    : context.problemPolicy;
-  if (!problemPolicy) {
-    throw new AppError(
-      "提交的题库策略不存在",
-      503,
-      "PROBLEM_BINDING_INCONSISTENT",
-    );
-  }
-  const global = selectEffectiveResults(results, problemPolicy.policy);
-
-  let contest: EffectiveSelection = { ...EMPTY_EFFECTIVE_SELECTION };
-  let contestRevision: number | null = null;
-  if (contestId) {
-    const contestPolicy = context.contestPolicies.get(contestId);
-    if (contestPolicy) {
-      contest = selectEffectiveResults(results, contestPolicy.policy);
-      contestRevision = contestPolicy.revision;
+    const contestId = source.contest_id ?? null;
+    const results = context.resultsBySource.get(projectionSourceKey(source)) ??
+        [];
+    const problemPolicy = source.domain_problem_binding_id
+        ? context.bindingPolicies.get(source.domain_problem_binding_id)
+        : context.problemPolicy;
+    if (!problemPolicy) {
+        throw new AppError(
+            "提交的题库策略不存在",
+            503,
+            "PROBLEM_BINDING_INCONSISTENT",
+        );
     }
-  }
+    const global = selectEffectiveResults(results, problemPolicy.policy);
 
-  return {
-    source: { ...source, contest_id: contestId },
-    global,
-    contest,
-    global_policy_revision: problemPolicy.revision,
-    contest_policy_revision: contestRevision,
-  };
+    let contest: EffectiveSelection = { ...EMPTY_EFFECTIVE_SELECTION };
+    let contestRevision: number | null = null;
+    if (contestId) {
+        const contestPolicy = context.contestPolicies.get(contestId);
+        if (contestPolicy) {
+            contest = selectEffectiveResults(results, contestPolicy.policy);
+            contestRevision = contestPolicy.revision;
+        }
+    }
+
+    return {
+        source: { ...source, contest_id: contestId },
+        global,
+        contest,
+        global_policy_revision: problemPolicy.revision,
+        contest_policy_revision: contestRevision,
+    };
 }
 
 /**
@@ -341,52 +347,57 @@ function buildSubmissionProjectionPlan(
  * 这是纵深防御：写入服务本就不该把平台错误写进这张表。
  */
 export async function loadCurrentVersionResults(
-  db: Executor,
-  source: ProjectionSource,
+    db: Executor,
+    source: ProjectionSource,
 ): Promise<CurrentVersionResult[]> {
-  const sourceColumn = source.kind === "submission"
-    ? submissionVersionResults.submission_id
-    : submissionVersionResults.objective_submission_id;
-  const rows = await db.select({
-    attempt_id: submissionVersionResults.current_attempt_id,
-    problem_version_id: submissionVersionResults.problem_version_id,
-    score: evaluationAttempts.score,
-    accepted: evaluationAttempts.accepted,
-    sequence: evaluationAttempts.sequence,
-    result_kind: evaluationAttempts.result_kind,
-    state: evaluationAttempts.state,
-  }).from(submissionVersionResults)
-    .innerJoin(
-      evaluationAttempts,
-      eq(evaluationAttempts.id, submissionVersionResults.current_attempt_id),
-    )
-    .where(eq(sourceColumn, source.id));
-  return rows.map((row) => ({
-    attempt_id: row.attempt_id,
-    problem_version_id: row.problem_version_id,
-    score: row.score ?? 0,
-    accepted: row.accepted,
-    sequence: row.sequence,
-    result_kind: row.result_kind,
-    state: row.state,
-  }));
+    const sourceColumn = source.kind === "submission"
+        ? submissionVersionResults.submission_id
+        : submissionVersionResults.objective_submission_id;
+    const rows = await db.select({
+        attempt_id: submissionVersionResults.current_attempt_id,
+        problem_version_id: submissionVersionResults.problem_version_id,
+        score: evaluationAttempts.score,
+        accepted: evaluationAttempts.accepted,
+        sequence: evaluationAttempts.sequence,
+        result_kind: evaluationAttempts.result_kind,
+        state: evaluationAttempts.state,
+    }).from(submissionVersionResults)
+        .innerJoin(
+            evaluationAttempts,
+            eq(
+                evaluationAttempts.id,
+                submissionVersionResults.current_attempt_id,
+            ),
+        )
+        .where(eq(sourceColumn, source.id));
+    return rows.map((row) => ({
+        attempt_id: row.attempt_id,
+        problem_version_id: row.problem_version_id,
+        score: row.score ?? 0,
+        accepted: row.accepted,
+        sequence: row.sequence,
+        result_kind: row.result_kind,
+        state: row.state,
+    }));
 }
 
 /** 读取提交的竞赛上下文（两类提交各自的 contest_id）。 */
 export async function loadSubmissionContestId(
-  db: Executor,
-  source: ProjectionSource,
+    db: Executor,
+    source: ProjectionSource,
 ): Promise<string | null> {
-  if (source.kind === "submission") {
-    const [row] = await db.select({ contest_id: submissions.contest_id })
-      .from(submissions).where(eq(submissions.id, source.id)).limit(1);
+    if (source.kind === "submission") {
+        const [row] = await db.select({ contest_id: submissions.contest_id })
+            .from(submissions).where(eq(submissions.id, source.id)).limit(1);
+        return row?.contest_id ?? null;
+    }
+    const [row] = await db.select({
+        contest_id: objectiveSubmissions.contest_id,
+    })
+        .from(objectiveSubmissions).where(
+            eq(objectiveSubmissions.id, source.id),
+        ).limit(1);
     return row?.contest_id ?? null;
-  }
-  const [row] = await db.select({ contest_id: objectiveSubmissions.contest_id })
-    .from(objectiveSubmissions).where(
-      eq(objectiveSubmissions.id, source.id),
-    ).limit(1);
-  return row?.contest_id ?? null;
 }
 
 /**
@@ -396,70 +407,77 @@ export async function loadSubmissionContestId(
  * 有效/通过指针可以完全不同。
  */
 export async function computeSubmissionProjection(
-  db: Executor,
-  source: ProjectionSource,
+    db: Executor,
+    source: ProjectionSource,
 ): Promise<SubmissionProjectionPlan> {
-  const table = source.kind === "submission"
-    ? submissions
-    : objectiveSubmissions;
-  const [stored] = source.contest_id === undefined ||
-      source.domain_problem_binding_id === undefined
-    ? await db.select({
-      contest_id: table.contest_id,
-      binding_id: table.domain_problem_binding_id,
-    })
-      .from(table).where(eq(table.id, source.id)).limit(1)
-    : [];
-  const contestId = source.contest_id === undefined
-    ? stored?.contest_id ?? null
-    : source.contest_id;
-  const resolvedSource: ProjectionSource = {
-    ...source,
-    contest_id: contestId,
-    domain_problem_binding_id: source.domain_problem_binding_id === undefined
-      ? stored?.binding_id ?? null
-      : source.domain_problem_binding_id,
-  };
+    const table = source.kind === "submission"
+        ? submissions
+        : objectiveSubmissions;
+    const [stored] = source.contest_id === undefined ||
+            source.domain_problem_binding_id === undefined
+        ? await db.select({
+            contest_id: table.contest_id,
+            binding_id: table.domain_problem_binding_id,
+        })
+            .from(table).where(eq(table.id, source.id)).limit(1)
+        : [];
+    const contestId = source.contest_id === undefined
+        ? stored?.contest_id ?? null
+        : source.contest_id;
+    const resolvedSource: ProjectionSource = {
+        ...source,
+        contest_id: contestId,
+        domain_problem_binding_id:
+            source.domain_problem_binding_id === undefined
+                ? stored?.binding_id ?? null
+                : source.domain_problem_binding_id,
+    };
 
-  const problemPolicy = await loadProblemPolicy(db, resolvedSource.problem_id);
-  const results = await loadCurrentVersionResults(db, resolvedSource);
-  const contestPolicies = new Map<string, LoadedPolicy>();
-  if (contestId) {
-    const contestPolicy = await loadContestPolicy(
-      db,
-      contestId,
-      resolvedSource.problem_id,
+    const problemPolicy = await loadProblemPolicy(
+        db,
+        resolvedSource.problem_id,
     );
-    if (contestPolicy) contestPolicies.set(contestId, contestPolicy);
-  }
-  return buildSubmissionProjectionPlan(resolvedSource, {
-    problemPolicy,
-    bindingPolicies: await loadBindingPolicies(db, [resolvedSource]),
-    resultsBySource: new Map([[projectionSourceKey(resolvedSource), results]]),
-    contestPolicies,
-  });
+    const results = await loadCurrentVersionResults(db, resolvedSource);
+    const contestPolicies = new Map<string, LoadedPolicy>();
+    if (contestId) {
+        const contestPolicy = await loadContestPolicy(
+            db,
+            contestId,
+            resolvedSource.problem_id,
+        );
+        if (contestPolicy) contestPolicies.set(contestId, contestPolicy);
+    }
+    return buildSubmissionProjectionPlan(resolvedSource, {
+        problemPolicy,
+        bindingPolicies: await loadBindingPolicies(db, [resolvedSource]),
+        resultsBySource: new Map([[
+            projectionSourceKey(resolvedSource),
+            results,
+        ]]),
+        contestPolicies,
+    });
 }
 
 /** 把投影计划写入对应的提交行。 */
 async function writeProjection(
-  db: Executor,
-  plan: SubmissionProjectionPlan,
+    db: Executor,
+    plan: SubmissionProjectionPlan,
 ): Promise<void> {
-  const merged = mergeSubmissionProjection(plan.global, plan.contest);
-  const values = {
-    ...merged,
-    global_policy_revision: plan.global_policy_revision,
-    contest_policy_revision: plan.contest_policy_revision,
-  };
-  if (plan.source.kind === "submission") {
-    await db.update(submissions).set(values).where(
-      eq(submissions.id, plan.source.id),
-    );
-  } else {
-    await db.update(objectiveSubmissions).set(values).where(
-      eq(objectiveSubmissions.id, plan.source.id),
-    );
-  }
+    const merged = mergeSubmissionProjection(plan.global, plan.contest);
+    const values = {
+        ...merged,
+        global_policy_revision: plan.global_policy_revision,
+        contest_policy_revision: plan.contest_policy_revision,
+    };
+    if (plan.source.kind === "submission") {
+        await db.update(submissions).set(values).where(
+            eq(submissions.id, plan.source.id),
+        );
+    } else {
+        await db.update(objectiveSubmissions).set(values).where(
+            eq(objectiveSubmissions.id, plan.source.id),
+        );
+    }
 }
 
 /**
@@ -469,112 +487,117 @@ async function writeProjection(
  * 让缓存与物化视图立刻知道口径变了。
  */
 export async function recomputeSubmissionProjection(
-  executor: Executor,
-  source: ProjectionSource,
+    executor: Executor,
+    source: ProjectionSource,
 ): Promise<SubmissionProjectionPlan> {
-  const plan = await computeSubmissionProjection(executor, source);
-  await writeProjection(executor, plan);
-  await bumpProjectionRevision(executor, problemScopeKey(source.problem_id));
-  if (plan.source.contest_id) {
-    await bumpProjectionRevision(
-      executor,
-      contestScopeKey(plan.source.contest_id),
-    );
-  }
-  await bumpProjectionRevision(executor, globalScopeKey());
-  const [identity] = source.kind === "submission"
-    ? await executor.select({
-      domain_id: submissions.domain_id,
-      user_id: submissions.user_id,
-      contest_id: submissions.contest_id,
-    }).from(submissions).where(eq(submissions.id, source.id))
-    : await executor.select({
-      domain_id: objectiveSubmissions.domain_id,
-      user_id: objectiveSubmissions.user_id,
-      contest_id: objectiveSubmissions.contest_id,
-    }).from(objectiveSubmissions).where(eq(objectiveSubmissions.id, source.id));
-  if (identity) {
-    // 迁移期：掌握度增量重算（knowledge.mastery，target = 用户）与有效成绩同事务
-    // 登记；开关关闭时由 handler 直接成功结束。
-    await enqueueKnowledgeMasteryTaskTx(executor as DbTx, {
-      userId: identity.user_id,
-      problemId: source.problem_id,
-    });
-  }
-  if (identity?.domain_id) {
-    // 教学事实登记归 education：这里只经其窄事务合同登记定位，不带成绩。
-    await recordEvaluationChangeTx(executor as DbTx, {
-      domainId: identity.domain_id,
-      userId: identity.user_id,
-      problemId: source.problem_id,
-      contestId: identity.contest_id,
-    });
-    if (identity.contest_id) {
-      const [contest] = await executor.select({ end_time: contests.end_time })
-        .from(contests).where(eq(contests.id, identity.contest_id));
-      if (contest && contest.end_time > new Date().toISOString()) {
-        // 比赛结束前不生成绩效：延后到 end_time 的同一事实登记。
-        await recordEvaluationChangeTx(executor as DbTx, {
-          domainId: identity.domain_id,
-          userId: identity.user_id,
-          problemId: source.problem_id,
-          contestId: identity.contest_id,
-          availableAt: contest.end_time,
-        });
-      }
+    const plan = await computeSubmissionProjection(executor, source);
+    await writeProjection(executor, plan);
+    await bumpProjectionRevision(executor, problemScopeKey(source.problem_id));
+    if (plan.source.contest_id) {
+        await bumpProjectionRevision(
+            executor,
+            contestScopeKey(plan.source.contest_id),
+        );
     }
-  }
-  return plan;
+    await bumpProjectionRevision(executor, globalScopeKey());
+    const [identity] = source.kind === "submission"
+        ? await executor.select({
+            domain_id: submissions.domain_id,
+            user_id: submissions.user_id,
+            contest_id: submissions.contest_id,
+        }).from(submissions).where(eq(submissions.id, source.id))
+        : await executor.select({
+            domain_id: objectiveSubmissions.domain_id,
+            user_id: objectiveSubmissions.user_id,
+            contest_id: objectiveSubmissions.contest_id,
+        }).from(objectiveSubmissions).where(
+            eq(objectiveSubmissions.id, source.id),
+        );
+    if (identity) {
+        // 迁移期：掌握度增量重算（knowledge.mastery，target = 用户）与有效成绩同事务
+        // 登记；开关关闭时由 handler 直接成功结束。
+        await enqueueKnowledgeMasteryTaskTx(executor as DbTx, {
+            userId: identity.user_id,
+            problemId: source.problem_id,
+        });
+    }
+    if (identity?.domain_id) {
+        // 教学事实登记归 education：这里只经其窄事务合同登记定位，不带成绩。
+        await recordEvaluationChangeTx(executor as DbTx, {
+            domainId: identity.domain_id,
+            userId: identity.user_id,
+            problemId: source.problem_id,
+            contestId: identity.contest_id,
+        });
+        if (identity.contest_id) {
+            const [contest] = await executor.select({
+                end_time: contests.end_time,
+            })
+                .from(contests).where(eq(contests.id, identity.contest_id));
+            if (contest && contest.end_time > new Date().toISOString()) {
+                // 比赛结束前不生成绩效：延后到 end_time 的同一事实登记。
+                await recordEvaluationChangeTx(executor as DbTx, {
+                    domainId: identity.domain_id,
+                    userId: identity.user_id,
+                    problemId: source.problem_id,
+                    contestId: identity.contest_id,
+                    availableAt: contest.end_time,
+                });
+            }
+        }
+    }
+    return plan;
 }
 
 /** 列出某题下的全部提交来源（分页游标由调用方控制批量）。 */
 export async function listProblemProjectionSources(
-  db: Executor,
-  problemId: string,
-  bindingId?: string,
+    db: Executor,
+    problemId: string,
+    bindingId?: string,
 ): Promise<ProjectionSource[]> {
-  const plainRows = await db.select({
-    id: submissions.id,
-    problem_id: submissions.problem_id,
-    contest_id: submissions.contest_id,
-    domain_problem_binding_id: submissions.domain_problem_binding_id,
-  }).from(submissions).where(
-    and(
-      eq(submissions.problem_id, problemId),
-      bindingId
-        ? eq(submissions.domain_problem_binding_id, bindingId)
-        : undefined,
-    ),
-  );
-  const objectiveRows = await db.select({
-    id: objectiveSubmissions.id,
-    problem_id: objectiveSubmissions.paper_id,
-    contest_id: objectiveSubmissions.contest_id,
-    domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
-  }).from(objectiveSubmissions).where(
-    and(
-      eq(objectiveSubmissions.paper_id, problemId),
-      bindingId
-        ? eq(objectiveSubmissions.domain_problem_binding_id, bindingId)
-        : undefined,
-    ),
-  );
-  return [
-    ...plainRows.map((row) => ({
-      kind: "submission" as const,
-      id: row.id,
-      problem_id: row.problem_id,
-      contest_id: row.contest_id,
-      domain_problem_binding_id: row.domain_problem_binding_id,
-    })),
-    ...objectiveRows.map((row) => ({
-      kind: "objective" as const,
-      id: row.id,
-      problem_id: row.problem_id,
-      contest_id: row.contest_id,
-      domain_problem_binding_id: row.domain_problem_binding_id,
-    })),
-  ];
+    const plainRows = await db.select({
+        id: submissions.id,
+        problem_id: submissions.problem_id,
+        contest_id: submissions.contest_id,
+        domain_problem_binding_id: submissions.domain_problem_binding_id,
+    }).from(submissions).where(
+        and(
+            eq(submissions.problem_id, problemId),
+            bindingId
+                ? eq(submissions.domain_problem_binding_id, bindingId)
+                : undefined,
+        ),
+    );
+    const objectiveRows = await db.select({
+        id: objectiveSubmissions.id,
+        problem_id: objectiveSubmissions.paper_id,
+        contest_id: objectiveSubmissions.contest_id,
+        domain_problem_binding_id:
+            objectiveSubmissions.domain_problem_binding_id,
+    }).from(objectiveSubmissions).where(
+        and(
+            eq(objectiveSubmissions.paper_id, problemId),
+            bindingId
+                ? eq(objectiveSubmissions.domain_problem_binding_id, bindingId)
+                : undefined,
+        ),
+    );
+    return [
+        ...plainRows.map((row) => ({
+            kind: "submission" as const,
+            id: row.id,
+            problem_id: row.problem_id,
+            contest_id: row.contest_id,
+            domain_problem_binding_id: row.domain_problem_binding_id,
+        })),
+        ...objectiveRows.map((row) => ({
+            kind: "objective" as const,
+            id: row.id,
+            problem_id: row.problem_id,
+            contest_id: row.contest_id,
+            domain_problem_binding_id: row.domain_problem_binding_id,
+        })),
+    ];
 }
 
 /**
@@ -586,60 +609,60 @@ export async function listProblemProjectionSources(
  * @returns 被重算的提交数量
  */
 export async function recomputeProblemProjections(
-  executor: Executor,
-  problemId: string,
-  bindingId?: string,
+    executor: Executor,
+    problemId: string,
+    bindingId?: string,
 ): Promise<number> {
-  const sources = await listProblemProjectionSources(
-    executor,
-    problemId,
-    bindingId,
-  );
-  const resolvedSources = sources.map((source) => ({
-    ...source,
-    // listProblemProjectionSources 明确选择了 contest_id；这里仅把类型上的
-    // undefined 归一化，避免批量路径意外回退到逐条主键查询。
-    contest_id: source.contest_id ?? null,
-  }));
-  const problemPolicy = await loadProblemPolicy(executor, problemId);
-  const resultsBySource = await loadCurrentVersionResultsForSources(
-    executor,
-    resolvedSources,
-  );
-  const contestPolicies = await loadContestPolicies(
-    executor,
-    problemId,
-    resolvedSources.flatMap((source) =>
-      source.contest_id ? [source.contest_id] : []
-    ),
-  );
-  const context: ProjectionBatchContext = {
-    problemPolicy,
-    bindingPolicies: await loadBindingPolicies(executor, resolvedSources),
-    resultsBySource,
-    contestPolicies,
-  };
-  for (const source of resolvedSources) {
-    const plan = buildSubmissionProjectionPlan(source, context);
-    await writeProjection(executor, plan);
-  }
-  await bumpProjectionRevision(executor, problemScopeKey(problemId));
-  await bumpProjectionRevision(executor, globalScopeKey());
-  return sources.length;
+    const sources = await listProblemProjectionSources(
+        executor,
+        problemId,
+        bindingId,
+    );
+    const resolvedSources = sources.map((source) => ({
+        ...source,
+        // listProblemProjectionSources 明确选择了 contest_id；这里仅把类型上的
+        // undefined 归一化，避免批量路径意外回退到逐条主键查询。
+        contest_id: source.contest_id ?? null,
+    }));
+    const problemPolicy = await loadProblemPolicy(executor, problemId);
+    const resultsBySource = await loadCurrentVersionResultsForSources(
+        executor,
+        resolvedSources,
+    );
+    const contestPolicies = await loadContestPolicies(
+        executor,
+        problemId,
+        resolvedSources.flatMap((source) =>
+            source.contest_id ? [source.contest_id] : []
+        ),
+    );
+    const context: ProjectionBatchContext = {
+        problemPolicy,
+        bindingPolicies: await loadBindingPolicies(executor, resolvedSources),
+        resultsBySource,
+        contestPolicies,
+    };
+    for (const source of resolvedSources) {
+        const plan = buildSubmissionProjectionPlan(source, context);
+        await writeProjection(executor, plan);
+    }
+    await bumpProjectionRevision(executor, problemScopeKey(problemId));
+    await bumpProjectionRevision(executor, globalScopeKey());
+    return sources.length;
 }
 
 /** 按绑定重算；调用方先锁源题，策略与结果共用宿主锁。 */
 export async function recomputeProblemBindingProjections(
-  executor: Executor,
-  binding: { id: string; problem_id: string; domain_id: string },
+    executor: Executor,
+    binding: { id: string; problem_id: string; domain_id: string },
 ): Promise<number> {
-  const count = await recomputeProblemProjections(
-    executor,
-    binding.problem_id,
-    binding.id,
-  );
-  await bumpProjectionRevision(executor, `domain:${binding.domain_id}`);
-  return count;
+    const count = await recomputeProblemProjections(
+        executor,
+        binding.problem_id,
+        binding.id,
+    );
+    await bumpProjectionRevision(executor, `domain:${binding.domain_id}`);
+    return count;
 }
 
 /**
@@ -650,96 +673,97 @@ export async function recomputeProblemBindingProjections(
  * @returns 被重算的提交数量
  */
 export async function recomputeContestProblemProjections(
-  executor: Executor,
-  contestId: string,
-  problemId: string,
+    executor: Executor,
+    contestId: string,
+    problemId: string,
 ): Promise<number> {
-  const plainRows = await listContestProblemSources(
-    executor,
-    "submission",
-    contestId,
-    problemId,
-  );
-  const objectiveRows = await listContestProblemSources(
-    executor,
-    "objective",
-    contestId,
-    problemId,
-  );
-  const sources = [...plainRows, ...objectiveRows].map((source) => ({
-    ...source,
-    contest_id: source.contest_id ?? contestId,
-  }));
-  const problemPolicy = await loadProblemPolicy(executor, problemId);
-  const resultsBySource = await loadCurrentVersionResultsForSources(
-    executor,
-    sources,
-  );
-  const contestPolicies = await loadContestPolicies(
-    executor,
-    problemId,
-    [contestId],
-  );
-  const context: ProjectionBatchContext = {
-    problemPolicy,
-    bindingPolicies: await loadBindingPolicies(executor, sources),
-    resultsBySource,
-    contestPolicies,
-  };
-  for (const source of sources) {
-    const plan = buildSubmissionProjectionPlan(source, context);
-    await writeProjection(executor, plan);
-  }
-  await bumpProjectionRevision(executor, contestScopeKey(contestId));
-  await bumpProjectionRevision(executor, globalScopeKey());
-  return plainRows.length + objectiveRows.length;
+    const plainRows = await listContestProblemSources(
+        executor,
+        "submission",
+        contestId,
+        problemId,
+    );
+    const objectiveRows = await listContestProblemSources(
+        executor,
+        "objective",
+        contestId,
+        problemId,
+    );
+    const sources = [...plainRows, ...objectiveRows].map((source) => ({
+        ...source,
+        contest_id: source.contest_id ?? contestId,
+    }));
+    const problemPolicy = await loadProblemPolicy(executor, problemId);
+    const resultsBySource = await loadCurrentVersionResultsForSources(
+        executor,
+        sources,
+    );
+    const contestPolicies = await loadContestPolicies(
+        executor,
+        problemId,
+        [contestId],
+    );
+    const context: ProjectionBatchContext = {
+        problemPolicy,
+        bindingPolicies: await loadBindingPolicies(executor, sources),
+        resultsBySource,
+        contestPolicies,
+    };
+    for (const source of sources) {
+        const plan = buildSubmissionProjectionPlan(source, context);
+        await writeProjection(executor, plan);
+    }
+    await bumpProjectionRevision(executor, contestScopeKey(contestId));
+    await bumpProjectionRevision(executor, globalScopeKey());
+    return plainRows.length + objectiveRows.length;
 }
 
 /** 读取某竞赛某题下的提交来源（两类提交统一）。 */
 async function listContestProblemSources(
-  db: Executor,
-  kind: ProjectionSourceKind,
-  contestId: string,
-  problemId: string,
+    db: Executor,
+    kind: ProjectionSourceKind,
+    contestId: string,
+    problemId: string,
 ): Promise<ProjectionSource[]> {
-  if (kind === "submission") {
+    if (kind === "submission") {
+        const rows = await db.select({
+            id: submissions.id,
+            problem_id: submissions.problem_id,
+            contest_id: submissions.contest_id,
+            domain_problem_binding_id: submissions.domain_problem_binding_id,
+        }).from(submissions).where(
+            and(
+                eq(submissions.contest_id, contestId),
+                eq(submissions.problem_id, problemId),
+            ),
+        );
+        return rows.map((row) => ({
+            kind: "submission" as const,
+            id: row.id,
+            problem_id: row.problem_id,
+            contest_id: row.contest_id,
+            domain_problem_binding_id: row.domain_problem_binding_id,
+        }));
+    }
     const rows = await db.select({
-      id: submissions.id,
-      problem_id: submissions.problem_id,
-      contest_id: submissions.contest_id,
-      domain_problem_binding_id: submissions.domain_problem_binding_id,
-    }).from(submissions).where(
-      and(
-        eq(submissions.contest_id, contestId),
-        eq(submissions.problem_id, problemId),
-      ),
+        id: objectiveSubmissions.id,
+        problem_id: objectiveSubmissions.paper_id,
+        contest_id: objectiveSubmissions.contest_id,
+        domain_problem_binding_id:
+            objectiveSubmissions.domain_problem_binding_id,
+    }).from(objectiveSubmissions).where(
+        and(
+            eq(objectiveSubmissions.contest_id, contestId),
+            eq(objectiveSubmissions.paper_id, problemId),
+        ),
     );
     return rows.map((row) => ({
-      kind: "submission" as const,
-      id: row.id,
-      problem_id: row.problem_id,
-      contest_id: row.contest_id,
-      domain_problem_binding_id: row.domain_problem_binding_id,
+        kind: "objective" as const,
+        id: row.id,
+        problem_id: row.problem_id,
+        contest_id: row.contest_id,
+        domain_problem_binding_id: row.domain_problem_binding_id,
     }));
-  }
-  const rows = await db.select({
-    id: objectiveSubmissions.id,
-    problem_id: objectiveSubmissions.paper_id,
-    contest_id: objectiveSubmissions.contest_id,
-    domain_problem_binding_id: objectiveSubmissions.domain_problem_binding_id,
-  }).from(objectiveSubmissions).where(
-    and(
-      eq(objectiveSubmissions.contest_id, contestId),
-      eq(objectiveSubmissions.paper_id, problemId),
-    ),
-  );
-  return rows.map((row) => ({
-    kind: "objective" as const,
-    id: row.id,
-    problem_id: row.problem_id,
-    contest_id: row.contest_id,
-    domain_problem_binding_id: row.domain_problem_binding_id,
-  }));
 }
 
 /**
@@ -750,142 +774,150 @@ async function listContestProblemSources(
  * 迁移历史。
  */
 export async function upsertCurrentVersionResult(
-  executor: Executor,
-  input: {
-    source: ProjectionSource;
-    problemVersionId: string | null;
-    attemptId: string;
-    updatedAt?: string;
-  },
+    executor: Executor,
+    input: {
+        source: ProjectionSource;
+        problemVersionId: string | null;
+        attemptId: string;
+        updatedAt?: string;
+    },
 ): Promise<void> {
-  const now = input.updatedAt ?? new Date().toISOString();
-  const rows = await executor.select().from(submissionVersionResults).where(
-    and(
-      input.source.kind === "submission"
-        ? eq(submissionVersionResults.submission_id, input.source.id)
-        : eq(submissionVersionResults.objective_submission_id, input.source.id),
-      input.problemVersionId == null
-        ? sql`${submissionVersionResults.problem_version_id} IS NULL`
-        : eq(
-          submissionVersionResults.problem_version_id,
-          input.problemVersionId,
+    const now = input.updatedAt ?? new Date().toISOString();
+    const rows = await executor.select().from(submissionVersionResults).where(
+        and(
+            input.source.kind === "submission"
+                ? eq(submissionVersionResults.submission_id, input.source.id)
+                : eq(
+                    submissionVersionResults.objective_submission_id,
+                    input.source.id,
+                ),
+            input.problemVersionId == null
+                ? sql`${submissionVersionResults.problem_version_id} IS NULL`
+                : eq(
+                    submissionVersionResults.problem_version_id,
+                    input.problemVersionId,
+                ),
         ),
-    ),
-  ).limit(1);
+    ).limit(1);
 
-  if (rows[0]) {
-    await executor.update(submissionVersionResults).set({
-      current_attempt_id: input.attemptId,
-      updated_at: now,
-    }).where(eq(submissionVersionResults.id, rows[0].id));
-    return;
-  }
+    if (rows[0]) {
+        await executor.update(submissionVersionResults).set({
+            current_attempt_id: input.attemptId,
+            updated_at: now,
+        }).where(eq(submissionVersionResults.id, rows[0].id));
+        return;
+    }
 
-  await executor.insert(submissionVersionResults).values({
-    id: crypto.randomUUID(),
-    submission_id: input.source.kind === "submission" ? input.source.id : null,
-    objective_submission_id: input.source.kind === "objective"
-      ? input.source.id
-      : null,
-    problem_id: input.source.problem_id,
-    problem_version_id: input.problemVersionId,
-    current_attempt_id: input.attemptId,
-    updated_at: now,
-  });
+    await executor.insert(submissionVersionResults).values({
+        id: crypto.randomUUID(),
+        submission_id: input.source.kind === "submission"
+            ? input.source.id
+            : null,
+        objective_submission_id: input.source.kind === "objective"
+            ? input.source.id
+            : null,
+        problem_id: input.source.problem_id,
+        problem_version_id: input.problemVersionId,
+        current_attempt_id: input.attemptId,
+        updated_at: now,
+    });
 }
 
 /** 删除某提交的当前判定（整题删除等清理路径使用）。 */
 export async function deleteVersionResultsForSource(
-  executor: Executor,
-  source: ProjectionSource,
+    executor: Executor,
+    source: ProjectionSource,
 ): Promise<void> {
-  await executor.delete(submissionVersionResults).where(
-    source.kind === "submission"
-      ? eq(submissionVersionResults.submission_id, source.id)
-      : eq(submissionVersionResults.objective_submission_id, source.id),
-  );
+    await executor.delete(submissionVersionResults).where(
+        source.kind === "submission"
+            ? eq(submissionVersionResults.submission_id, source.id)
+            : eq(submissionVersionResults.objective_submission_id, source.id),
+    );
 }
 
 /** 批量读取多条提交的当前判定（读路径与批量重算共用）。 */
 export async function loadCurrentVersionResultsForSources(
-  db: Executor,
-  sources: readonly ProjectionSource[],
+    db: Executor,
+    sources: readonly ProjectionSource[],
 ): Promise<Map<string, CurrentVersionResult[]>> {
-  const out = new Map<string, CurrentVersionResult[]>();
-  if (sources.length === 0) return out;
-  const plainIds = [
-    ...new Set(
-      sources.filter((s) => s.kind === "submission").map((s) => s.id),
-    ),
-  ];
-  const objectiveIds = [
-    ...new Set(
-      sources.filter((s) => s.kind === "objective").map((s) => s.id),
-    ),
-  ];
-  const fetch = async (ids: string[], kind: ProjectionSourceKind) => {
-    for (
-      let offset = 0;
-      offset < ids.length;
-      offset += PROJECTION_QUERY_BATCH_SIZE
-    ) {
-      const batch = ids.slice(offset, offset + PROJECTION_QUERY_BATCH_SIZE);
-      const rows = await db.select({
-        source_id: kind === "submission"
-          ? submissionVersionResults.submission_id
-          : submissionVersionResults.objective_submission_id,
-        attempt_id: submissionVersionResults.current_attempt_id,
-        problem_version_id: submissionVersionResults.problem_version_id,
-        score: evaluationAttempts.score,
-        accepted: evaluationAttempts.accepted,
-        sequence: evaluationAttempts.sequence,
-        result_kind: evaluationAttempts.result_kind,
-        state: evaluationAttempts.state,
-      }).from(submissionVersionResults)
-        .innerJoin(
-          evaluationAttempts,
-          eq(
-            evaluationAttempts.id,
-            submissionVersionResults.current_attempt_id,
-          ),
-        )
-        .where(
-          inArray(
-            kind === "submission"
-              ? submissionVersionResults.submission_id
-              : submissionVersionResults.objective_submission_id,
-            batch,
-          ),
-        );
-      for (const row of rows) {
-        const key = `${kind}:${row.source_id}`;
-        const list = out.get(key) ?? [];
-        list.push({
-          attempt_id: row.attempt_id,
-          problem_version_id: row.problem_version_id,
-          score: row.score ?? 0,
-          accepted: row.accepted,
-          sequence: row.sequence,
-          result_kind: row.result_kind,
-          state: row.state,
-        });
-        out.set(key, list);
-      }
-    }
-  };
-  await fetch(plainIds, "submission");
-  await fetch(objectiveIds, "objective");
-  return out;
+    const out = new Map<string, CurrentVersionResult[]>();
+    if (sources.length === 0) return out;
+    const plainIds = [
+        ...new Set(
+            sources.filter((s) => s.kind === "submission").map((s) => s.id),
+        ),
+    ];
+    const objectiveIds = [
+        ...new Set(
+            sources.filter((s) => s.kind === "objective").map((s) => s.id),
+        ),
+    ];
+    const fetch = async (ids: string[], kind: ProjectionSourceKind) => {
+        for (
+            let offset = 0;
+            offset < ids.length;
+            offset += PROJECTION_QUERY_BATCH_SIZE
+        ) {
+            const batch = ids.slice(
+                offset,
+                offset + PROJECTION_QUERY_BATCH_SIZE,
+            );
+            const rows = await db.select({
+                source_id: kind === "submission"
+                    ? submissionVersionResults.submission_id
+                    : submissionVersionResults.objective_submission_id,
+                attempt_id: submissionVersionResults.current_attempt_id,
+                problem_version_id: submissionVersionResults.problem_version_id,
+                score: evaluationAttempts.score,
+                accepted: evaluationAttempts.accepted,
+                sequence: evaluationAttempts.sequence,
+                result_kind: evaluationAttempts.result_kind,
+                state: evaluationAttempts.state,
+            }).from(submissionVersionResults)
+                .innerJoin(
+                    evaluationAttempts,
+                    eq(
+                        evaluationAttempts.id,
+                        submissionVersionResults.current_attempt_id,
+                    ),
+                )
+                .where(
+                    inArray(
+                        kind === "submission"
+                            ? submissionVersionResults.submission_id
+                            : submissionVersionResults.objective_submission_id,
+                        batch,
+                    ),
+                );
+            for (const row of rows) {
+                const key = `${kind}:${row.source_id}`;
+                const list = out.get(key) ?? [];
+                list.push({
+                    attempt_id: row.attempt_id,
+                    problem_version_id: row.problem_version_id,
+                    score: row.score ?? 0,
+                    accepted: row.accepted,
+                    sequence: row.sequence,
+                    result_kind: row.result_kind,
+                    state: row.state,
+                });
+                out.set(key, list);
+            }
+        }
+    };
+    await fetch(plainIds, "submission");
+    await fetch(objectiveIds, "objective");
+    return out;
 }
 
 /** 宿主锁之后、尝试/条目锁之前取得提交更新锁。 */
 export async function lockProjectionSource(
-  db: Executor,
-  source: ProjectionSource,
+    db: Executor,
+    source: ProjectionSource,
 ): Promise<void> {
-  const table = source.kind === "submission"
-    ? submissions
-    : objectiveSubmissions;
-  await db.select({ id: table.id }).from(table).where(eq(table.id, source.id))
-    .for("update");
+    const table = source.kind === "submission"
+        ? submissions
+        : objectiveSubmissions;
+    await db.select({ id: table.id }).from(table).where(eq(table.id, source.id))
+        .for("update");
 }

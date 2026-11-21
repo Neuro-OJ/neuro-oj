@@ -23,137 +23,137 @@ export const PROBLEM_SETTER_SKILL_NAME = "noj-problem-setter";
 
 /** 写入位置（相对目标目录）。 */
 export const PROBLEM_SETTER_SKILL_ROOTS: readonly string[] = [
-  ".agents/skills",
-  ".claude/skills",
+    ".agents/skills",
+    ".claude/skills",
 ];
 
 /** 单个写入位置的结果。 */
 export interface SkillInstallTarget {
-  /** Skill 目录绝对/相对路径（随入参）。 */
-  dir: string;
-  /** written：新写入或已覆盖；unchanged：内容已一致；conflict：已存在且不同（未写）。 */
-  status: "written" | "unchanged" | "conflict";
+    /** Skill 目录绝对/相对路径（随入参）。 */
+    dir: string;
+    /** written：新写入或已覆盖；unchanged：内容已一致；conflict：已存在且不同（未写）。 */
+    status: "written" | "unchanged" | "conflict";
 }
 
 /** 安装选项。 */
 export interface SkillInstallOptions {
-  /** 目标目录（出题仓库根）。 */
-  root: string;
-  /** 已存在且内容不同时覆盖（先删除旧目录，避免残留过期文件）。 */
-  force?: boolean;
-  /** 覆盖嵌入内容（测试用）。 */
-  files?: Readonly<Record<string, string>>;
+    /** 目标目录（出题仓库根）。 */
+    root: string;
+    /** 已存在且内容不同时覆盖（先删除旧目录，避免残留过期文件）。 */
+    force?: boolean;
+    /** 覆盖嵌入内容（测试用）。 */
+    files?: Readonly<Record<string, string>>;
 }
 
 /** 校验 root 之下逐级路径组件都不是符号链接（不存在的组件到此为止）。 */
 async function assertNoSymlinkComponents(
-  root: string,
-  parts: readonly string[],
+    root: string,
+    parts: readonly string[],
 ): Promise<void> {
-  let current = root;
-  for (const part of parts) {
-    current = join(current, part);
-    let info: Deno.FileInfo;
-    try {
-      info = await Deno.lstat(current);
-    } catch (err) {
-      if (err instanceof Deno.errors.NotFound) return;
-      throw err;
+    let current = root;
+    for (const part of parts) {
+        current = join(current, part);
+        let info: Deno.FileInfo;
+        try {
+            info = await Deno.lstat(current);
+        } catch (err) {
+            if (err instanceof Deno.errors.NotFound) return;
+            throw err;
+        }
+        if (info.isSymlink) {
+            throw new Error(
+                `拒绝写入：${current} 是符号链接（可能指向目标目录之外），请改为普通目录后重试`,
+            );
+        }
+        if (!info.isDirectory) {
+            throw new Error(`拒绝写入：${current} 已存在且不是目录`);
+        }
     }
-    if (info.isSymlink) {
-      throw new Error(
-        `拒绝写入：${current} 是符号链接（可能指向目标目录之外），请改为普通目录后重试`,
-      );
-    }
-    if (!info.isDirectory) {
-      throw new Error(`拒绝写入：${current} 已存在且不是目录`);
-    }
-  }
 }
 
 /** 读取一个已安装的 Skill 目录（不存在返回 null；调用方已排除符号链接）。 */
 async function readInstalled(
-  dir: string,
+    dir: string,
 ): Promise<Record<string, string> | null> {
-  try {
-    await Deno.lstat(dir);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) return null;
-    throw err;
-  }
-  const out: Record<string, string> = {};
-  async function walk(current: string, prefix: string): Promise<void> {
-    for await (const entry of Deno.readDir(current)) {
-      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      const path = join(current, entry.name);
-      // DirEntry 不跟随链接：内部的软链接等特殊条目记为不一致，不读取其目标
-      if (entry.isDirectory) await walk(path, rel);
-      else if (entry.isFile) out[rel] = await Deno.readTextFile(path);
-      else out[rel] = "\0";
+    try {
+        await Deno.lstat(dir);
+    } catch (err) {
+        if (err instanceof Deno.errors.NotFound) return null;
+        throw err;
     }
-  }
-  await walk(dir, "");
-  return out;
+    const out: Record<string, string> = {};
+    async function walk(current: string, prefix: string): Promise<void> {
+        for await (const entry of Deno.readDir(current)) {
+            const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+            const path = join(current, entry.name);
+            // DirEntry 不跟随链接：内部的软链接等特殊条目记为不一致，不读取其目标
+            if (entry.isDirectory) await walk(path, rel);
+            else if (entry.isFile) out[rel] = await Deno.readTextFile(path);
+            else out[rel] = "\0";
+        }
+    }
+    await walk(dir, "");
+    return out;
 }
 
 /** 两组文件是否完全一致。 */
 function sameFiles(
-  a: Readonly<Record<string, string>>,
-  b: Readonly<Record<string, string>>,
+    a: Readonly<Record<string, string>>,
+    b: Readonly<Record<string, string>>,
 ): boolean {
-  const ka = Object.keys(a).sort();
-  const kb = Object.keys(b).sort();
-  return ka.length === kb.length &&
-    ka.every((k, i) => k === kb[i] && a[k] === b[k]);
+    const ka = Object.keys(a).sort();
+    const kb = Object.keys(b).sort();
+    return ka.length === kb.length &&
+        ka.every((k, i) => k === kb[i] && a[k] === b[k]);
 }
 
 /** 尽力删除（清理暂存/备份目录用；Deno.remove 递归删除不跟随内部链接）。 */
 async function removeQuietly(path: string): Promise<void> {
-  try {
-    await Deno.remove(path, { recursive: true });
-  } catch {
-    // 已不存在或无法删除：不影响安装结果
-  }
+    try {
+        await Deno.remove(path, { recursive: true });
+    } catch {
+        // 已不存在或无法删除：不影响安装结果
+    }
 }
 
 /** 把文件写入暂存目录，再整体替换 `dir`（旧目录存在时先挪作备份）。 */
 async function stageAndSwap(
-  parent: string,
-  dir: string,
-  files: Readonly<Record<string, string>>,
-  replacing: boolean,
+    parent: string,
+    dir: string,
+    files: Readonly<Record<string, string>>,
+    replacing: boolean,
 ): Promise<void> {
-  const stage = await Deno.makeTempDir({
-    dir: parent,
-    prefix: `.${PROBLEM_SETTER_SKILL_NAME}.staging-`,
-  });
-  try {
-    if (Deno.build.os !== "windows") await Deno.chmod(stage, 0o755);
-    for (const [rel, content] of Object.entries(files)) {
-      const path = join(stage, rel);
-      await Deno.mkdir(dirname(path), { recursive: true });
-      await Deno.writeTextFile(path, content);
-    }
-    if (!replacing) {
-      await Deno.rename(stage, dir);
-      return;
-    }
-    const backup = join(
-      parent,
-      `.${PROBLEM_SETTER_SKILL_NAME}.old-${crypto.randomUUID()}`,
-    );
-    await Deno.rename(dir, backup);
+    const stage = await Deno.makeTempDir({
+        dir: parent,
+        prefix: `.${PROBLEM_SETTER_SKILL_NAME}.staging-`,
+    });
     try {
-      await Deno.rename(stage, dir);
+        if (Deno.build.os !== "windows") await Deno.chmod(stage, 0o755);
+        for (const [rel, content] of Object.entries(files)) {
+            const path = join(stage, rel);
+            await Deno.mkdir(dirname(path), { recursive: true });
+            await Deno.writeTextFile(path, content);
+        }
+        if (!replacing) {
+            await Deno.rename(stage, dir);
+            return;
+        }
+        const backup = join(
+            parent,
+            `.${PROBLEM_SETTER_SKILL_NAME}.old-${crypto.randomUUID()}`,
+        );
+        await Deno.rename(dir, backup);
+        try {
+            await Deno.rename(stage, dir);
+        } catch (err) {
+            await Deno.rename(backup, dir);
+            throw err;
+        }
+        await removeQuietly(backup);
     } catch (err) {
-      await Deno.rename(backup, dir);
-      throw err;
+        await removeQuietly(stage);
+        throw err;
     }
-    await removeQuietly(backup);
-  } catch (err) {
-    await removeQuietly(stage);
-    throw err;
-  }
 }
 
 /**
@@ -163,38 +163,38 @@ async function stageAndSwap(
  * 路径中出现符号链接时抛错，不写入也不删除任何内容。
  */
 export async function installProblemSetterSkill(
-  opts: SkillInstallOptions,
+    opts: SkillInstallOptions,
 ): Promise<SkillInstallTarget[]> {
-  const files = opts.files ?? PROBLEM_SETTER_SKILL_FILES;
-  // 先校验全部位置再动手：任一位置不安全时两处都不写
-  for (const base of PROBLEM_SETTER_SKILL_ROOTS) {
-    await assertNoSymlinkComponents(opts.root, [
-      ...base.split("/"),
-      PROBLEM_SETTER_SKILL_NAME,
-    ]);
-  }
-  const results: SkillInstallTarget[] = [];
-  for (const base of PROBLEM_SETTER_SKILL_ROOTS) {
-    const parts = base.split("/");
-    const parent = join(opts.root, ...parts);
-    const dir = join(parent, PROBLEM_SETTER_SKILL_NAME);
-    const installed = await readInstalled(dir);
-    if (installed !== null && sameFiles(installed, files)) {
-      results.push({ dir, status: "unchanged" });
-      continue;
+    const files = opts.files ?? PROBLEM_SETTER_SKILL_FILES;
+    // 先校验全部位置再动手：任一位置不安全时两处都不写
+    for (const base of PROBLEM_SETTER_SKILL_ROOTS) {
+        await assertNoSymlinkComponents(opts.root, [
+            ...base.split("/"),
+            PROBLEM_SETTER_SKILL_NAME,
+        ]);
     }
-    if (installed !== null && !opts.force) {
-      results.push({ dir, status: "conflict" });
-      continue;
+    const results: SkillInstallTarget[] = [];
+    for (const base of PROBLEM_SETTER_SKILL_ROOTS) {
+        const parts = base.split("/");
+        const parent = join(opts.root, ...parts);
+        const dir = join(parent, PROBLEM_SETTER_SKILL_NAME);
+        const installed = await readInstalled(dir);
+        if (installed !== null && sameFiles(installed, files)) {
+            results.push({ dir, status: "unchanged" });
+            continue;
+        }
+        if (installed !== null && !opts.force) {
+            results.push({ dir, status: "conflict" });
+            continue;
+        }
+        await Deno.mkdir(parent, { recursive: true });
+        // mkdir 之后再查一次，缩小检查与写入之间被替换成链接的窗口
+        await assertNoSymlinkComponents(opts.root, [
+            ...parts,
+            PROBLEM_SETTER_SKILL_NAME,
+        ]);
+        await stageAndSwap(parent, dir, files, installed !== null);
+        results.push({ dir, status: "written" });
     }
-    await Deno.mkdir(parent, { recursive: true });
-    // mkdir 之后再查一次，缩小检查与写入之间被替换成链接的窗口
-    await assertNoSymlinkComponents(opts.root, [
-      ...parts,
-      PROBLEM_SETTER_SKILL_NAME,
-    ]);
-    await stageAndSwap(parent, dir, files, installed !== null);
-    results.push({ dir, status: "written" });
-  }
-  return results;
+    return results;
 }

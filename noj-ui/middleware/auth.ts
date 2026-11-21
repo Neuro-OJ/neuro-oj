@@ -3,10 +3,10 @@
  * 密码重置相关页面（forgot-password / reset-password）必须可匿名访问。
  */
 const PUBLIC_AUTH_PATHS = new Set([
-  '/login',
-  '/register',
-  '/forgot-password',
-  '/reset-password',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
 ]);
 
 /**
@@ -14,9 +14,9 @@ const PUBLIC_AUTH_PATHS = new Set([
  * must_change_password=true 时仅允许访问这些路径。
  */
 const PASSWORD_CHANGE_WHITELIST = new Set<string>([
-  '/change-password',
-  '/login',
-  '/logout',
+    '/change-password',
+    '/login',
+    '/logout',
 ]);
 
 /**
@@ -33,28 +33,28 @@ const PASSWORD_CHANGE_WHITELIST = new Set<string>([
  * 白名单页面（改密/登录/登出）放行。
  */
 export default defineNuxtRouteMiddleware(async (to, _from) => {
-  if (PUBLIC_AUTH_PATHS.has(to.path)) return;
+    if (PUBLIC_AUTH_PATHS.has(to.path)) return;
 
-  const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth(to);
+    const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth(to);
 
-  // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
-  await ensureAuthReady();
+    // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
+    await ensureAuthReady();
 
-  if (!isLoggedIn.value) {
-    return navigateTo({ path: '/login', query: { redirect: to.fullPath } });
-  }
-
-  // ── issue #75：session cookie 启动时可能只含基础字段，必须调一次 /me 拿到完整 UserResponse ──
-  // 无 created_at/updated_at 视作"未完整初始化"，强制重新拉取
-  if (user.value && !user.value.created_at) {
-    await fetchUser();
-  }
-
-  // must_change_password 强制改密
-  if (user.value?.must_change_password === true) {
-    const path = to.path;
-    if (!PASSWORD_CHANGE_WHITELIST.has(path)) {
-      return navigateTo('/change-password');
+    if (!isLoggedIn.value) {
+        return navigateTo({ path: '/login', query: { redirect: to.fullPath } });
     }
-  }
+
+    // ── issue #75：session cookie 启动时可能只含基础字段，必须调一次 /me 拿到完整 UserResponse ──
+    // 无 created_at/updated_at 视作"未完整初始化"，强制重新拉取
+    if (user.value && !user.value.created_at) {
+        await fetchUser();
+    }
+
+    // must_change_password 强制改密
+    if (user.value?.must_change_password === true) {
+        const path = to.path;
+        if (!PASSWORD_CHANGE_WHITELIST.has(path)) {
+            return navigateTo('/change-password');
+        }
+    }
 });

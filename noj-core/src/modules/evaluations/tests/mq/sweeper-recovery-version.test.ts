@@ -15,24 +15,24 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  evaluationAttempts,
-  problems,
-  problemVersions,
-  submissions,
-  users,
+    evaluationAttempts,
+    problems,
+    problemVersions,
+    submissions,
+    users,
 } from "../../../../shared/db/schema.ts";
 import {
-  reconcileStaleJudgingSubmissions,
-  recoverPendingSubmissions,
+    reconcileStaleJudgingSubmissions,
+    recoverPendingSubmissions,
 } from "../../mq/sweeper.ts";
 import {
-  getRedis,
-  resetRedisForTest,
+    getRedis,
+    resetRedisForTest,
 } from "../../../../shared/mq/connection.ts";
 import {
-  getStorageProvider,
-  LocalStorageProvider,
-  setStorageProviderForTest,
+    getStorageProvider,
+    LocalStorageProvider,
+    setStorageProviderForTest,
 } from "../../../assets/storage/mod.ts";
 import { judgeTaskMarkerKey } from "../../mq/task-marker.ts";
 import { startFakeRedis } from "./_setup.ts";
@@ -49,666 +49,686 @@ const oldNow = new Date(Date.now() - 3 * 60_000).toISOString();
 
 /** 题目投影里的配置（V3）：与尝试绑定的 V2 明显不同，便于区分来源。 */
 const projectionConfig = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 9999,
-    memory_limit_mb: 999,
-  },
-  solution: {
-    image: "noj-solution-python",
-    call_timeout_ms: 9999,
-    memory_limit_mb: 999,
-  },
+    evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 9999,
+        memory_limit_mb: 999,
+    },
+    solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 9999,
+        memory_limit_mb: 999,
+    },
 };
 
 /** 尝试绑定版本（V2）里的配置：恢复必须采用这一份。 */
 const versionConfig = {
-  evaluator: {
-    image: "noj-evaluator-python",
-    command: "python3 /workspace/evaluate.py",
-    time_limit_ms: 1111,
-    memory_limit_mb: 111,
-  },
-  solution: {
-    image: "noj-solution-python",
-    call_timeout_ms: 1111,
-    memory_limit_mb: 111,
-  },
+    evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 1111,
+        memory_limit_mb: 111,
+    },
+    solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 1111,
+        memory_limit_mb: 111,
+    },
 };
 
 /** 建用户 + 题目 + 已发布版本，返回 {problemId, versionId}。 */
 async function seedProblem(
-  tag: string,
-  number: number,
-  content: Record<string, unknown>,
+    tag: string,
+    number: number,
+    content: Record<string, unknown>,
 ): Promise<{ problemId: string; versionId: string; userId: string }> {
-  const userId = `tst-sweep-user-${tag}-${ts}`;
-  const problemId = `tst-sweep-prob-${tag}-${ts}`;
-  const versionId = `tst-sweep-ver-${tag}-${ts}`;
-  await db.insert(users).values({
-    id: userId,
-    username: `tstsweep-${tag}-${ts}`,
-    email: `tstsweep-${tag}-${ts}@test.noj`,
-    password_hash: "hash",
-    created_at: now,
-    updated_at: now,
-  });
-  await db.insert(problems).values({
-    domain_id: DEFAULT_DOMAIN_ID,
-    id: problemId,
-    title: `恢复测试题 ${tag}`,
-    description: "d",
-    difficulty: "easy",
-    number,
-    owner_id: userId,
-    runtime_config: projectionConfig,
-    judge_type: "dual",
-    created_at: now,
-    updated_at: now,
-  });
-  await db.insert(problemVersions).values({
-    id: versionId,
-    problem_id: problemId,
-    version: 1,
-    origin: "published",
-    content,
-    published_at: now,
-  });
-  await db.update(problems).set({ latest_version_id: versionId })
-    .where(eq(problems.id, problemId));
-  return { problemId, versionId, userId };
+    const userId = `tst-sweep-user-${tag}-${ts}`;
+    const problemId = `tst-sweep-prob-${tag}-${ts}`;
+    const versionId = `tst-sweep-ver-${tag}-${ts}`;
+    await db.insert(users).values({
+        id: userId,
+        username: `tstsweep-${tag}-${ts}`,
+        email: `tstsweep-${tag}-${ts}@test.noj`,
+        password_hash: "hash",
+        created_at: now,
+        updated_at: now,
+    });
+    await db.insert(problems).values({
+        domain_id: DEFAULT_DOMAIN_ID,
+        id: problemId,
+        title: `恢复测试题 ${tag}`,
+        description: "d",
+        difficulty: "easy",
+        number,
+        owner_id: userId,
+        runtime_config: projectionConfig,
+        judge_type: "dual",
+        created_at: now,
+        updated_at: now,
+    });
+    await db.insert(problemVersions).values({
+        id: versionId,
+        problem_id: problemId,
+        version: 1,
+        origin: "published",
+        content,
+        published_at: now,
+    });
+    await db.update(problems).set({ latest_version_id: versionId })
+        .where(eq(problems.id, problemId));
+    return { problemId, versionId, userId };
 }
 
 /** 在假 Redis 环境中执行一次恢复，返回主队列消息（JSON）。 */
 async function recoverAndReadMessages(
-  recover: (now: number) => Promise<void> = recoverPendingSubmissions,
+    recover: (now: number) => Promise<void> = recoverPendingSubmissions,
 ): Promise<Record<string, unknown>[]> {
-  const fake = startFakeRedis();
-  const prevUrl = Deno.env.get("REDIS_URL") ?? null;
-  try {
-    resetRedisForTest();
-    Deno.env.set("REDIS_URL", fake.url);
-    const redis = getRedis();
-    await redis.connect();
-    await recover(Date.now());
-    const messages: Record<string, unknown>[] = [];
-    for (
-      const queue of [
-        "noj:judge:queue:ai:high",
-        "noj:judge:queue:ai:medium",
-        "noj:judge:queue:ai:low",
-        "noj:judge:queue:oi-native:medium",
-        "noj:judge:queue:oi-wasm:medium",
-      ]
-    ) {
-      for (const raw of fake.getMessages(queue)) {
-        messages.push(JSON.parse(raw));
-      }
+    const fake = startFakeRedis();
+    const prevUrl = Deno.env.get("REDIS_URL") ?? null;
+    try {
+        resetRedisForTest();
+        Deno.env.set("REDIS_URL", fake.url);
+        const redis = getRedis();
+        await redis.connect();
+        await recover(Date.now());
+        const messages: Record<string, unknown>[] = [];
+        for (
+            const queue of [
+                "noj:judge:queue:ai:high",
+                "noj:judge:queue:ai:medium",
+                "noj:judge:queue:ai:low",
+                "noj:judge:queue:oi-native:medium",
+                "noj:judge:queue:oi-wasm:medium",
+            ]
+        ) {
+            for (const raw of fake.getMessages(queue)) {
+                messages.push(JSON.parse(raw));
+            }
+        }
+        return messages;
+    } finally {
+        /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
+        resetRedisForTest();
+        await fake.stop();
+        if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
+        else Deno.env.delete("REDIS_URL");
     }
-    return messages;
-  } finally {
-    /* 先恢复 env/单例，再停止 fake：避免并行测试文件读到已停止的服务器（额度调用会 fail-closed） */
-    resetRedisForTest();
-    await fake.stop();
-    if (prevUrl !== null) Deno.env.set("REDIS_URL", prevUrl);
-    else Deno.env.delete("REDIS_URL");
-  }
 }
 
 Deno.test({
-  name: "sweeper: pending 提交按尝试绑定版本恢复（而非题目当前投影）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { problemId, versionId, userId } = await seedProblem(
-      "ver",
-      95100 + (ts % 500),
-      {
-        kind: "ai",
-        title: "恢复测试题 ver",
-        description: "d",
-        samples: [],
-        submission_mode: "code",
-        runtime_config: versionConfig,
-        template_content: "",
-        artifact_max_size_mb: null,
-        llm_config: null,
-      },
-    );
-    const submissionId = `tst-sweep-sub-ver-${ts}`;
-    const attemptId = `tst-sweep-att-ver-${ts}`;
-    await db.insert(submissions).values({
-      ...await problemExecutionForTest(problemId),
-      id: submissionId,
-      user_id: userId,
-      problem_id: problemId,
-      status: "pending",
-      language: "python3",
-      code: "print('x')",
-      submitted_version_id: versionId,
-      version_origin: "known",
-      created_at: oldNow,
-    });
-    await db.insert(evaluationAttempts).values({
-      id: attemptId,
-      submission_id: submissionId,
-      problem_id: problemId,
-      problem_version_id: versionId,
-      sequence: 0,
-      source: "initial",
-      state: "queued",
-      created_at: oldNow,
-    });
-    await db.update(submissions).set({ active_attempt_id: attemptId })
-      .where(eq(submissions.id, submissionId));
-
-    const messages = await recoverAndReadMessages();
-    const task = messages.find((m) => m.submission_id === submissionId);
-    assertEquals(task !== undefined, true);
-    // run_id 必须复用原尝试：否则 judge 回传的结果无法落到该尝试上
-    assertEquals(task!.run_id, attemptId);
-    assertEquals(task!.problem_version_id, versionId);
-    // 配置来自版本内容（time_limit 1111），而不是题目投影（9999）
-    const runtime = task!.runtime_config as {
-      evaluator: { time_limit_ms: number };
-    };
-    assertEquals(runtime.evaluator.time_limit_ms, 1111);
-
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "judging");
-  },
-});
-
-Deno.test({
-  name: "sweeper: pending 产物提交被恢复且保留对象（不再删除后标记 error）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { problemId, versionId, userId } = await seedProblem(
-      "artifact",
-      95200 + (ts % 500),
-      {
-        kind: "ai",
-        title: "恢复测试题 artifact",
-        description: "d",
-        samples: [],
-        submission_mode: "artifact",
-        runtime_config: versionConfig,
-        template_content: "",
-        artifact_max_size_mb: 8,
-        llm_config: null,
-      },
-    );
-
-    // 真实写入一个本地产物对象（内容寻址）
-    const storage = await getStorageProvider();
-    const artifactUrl = await storage.putStream(
-      `artifacts/${crypto.randomUUID()}.zip`,
-      new Blob([new Uint8Array([0x50, 0x4b, 0x03, 0x04])]).stream(),
-      "application/zip",
-      1024 * 1024,
-    );
-
-    const submissionId = `tst-sweep-sub-art-${ts}`;
-    const attemptId = `tst-sweep-att-art-${ts}`;
-    await db.insert(submissions).values({
-      ...await problemExecutionForTest(problemId),
-      id: submissionId,
-      user_id: userId,
-      problem_id: problemId,
-      status: "pending",
-      language: "python3",
-      code: "",
-      file_name: "submission.zip",
-      artifact_storage_url: artifactUrl,
-      submitted_version_id: versionId,
-      version_origin: "known",
-      created_at: oldNow,
-    });
-    await db.insert(evaluationAttempts).values({
-      id: attemptId,
-      submission_id: submissionId,
-      problem_id: problemId,
-      problem_version_id: versionId,
-      sequence: 0,
-      source: "initial",
-      state: "queued",
-      created_at: oldNow,
-    });
-    await db.update(submissions).set({ active_attempt_id: attemptId })
-      .where(eq(submissions.id, submissionId));
-
-    const messages = await recoverAndReadMessages();
-    const task = messages.find((m) => m.submission_id === submissionId);
-    assertEquals(task !== undefined, true, "产物 pending 提交必须被恢复入队");
-    assertEquals(task!.run_id, attemptId);
-    assertEquals(typeof task!.artifact_download_url, "string");
-    assertEquals(task!.code, "");
-
-    // 对象未被删除，提交行仍保留引用（可再次派发/重测）
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "judging");
-    assertEquals(row.artifact_storage_url, artifactUrl);
-    assertEquals(await storage.stat(artifactUrl) !== null, true);
-  },
-});
-
-Deno.test({
-  name: "sweeper: LLM 题缺执行快照 → 平台错误，不静默降级为无 LLM（#9）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { problemId, versionId, userId } = await seedProblem(
-      "llm-missing",
-      95400 + (ts % 500),
-      {
-        kind: "ai",
-        title: "恢复测试题 llm-missing",
-        description: "d",
-        samples: [],
-        submission_mode: "code",
-        runtime_config: versionConfig,
-        template_content: "",
-        artifact_max_size_mb: null,
-        llm_config: { provider_id: "cfg-prov", model: "cfg-model" },
-      },
-    );
-    const submissionId = `tst-sweep-sub-llm-miss-${ts}`;
-    const attemptId = `tst-sweep-att-llm-miss-${ts}`;
-    await db.insert(submissions).values({
-      ...await problemExecutionForTest(problemId),
-      id: submissionId,
-      user_id: userId,
-      problem_id: problemId,
-      status: "pending",
-      language: "python3",
-      code: "print('llm')",
-      submitted_version_id: versionId,
-      version_origin: "known",
-      created_at: oldNow,
-    });
-    await db.insert(evaluationAttempts).values({
-      id: attemptId,
-      submission_id: submissionId,
-      problem_id: problemId,
-      problem_version_id: versionId,
-      sequence: 0,
-      source: "initial",
-      state: "queued",
-      // 只有运行配置，**没有** llm_execution：Provider/模型/预算未固定
-      task_snapshot: { runtime_config: versionConfig },
-      created_at: oldNow,
-    });
-    await db.update(submissions).set({ active_attempt_id: attemptId })
-      .where(eq(submissions.id, submissionId));
-
-    const messages = await recoverAndReadMessages();
-    // 绝不静默改成"无 LLM 执行"：不入队任何任务
-    assertEquals(
-      messages.find((m) => m.submission_id === submissionId),
-      undefined,
-    );
-
-    const [attempt] = await db.select().from(evaluationAttempts).where(
-      eq(evaluationAttempts.id, attemptId),
-    );
-    assertEquals(attempt.state, "error");
-    assertEquals(attempt.result_kind, "platform_error");
-    assertEquals(attempt.result_status, "RECOVERY_FAILED");
-
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "error");
-    assertEquals(row.active_attempt_id, null);
-  },
-});
-
-Deno.test({
-  name: "sweeper: LLM 题按冻结快照恢复 Provider/模型与预算（#9）",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { problemId, versionId, userId } = await seedProblem(
-      "llm-frozen",
-      95500 + (ts % 500),
-      {
-        kind: "ai",
-        title: "恢复测试题 llm-frozen",
-        description: "d",
-        samples: [],
-        submission_mode: "code",
-        runtime_config: versionConfig,
-        template_content: "",
-        artifact_max_size_mb: null,
-        llm_config: { provider_id: "cfg-prov", model: "cfg-model" },
-      },
-    );
-    const submissionId = `tst-sweep-sub-llm-frozen-${ts}`;
-    const attemptId = `tst-sweep-att-llm-frozen-${ts}`;
-    await db.insert(submissions).values({
-      ...await problemExecutionForTest(problemId),
-      id: submissionId,
-      user_id: userId,
-      problem_id: problemId,
-      status: "pending",
-      language: "python3",
-      code: "print('llm')",
-      submitted_version_id: versionId,
-      version_origin: "known",
-      created_at: oldNow,
-    });
-    await db.insert(evaluationAttempts).values({
-      id: attemptId,
-      submission_id: submissionId,
-      problem_id: problemId,
-      problem_version_id: versionId,
-      sequence: 0,
-      source: "initial",
-      state: "queued",
-      task_snapshot: {
-        language: "python3",
-        problem_version_id: versionId,
-        runtime_config: versionConfig,
-        llm_execution: {
-          domain_id: DEFAULT_DOMAIN_ID,
-          provider_id: "snap-prov",
-          model: "snap-model",
-          max_calls: 7,
-          max_tokens: 12345,
-        },
-      },
-      created_at: oldNow,
-    });
-    await db.update(submissions).set({ active_attempt_id: attemptId })
-      .where(eq(submissions.id, submissionId));
-
-    const prevToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? null;
-    const prevGateway = Deno.env.get("NOJ_LLM_GATEWAY_URL") ?? null;
-    const originalFetch = globalThis.fetch;
-    Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789");
-    Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://llm-gateway.test");
-    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input).includes("/internal/providers/")) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              data: {
-                id: "snap-prov",
-                name: "snap",
-                base_url: "http://provider.test",
-                cost_per_1k_tokens: 0,
-                api_key_masked: "sk-****",
-                enabled: true,
-                domain_id: "00000000-0000-4000-8000-000000000001",
-                created_at: now,
-                updated_at: now,
-              },
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          ),
+    name: "sweeper: pending 提交按尝试绑定版本恢复（而非题目当前投影）",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { problemId, versionId, userId } = await seedProblem(
+            "ver",
+            95100 + (ts % 500),
+            {
+                kind: "ai",
+                title: "恢复测试题 ver",
+                description: "d",
+                samples: [],
+                submission_mode: "code",
+                runtime_config: versionConfig,
+                template_content: "",
+                artifact_max_size_mb: null,
+                llm_config: null,
+            },
         );
-      }
-      return originalFetch(input as RequestInfo, init);
-    }) as typeof fetch;
+        const submissionId = `tst-sweep-sub-ver-${ts}`;
+        const attemptId = `tst-sweep-att-ver-${ts}`;
+        await db.insert(submissions).values({
+            ...await problemExecutionForTest(problemId),
+            id: submissionId,
+            user_id: userId,
+            problem_id: problemId,
+            status: "pending",
+            language: "python3",
+            code: "print('x')",
+            submitted_version_id: versionId,
+            version_origin: "known",
+            created_at: oldNow,
+        });
+        await db.insert(evaluationAttempts).values({
+            id: attemptId,
+            submission_id: submissionId,
+            problem_id: problemId,
+            problem_version_id: versionId,
+            sequence: 0,
+            source: "initial",
+            state: "queued",
+            created_at: oldNow,
+        });
+        await db.update(submissions).set({ active_attempt_id: attemptId })
+            .where(eq(submissions.id, submissionId));
 
-    try {
-      const messages = await recoverAndReadMessages();
-      const task = messages.find((m) => m.submission_id === submissionId);
-      assertEquals(task !== undefined, true, "LLM 题必须按快照恢复入队");
-      const llm = task!.llm as Record<string, unknown>;
-      assertEquals(llm.provider_id, "snap-prov");
-      assertEquals(llm.allowed_models, ["snap-model"]);
-      assertEquals(typeof llm.eval_token, "string");
-      assertEquals((llm.eval_token as string).length > 0, true);
-    } finally {
-      globalThis.fetch = originalFetch;
-      if (prevToken === null) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
-      else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", prevToken);
-      if (prevGateway === null) Deno.env.delete("NOJ_LLM_GATEWAY_URL");
-      else Deno.env.set("NOJ_LLM_GATEWAY_URL", prevGateway);
-    }
-  },
+        const messages = await recoverAndReadMessages();
+        const task = messages.find((m) => m.submission_id === submissionId);
+        assertEquals(task !== undefined, true);
+        // run_id 必须复用原尝试：否则 judge 回传的结果无法落到该尝试上
+        assertEquals(task!.run_id, attemptId);
+        assertEquals(task!.problem_version_id, versionId);
+        // 配置来自版本内容（time_limit 1111），而不是题目投影（9999）
+        const runtime = task!.runtime_config as {
+            evaluator: { time_limit_ms: number };
+        };
+        assertEquals(runtime.evaluator.time_limit_ms, 1111);
+
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "judging");
+    },
 });
 
 Deno.test({
-  name: "sweeper: 无尝试的 pending 行拒绝猜测最新版并标记错误",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { problemId, userId } = await seedProblem(
-      "legacy",
-      95300 + (ts % 500),
-      {
-        kind: "ai",
-        title: "恢复测试题 legacy",
-        description: "d",
-        samples: [],
-        submission_mode: "code",
-        runtime_config: versionConfig,
-        template_content: "",
-        artifact_max_size_mb: null,
-        llm_config: null,
-      },
-    );
-    const submissionId = `tst-sweep-sub-legacy-${ts}`;
-    await db.insert(submissions).values({
-      ...await problemExecutionForTest(problemId),
-      id: submissionId,
-      user_id: userId,
-      problem_id: problemId,
-      status: "pending",
-      language: "python3",
-      code: "print('legacy')",
-      created_at: oldNow,
-    });
+    name: "sweeper: pending 产物提交被恢复且保留对象（不再删除后标记 error）",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { problemId, versionId, userId } = await seedProblem(
+            "artifact",
+            95200 + (ts % 500),
+            {
+                kind: "ai",
+                title: "恢复测试题 artifact",
+                description: "d",
+                samples: [],
+                submission_mode: "artifact",
+                runtime_config: versionConfig,
+                template_content: "",
+                artifact_max_size_mb: 8,
+                llm_config: null,
+            },
+        );
 
-    const messages = await recoverAndReadMessages();
-    const task = messages.find((m) => m.submission_id === submissionId);
-    assertEquals(task, undefined);
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "error");
-  },
+        // 真实写入一个本地产物对象（内容寻址）
+        const storage = await getStorageProvider();
+        const artifactUrl = await storage.putStream(
+            `artifacts/${crypto.randomUUID()}.zip`,
+            new Blob([new Uint8Array([0x50, 0x4b, 0x03, 0x04])]).stream(),
+            "application/zip",
+            1024 * 1024,
+        );
+
+        const submissionId = `tst-sweep-sub-art-${ts}`;
+        const attemptId = `tst-sweep-att-art-${ts}`;
+        await db.insert(submissions).values({
+            ...await problemExecutionForTest(problemId),
+            id: submissionId,
+            user_id: userId,
+            problem_id: problemId,
+            status: "pending",
+            language: "python3",
+            code: "",
+            file_name: "submission.zip",
+            artifact_storage_url: artifactUrl,
+            submitted_version_id: versionId,
+            version_origin: "known",
+            created_at: oldNow,
+        });
+        await db.insert(evaluationAttempts).values({
+            id: attemptId,
+            submission_id: submissionId,
+            problem_id: problemId,
+            problem_version_id: versionId,
+            sequence: 0,
+            source: "initial",
+            state: "queued",
+            created_at: oldNow,
+        });
+        await db.update(submissions).set({ active_attempt_id: attemptId })
+            .where(eq(submissions.id, submissionId));
+
+        const messages = await recoverAndReadMessages();
+        const task = messages.find((m) => m.submission_id === submissionId);
+        assertEquals(
+            task !== undefined,
+            true,
+            "产物 pending 提交必须被恢复入队",
+        );
+        assertEquals(task!.run_id, attemptId);
+        assertEquals(typeof task!.artifact_download_url, "string");
+        assertEquals(task!.code, "");
+
+        // 对象未被删除，提交行仍保留引用（可再次派发/重测）
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "judging");
+        assertEquals(row.artifact_storage_url, artifactUrl);
+        assertEquals(await storage.stat(artifactUrl) !== null, true);
+    },
+});
+
+Deno.test({
+    name: "sweeper: LLM 题缺执行快照 → 平台错误，不静默降级为无 LLM（#9）",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { problemId, versionId, userId } = await seedProblem(
+            "llm-missing",
+            95400 + (ts % 500),
+            {
+                kind: "ai",
+                title: "恢复测试题 llm-missing",
+                description: "d",
+                samples: [],
+                submission_mode: "code",
+                runtime_config: versionConfig,
+                template_content: "",
+                artifact_max_size_mb: null,
+                llm_config: { provider_id: "cfg-prov", model: "cfg-model" },
+            },
+        );
+        const submissionId = `tst-sweep-sub-llm-miss-${ts}`;
+        const attemptId = `tst-sweep-att-llm-miss-${ts}`;
+        await db.insert(submissions).values({
+            ...await problemExecutionForTest(problemId),
+            id: submissionId,
+            user_id: userId,
+            problem_id: problemId,
+            status: "pending",
+            language: "python3",
+            code: "print('llm')",
+            submitted_version_id: versionId,
+            version_origin: "known",
+            created_at: oldNow,
+        });
+        await db.insert(evaluationAttempts).values({
+            id: attemptId,
+            submission_id: submissionId,
+            problem_id: problemId,
+            problem_version_id: versionId,
+            sequence: 0,
+            source: "initial",
+            state: "queued",
+            // 只有运行配置，**没有** llm_execution：Provider/模型/预算未固定
+            task_snapshot: { runtime_config: versionConfig },
+            created_at: oldNow,
+        });
+        await db.update(submissions).set({ active_attempt_id: attemptId })
+            .where(eq(submissions.id, submissionId));
+
+        const messages = await recoverAndReadMessages();
+        // 绝不静默改成"无 LLM 执行"：不入队任何任务
+        assertEquals(
+            messages.find((m) => m.submission_id === submissionId),
+            undefined,
+        );
+
+        const [attempt] = await db.select().from(evaluationAttempts).where(
+            eq(evaluationAttempts.id, attemptId),
+        );
+        assertEquals(attempt.state, "error");
+        assertEquals(attempt.result_kind, "platform_error");
+        assertEquals(attempt.result_status, "RECOVERY_FAILED");
+
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "error");
+        assertEquals(row.active_attempt_id, null);
+    },
+});
+
+Deno.test({
+    name: "sweeper: LLM 题按冻结快照恢复 Provider/模型与预算（#9）",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { problemId, versionId, userId } = await seedProblem(
+            "llm-frozen",
+            95500 + (ts % 500),
+            {
+                kind: "ai",
+                title: "恢复测试题 llm-frozen",
+                description: "d",
+                samples: [],
+                submission_mode: "code",
+                runtime_config: versionConfig,
+                template_content: "",
+                artifact_max_size_mb: null,
+                llm_config: { provider_id: "cfg-prov", model: "cfg-model" },
+            },
+        );
+        const submissionId = `tst-sweep-sub-llm-frozen-${ts}`;
+        const attemptId = `tst-sweep-att-llm-frozen-${ts}`;
+        await db.insert(submissions).values({
+            ...await problemExecutionForTest(problemId),
+            id: submissionId,
+            user_id: userId,
+            problem_id: problemId,
+            status: "pending",
+            language: "python3",
+            code: "print('llm')",
+            submitted_version_id: versionId,
+            version_origin: "known",
+            created_at: oldNow,
+        });
+        await db.insert(evaluationAttempts).values({
+            id: attemptId,
+            submission_id: submissionId,
+            problem_id: problemId,
+            problem_version_id: versionId,
+            sequence: 0,
+            source: "initial",
+            state: "queued",
+            task_snapshot: {
+                language: "python3",
+                problem_version_id: versionId,
+                runtime_config: versionConfig,
+                llm_execution: {
+                    domain_id: DEFAULT_DOMAIN_ID,
+                    provider_id: "snap-prov",
+                    model: "snap-model",
+                    max_calls: 7,
+                    max_tokens: 12345,
+                },
+            },
+            created_at: oldNow,
+        });
+        await db.update(submissions).set({ active_attempt_id: attemptId })
+            .where(eq(submissions.id, submissionId));
+
+        const prevToken = Deno.env.get("NOJ_LLM_SERVICE_TOKEN") ?? null;
+        const prevGateway = Deno.env.get("NOJ_LLM_GATEWAY_URL") ?? null;
+        const originalFetch = globalThis.fetch;
+        Deno.env.set("NOJ_LLM_SERVICE_TOKEN", "test-service-token-0123456789");
+        Deno.env.set("NOJ_LLM_GATEWAY_URL", "http://llm-gateway.test");
+        globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+            if (String(input).includes("/internal/providers/")) {
+                return Promise.resolve(
+                    new Response(
+                        JSON.stringify({
+                            data: {
+                                id: "snap-prov",
+                                name: "snap",
+                                base_url: "http://provider.test",
+                                cost_per_1k_tokens: 0,
+                                api_key_masked: "sk-****",
+                                enabled: true,
+                                domain_id:
+                                    "00000000-0000-4000-8000-000000000001",
+                                created_at: now,
+                                updated_at: now,
+                            },
+                        }),
+                        {
+                            status: 200,
+                            headers: { "content-type": "application/json" },
+                        },
+                    ),
+                );
+            }
+            return originalFetch(input as RequestInfo, init);
+        }) as typeof fetch;
+
+        try {
+            const messages = await recoverAndReadMessages();
+            const task = messages.find((m) => m.submission_id === submissionId);
+            assertEquals(task !== undefined, true, "LLM 题必须按快照恢复入队");
+            const llm = task!.llm as Record<string, unknown>;
+            assertEquals(llm.provider_id, "snap-prov");
+            assertEquals(llm.allowed_models, ["snap-model"]);
+            assertEquals(typeof llm.eval_token, "string");
+            assertEquals((llm.eval_token as string).length > 0, true);
+        } finally {
+            globalThis.fetch = originalFetch;
+            if (prevToken === null) Deno.env.delete("NOJ_LLM_SERVICE_TOKEN");
+            else Deno.env.set("NOJ_LLM_SERVICE_TOKEN", prevToken);
+            if (prevGateway === null) Deno.env.delete("NOJ_LLM_GATEWAY_URL");
+            else Deno.env.set("NOJ_LLM_GATEWAY_URL", prevGateway);
+        }
+    },
+});
+
+Deno.test({
+    name: "sweeper: 无尝试的 pending 行拒绝猜测最新版并标记错误",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { problemId, userId } = await seedProblem(
+            "legacy",
+            95300 + (ts % 500),
+            {
+                kind: "ai",
+                title: "恢复测试题 legacy",
+                description: "d",
+                samples: [],
+                submission_mode: "code",
+                runtime_config: versionConfig,
+                template_content: "",
+                artifact_max_size_mb: null,
+                llm_config: null,
+            },
+        );
+        const submissionId = `tst-sweep-sub-legacy-${ts}`;
+        await db.insert(submissions).values({
+            ...await problemExecutionForTest(problemId),
+            id: submissionId,
+            user_id: userId,
+            problem_id: problemId,
+            status: "pending",
+            language: "python3",
+            code: "print('legacy')",
+            created_at: oldNow,
+        });
+
+        const messages = await recoverAndReadMessages();
+        const task = messages.find((m) => m.submission_id === submissionId);
+        assertEquals(task, undefined);
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "error");
+    },
 });
 
 /** 造一条带活动尝试的正式提交；`at` 同时作为创建时间与（judging 时的）开始时间。 */
 async function seedAttemptSubmission(
-  tag: string,
-  number: number,
-  status: "pending" | "judging",
-  at: string,
+    tag: string,
+    number: number,
+    status: "pending" | "judging",
+    at: string,
 ): Promise<{ submissionId: string; attemptId: string; versionId: string }> {
-  const { problemId, versionId, userId } = await seedProblem(tag, number, {
-    kind: "ai",
-    title: `恢复测试题 ${tag}`,
-    description: "d",
-    samples: [],
-    submission_mode: "code",
-    runtime_config: versionConfig,
-    template_content: "",
-    artifact_max_size_mb: null,
-    llm_config: null,
-  });
-  const submissionId = `tst-sweep-sub-${tag}-${ts}`;
-  const attemptId = `tst-sweep-att-${tag}-${ts}`;
-  await db.insert(submissions).values({
-    ...await problemExecutionForTest(problemId),
-    id: submissionId,
-    user_id: userId,
-    problem_id: problemId,
-    status,
-    language: "python3",
-    code: `print('${tag}')`,
-    submitted_version_id: versionId,
-    version_origin: "known",
-    judge_started_at: status === "judging" ? at : null,
-    created_at: at,
-  });
-  await db.insert(evaluationAttempts).values({
-    id: attemptId,
-    submission_id: submissionId,
-    problem_id: problemId,
-    problem_version_id: versionId,
-    sequence: 0,
-    source: "initial",
-    state: status === "judging" ? "judging" : "queued",
-    created_at: at,
-  });
-  await db.update(submissions).set({ active_attempt_id: attemptId })
-    .where(eq(submissions.id, submissionId));
-  return { submissionId, attemptId, versionId };
+    const { problemId, versionId, userId } = await seedProblem(tag, number, {
+        kind: "ai",
+        title: `恢复测试题 ${tag}`,
+        description: "d",
+        samples: [],
+        submission_mode: "code",
+        runtime_config: versionConfig,
+        template_content: "",
+        artifact_max_size_mb: null,
+        llm_config: null,
+    });
+    const submissionId = `tst-sweep-sub-${tag}-${ts}`;
+    const attemptId = `tst-sweep-att-${tag}-${ts}`;
+    await db.insert(submissions).values({
+        ...await problemExecutionForTest(problemId),
+        id: submissionId,
+        user_id: userId,
+        problem_id: problemId,
+        status,
+        language: "python3",
+        code: `print('${tag}')`,
+        submitted_version_id: versionId,
+        version_origin: "known",
+        judge_started_at: status === "judging" ? at : null,
+        created_at: at,
+    });
+    await db.insert(evaluationAttempts).values({
+        id: attemptId,
+        submission_id: submissionId,
+        problem_id: problemId,
+        problem_version_id: versionId,
+        sequence: 0,
+        source: "initial",
+        state: status === "judging" ? "judging" : "queued",
+        created_at: at,
+    });
+    await db.update(submissions).set({ active_attempt_id: attemptId })
+        .where(eq(submissions.id, submissionId));
+    return { submissionId, attemptId, versionId };
 }
 
 /** 超过默认 10 分钟 processing 超时的时间点。 */
 const staleJudgingAt = () => new Date(Date.now() - 11 * 60_000).toISOString();
 
 Deno.test({
-  name: "sweeper: 长时间 judging 且任务丢失时按活动尝试恢复",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const staleNow = staleJudgingAt();
-    const { submissionId, attemptId, versionId } = await seedAttemptSubmission(
-      "judging-reconcile",
-      95600 + (ts % 500),
-      "judging",
-      staleNow,
-    );
+    name: "sweeper: 长时间 judging 且任务丢失时按活动尝试恢复",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const staleNow = staleJudgingAt();
+        const { submissionId, attemptId, versionId } =
+            await seedAttemptSubmission(
+                "judging-reconcile",
+                95600 + (ts % 500),
+                "judging",
+                staleNow,
+            );
 
-    const messages = await recoverAndReadMessages(
-      reconcileStaleJudgingSubmissions,
-    );
-    const task = messages.find((m) => m.submission_id === submissionId);
-    assertEquals(task !== undefined, true);
-    assertEquals(task!.run_id, attemptId);
-    assertEquals(task!.problem_version_id, versionId);
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "judging");
-    // 恢复不得重置开始时间，否则“最老 judging 年龄”指标会掩盖卡住的提交。
-    assertEquals(row.judge_started_at, staleNow);
-  },
+        const messages = await recoverAndReadMessages(
+            reconcileStaleJudgingSubmissions,
+        );
+        const task = messages.find((m) => m.submission_id === submissionId);
+        assertEquals(task !== undefined, true);
+        assertEquals(task!.run_id, attemptId);
+        assertEquals(task!.problem_version_id, versionId);
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "judging");
+        // 恢复不得重置开始时间，否则“最老 judging 年龄”指标会掩盖卡住的提交。
+        assertEquals(row.judge_started_at, staleNow);
+    },
 });
 
 Deno.test({
-  name: "sweeper: 未超过 processing 超时的 judging 提交不参与对账",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { submissionId } = await seedAttemptSubmission(
-      "judging-fresh",
-      96400 + (ts % 500),
-      "judging",
-      oldNow,
-    );
-    const messages = await recoverAndReadMessages(
-      reconcileStaleJudgingSubmissions,
-    );
-    assertEquals(
-      messages.find((m) => m.submission_id === submissionId),
-      undefined,
-    );
-  },
+    name: "sweeper: 未超过 processing 超时的 judging 提交不参与对账",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { submissionId } = await seedAttemptSubmission(
+            "judging-fresh",
+            96400 + (ts % 500),
+            "judging",
+            oldNow,
+        );
+        const messages = await recoverAndReadMessages(
+            reconcileStaleJudgingSubmissions,
+        );
+        assertEquals(
+            messages.find((m) => m.submission_id === submissionId),
+            undefined,
+        );
+    },
 });
 
 Deno.test({
-  name:
-    "sweeper: 无标记但仍在 processing 中的 judging 任务不重复派发并补写标记",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { submissionId, attemptId } = await seedAttemptSubmission(
-      "judging-inflight",
-      95800 + (ts % 500),
-      "judging",
-      staleJudgingAt(),
-    );
+    name:
+        "sweeper: 无标记但仍在 processing 中的 judging 任务不重复派发并补写标记",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { submissionId, attemptId } = await seedAttemptSubmission(
+            "judging-inflight",
+            95800 + (ts % 500),
+            "judging",
+            staleJudgingAt(),
+        );
 
-    let marker: string | null = null;
-    const messages = await recoverAndReadMessages(async (now) => {
-      // 模拟标记引入前入队、judge 仍在处理的任务。
-      const redis = getRedis();
-      await redis.lpush(
-        "noj:judge:queue:ai:medium:processing",
-        JSON.stringify({ submission_id: submissionId, run_id: attemptId }),
-      );
-      await reconcileStaleJudgingSubmissions(now);
-      marker = await redis.get(judgeTaskMarkerKey(attemptId));
-    });
-    assertEquals(
-      messages.find((m) => m.submission_id === submissionId),
-      undefined,
-    );
-    assertEquals(marker, "queued");
-  },
+        let marker: string | null = null;
+        const messages = await recoverAndReadMessages(async (now) => {
+            // 模拟标记引入前入队、judge 仍在处理的任务。
+            const redis = getRedis();
+            await redis.lpush(
+                "noj:judge:queue:ai:medium:processing",
+                JSON.stringify({
+                    submission_id: submissionId,
+                    run_id: attemptId,
+                }),
+            );
+            await reconcileStaleJudgingSubmissions(now);
+            marker = await redis.get(judgeTaskMarkerKey(attemptId));
+        });
+        assertEquals(
+            messages.find((m) => m.submission_id === submissionId),
+            undefined,
+        );
+        assertEquals(marker, "queued");
+    },
 });
 
 Deno.test({
-  name: "sweeper: 另一副本正在派发（dispatching 标记）时本副本不重复恢复",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { submissionId, attemptId } = await seedAttemptSubmission(
-      "claimed-elsewhere",
-      96000 + (ts % 500),
-      "pending",
-      oldNow,
-    );
-    const messages = await recoverAndReadMessages(async (now) => {
-      await getRedis().set(
-        judgeTaskMarkerKey(attemptId),
-        "dispatching",
-        "EX",
-        60,
-      );
-      await recoverPendingSubmissions(now);
-    });
-    assertEquals(
-      messages.find((m) => m.submission_id === submissionId),
-      undefined,
-    );
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "pending");
-  },
+    name: "sweeper: 另一副本正在派发（dispatching 标记）时本副本不重复恢复",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { submissionId, attemptId } = await seedAttemptSubmission(
+            "claimed-elsewhere",
+            96000 + (ts % 500),
+            "pending",
+            oldNow,
+        );
+        const messages = await recoverAndReadMessages(async (now) => {
+            await getRedis().set(
+                judgeTaskMarkerKey(attemptId),
+                "dispatching",
+                "EX",
+                60,
+            );
+            await recoverPendingSubmissions(now);
+        });
+        assertEquals(
+            messages.find((m) => m.submission_id === submissionId),
+            undefined,
+        );
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "pending");
+    },
 });
 
 Deno.test({
-  name: "sweeper: 已入队 marker 只补齐状态，不重复派发任务",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const { submissionId, attemptId } = await seedAttemptSubmission(
-      "already-dispatched",
-      95700 + (ts % 500),
-      "pending",
-      oldNow,
-    );
-    const messages = await recoverAndReadMessages(async (now) => {
-      const redis = getRedis();
-      await redis.lpush(
-        "noj:judge:queue:ai:medium",
-        JSON.stringify({ submission_id: submissionId, run_id: attemptId }),
-      );
-      await redis.set(judgeTaskMarkerKey(attemptId), "queued", "EX", 3600);
-      await recoverPendingSubmissions(now);
-    });
-    assertEquals(
-      messages.filter((m) => m.submission_id === submissionId).length,
-      1,
-    );
-    const [row] = await db.select().from(submissions).where(
-      eq(submissions.id, submissionId),
-    );
-    assertEquals(row.status, "judging");
-  },
+    name: "sweeper: 已入队 marker 只补齐状态，不重复派发任务",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const { submissionId, attemptId } = await seedAttemptSubmission(
+            "already-dispatched",
+            95700 + (ts % 500),
+            "pending",
+            oldNow,
+        );
+        const messages = await recoverAndReadMessages(async (now) => {
+            const redis = getRedis();
+            await redis.lpush(
+                "noj:judge:queue:ai:medium",
+                JSON.stringify({
+                    submission_id: submissionId,
+                    run_id: attemptId,
+                }),
+            );
+            await redis.set(
+                judgeTaskMarkerKey(attemptId),
+                "queued",
+                "EX",
+                3600,
+            );
+            await recoverPendingSubmissions(now);
+        });
+        assertEquals(
+            messages.filter((m) => m.submission_id === submissionId).length,
+            1,
+        );
+        const [row] = await db.select().from(submissions).where(
+            eq(submissions.id, submissionId),
+        );
+        assertEquals(row.status, "judging");
+    },
 });

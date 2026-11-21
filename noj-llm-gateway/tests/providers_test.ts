@@ -1,153 +1,159 @@
 import {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertThrows,
+    assert,
+    assertEquals,
+    assertRejects,
+    assertThrows,
 } from "jsr:@std/assert@^1";
 import {
-  listProviders,
-  maskApiKey,
-  normalizeRateLimit,
-  testProviderConnection,
-  updateProvider,
+    listProviders,
+    maskApiKey,
+    normalizeRateLimit,
+    testProviderConnection,
+    updateProvider,
 } from "../src/providers.ts";
 import { decryptSecret } from "../src/crypto.ts";
 import { createFakeDb, makeProvider, testConfig } from "./helpers.ts";
 
 Deno.test("providers: maskApiKey masks plaintext key suffix", () => {
-  assertEquals(maskApiKey("sk-1234567890abcdef"), "sk-****cdef");
-  assertEquals(maskApiKey("short"), "****");
+    assertEquals(maskApiKey("sk-1234567890abcdef"), "sk-****cdef");
+    assertEquals(maskApiKey("short"), "****");
 });
 
 Deno.test("providers: 更新使用参数数组绑定，支持单字段、多字段与空更新", async () => {
-  for (
-    const input of [
-      { name: "新名称" },
-      {
-        name: "新名称",
-        enabled: false,
-        cost_per_1k_tokens: 2,
-        api_key: "sk-new-test-key",
-      },
-      {},
-    ]
-  ) {
-    const provider = await makeProvider(testConfig.storeKey);
-    const { db } = createFakeDb(provider);
-    let calls = 0;
-    const unsafe = (query: string, params: unknown, ...rest: unknown[]) => {
-      calls++;
-      assert(Array.isArray(params), "postgres.js 的第二个参数必须是绑定数组");
-      assertEquals(rest.length, 0, "不得将参数展开到 options 等位置");
-      const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
-      assertEquals(fields.length, params.length);
-      for (const [, field, index] of fields) {
-        const value = params[Number(index) - 1];
-        if (field === "id") {
-          assertEquals(value, provider.id);
-        } else if (field === "revision") {
-          assertEquals(value, provider.revision);
-        } else {
-          Object.assign(provider, { [field]: value });
-        }
-      }
-      provider.revision++;
-      return Promise.resolve([provider]);
-    };
-    db.unsafe = unsafe as typeof db.unsafe;
-    const result = await updateProvider(
-      db,
-      provider.id,
-      input,
-      testConfig.storeKey,
-      provider.domain_id,
-      1,
-    );
-    assertEquals(calls, 1);
-    assertEquals(result.name, input.name ?? "test");
-    assertEquals(result.enabled, input.enabled ?? true);
-    assertEquals(result.cost_per_1k_tokens, input.cost_per_1k_tokens ?? 1);
-    assert(!("api_key" in result));
-    assert(!("encrypted_api_key" in result));
-    const expectedKey = input.api_key ?? "sk-test";
-    assertEquals(
-      await decryptSecret(provider.encrypted_api_key, testConfig.storeKey),
-      expectedKey,
-    );
-    assertEquals(result.api_key_masked, maskApiKey(expectedKey));
-  }
+    for (
+        const input of [
+            { name: "新名称" },
+            {
+                name: "新名称",
+                enabled: false,
+                cost_per_1k_tokens: 2,
+                api_key: "sk-new-test-key",
+            },
+            {},
+        ]
+    ) {
+        const provider = await makeProvider(testConfig.storeKey);
+        const { db } = createFakeDb(provider);
+        let calls = 0;
+        const unsafe = (query: string, params: unknown, ...rest: unknown[]) => {
+            calls++;
+            assert(
+                Array.isArray(params),
+                "postgres.js 的第二个参数必须是绑定数组",
+            );
+            assertEquals(rest.length, 0, "不得将参数展开到 options 等位置");
+            const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
+            assertEquals(fields.length, params.length);
+            for (const [, field, index] of fields) {
+                const value = params[Number(index) - 1];
+                if (field === "id") {
+                    assertEquals(value, provider.id);
+                } else if (field === "revision") {
+                    assertEquals(value, provider.revision);
+                } else {
+                    Object.assign(provider, { [field]: value });
+                }
+            }
+            provider.revision++;
+            return Promise.resolve([provider]);
+        };
+        db.unsafe = unsafe as typeof db.unsafe;
+        const result = await updateProvider(
+            db,
+            provider.id,
+            input,
+            testConfig.storeKey,
+            provider.domain_id,
+            1,
+        );
+        assertEquals(calls, 1);
+        assertEquals(result.name, input.name ?? "test");
+        assertEquals(result.enabled, input.enabled ?? true);
+        assertEquals(result.cost_per_1k_tokens, input.cost_per_1k_tokens ?? 1);
+        assert(!("api_key" in result));
+        assert(!("encrypted_api_key" in result));
+        const expectedKey = input.api_key ?? "sk-test";
+        assertEquals(
+            await decryptSecret(
+                provider.encrypted_api_key,
+                testConfig.storeKey,
+            ),
+            expectedKey,
+        );
+        assertEquals(result.api_key_masked, maskApiKey(expectedKey));
+    }
 });
 
 // ── 管理员 Provider 更新仍可改 enabled 与 cost（通用输入校验保留） ──
 
 Deno.test("providers: Key 解密失败时掩码可区分且不阻断列表/更新", async () => {
-  // 用错误的 storeKey 加密，模拟密钥轮换后无法解密。
-  const provider = await makeProvider("wrong-store-key");
-  const { db } = createFakeDb(provider);
-  const views = await listProviders(db, testConfig.storeKey);
-  assertEquals(views.length, 1);
-  assertEquals(views[0].api_key_masked, "****(decrypt_failed)");
-  assert(!JSON.stringify(views).includes(provider.encrypted_api_key));
+    // 用错误的 storeKey 加密，模拟密钥轮换后无法解密。
+    const provider = await makeProvider("wrong-store-key");
+    const { db } = createFakeDb(provider);
+    const views = await listProviders(db, testConfig.storeKey);
+    assertEquals(views.length, 1);
+    assertEquals(views[0].api_key_masked, "****(decrypt_failed)");
+    assert(!JSON.stringify(views).includes(provider.encrypted_api_key));
 
-  db.unsafe =
-    ((_query: string, _params: unknown) =>
-      Promise.resolve([provider])) as unknown as typeof db.unsafe;
-  const updated = await updateProvider(
-    db,
-    provider.id,
-    { name: "新名称" },
-    testConfig.storeKey,
-    provider.domain_id,
-    1,
-  );
-  assertEquals(updated.api_key_masked, "****(decrypt_failed)");
+    db.unsafe =
+        ((_query: string, _params: unknown) =>
+            Promise.resolve([provider])) as unknown as typeof db.unsafe;
+    const updated = await updateProvider(
+        db,
+        provider.id,
+        { name: "新名称" },
+        testConfig.storeKey,
+        provider.domain_id,
+        1,
+    );
+    assertEquals(updated.api_key_masked, "****(decrypt_failed)");
 });
 
 Deno.test("providers: 管理员 Provider 可更新 enabled 与 cost", async () => {
-  const provider = await makeProvider(testConfig.storeKey);
-  const { db } = createFakeDb(provider);
-  const unsafe = (query: string, params: unknown) => {
-    const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
-    for (const [, field, index] of fields) {
-      const value = (params as unknown[])[Number(index) - 1];
-      if (field !== "id" && field !== "revision") {
-        Object.assign(provider, { [field]: value });
-      }
-    }
-    provider.revision++;
-    return Promise.resolve([provider]);
-  };
-  db.unsafe = unsafe as unknown as typeof db.unsafe;
-  const result = await updateProvider(
-    db,
-    provider.id,
-    { enabled: false, cost_per_1k_tokens: 3 },
-    testConfig.storeKey,
-    provider.domain_id,
-    1,
-  );
-  assertEquals(result.enabled, false);
-  assertEquals(result.cost_per_1k_tokens, 3);
+    const provider = await makeProvider(testConfig.storeKey);
+    const { db } = createFakeDb(provider);
+    const unsafe = (query: string, params: unknown) => {
+        const fields = [...query.matchAll(/(\w+) = \$(\d+)/g)];
+        for (const [, field, index] of fields) {
+            const value = (params as unknown[])[Number(index) - 1];
+            if (field !== "id" && field !== "revision") {
+                Object.assign(provider, { [field]: value });
+            }
+        }
+        provider.revision++;
+        return Promise.resolve([provider]);
+    };
+    db.unsafe = unsafe as unknown as typeof db.unsafe;
+    const result = await updateProvider(
+        db,
+        provider.id,
+        { enabled: false, cost_per_1k_tokens: 3 },
+        testConfig.storeKey,
+        provider.domain_id,
+        1,
+    );
+    assertEquals(result.enabled, false);
+    assertEquals(result.cost_per_1k_tokens, 3);
 });
 
 Deno.test("providers: 连通性测试必须显式指定 model", async () => {
-  const provider = await makeProvider(testConfig.storeKey);
-  const { db } = createFakeDb(provider);
-  await assertRejects(
-    () => testProviderConnection(db, provider.id, testConfig.storeKey, ""),
-    Error,
-    "model_required",
-  );
+    const provider = await makeProvider(testConfig.storeKey);
+    const { db } = createFakeDb(provider);
+    await assertRejects(
+        () => testProviderConnection(db, provider.id, testConfig.storeKey, ""),
+        Error,
+        "model_required",
+    );
 });
 
 Deno.test("normalizeRateLimit: 缺省为 0，只接受非负整数", () => {
-  assertEquals(normalizeRateLimit(undefined), 0);
-  assertEquals(normalizeRateLimit(null), 0);
-  assertEquals(normalizeRateLimit(""), 0);
-  assertEquals(normalizeRateLimit(0), 0);
-  assertEquals(normalizeRateLimit(1000), 1000);
-  assertEquals(normalizeRateLimit("60"), 60);
-  for (const bad of [-1, 1.5, "abc", 2_000_000_000, Number.NaN]) {
-    assertThrows(() => normalizeRateLimit(bad), Error, "provider_invalid");
-  }
+    assertEquals(normalizeRateLimit(undefined), 0);
+    assertEquals(normalizeRateLimit(null), 0);
+    assertEquals(normalizeRateLimit(""), 0);
+    assertEquals(normalizeRateLimit(0), 0);
+    assertEquals(normalizeRateLimit(1000), 1000);
+    assertEquals(normalizeRateLimit("60"), 60);
+    for (const bad of [-1, 1.5, "abc", 2_000_000_000, Number.NaN]) {
+        assertThrows(() => normalizeRateLimit(bad), Error, "provider_invalid");
+    }
 });

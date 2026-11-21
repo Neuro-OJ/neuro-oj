@@ -26,37 +26,37 @@ export const BROWSER_TEST_ROOT = "e2e/browser";
 
 /** 单个分组的执行计划。 */
 export interface BrowserGroup {
-  /** 稳定名称：`browser1`…`browserN`，同时用于 JUnit 文件名与 `--shard` 取值。 */
-  groupName: string;
-  /** 该组要执行的测试文件（模块相对路径，升序）。 */
-  files: string[];
-  /** 按基线/中位数估值的分组耗时（毫秒），仅用于调度与报告。 */
-  estimatedMs: number;
+    /** 稳定名称：`browser1`…`browserN`，同时用于 JUnit 文件名与 `--shard` 取值。 */
+    groupName: string;
+    /** 该组要执行的测试文件（模块相对路径，升序）。 */
+    files: string[];
+    /** 按基线/中位数估值的分组耗时（毫秒），仅用于调度与报告。 */
+    estimatedMs: number;
 }
 
 /** 文件级耗时基线的解析结果（结构同 dev-docs/engineering/test-duration-baseline.json）。 */
 export interface FileDurationBaseline {
-  version: number;
-  generatedAt: string;
-  source: string;
-  /** noj-tests 模块相对路径 → 实测耗时毫秒。 */
-  files: Record<string, number>;
+    version: number;
+    generatedAt: string;
+    source: string;
+    /** noj-tests 模块相对路径 → 实测耗时毫秒。 */
+    files: Record<string, number>;
 }
 
 /** 一次 Browser 分组计划的完整输入与产出，供启动器写报告与零依赖测试断言。 */
 export interface BrowserPlan {
-  groupCount: number;
-  /** 发现后进入计划的全部测试文件，已去重、规范化并升序排序。 */
-  selectedFiles: string[];
-  groups: BrowserGroup[];
-  baseline: {
-    /** 基线来源；未读到基线时为 `none`。 */
-    source: string;
-    generatedAt: string;
-    knownFiles: number;
-    /** 未知文件的估值（毫秒）：基线中位数或内置回退值。 */
-    unknownMs: number;
-  };
+    groupCount: number;
+    /** 发现后进入计划的全部测试文件，已去重、规范化并升序排序。 */
+    selectedFiles: string[];
+    groups: BrowserGroup[];
+    baseline: {
+        /** 基线来源；未读到基线时为 `none`。 */
+        source: string;
+        generatedAt: string;
+        knownFiles: number;
+        /** 未知文件的估值（毫秒）：基线中位数或内置回退值。 */
+        unknownMs: number;
+    };
 }
 
 /**
@@ -69,12 +69,12 @@ export interface BrowserPlan {
  * @returns 规范化后的模块相对路径
  */
 export function normalizeBrowserTestPath(relativePath: string): string {
-  return relativePath
-    .trim()
-    .replaceAll("\\", "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/$/, "");
+    return relativePath
+        .trim()
+        .replaceAll("\\", "/")
+        .replace(/\/+/g, "/")
+        .replace(/^\.\//, "")
+        .replace(/\/$/, "");
 }
 
 /**
@@ -86,10 +86,10 @@ export function normalizeBrowserTestPath(relativePath: string): string {
  * @returns 是否应进入 Browser 分组计划
  */
 export function isBrowserTestFile(relativePath: string): boolean {
-  const normalized = normalizeBrowserTestPath(relativePath);
-  if (!normalized.endsWith(".test.ts")) return false;
-  const base = normalized.slice(normalized.lastIndexOf("/") + 1);
-  return !base.startsWith("_");
+    const normalized = normalizeBrowserTestPath(relativePath);
+    if (!normalized.endsWith(".test.ts")) return false;
+    const base = normalized.slice(normalized.lastIndexOf("/") + 1);
+    return !base.startsWith("_");
 }
 
 /**
@@ -99,37 +99,37 @@ export function isBrowserTestFile(relativePath: string): boolean {
  * @returns 去重、规范化并升序排序的模块相对路径
  */
 export async function discoverBrowserTestFiles(
-  rootDir = ".",
+    rootDir = ".",
 ): Promise<string[]> {
-  const base = `${rootDir.replace(/\/+$/, "")}/${BROWSER_TEST_ROOT}`;
-  const seen = new Set<string>();
-  const walk = async (absoluteDir: string, relativeDir: string) => {
-    for await (const entry of Deno.readDir(absoluteDir)) {
-      const relativePath = relativeDir
-        ? `${relativeDir}/${entry.name}`
-        : entry.name;
-      if (entry.isDirectory) {
-        if (entry.name.startsWith(".")) continue;
-        await walk(`${absoluteDir}/${entry.name}`, relativePath);
-        continue;
-      }
-      if (!entry.isFile) continue;
-      const normalized = normalizeBrowserTestPath(relativePath);
-      if (isBrowserTestFile(normalized)) seen.add(normalized);
-    }
-  };
-  await walk(base, BROWSER_TEST_ROOT);
-  return [...seen].sort();
+    const base = `${rootDir.replace(/\/+$/, "")}/${BROWSER_TEST_ROOT}`;
+    const seen = new Set<string>();
+    const walk = async (absoluteDir: string, relativeDir: string) => {
+        for await (const entry of Deno.readDir(absoluteDir)) {
+            const relativePath = relativeDir
+                ? `${relativeDir}/${entry.name}`
+                : entry.name;
+            if (entry.isDirectory) {
+                if (entry.name.startsWith(".")) continue;
+                await walk(`${absoluteDir}/${entry.name}`, relativePath);
+                continue;
+            }
+            if (!entry.isFile) continue;
+            const normalized = normalizeBrowserTestPath(relativePath);
+            if (isBrowserTestFile(normalized)) seen.add(normalized);
+        }
+    };
+    await walk(base, BROWSER_TEST_ROOT);
+    return [...seen].sort();
 }
 
 /** 计算中位数；空数组返回 undefined。 */
 function medianOf(values: readonly number[]): number | undefined {
-  if (values.length === 0) return undefined;
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? Math.round((sorted[middle - 1]! + sorted[middle]!) / 2)
-    : sorted[middle]!;
+    if (values.length === 0) return undefined;
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+        ? Math.round((sorted[middle - 1]! + sorted[middle]!) / 2)
+        : sorted[middle]!;
 }
 
 /**
@@ -148,50 +148,52 @@ function medianOf(values: readonly number[]): number | undefined {
  * @returns 每个文件恰好落入一个分组的计划
  */
 export function partitionBrowserFiles(
-  files: readonly string[],
-  groupCount: number,
-  durations: Record<string, number> = {},
-  unknownMs = FALLBACK_BROWSER_FILE_DURATION_MS,
+    files: readonly string[],
+    groupCount: number,
+    durations: Record<string, number> = {},
+    unknownMs = FALLBACK_BROWSER_FILE_DURATION_MS,
 ): BrowserGroup[] {
-  if (!Number.isInteger(groupCount) || groupCount < 1) {
-    throw new Error(`Browser 分组数必须为 ≥1 的整数，实际 ${groupCount}`);
-  }
-  const unique = [
-    ...new Set(
-      files.map(normalizeBrowserTestPath).filter((file) => file.length > 0),
-    ),
-  ].sort();
-
-  const groups: BrowserGroup[] = Array.from(
-    { length: groupCount },
-    (_, index) => ({
-      groupName: `browser${index + 1}`,
-      files: [],
-      estimatedMs: 0,
-    }),
-  );
-
-  const weighted = unique.map((file) => ({
-    file,
-    duration: durations[file] ?? unknownMs,
-  }));
-  weighted.sort((left, right) =>
-    right.duration === left.duration
-      ? left.file < right.file ? -1 : left.file === right.file ? 0 : 1
-      : right.duration - left.duration
-  );
-
-  for (const { file, duration } of weighted) {
-    let target = groups[0]!;
-    for (const group of groups) {
-      if (group.estimatedMs < target.estimatedMs) target = group;
+    if (!Number.isInteger(groupCount) || groupCount < 1) {
+        throw new Error(`Browser 分组数必须为 ≥1 的整数，实际 ${groupCount}`);
     }
-    target.files.push(file);
-    target.estimatedMs += duration;
-  }
+    const unique = [
+        ...new Set(
+            files.map(normalizeBrowserTestPath).filter((file) =>
+                file.length > 0
+            ),
+        ),
+    ].sort();
 
-  for (const group of groups) group.files.sort();
-  return groups;
+    const groups: BrowserGroup[] = Array.from(
+        { length: groupCount },
+        (_, index) => ({
+            groupName: `browser${index + 1}`,
+            files: [],
+            estimatedMs: 0,
+        }),
+    );
+
+    const weighted = unique.map((file) => ({
+        file,
+        duration: durations[file] ?? unknownMs,
+    }));
+    weighted.sort((left, right) =>
+        right.duration === left.duration
+            ? left.file < right.file ? -1 : left.file === right.file ? 0 : 1
+            : right.duration - left.duration
+    );
+
+    for (const { file, duration } of weighted) {
+        let target = groups[0]!;
+        for (const group of groups) {
+            if (group.estimatedMs < target.estimatedMs) target = group;
+        }
+        target.files.push(file);
+        target.estimatedMs += duration;
+    }
+
+    for (const group of groups) group.files.sort();
+    return groups;
 }
 
 /**
@@ -204,38 +206,40 @@ export function partitionBrowserFiles(
  * @throws 分组数非法，或分组计划未做到"每个文件恰好一组"时
  */
 export function buildBrowserPlan(
-  files: readonly string[],
-  baseline: FileDurationBaseline,
-  groupCount = DEFAULT_BROWSER_GROUP_COUNT,
+    files: readonly string[],
+    baseline: FileDurationBaseline,
+    groupCount = DEFAULT_BROWSER_GROUP_COUNT,
 ): BrowserPlan {
-  const unknownMs = medianOf(Object.values(baseline.files)) ??
-    FALLBACK_BROWSER_FILE_DURATION_MS;
-  const selected = [
-    ...new Set(
-      files.map(normalizeBrowserTestPath).filter((file) => file.length > 0),
-    ),
-  ].sort();
-  const groups = partitionBrowserFiles(
-    selected,
-    groupCount,
-    baseline.files,
-    unknownMs,
-  );
-  const problems = auditPlan(groups, selected);
-  if (problems.length > 0) {
-    throw new Error(`Browser 分组计划不完整：\n- ${problems.join("\n- ")}`);
-  }
-  return {
-    groupCount,
-    selectedFiles: selected,
-    groups,
-    baseline: {
-      source: baseline.source,
-      generatedAt: baseline.generatedAt,
-      knownFiles: Object.keys(baseline.files).length,
-      unknownMs,
-    },
-  };
+    const unknownMs = medianOf(Object.values(baseline.files)) ??
+        FALLBACK_BROWSER_FILE_DURATION_MS;
+    const selected = [
+        ...new Set(
+            files.map(normalizeBrowserTestPath).filter((file) =>
+                file.length > 0
+            ),
+        ),
+    ].sort();
+    const groups = partitionBrowserFiles(
+        selected,
+        groupCount,
+        baseline.files,
+        unknownMs,
+    );
+    const problems = auditPlan(groups, selected);
+    if (problems.length > 0) {
+        throw new Error(`Browser 分组计划不完整：\n- ${problems.join("\n- ")}`);
+    }
+    return {
+        groupCount,
+        selectedFiles: selected,
+        groups,
+        baseline: {
+            source: baseline.source,
+            generatedAt: baseline.generatedAt,
+            knownFiles: Object.keys(baseline.files).length,
+            unknownMs,
+        },
+    };
 }
 
 /**
@@ -246,64 +250,68 @@ export function buildBrowserPlan(
  * @returns 违规说明列表；空数组表示计划完整
  */
 export function auditPlan(
-  plan: readonly BrowserGroup[] | BrowserPlan,
-  allFiles: readonly string[],
+    plan: readonly BrowserGroup[] | BrowserPlan,
+    allFiles: readonly string[],
 ): string[] {
-  // readonly 数组不能由 Array.isArray 收窄，显式区分两种入参。
-  const groups: readonly BrowserGroup[] = Array.isArray(plan)
-    ? plan
-    : (plan as BrowserPlan).groups;
-  const expected = [
-    ...new Set(
-      allFiles.map(normalizeBrowserTestPath).filter((file) => file.length > 0),
-    ),
-  ].sort();
-  const problems: string[] = [];
-  const seen = new Map<string, string>();
-  for (const group of groups) {
-    const local = new Set<string>();
-    for (const file of group.files) {
-      if (local.has(file)) {
-        problems.push(`分组 ${group.groupName} 重复包含 ${file}`);
-        continue;
-      }
-      local.add(file);
-      const previous = seen.get(file);
-      if (previous) {
-        problems.push(`${file} 同时出现在 ${previous} 与 ${group.groupName}`);
-      }
-      seen.set(file, group.groupName);
+    // readonly 数组不能由 Array.isArray 收窄，显式区分两种入参。
+    const groups: readonly BrowserGroup[] = Array.isArray(plan)
+        ? plan
+        : (plan as BrowserPlan).groups;
+    const expected = [
+        ...new Set(
+            allFiles.map(normalizeBrowserTestPath).filter((file) =>
+                file.length > 0
+            ),
+        ),
+    ].sort();
+    const problems: string[] = [];
+    const seen = new Map<string, string>();
+    for (const group of groups) {
+        const local = new Set<string>();
+        for (const file of group.files) {
+            if (local.has(file)) {
+                problems.push(`分组 ${group.groupName} 重复包含 ${file}`);
+                continue;
+            }
+            local.add(file);
+            const previous = seen.get(file);
+            if (previous) {
+                problems.push(
+                    `${file} 同时出现在 ${previous} 与 ${group.groupName}`,
+                );
+            }
+            seen.set(file, group.groupName);
+        }
     }
-  }
-  const missing = expected.filter((file) => !seen.has(file));
-  if (missing.length > 0) {
-    problems.push(`以下测试文件未进入任何分组：${missing.join("、")}`);
-  }
-  const expectedSet = new Set(expected);
-  for (const file of seen.keys()) {
-    if (!expectedSet.has(file)) {
-      problems.push(`分组包含计划外的文件：${file}`);
+    const missing = expected.filter((file) => !seen.has(file));
+    if (missing.length > 0) {
+        problems.push(`以下测试文件未进入任何分组：${missing.join("、")}`);
     }
-  }
-  return problems;
+    const expectedSet = new Set(expected);
+    for (const file of seen.keys()) {
+        if (!expectedSet.has(file)) {
+            problems.push(`分组包含计划外的文件：${file}`);
+        }
+    }
+    return problems;
 }
 
 /** 基线不可用时的空基线；调用方仍会显式记录来源为 `none`。 */
 export function emptyBrowserBaseline(): FileDurationBaseline {
-  return {
-    version: 1,
-    generatedAt: new Date(0).toISOString(),
-    source: "none",
-    files: {},
-  };
+    return {
+        version: 1,
+        generatedAt: new Date(0).toISOString(),
+        source: "none",
+        files: {},
+    };
 }
 
 /** 基线键归一化：允许生成方使用 `noj-tests/` 前缀。 */
 function normalizeBaselineKey(path: string): string {
-  const normalized = normalizeBrowserTestPath(path);
-  return normalized.startsWith("noj-tests/")
-    ? normalized.slice("noj-tests/".length)
-    : normalized;
+    const normalized = normalizeBrowserTestPath(path);
+    return normalized.startsWith("noj-tests/")
+        ? normalized.slice("noj-tests/".length)
+        : normalized;
 }
 
 /**
@@ -317,61 +325,62 @@ function normalizeBaselineKey(path: string): string {
  * @throws 文件不存在、JSON 非法、版本/字段/耗时不合法时
  */
 export async function loadBrowserDurationBaseline(
-  path: string,
+    path: string,
 ): Promise<FileDurationBaseline> {
-  let text: string;
-  try {
-    text = await Deno.readTextFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
-      throw new Error(
-        `Browser 测试耗时基线不存在：${path}；如需从零开始，请显式传入 emptyBrowserBaseline()`,
-        { cause: error },
-      );
+    let text: string;
+    try {
+        text = await Deno.readTextFile(path);
+    } catch (error) {
+        if (error instanceof Deno.errors.NotFound) {
+            throw new Error(
+                `Browser 测试耗时基线不存在：${path}；如需从零开始，请显式传入 emptyBrowserBaseline()`,
+                { cause: error },
+            );
+        }
+        throw error;
     }
-    throw error;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Browser 测试耗时基线不是合法 JSON：${path}`, {
-      cause: error,
-    });
-  }
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`Browser 测试耗时基线不是对象：${path}`);
-  }
-  const baseline = parsed as Partial<FileDurationBaseline>;
-  if (baseline.version !== 1) {
-    throw new Error(
-      `不支持的 Browser 测试耗时基线版本：${String(baseline.version)}`,
-    );
-  }
-  if (typeof baseline.generatedAt !== "string" || !baseline.generatedAt) {
-    throw new Error("Browser 测试耗时基线缺少 generatedAt");
-  }
-  if (typeof baseline.source !== "string" || !baseline.source) {
-    throw new Error("Browser 测试耗时基线缺少 source（必须说明数据来源）");
-  }
-  if (!baseline.files || typeof baseline.files !== "object") {
-    throw new Error("Browser 测试耗时基线缺少 files 映射");
-  }
-  const files: Record<string, number> = {};
-  for (const [file, duration] of Object.entries(baseline.files)) {
-    if (
-      typeof duration !== "number" || !Number.isFinite(duration) || duration < 0
-    ) {
-      throw new Error(
-        `Browser 测试耗时基线中 ${file} 的耗时不合法：${duration}`,
-      );
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(text);
+    } catch (error) {
+        throw new Error(`Browser 测试耗时基线不是合法 JSON：${path}`, {
+            cause: error,
+        });
     }
-    files[normalizeBaselineKey(file)] = duration;
-  }
-  return {
-    version: 1,
-    generatedAt: baseline.generatedAt,
-    source: baseline.source,
-    files,
-  };
+    if (!parsed || typeof parsed !== "object") {
+        throw new Error(`Browser 测试耗时基线不是对象：${path}`);
+    }
+    const baseline = parsed as Partial<FileDurationBaseline>;
+    if (baseline.version !== 1) {
+        throw new Error(
+            `不支持的 Browser 测试耗时基线版本：${String(baseline.version)}`,
+        );
+    }
+    if (typeof baseline.generatedAt !== "string" || !baseline.generatedAt) {
+        throw new Error("Browser 测试耗时基线缺少 generatedAt");
+    }
+    if (typeof baseline.source !== "string" || !baseline.source) {
+        throw new Error("Browser 测试耗时基线缺少 source（必须说明数据来源）");
+    }
+    if (!baseline.files || typeof baseline.files !== "object") {
+        throw new Error("Browser 测试耗时基线缺少 files 映射");
+    }
+    const files: Record<string, number> = {};
+    for (const [file, duration] of Object.entries(baseline.files)) {
+        if (
+            typeof duration !== "number" || !Number.isFinite(duration) ||
+            duration < 0
+        ) {
+            throw new Error(
+                `Browser 测试耗时基线中 ${file} 的耗时不合法：${duration}`,
+            );
+        }
+        files[normalizeBaselineKey(file)] = duration;
+    }
+    return {
+        version: 1,
+        generatedAt: baseline.generatedAt,
+        source: baseline.source,
+        files,
+    };
 }

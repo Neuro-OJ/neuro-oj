@@ -14,25 +14,25 @@ const logger = getLogger(["noj", "catalog"]);
 
 /** 为题目登记一次搜索索引 upsert（task 载荷与原 enqueueSearchIndexTask 一致）。 */
 export async function enqueueProblemSearchUpsert(problemId: string) {
-  const eventId = crypto.randomUUID();
-  try {
-    await getDb().transaction((tx) =>
-      enqueueTaskTx(tx, {
-        taskType: "search.index",
-        targetKind: "problem",
-        targetId: problemId,
-        dedupeKey: `problem:upsert:${eventId}`,
-        payload: {
-          entity_type: "problem",
-          entity_id: problemId,
-          action: "upsert",
-        },
-      })
-    );
-  } catch (err) {
-    logger.error("登记标签关联题目搜索索引任务失败，索引可能落后", {
-      problem_id: problemId,
-      err,
-    });
-  }
+    const eventId = crypto.randomUUID();
+    try {
+        await getDb().transaction((tx) =>
+            enqueueTaskTx(tx, {
+                taskType: "search.index",
+                targetKind: "problem",
+                targetId: problemId,
+                dedupeKey: `problem:upsert:${eventId}`,
+                payload: {
+                    entity_type: "problem",
+                    entity_id: problemId,
+                    action: "upsert",
+                },
+            })
+        );
+    } catch (err) {
+        logger.error("登记标签关联题目搜索索引任务失败，索引可能落后", {
+            problem_id: problemId,
+            err,
+        });
+    }
 }

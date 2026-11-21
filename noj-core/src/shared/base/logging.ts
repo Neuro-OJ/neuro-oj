@@ -18,11 +18,11 @@
 import { getLogger, type LogRecord as LtRecord } from "@logtape/logtape";
 import { type EnvReader, setupLogging } from "./log-config.ts";
 import {
-  isProduction,
-  type LogLevel,
-  redactFields,
-  renderableMessage,
-  toCoreLevel,
+    isProduction,
+    type LogLevel,
+    redactFields,
+    renderableMessage,
+    toCoreLevel,
 } from "./log-format.ts";
 
 export type { LogLevel };
@@ -30,11 +30,11 @@ export { isProduction } from "./log-format.ts";
 
 /** 结构化日志记录。 */
 export interface LogRecord {
-  ts: string;
-  level: LogLevel;
-  msg: string;
-  request_id?: string;
-  fields: Record<string, unknown>;
+    ts: string;
+    level: LogLevel;
+    msg: string;
+    request_id?: string;
+    fields: Record<string, unknown>;
 }
 
 /** 日志输出目的地。默认写 console；测试可替换以捕获记录。 */
@@ -48,21 +48,21 @@ export type LogSink = (record: LogRecord) => void;
  * 导致注入 env 的测试拿不到对应脱敏（会静默按进程环境判定）。
  */
 function toCompatRecord(record: LtRecord, env?: EnvReader): LogRecord {
-  const fields: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(record.properties)) {
-    if (k === "request_id") continue;
-    fields[k] = v;
-  }
-  const production = env ? isProduction(env) : isProduction();
-  return {
-    ts: new Date(record.timestamp).toISOString(),
-    level: toCoreLevel(record.level),
-    msg: renderableMessage(record, production),
-    request_id: typeof record.properties.request_id === "string"
-      ? record.properties.request_id
-      : undefined,
-    fields: redactFields(fields, production),
-  };
+    const fields: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(record.properties)) {
+        if (k === "request_id") continue;
+        fields[k] = v;
+    }
+    const production = env ? isProduction(env) : isProduction();
+    return {
+        ts: new Date(record.timestamp).toISOString(),
+        level: toCoreLevel(record.level),
+        msg: renderableMessage(record, production),
+        request_id: typeof record.properties.request_id === "string"
+            ? record.properties.request_id
+            : undefined,
+        fields: redactFields(fields, production),
+    };
 }
 
 /**
@@ -73,12 +73,12 @@ function toCompatRecord(record: LtRecord, env?: EnvReader): LogRecord {
  *            会跨文件互相覆盖）。
  */
 export function setLogSink(sink: LogSink, env?: EnvReader): void {
-  setupLogging((record) => sink(toCompatRecord(record, env)), env);
+    setupLogging((record) => sink(toCompatRecord(record, env)), env);
 }
 
 /** 恢复默认 sink（测试清理用）。 */
 export function resetLogSink(): void {
-  setupLogging();
+    setupLogging();
 }
 
 // 模块初始化即装配一次默认输出
@@ -87,30 +87,30 @@ setupLogging();
 // ── 核心 emit + logger ────────────────────────────────────────────────
 
 function emit(
-  level: LogLevel,
-  msg: string,
-  fields?: Record<string, unknown>,
+    level: LogLevel,
+    msg: string,
+    fields?: Record<string, unknown>,
 ): void {
-  // 级别过滤由 LogTape 的 dynamicLevelFilter 统一负责，此处直接投递。
-  // request_id 不再手工注入：LogTape 的 contextLocalStorage 会用同一个
-  // ALS 自动并入 properties（见 observability/context.ts），手工再写一次
-  // 只会掩盖传播链路的真实状态。
-  const log = getLogger(["noj", "legacy"]);
-  const props: Record<string, unknown> = { ...(fields ?? {}) };
-  switch (level) {
-    case "debug":
-      log.debug(msg, props);
-      break;
-    case "info":
-      log.info(msg, props);
-      break;
-    case "warn":
-      log.warn(msg, props);
-      break;
-    case "error":
-      log.error(msg, props);
-      break;
-  }
+    // 级别过滤由 LogTape 的 dynamicLevelFilter 统一负责，此处直接投递。
+    // request_id 不再手工注入：LogTape 的 contextLocalStorage 会用同一个
+    // ALS 自动并入 properties（见 observability/context.ts），手工再写一次
+    // 只会掩盖传播链路的真实状态。
+    const log = getLogger(["noj", "legacy"]);
+    const props: Record<string, unknown> = { ...(fields ?? {}) };
+    switch (level) {
+        case "debug":
+            log.debug(msg, props);
+            break;
+        case "info":
+            log.info(msg, props);
+            break;
+        case "warn":
+            log.warn(msg, props);
+            break;
+        case "error":
+            log.error(msg, props);
+            break;
+    }
 }
 
 /**
@@ -121,12 +121,12 @@ function emit(
  * logger.error("推送失败", { err, submission_id });
  */
 export const logger = {
-  debug: (msg: string, fields?: Record<string, unknown>) =>
-    emit("debug", msg, fields),
-  info: (msg: string, fields?: Record<string, unknown>) =>
-    emit("info", msg, fields),
-  warn: (msg: string, fields?: Record<string, unknown>) =>
-    emit("warn", msg, fields),
-  error: (msg: string, fields?: Record<string, unknown>) =>
-    emit("error", msg, fields),
+    debug: (msg: string, fields?: Record<string, unknown>) =>
+        emit("debug", msg, fields),
+    info: (msg: string, fields?: Record<string, unknown>) =>
+        emit("info", msg, fields),
+    warn: (msg: string, fields?: Record<string, unknown>) =>
+        emit("warn", msg, fields),
+    error: (msg: string, fields?: Record<string, unknown>) =>
+        emit("error", msg, fields),
 };

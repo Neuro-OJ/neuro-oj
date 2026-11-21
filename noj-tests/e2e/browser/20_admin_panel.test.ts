@@ -29,141 +29,152 @@ const ADMIN_PASSWORD = "E2eAdminChangedPass1";
 
 /** 等待 Nuxt 应用挂载完成：dev 服务器下 domcontentloaded 常早于水合，过早交互会丢事件 */
 async function waitForHydration(page: Page): Promise<void> {
-  await page.waitForFunction(() => Boolean(document.querySelector("#__nuxt")), {
-    timeout: 20_000,
-  });
-  await page.waitForTimeout(1_500);
+    await page.waitForFunction(
+        () => Boolean(document.querySelector("#__nuxt")),
+        {
+            timeout: 20_000,
+        },
+    );
+    await page.waitForTimeout(1_500);
 }
 
 async function loginViaUI(
-  page: Page,
-  login: string,
-  password: string,
+    page: Page,
+    login: string,
+    password: string,
 ): Promise<void> {
-  await page.goto(`${UI_URL}/login`, { waitUntil: "domcontentloaded" });
-  await waitForHydration(page);
-  await page.getByPlaceholder("请输入用户名或邮箱").fill(login);
-  await page.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
-    password,
-  );
-  await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
-    timeout: 15_000,
-  });
+    await page.goto(`${UI_URL}/login`, { waitUntil: "domcontentloaded" });
+    await waitForHydration(page);
+    await page.getByPlaceholder("请输入用户名或邮箱").fill(login);
+    await page.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
+        password,
+    );
+    await page.getByRole("button", { name: "登录", exact: true }).click();
+    await page.waitForURL((u) => !u.pathname.startsWith("/login"), {
+        timeout: 15_000,
+    });
 }
 
 /** 采集页面未捕获异常（单元格渲染抛错会表现为 uncaught TypeError） */
 function collectPageErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("pageerror", (err) => errors.push(err.message));
-  return errors;
+    const errors: string[] = [];
+    page.on("pageerror", (err) => errors.push(err.message));
+    return errors;
 }
 
 /** 表格数据行（UTable 空态渲染的 "No data" 行不算数据） */
 function dataRows(page: Page) {
-  return page.locator("main tbody tr").filter({ hasNotText: "No data" });
+    return page.locator("main tbody tr").filter({ hasNotText: "No data" });
 }
 
 /** 打开管理页并等待表格出现数据行；返回数据行数 */
 async function openAdminTable(
-  page: Page,
-  path: string,
-  heading: string,
+    page: Page,
+    path: string,
+    heading: string,
 ): Promise<number> {
-  await page.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
-  await waitForHydration(page);
-  await page.getByRole("heading", { name: heading }).waitFor({
-    timeout: 15_000,
-  });
-  await dataRows(page).first().waitFor({ timeout: 15_000 });
-  return await dataRows(page).count();
+    await page.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
+    await waitForHydration(page);
+    await page.getByRole("heading", { name: heading }).waitFor({
+        timeout: 15_000,
+    });
+    await dataRows(page).first().waitFor({ timeout: 15_000 });
+    return await dataRows(page).count();
 }
 
 Deno.test("[ui/browser] 管理后台：刷新 /admin/* 保持登录且列表渲染数据", async () => {
-  if (!BROWSER_E2E) {
-    console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
-    return;
-  }
-  // 归一化 admin 密码（首次走强制改密），使 UI 登录可用
-  await getAdminToken();
-
-  await withBrowserJourney("admin-panel", async (journey) => {
-    const { page } = await journey.newSession("admin");
-    const pageErrors = collectPageErrors(page);
-    await loginViaUI(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-
-    // ── 1. 整页加载进入管理后台：应停留在 /admin/users 且表格有数据 ──
-    const rows = await openAdminTable(page, "/admin/users", "用户管理");
-    if (new URL(page.url()).pathname !== "/admin/users") {
-      throw new Error(`进入 /admin/users 后被重定向到 ${page.url()}`);
+    if (!BROWSER_E2E) {
+        console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
+        return;
     }
-    if (rows < 1) {
-      throw new Error(`用户表格没有数据行（rows=${rows}）`);
-    }
+    // 归一化 admin 密码（首次走强制改密），使 UI 登录可用
+    await getAdminToken();
 
-    // ── 2. 整页刷新（bug 复现路径）：不得跳回登录页，且刷新后仍有数据行 ──
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await waitForHydration(page);
-    if (new URL(page.url()).pathname !== "/admin/users") {
-      throw new Error(`刷新 /admin/users 后被重定向到 ${page.url()}`);
-    }
-    await page.getByRole("heading", { name: "用户管理" }).waitFor({
-      timeout: 15_000,
+    await withBrowserJourney("admin-panel", async (journey) => {
+        const { page } = await journey.newSession("admin");
+        const pageErrors = collectPageErrors(page);
+        await loginViaUI(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+
+        // ── 1. 整页加载进入管理后台：应停留在 /admin/users 且表格有数据 ──
+        const rows = await openAdminTable(page, "/admin/users", "用户管理");
+        if (new URL(page.url()).pathname !== "/admin/users") {
+            throw new Error(`进入 /admin/users 后被重定向到 ${page.url()}`);
+        }
+        if (rows < 1) {
+            throw new Error(`用户表格没有数据行（rows=${rows}）`);
+        }
+
+        // ── 2. 整页刷新（bug 复现路径）：不得跳回登录页，且刷新后仍有数据行 ──
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await waitForHydration(page);
+        if (new URL(page.url()).pathname !== "/admin/users") {
+            throw new Error(`刷新 /admin/users 后被重定向到 ${page.url()}`);
+        }
+        await page.getByRole("heading", { name: "用户管理" }).waitFor({
+            timeout: 15_000,
+        });
+        await dataRows(page).first().waitFor({ timeout: 15_000 });
+        if ((await dataRows(page).count()) < 1) {
+            throw new Error("刷新 /admin/users 后表格没有数据行");
+        }
+
+        // ── 3. 自定义角色页面已删除：侧边栏不得再有入口 ──
+        if ((await page.getByRole("link", { name: "角色权限" }).count()) > 0) {
+            throw new Error("侧边栏仍存在已删除的角色权限入口");
+        }
+        const rolePage = await page.goto(
+            new URL("/admin/roles", page.url()).toString(),
+            { waitUntil: "domcontentloaded" },
+        );
+        if (rolePage && rolePage.status() === 200) {
+            const heading = await page.getByRole("heading", {
+                name: "角色管理",
+            })
+                .count();
+            if (heading > 0) throw new Error("/admin/roles 仍渲染角色管理页");
+        }
+
+        // ── 4. 另一个走 AdminTable 的面板（审计日志）同样必须有数据 ──
+        const auditRows = await openAdminTable(
+            page,
+            "/admin/audit-logs",
+            "审计日志",
+        );
+        if (auditRows < 1) {
+            throw new Error(`审计日志表格没有数据行（rows=${auditRows}）`);
+        }
+
+        if (pageErrors.length > 0) {
+            throw new Error(`页面出现未捕获异常：${pageErrors.join(" | ")}`);
+        }
     });
-    await dataRows(page).first().waitFor({ timeout: 15_000 });
-    if ((await dataRows(page).count()) < 1) {
-      throw new Error("刷新 /admin/users 后表格没有数据行");
-    }
-
-    // ── 3. 自定义角色页面已删除：侧边栏不得再有入口 ──
-    if ((await page.getByRole("link", { name: "角色权限" }).count()) > 0) {
-      throw new Error("侧边栏仍存在已删除的角色权限入口");
-    }
-    const rolePage = await page.goto(
-      new URL("/admin/roles", page.url()).toString(),
-      { waitUntil: "domcontentloaded" },
-    );
-    if (rolePage && rolePage.status() === 200) {
-      const heading = await page.getByRole("heading", { name: "角色管理" })
-        .count();
-      if (heading > 0) throw new Error("/admin/roles 仍渲染角色管理页");
-    }
-
-    // ── 4. 另一个走 AdminTable 的面板（审计日志）同样必须有数据 ──
-    const auditRows = await openAdminTable(
-      page,
-      "/admin/audit-logs",
-      "审计日志",
-    );
-    if (auditRows < 1) {
-      throw new Error(`审计日志表格没有数据行（rows=${auditRows}）`);
-    }
-
-    if (pageErrors.length > 0) {
-      throw new Error(`页面出现未捕获异常：${pageErrors.join(" | ")}`);
-    }
-  });
 });
 
 Deno.test("[ui/browser] 管理后台：审计日志渲染含 null 管理员的行", async () => {
-  if (!BROWSER_E2E) {
-    console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
-    return;
-  }
-  await getAdminToken();
-
-  await withBrowserJourney("admin-audit-logs", async (journey) => {
-    const { page } = await journey.newSession("admin");
-    const pageErrors = collectPageErrors(page);
-    await loginViaUI(page, ADMIN_EMAIL, ADMIN_PASSWORD);
-
-    // 审计日志存在 admin_id=null 的系统事件；单元格曾对其 .slice() 抛错并卸载整张表
-    const rows = await openAdminTable(page, "/admin/audit-logs", "审计日志");
-    if (rows < 1) {
-      throw new Error(`审计日志表格没有数据行（rows=${rows}）`);
+    if (!BROWSER_E2E) {
+        console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
+        return;
     }
-    if (pageErrors.length > 0) {
-      throw new Error(`审计日志页出现未捕获异常：${pageErrors.join(" | ")}`);
-    }
-  });
+    await getAdminToken();
+
+    await withBrowserJourney("admin-audit-logs", async (journey) => {
+        const { page } = await journey.newSession("admin");
+        const pageErrors = collectPageErrors(page);
+        await loginViaUI(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+
+        // 审计日志存在 admin_id=null 的系统事件；单元格曾对其 .slice() 抛错并卸载整张表
+        const rows = await openAdminTable(
+            page,
+            "/admin/audit-logs",
+            "审计日志",
+        );
+        if (rows < 1) {
+            throw new Error(`审计日志表格没有数据行（rows=${rows}）`);
+        }
+        if (pageErrors.length > 0) {
+            throw new Error(
+                `审计日志页出现未捕获异常：${pageErrors.join(" | ")}`,
+            );
+        }
+    });
 });

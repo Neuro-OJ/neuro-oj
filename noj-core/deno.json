@@ -1,105 +1,108 @@
 {
-  "name": "@noj/core",
-  "version": "0.11.0",
-  "exports": "./src/mod.ts",
-  "tasks": {
-    "dev": "deno run --watch --env-file=.env -A src/main.ts",
-    "start": "deno run --env-file=.env -A src/main.ts",
-    "build:server": "bash scripts/build-server.sh",
-    "build:server:smoke": "bash scripts/build-server.sh && ./bin/noj-server --version",
-    "db:migrate": "deno run --env-file=.env -A scripts/noj.ts db migrate",
-    "init:system": "deno run --env-file=.env -A scripts/noj.ts init system",
-    "bootstrap:admin": "deno run --env-file=.env -A scripts/noj.ts bootstrap admin",
-    "problems:build": "deno run -A scripts/noj.ts problems build",
-    "problems:import": "deno run --env-file=.env -A scripts/noj.ts problems import",
-    "search:reindex": "deno run -A --env-file=.env scripts/noj.ts search reindex",
-    "storage:audit": "deno run --env-file=.env -A scripts/storage-audit.ts",
-    "preflight": "deno run --env-file=.env -A scripts/preflight-upgrade.ts",
-    "dev-setup": "deno run --env-file=.env -A scripts/noj.ts dev-setup",
-    "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
-    "db:catalog-backfill": "deno run --env-file=.env -A scripts/noj.ts db catalog-backfill",
-    "db:execution-backfill": "deno run --env-file=.env -A scripts/noj.ts db execution-backfill",
-    "db:upgrade-v010": "deno run --env-file=.env -A scripts/upgrade-from-v010.ts",
-    "check:env": "deno run -A scripts/check-env.ts",
-    "check:env:strict": "deno run -A scripts/check-env.ts --strict",
-    "check:config-usage": "deno run -A scripts/check-config-usage.ts",
-    "check:prod": "deno run -A scripts/check-env.ts --strict --production --file ../.env.prod",
-    "test": "bash scripts/test-all.sh",
-    "test:smoke": "deno run -A scripts/test-launcher.ts smoke",
-    "test:runtime": "deno test -A tests/shared/runtime",
-    "test:gates": "deno run -A ../scripts/test-gates.ts",
-    "test:logic": "deno test -A --no-check tests/scripts/test-launcher.test.ts tests/scripts/test-parallel-coverage.test.ts tests/scripts/test-parallel.test.ts tests/shared/runtime",
-    "test:domain": "bash scripts/test-domain.sh",
-    "test:shared": "bash scripts/test-shared.sh",
-    "test:watch": "deno run -A scripts/test-launcher.ts watch",
-    "test:parallel": "deno run -A scripts/test-launcher.ts parallel",
-    "fmt": "deno fmt",
-    "fmt:check": "deno fmt --check",
-    "lint": "deno lint",
-    "lint:fix": "deno lint --fix",
-    "check": "deno fmt --check && deno lint && deno task check:types",
-    "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check && deno task check:contracts",
-    "check:contracts": "deno check tests/types/*.ts",
-    "check:metrics": "cd .. && deno run -A scripts/check-metrics.ts",
-    "check:runtime-contract": "cd .. && deno run -A scripts/check-runtime-contract.ts",
-    "check:runbooks": "cd .. && deno run -A scripts/check-runbooks.ts",
-    "test:pg": "deno run -A scripts/test-launcher.ts pg",
-    "test:perf": "deno run -A scripts/test-launcher.ts perf",
-    "test:baseline": "deno run -A ../scripts/test-baseline.ts --suite core"
-  },
-  "imports": {
-    "yaml": "npm:yaml@^2.9.1",
-    "@cliffy/command": "jsr:@cliffy/command@^1.2.1",
-    "hono": "npm:hono@^4",
-    "hono/": "npm:/hono@^4/",
-    "hono/cors": "npm:hono@^4/cors",
-    "drizzle-orm": "npm:drizzle-orm@0.45.2",
-    "drizzle-orm/": "npm:/drizzle-orm@0.45.2/",
-    "postgres": "npm:postgres@3.4.5",
-    "ioredis": "npm:ioredis@5.11.1",
-    "bcryptjs": "npm:bcryptjs@^2.4.3",
-    "jose": "npm:jose@^5",
-    "drizzle-kit": "npm:drizzle-kit@0.31.10",
-    "@std/encoding": "jsr:@std/encoding@^1",
-    "@logtape/logtape": "jsr:@logtape/logtape@^2.3.4",
-    "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2",
-    "@alicloud/openapi-core": "npm:@alicloud/openapi-core@^1.0.7",
-    "tencentcloud-sdk-nodejs-ses": "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",
-    "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3",
-    "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3",
-    "fflate": "npm:fflate@~0.8.3",
-    "otpauth": "npm:otpauth@^9",
-    "busboy": "npm:busboy@^1.6.0"
-  },
-  "nodeModulesDir": "auto",
-  "fmt": {
-    "semiColons": true,
-    "singleQuote": false,
-    "indentWidth": 2,
-    "exclude": [
-      ".deno_cache",
-      "drizzle/meta"
-    ]
-  },
-  "lint": {
-    "rules": {
-      "tags": [
-        "recommended"
-      ]
+    "name": "@noj/core",
+    "version": "0.11.0",
+    "exports": "./src/mod.ts",
+    "tasks": {
+        "dev": "deno run --watch --env-file=.env -A src/main.ts",
+        "start": "deno run --env-file=.env -A src/main.ts",
+        "build:server": "bash scripts/build-server.sh",
+        "build:server:smoke": "bash scripts/build-server.sh && ./bin/noj-server --version",
+        "db:migrate": "deno run --env-file=.env -A scripts/noj.ts db migrate",
+        "init:system": "deno run --env-file=.env -A scripts/noj.ts init system",
+        "bootstrap:admin": "deno run --env-file=.env -A scripts/noj.ts bootstrap admin",
+        "problems:build": "deno run -A scripts/noj.ts problems build",
+        "problems:import": "deno run --env-file=.env -A scripts/noj.ts problems import",
+        "search:reindex": "deno run -A --env-file=.env scripts/noj.ts search reindex",
+        "storage:audit": "deno run --env-file=.env -A scripts/storage-audit.ts",
+        "preflight": "deno run --env-file=.env -A scripts/preflight-upgrade.ts",
+        "dev-setup": "deno run --env-file=.env -A scripts/noj.ts dev-setup",
+        "db:generate": "deno -A npm:drizzle-kit generate --config=./drizzle.config.ts",
+        "db:catalog-backfill": "deno run --env-file=.env -A scripts/noj.ts db catalog-backfill",
+        "db:execution-backfill": "deno run --env-file=.env -A scripts/noj.ts db execution-backfill",
+        "db:upgrade-v010": "deno run --env-file=.env -A scripts/upgrade-from-v010.ts",
+        "check:env": "deno run -A scripts/check-env.ts",
+        "check:env:strict": "deno run -A scripts/check-env.ts --strict",
+        "check:config-usage": "deno run -A scripts/check-config-usage.ts",
+        "check:prod": "deno run -A scripts/check-env.ts --strict --production --file ../.env.prod",
+        "test": "bash scripts/test-all.sh",
+        "test:smoke": "deno run -A scripts/test-launcher.ts smoke",
+        "test:runtime": "deno test -A tests/shared/runtime",
+        "test:gates": "deno run -A ../scripts/test-gates.ts",
+        "test:logic": "deno test -A --no-check tests/scripts/test-launcher.test.ts tests/scripts/test-parallel-coverage.test.ts tests/scripts/test-parallel.test.ts tests/shared/runtime",
+        "test:domain": "bash scripts/test-domain.sh",
+        "test:shared": "bash scripts/test-shared.sh",
+        "test:watch": "deno run -A scripts/test-launcher.ts watch",
+        "test:parallel": "deno run -A scripts/test-launcher.ts parallel",
+        "fmt": "deno fmt",
+        "fmt:check": "deno fmt --check",
+        "lint": "deno lint",
+        "lint:fix": "deno lint --fix",
+        "check": "deno fmt --check && deno lint && deno task check:types",
+        "check:types": "find src -name '*.ts' -print0 | xargs -0 deno check && deno task check:contracts",
+        "check:contracts": "deno check tests/types/*.ts",
+        "check:metrics": "cd .. && deno run -A scripts/check-metrics.ts",
+        "check:runtime-contract": "cd .. && deno run -A scripts/check-runtime-contract.ts",
+        "check:runbooks": "cd .. && deno run -A scripts/check-runbooks.ts",
+        "test:pg": "deno run -A scripts/test-launcher.ts pg",
+        "test:perf": "deno run -A scripts/test-launcher.ts perf",
+        "test:baseline": "deno run -A ../scripts/test-baseline.ts --suite core"
     },
-    "exclude": [
-      ".deno_cache"
+    "imports": {
+        "yaml": "npm:yaml@^2.9.1",
+        "@cliffy/command": "jsr:@cliffy/command@^1.2.1",
+        "hono": "npm:hono@^4",
+        "hono/": "npm:/hono@^4/",
+        "hono/cors": "npm:hono@^4/cors",
+        "drizzle-orm": "npm:drizzle-orm@0.45.2",
+        "drizzle-orm/": "npm:/drizzle-orm@0.45.2/",
+        "postgres": "npm:postgres@3.4.5",
+        "ioredis": "npm:ioredis@5.11.1",
+        "bcryptjs": "npm:bcryptjs@^2.4.3",
+        "jose": "npm:jose@^5",
+        "drizzle-kit": "npm:drizzle-kit@0.31.10",
+        "@std/encoding": "jsr:@std/encoding@^1",
+        "@logtape/logtape": "jsr:@logtape/logtape@^2.3.4",
+        "@alicloud/dm": "npm:@alicloud/dm20151123@^1.10.2",
+        "@alicloud/openapi-core": "npm:@alicloud/openapi-core@^1.0.7",
+        "tencentcloud-sdk-nodejs-ses": "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",
+        "@aws-sdk/client-s3": "npm:@aws-sdk/client-s3@^3",
+        "@aws-sdk/s3-request-presigner": "npm:@aws-sdk/s3-request-presigner@^3",
+        "fflate": "npm:fflate@~0.8.3",
+        "otpauth": "npm:otpauth@^9",
+        "busboy": "npm:busboy@^1.6.0"
+    },
+    "nodeModulesDir": "auto",
+    "fmt": {
+        "semiColons": true,
+        "singleQuote": false,
+        "indentWidth": 4,
+        "exclude": [
+            ".deno_cache",
+            "drizzle/meta",
+            "CLAUDE.md",
+            "**/*.yaml",
+            "**/*.yml"
+        ]
+    },
+    "lint": {
+        "rules": {
+            "tags": [
+                "recommended"
+            ]
+        },
+        "exclude": [
+            ".deno_cache"
+        ]
+    },
+    "test": {
+        "exclude": [
+            "node_modules",
+            ".deno_cache"
+        ]
+    },
+    "allowScripts": [
+        "npm:esbuild@0.18.20",
+        "npm:esbuild@0.25.12",
+        "npm:esbuild@0.28.1"
     ]
-  },
-  "test": {
-    "exclude": [
-      "node_modules",
-      ".deno_cache"
-    ]
-  },
-  "allowScripts": [
-    "npm:esbuild@0.18.20",
-    "npm:esbuild@0.25.12",
-    "npm:esbuild@0.28.1"
-  ]
 }

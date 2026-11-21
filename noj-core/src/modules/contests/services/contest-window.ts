@@ -32,13 +32,13 @@ import type { ContestStatus } from "../types/contests.ts";
 
 /** 根据开始/结束时间计算竞赛当前状态；它只依赖时间合同，不依赖竞赛写服务。 */
 export function computeContestStatus(
-  startTime: string,
-  endTime: string,
+    startTime: string,
+    endTime: string,
 ): ContestStatus {
-  const now = Date.now();
-  if (now < Date.parse(startTime)) return "pending";
-  if (now < Date.parse(endTime)) return "running";
-  return "ended";
+    const now = Date.now();
+    if (now < Date.parse(startTime)) return "pending";
+    if (now < Date.parse(endTime)) return "running";
+    return "ended";
 }
 
 /**
@@ -48,7 +48,7 @@ export function computeContestStatus(
  * POSIX 正则（`~` 运算符），非 JS 正则。
  */
 export const CONTEST_TIME_ISO_REGEX_SQL =
-  "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$";
+    "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$";
 
 /**
  * 规范化竞赛时间为规范 ISO 8601（UTC，毫秒精度）。
@@ -60,16 +60,16 @@ export const CONTEST_TIME_ISO_REGEX_SQL =
  * @throws {RangeError} 值不可解析时抛错（调用方应先经 `validateTimes` 校验）。
  */
 export function normalizeContestTime(value: string): string {
-  return new Date(value).toISOString();
+    return new Date(value).toISOString();
 }
 
 /** 规范化可空竞赛时间；`null` / `undefined` 原样透传。 */
 export function normalizeOptionalContestTime(
-  value: string | null | undefined,
+    value: string | null | undefined,
 ): string | null {
-  return value === null || value === undefined
-    ? null
-    : normalizeContestTime(value);
+    return value === null || value === undefined
+        ? null
+        : normalizeContestTime(value);
 }
 
 /**
@@ -102,10 +102,10 @@ export function normalizeOptionalContestTime(
  * @returns 可直接放进 `WHERE` / `AND` 的布尔 SQL 片段。
  */
 export function runningWindowCondition(
-  startTimeExpr: AnyColumn | SQL,
-  endTimeExpr: AnyColumn | SQL,
+    startTimeExpr: AnyColumn | SQL,
+    endTimeExpr: AnyColumn | SQL,
 ): SQL {
-  return sql`CASE
+    return sql`CASE
     WHEN ${startTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
      AND ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
      AND pg_input_is_valid(${startTimeExpr}, 'timestamptz')
@@ -132,7 +132,7 @@ export function runningWindowCondition(
  * @returns 可直接放进 `WHERE` / `AND` 的布尔 SQL 片段。
  */
 export function unendedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
-  return sql`CASE
+    return sql`CASE
     WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
      AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
     THEN ${endTimeExpr}::timestamptz > now()
@@ -151,7 +151,7 @@ export function unendedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
  * @returns 可直接放进 WHERE / AND 的布尔 SQL 片段。
  */
 export function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
-  return sql`CASE
+    return sql`CASE
     WHEN ${endTimeExpr} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
      AND pg_input_is_valid(${endTimeExpr}, 'timestamptz')
     THEN ${endTimeExpr}::timestamptz <= now()
@@ -169,9 +169,9 @@ export function endedWindowCondition(endTimeExpr: AnyColumn | SQL): SQL {
  * @returns 该题目当前处于进行中竞赛时为真的 `EXISTS` 子查询。
  */
 export function runningContestExistsForProblem(
-  problemIdExpr: AnyColumn | SQL,
+    problemIdExpr: AnyColumn | SQL,
 ): SQL {
-  return sql`EXISTS (
+    return sql`EXISTS (
     SELECT 1 FROM contest_problems cp
     JOIN contests c ON c.id = cp.contest_id
     WHERE cp.problem_id = ${problemIdExpr}
@@ -197,7 +197,7 @@ export const runningContestForProblem = runningContestExistsForProblem;
  * @returns 选出进行中竞赛题目 id 的子查询 SQL 片段。
  */
 export function runningContestProblemIds(): SQL {
-  return sql`(
+    return sql`(
     SELECT cp.problem_id FROM contest_problems cp
     JOIN contests c ON c.id = cp.contest_id
     WHERE ${runningWindowCondition(sql`c.start_time`, sql`c.end_time`)}

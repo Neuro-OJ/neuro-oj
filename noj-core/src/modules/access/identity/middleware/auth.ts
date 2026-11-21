@@ -1,8 +1,8 @@
 import type { Context, Next } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
-  ForbiddenError,
-  UnauthorizedError,
+    ForbiddenError,
+    UnauthorizedError,
 } from "../../../../shared/base/errors.ts";
 import { verifyToken } from "../services/security/jwt.ts";
 import { isJtiRevoked } from "../services/security/revokedTokens.ts";
@@ -12,13 +12,13 @@ import { getCached } from "../services/security/banCache.ts";
 import { getClientIp } from "../../../platform/contracts/cross-module/system_services_rate-limit-env.ts";
 import { runWithContext } from "../../../platform/contracts/cross-module/system_services_request-context.ts";
 import {
-  guestActor,
-  userActorFromAuthenticatedId,
+    guestActor,
+    userActorFromAuthenticatedId,
 } from "../../contracts/actor.ts";
 import { isUserAdmin } from "../services/security/permissions.ts";
 import type {
-  AuthEnv,
-  OptionalAuthEnv,
+    AuthEnv,
+    OptionalAuthEnv,
 } from "../../../../shared/http/hono-env.ts";
 
 export type { AuthEnv, OptionalAuthEnv };
@@ -36,9 +36,9 @@ export type { AuthEnv, OptionalAuthEnv };
  * 注意：路径必须与 app.ts 挂载前缀组合后的完整路径一致。
  */
 export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
-  "/api/v1/auth/change-password",
-  "/api/v1/auth/me",
-  "/api/v1/auth/logout",
+    "/api/v1/auth/change-password",
+    "/api/v1/auth/me",
+    "/api/v1/auth/logout",
 ] as const;
 
 /**
@@ -48,28 +48,28 @@ export const PASSWORD_CHANGE_WHITELIST: readonly string[] = [
  * （被封用户必须能登出）。GET 不再自动放行。
  */
 export const BAN_WHITELIST: readonly string[] = [
-  "/api/v1/auth/logout",
+    "/api/v1/auth/logout",
 ] as const;
 
 async function getActiveAccount(userId: string) {
-  const [account] = await getDb().select({
-    emailVerified: users.email_verified,
-    sessionVersion: users.session_version,
-    role: users.role,
-  }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
-    .limit(1);
-  return account;
+    const [account] = await getDb().select({
+        emailVerified: users.email_verified,
+        sessionVersion: users.session_version,
+        role: users.role,
+    }).from(users).where(and(eq(users.id, userId), isNull(users.deleted_at)))
+        .limit(1);
+    return account;
 }
 
 /**
  * 用户 ban 状态（从 users 表读，60s LRU 缓存）。
  */
 export interface UserBanState {
-  banned: boolean;
-  reason: string;
-  until: string | null;
-  /** 封禁范围：platform=限制使用平台；social=仅限制社区发布 */
-  scope: "platform" | "social" | null;
+    banned: boolean;
+    reason: string;
+    until: string | null;
+    /** 封禁范围：platform=限制使用平台；social=仅限制社区发布 */
+    scope: "platform" | "social" | null;
 }
 
 /**
@@ -79,21 +79,21 @@ export interface UserBanState {
  * 白名单：写操作中豁免的路径（如 logout）
  */
 async function checkBanStatus(c: Context, userId: string): Promise<void> {
-  // 仅 platform 封禁在此拦截（限制使用平台：登录/评测/一切写操作）。
-  // social 封禁只限制社区发布，由 assertCommunityWritable 在社区写操作时拦截，
-  // 不影响登录与评测（用户仍可使用平台）。
-  if (!BAN_WHITELIST.includes(c.req.path)) {
-    const banState = await getUserBanState(userId);
-    const stillBanned = banState.banned &&
-      banState.scope === "platform" &&
-      (!banState.until || Date.parse(banState.until) > Date.now());
-    if (stillBanned) {
-      throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
-        reason: banState.reason,
-        until: banState.until,
-      });
+    // 仅 platform 封禁在此拦截（限制使用平台：登录/评测/一切写操作）。
+    // social 封禁只限制社区发布，由 assertCommunityWritable 在社区写操作时拦截，
+    // 不影响登录与评测（用户仍可使用平台）。
+    if (!BAN_WHITELIST.includes(c.req.path)) {
+        const banState = await getUserBanState(userId);
+        const stillBanned = banState.banned &&
+            banState.scope === "platform" &&
+            (!banState.until || Date.parse(banState.until) > Date.now());
+        if (stillBanned) {
+            throw new ForbiddenError("账号已被封禁", "USER_BANNED", {
+                reason: banState.reason,
+                until: banState.until,
+            });
+        }
     }
-  }
 }
 
 /**
@@ -108,29 +108,29 @@ async function checkBanStatus(c: Context, userId: string): Promise<void> {
  * @returns payload（验证通过）或 null（无 token / token 无效）
  */
 async function resolveToken(
-  c: Context,
+    c: Context,
 ): Promise<Awaited<ReturnType<typeof verifyToken>> | null> {
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
-  }
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return null;
+    }
 
-  const token = authHeader.slice(7);
-  let payload: Awaited<ReturnType<typeof verifyToken>> | null = null;
-  try {
-    payload = await verifyToken(token);
-  } catch {
-    return null;
-  }
+    const token = authHeader.slice(7);
+    let payload: Awaited<ReturnType<typeof verifyToken>> | null = null;
+    try {
+        payload = await verifyToken(token);
+    } catch {
+        return null;
+    }
 
-  if (!payload) return null;
+    if (!payload) return null;
 
-  // 撤销检查
-  if (payload.jti && await isJtiRevoked(payload.jti)) {
-    return null;
-  }
+    // 撤销检查
+    if (payload.jti && await isJtiRevoked(payload.jti)) {
+        return null;
+    }
 
-  return payload;
+    return payload;
 }
 
 /**
@@ -144,33 +144,33 @@ async function resolveToken(
  * 下游路由通过 `if (!c.get("userId"))` 判断是否匿名。
  */
 export async function optionalAuthMiddleware(
-  c: Context,
-  next: Next,
+    c: Context,
+    next: Next,
 ): Promise<void> {
-  const payload = await resolveToken(c);
+    const payload = await resolveToken(c);
 
-  if (payload) {
-    const account = await getActiveAccount(payload.sub);
-    if (!account || account.sessionVersion !== payload.session_version) {
-      // 可选认证对无效或已注销 token 仍按匿名请求继续；下游不得看到悬空身份。
-      c.set("actor", guestActor());
-      await next();
-      return;
+    if (payload) {
+        const account = await getActiveAccount(payload.sub);
+        if (!account || account.sessionVersion !== payload.session_version) {
+            // 可选认证对无效或已注销 token 仍按匿名请求继续；下游不得看到悬空身份。
+            c.set("actor", guestActor());
+            await next();
+            return;
+        }
+        c.set("userId", payload.sub);
+        // 平台角色以数据库为准；token 中的 role 仅作客户端展示，不参与授权。
+        c.set("userRole", account.role);
+        c.set("actor", userActorFromAuthenticatedId(payload.sub));
+        c.set("mustChangePassword", payload.must_change_password ?? false);
+        c.set("emailVerified", account.emailVerified);
+        if (payload.jti) c.set("jti", payload.jti);
+        if (payload.exp) c.set("tokenExp", payload.exp);
+
+        await checkBanStatus(c, payload.sub);
+    } else {
+        c.set("actor", guestActor());
     }
-    c.set("userId", payload.sub);
-    // 平台角色以数据库为准；token 中的 role 仅作客户端展示，不参与授权。
-    c.set("userRole", account.role);
-    c.set("actor", userActorFromAuthenticatedId(payload.sub));
-    c.set("mustChangePassword", payload.must_change_password ?? false);
-    c.set("emailVerified", account.emailVerified);
-    if (payload.jti) c.set("jti", payload.jti);
-    if (payload.exp) c.set("tokenExp", payload.exp);
-
-    await checkBanStatus(c, payload.sub);
-  } else {
-    c.set("actor", guestActor());
-  }
-  await next();
+    await next();
 }
 
 /**
@@ -191,44 +191,44 @@ export async function optionalAuthMiddleware(
  * `banUser`/`unbanUser` 写操作会调 `invalidateBanCache` 立即失效。
  */
 export async function authMiddleware(c: Context, next: Next): Promise<void> {
-  // 先检查请求头是否存在（提供精确的错误信息）
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    throw new UnauthorizedError("未提供认证令牌");
-  }
+    // 先检查请求头是否存在（提供精确的错误信息）
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        throw new UnauthorizedError("未提供认证令牌");
+    }
 
-  const payload = await resolveToken(c);
+    const payload = await resolveToken(c);
 
-  if (!payload) {
-    throw new UnauthorizedError("认证令牌无效或已过期");
-  }
+    if (!payload) {
+        throw new UnauthorizedError("认证令牌无效或已过期");
+    }
 
-  const account = await getActiveAccount(payload.sub);
-  if (!account) throw new UnauthorizedError("账号不存在或已注销");
-  if (account.sessionVersion !== payload.session_version) {
-    throw new UnauthorizedError("登录会话已失效，请重新登录");
-  }
+    const account = await getActiveAccount(payload.sub);
+    if (!account) throw new UnauthorizedError("账号不存在或已注销");
+    if (account.sessionVersion !== payload.session_version) {
+        throw new UnauthorizedError("登录会话已失效，请重新登录");
+    }
 
-  // 强制改密拦截
-  if (
-    payload.must_change_password === true &&
-    !PASSWORD_CHANGE_WHITELIST.includes(c.req.path)
-  ) {
-    throw new ForbiddenError("请先修改密码", "PASSWORD_CHANGE_REQUIRED");
-  }
+    // 强制改密拦截
+    if (
+        payload.must_change_password === true &&
+        !PASSWORD_CHANGE_WHITELIST.includes(c.req.path)
+    ) {
+        throw new ForbiddenError("请先修改密码", "PASSWORD_CHANGE_REQUIRED");
+    }
 
-  // 封禁校验
-  await checkBanStatus(c, payload.sub);
+    // 封禁校验
+    await checkBanStatus(c, payload.sub);
 
-  c.set("userId", payload.sub);
-  // 平台角色以数据库为准；token 中的 role 仅作客户端展示，不参与授权。
-  c.set("userRole", account.role);
-  c.set("actor", userActorFromAuthenticatedId(payload.sub));
-  c.set("mustChangePassword", payload.must_change_password ?? false);
-  c.set("emailVerified", account.emailVerified);
-  if (payload.jti) c.set("jti", payload.jti);
-  if (payload.exp) c.set("tokenExp", payload.exp);
-  await next();
+    c.set("userId", payload.sub);
+    // 平台角色以数据库为准；token 中的 role 仅作客户端展示，不参与授权。
+    c.set("userRole", account.role);
+    c.set("actor", userActorFromAuthenticatedId(payload.sub));
+    c.set("mustChangePassword", payload.must_change_password ?? false);
+    c.set("emailVerified", account.emailVerified);
+    if (payload.jti) c.set("jti", payload.jti);
+    if (payload.exp) c.set("tokenExp", payload.exp);
+    await next();
 }
 
 /**
@@ -237,31 +237,31 @@ export async function authMiddleware(c: Context, next: Next): Promise<void> {
  * 从 user_bans 表查询活跃封禁（unbanned_at IS NULL）。
  */
 export function getUserBanState(userId: string): Promise<UserBanState> {
-  return getCached(`user:${userId}`, async () => {
-    const db = getDb();
-    const rows = await db
-      .select({
-        reason: userBans.reason,
-        banned_until: userBans.banned_until,
-        scope: userBans.scope,
-      })
-      .from(userBans)
-      .where(and(
-        eq(userBans.user_id, userId),
-        isNull(userBans.unbanned_at),
-      ))
-      .orderBy(desc(userBans.banned_at))
-      .limit(1);
-    if (rows.length === 0) {
-      return { banned: false, reason: "", until: null, scope: null };
-    }
-    return {
-      banned: true,
-      reason: rows[0].reason,
-      until: rows[0].banned_until,
-      scope: rows[0].scope === "social" ? "social" : "platform",
-    };
-  });
+    return getCached(`user:${userId}`, async () => {
+        const db = getDb();
+        const rows = await db
+            .select({
+                reason: userBans.reason,
+                banned_until: userBans.banned_until,
+                scope: userBans.scope,
+            })
+            .from(userBans)
+            .where(and(
+                eq(userBans.user_id, userId),
+                isNull(userBans.unbanned_at),
+            ))
+            .orderBy(desc(userBans.banned_at))
+            .limit(1);
+        if (rows.length === 0) {
+            return { banned: false, reason: "", until: null, scope: null };
+        }
+        return {
+            banned: true,
+            reason: rows[0].reason,
+            until: rows[0].banned_until,
+            scope: rows[0].scope === "social" ? "social" : "platform",
+        };
+    });
 }
 
 /**
@@ -275,21 +275,21 @@ export function getUserBanState(userId: string): Promise<UserBanState> {
  * ALS 只保留 IP/日志关联兼容。
  */
 export async function adminMiddleware(
-  c: Context,
-  next: Next,
+    c: Context,
+    next: Next,
 ): Promise<Response | void> {
-  const userId = c.get("userId") as string | undefined;
-  if (!userId || !(await isUserAdmin(userId))) {
-    throw new ForbiddenError("需要管理员权限");
-  }
+    const userId = c.get("userId") as string | undefined;
+    if (!userId || !(await isUserAdmin(userId))) {
+        throw new ForbiddenError("需要管理员权限");
+    }
 
-  return runWithContext(
-    {
-      actor: c.get("actor"),
-      actorId: c.get("userId"),
-      actorIp: getClientIp(c),
-      actorRole: c.get("userRole"),
-    },
-    () => next(),
-  );
+    return runWithContext(
+        {
+            actor: c.get("actor"),
+            actorId: c.get("userId"),
+            actorIp: getClientIp(c),
+            actorRole: c.get("userRole"),
+        },
+        () => next(),
+    );
 }

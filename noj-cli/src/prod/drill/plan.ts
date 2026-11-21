@@ -39,15 +39,15 @@ import { isFile, pathExists } from "../../util/fs.ts";
  * 非法值抛 {@link UsageError}（退出码 2）——这是用法错误，不是演练失败。
  */
 export function assertDrillProjectName(name: string): void {
-  if (name.trim() === "") {
-    throw new UsageError("演练项目名不能为空");
-  }
-  if (/prod/i.test(name)) {
-    throw new UsageError(
-      `演练项目名不得包含 "prod"（收到 "${name}"）——` +
-        `演练会执行 compose down -v，与生产同名会删除生产数据卷。`,
-    );
-  }
+    if (name.trim() === "") {
+        throw new UsageError("演练项目名不能为空");
+    }
+    if (/prod/i.test(name)) {
+        throw new UsageError(
+            `演练项目名不得包含 "prod"（收到 "${name}"）——` +
+                `演练会执行 compose down -v，与生产同名会删除生产数据卷。`,
+        );
+    }
 }
 
 /**
@@ -59,63 +59,63 @@ export function assertDrillProjectName(name: string): void {
  * 前置错误。
  */
 export function assertDedicatedDockerHost(host: string): void {
-  const value = host.trim();
-  if (!value.startsWith("unix://")) {
-    throw new UsageError(
-      `演练 Docker 主机必须是专用 Unix socket（如 unix:///run/noj-restore-drill/<run>/docker.sock），收到 "${host}"`,
-    );
-  }
-  const socketPath = value.slice("unix://".length);
-  if (!socketPath.startsWith("/") || socketPath.includes("..")) {
-    throw new UsageError(
-      `演练 Docker socket 路径必须是绝对路径且不能包含 ..：${host}`,
-    );
-  }
-  const normalized = socketPath.replace(/\/+/g, "/").replace(/\/$/, "");
-  if (
-    normalized === "/var/run/docker.sock" ||
-    normalized === "/run/docker.sock"
-  ) {
-    throw new UsageError(
-      "演练禁止连接宿主机默认 Docker socket；请先启动专用隔离 daemon",
-    );
-  }
-  if (!normalized.endsWith("/docker.sock")) {
-    throw new UsageError(
-      `演练 Docker socket 必须以 /docker.sock 结尾，收到 "${host}"`,
-    );
-  }
-  if (!/(^|\/)noj-restore-drill(?:[-_/]|\/|$)/.test(normalized)) {
-    throw new UsageError(
-      `演练 Docker socket 路径必须位于 noj-restore-drill 专用目录，收到 "${host}"`,
-    );
-  }
+    const value = host.trim();
+    if (!value.startsWith("unix://")) {
+        throw new UsageError(
+            `演练 Docker 主机必须是专用 Unix socket（如 unix:///run/noj-restore-drill/<run>/docker.sock），收到 "${host}"`,
+        );
+    }
+    const socketPath = value.slice("unix://".length);
+    if (!socketPath.startsWith("/") || socketPath.includes("..")) {
+        throw new UsageError(
+            `演练 Docker socket 路径必须是绝对路径且不能包含 ..：${host}`,
+        );
+    }
+    const normalized = socketPath.replace(/\/+/g, "/").replace(/\/$/, "");
+    if (
+        normalized === "/var/run/docker.sock" ||
+        normalized === "/run/docker.sock"
+    ) {
+        throw new UsageError(
+            "演练禁止连接宿主机默认 Docker socket；请先启动专用隔离 daemon",
+        );
+    }
+    if (!normalized.endsWith("/docker.sock")) {
+        throw new UsageError(
+            `演练 Docker socket 必须以 /docker.sock 结尾，收到 "${host}"`,
+        );
+    }
+    if (!/(^|\/)noj-restore-drill(?:[-_/]|\/|$)/.test(normalized)) {
+        throw new UsageError(
+            `演练 Docker socket 路径必须位于 noj-restore-drill 专用目录，收到 "${host}"`,
+        );
+    }
 }
 
 /** 默认演练项目名的唯一生成器（CLI 每次真实运行都会调用）。 */
 export function uniqueDrillProjectName(
-  now = new Date(),
-  suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8),
+    now = new Date(),
+    suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 8),
 ): string {
-  const stamp = now.toISOString().replace(/[^0-9]/g, "").slice(0, 14);
-  return `noj-drill-${stamp}-${suffix}`;
+    const stamp = now.toISOString().replace(/[^0-9]/g, "").slice(0, 14);
+    return `noj-drill-${stamp}-${suffix}`;
 }
 
 /** 均匀采样 0-253，避免对 256 取模带来的偏置。 */
 function randomDrillOctet(): number {
-  const buffer = new Uint8Array(1);
-  for (;;) {
-    crypto.getRandomValues(buffer);
-    if (buffer[0]! < 254) return buffer[0]!;
-  }
+    const buffer = new Uint8Array(1);
+    for (;;) {
+        crypto.getRandomValues(buffer);
+        if (buffer[0]! < 254) return buffer[0]!;
+    }
 }
 
 /** 默认演练子网的唯一生成器（CLI 每次真实运行都会调用）。 */
 export function uniqueDrillSubnet(octet = randomDrillOctet()): string {
-  if (!Number.isInteger(octet) || octet < 0 || octet > 253) {
-    throw new RangeError(`演练子网序号必须在 0-253：${octet}`);
-  }
-  return `172.29.${octet + 1}.0/24`;
+    if (!Number.isInteger(octet) || octet < 0 || octet > 253) {
+        throw new RangeError(`演练子网序号必须在 0-253：${octet}`);
+    }
+    return `172.29.${octet + 1}.0/24`;
 }
 
 /**
@@ -133,36 +133,36 @@ export function uniqueDrillSubnet(octet = randomDrillOctet()): string {
  * 当作运行失败(1)。
  */
 export function assertSubnetCidr(cidr: string): void {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
-    cidr.trim(),
-  );
-  if (!m) {
-    throw new UsageError(
-      `子网必须是 CIDR 形式（如 172.29.0.0/16），收到 "${cidr}"`,
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/.exec(
+        cidr.trim(),
     );
-  }
-  const octets = [m[1], m[2], m[3], m[4]].map(Number);
-  for (const octet of octets) {
-    if (octet < 0 || octet > 255) {
-      throw new UsageError(`子网每段必须在 0-255 之间，收到 "${cidr}"`);
+    if (!m) {
+        throw new UsageError(
+            `子网必须是 CIDR 形式（如 172.29.0.0/16），收到 "${cidr}"`,
+        );
     }
-  }
-  const prefix = Number(m[5]);
-  if (prefix < 8 || prefix > 30) {
-    throw new UsageError(`子网前缀应在 8-30 之间，收到 /${prefix}`);
-  }
-  // 主机位必须为 0：Docker 只接受网络地址形式的 --subnet。
-  // /31、/32 不在允许前缀内，用 32 位掩码判定即可。
-  const value = ((octets[0]! << 24) >>> 0) +
-    (octets[1]! << 16) +
-    (octets[2]! << 8) +
-    octets[3]!;
-  const mask = (0xffffffff << (32 - prefix)) >>> 0;
-  if (((value & mask) >>> 0) !== value) {
-    throw new UsageError(
-      `子网主机位必须为 0（应为网络地址，如 172.29.0.0/16），收到 "${cidr}"`,
-    );
-  }
+    const octets = [m[1], m[2], m[3], m[4]].map(Number);
+    for (const octet of octets) {
+        if (octet < 0 || octet > 255) {
+            throw new UsageError(`子网每段必须在 0-255 之间，收到 "${cidr}"`);
+        }
+    }
+    const prefix = Number(m[5]);
+    if (prefix < 8 || prefix > 30) {
+        throw new UsageError(`子网前缀应在 8-30 之间，收到 /${prefix}`);
+    }
+    // 主机位必须为 0：Docker 只接受网络地址形式的 --subnet。
+    // /31、/32 不在允许前缀内，用 32 位掩码判定即可。
+    const value = ((octets[0]! << 24) >>> 0) +
+        (octets[1]! << 16) +
+        (octets[2]! << 8) +
+        octets[3]!;
+    const mask = (0xffffffff << (32 - prefix)) >>> 0;
+    if (((value & mask) >>> 0) !== value) {
+        throw new UsageError(
+            `子网主机位必须为 0（应为网络地址，如 172.29.0.0/16），收到 "${cidr}"`,
+        );
+    }
 }
 
 /** 演练默认项目名（`NOJ_DRILL_PROJECT_NAME` 的缺省）。 */
@@ -188,7 +188,7 @@ export const DRILL_ADMIN_EMAIL_DOMAIN = "restore-drill.invalid";
 export const DRILL_ADMIN_PASSWORD = "Drill-Recover-2026";
 /** 演练管理员 bcrypt 哈希（cost 12）。 */
 export const DRILL_BCRYPT_HASH =
-  "$2b$12$edDmxsubnHJL8B/Wsdryxu4ibNin0/SEhqAXkB.Yn50SCoN29lQCW";
+    "$2b$12$edDmxsubnHJL8B/Wsdryxu4ibNin0/SEhqAXkB.Yn50SCoN29lQCW";
 
 /** judge_images 白名单缺失时的兜底评测镜像。 */
 export const DEFAULT_EVALUATOR_IMAGE = "noj-evaluator-python";
@@ -237,25 +237,25 @@ export const DRILL_NETWORK_NAME = "noj-net";
  * {@link renderDisableOutboundIntegrationsSql} 在隔离库里执行禁用 SQL。
  */
 export const DRILL_OUTBOUND_ENV_OVERRIDES: Readonly<Record<string, string>> = {
-  // 邮件
-  EMAIL_PROVIDER: "disabled",
-  ALIBABA_ACCESS_KEY_ID: "",
-  ALIBABA_ACCESS_KEY_SECRET: "",
-  ALIBABA_FROM_EMAIL: "",
-  TENCENT_SECRET_ID: "",
-  TENCENT_SECRET_KEY: "",
-  TENCENT_FROM_EMAIL: "",
-  // 第三方登录（core 要求齐全才启用，空值即关闭）
-  OAUTH_GITHUB_CLIENT_ID: "",
-  OAUTH_GITHUB_CLIENT_SECRET: "",
-  OAUTH_OIDC_ISSUER_URL: "",
-  OAUTH_OIDC_CLIENT_ID: "",
-  OAUTH_OIDC_CLIENT_SECRET: "",
-  // Evaluator → 外部 LLM 上游（eval_token 下发的 gateway 地址）
-  NOJ_LLM_GATEWAY_URL: "",
-  // LLM 题全局默认（env 兜底；DB 侧由 SQL 清空）
-  NOJ_LLM_DEFAULT_PROVIDER_ID: "",
-  NOJ_LLM_DEFAULT_MODEL: "",
+    // 邮件
+    EMAIL_PROVIDER: "disabled",
+    ALIBABA_ACCESS_KEY_ID: "",
+    ALIBABA_ACCESS_KEY_SECRET: "",
+    ALIBABA_FROM_EMAIL: "",
+    TENCENT_SECRET_ID: "",
+    TENCENT_SECRET_KEY: "",
+    TENCENT_FROM_EMAIL: "",
+    // 第三方登录（core 要求齐全才启用，空值即关闭）
+    OAUTH_GITHUB_CLIENT_ID: "",
+    OAUTH_GITHUB_CLIENT_SECRET: "",
+    OAUTH_OIDC_ISSUER_URL: "",
+    OAUTH_OIDC_CLIENT_ID: "",
+    OAUTH_OIDC_CLIENT_SECRET: "",
+    // Evaluator → 外部 LLM 上游（eval_token 下发的 gateway 地址）
+    NOJ_LLM_GATEWAY_URL: "",
+    // LLM 题全局默认（env 兜底；DB 侧由 SQL 清空）
+    NOJ_LLM_DEFAULT_PROVIDER_ID: "",
+    NOJ_LLM_DEFAULT_MODEL: "",
 };
 
 /**
@@ -273,30 +273,30 @@ export const DRILL_OUTBOUND_ENV_OVERRIDES: Readonly<Record<string, string>> = {
  * 防止它们日后改为 runtime 配置时 DB 值遮蔽 env。
  */
 export function renderDisableOutboundIntegrationsSql(): string {
-  return [
-    "-- 恢复演练：禁用出站集成（邮件 / webhook / LLM 上游）",
-    // system_settings.value 按 JSON 编码存储（写入经 JSON.stringify），故用 '"…"'。
-    `UPDATE system_settings SET value = '"disabled"'`,
-    " WHERE key = 'email_provider';",
-    // 邮件凭据与回调：全部清空（即使 provider 被改回也不会发信）
-    `UPDATE system_settings SET value = '""'`,
-    " WHERE key IN (",
-    "   'alibaba_access_key_id', 'alibaba_access_key_secret',",
-    "   'alibaba_from_email', 'tencent_secret_id', 'tencent_secret_key',",
-    "   'tencent_from_email', 'email_webhook_secret'",
-    " );",
-    // webhook 类 setting（按命名 + URL 形态兜底，防新增键漏网）：
-    // 只命中「名字像 webhook 且值是 URL」的行，避免误清 data_policy 等纯文本。
-    // 值是 JSON 字符串（带引号），正则允许可选的前导引号。
-    `UPDATE system_settings SET value = '""'`,
-    " WHERE key ~* 'webhook|slack|discord|feishu|lark'",
-    `   AND value ~* '^[[:space:]]*"?[[:space:]]*(https?|ftps?|wss?)://';`,
-    // LLM 题默认 Provider / 模型（env 兜底已在 env 中清空，这里清 DB 值）
-    `UPDATE system_settings SET value = '""'`,
-    " WHERE key IN ('llm_default_provider_id', 'llm_default_model');",
-    // LLM Provider：密钥与上游地址只存在于 DB，停用是唯一禁用开关
-    "UPDATE llm_providers SET enabled = false WHERE enabled;",
-  ].join("\n");
+    return [
+        "-- 恢复演练：禁用出站集成（邮件 / webhook / LLM 上游）",
+        // system_settings.value 按 JSON 编码存储（写入经 JSON.stringify），故用 '"…"'。
+        `UPDATE system_settings SET value = '"disabled"'`,
+        " WHERE key = 'email_provider';",
+        // 邮件凭据与回调：全部清空（即使 provider 被改回也不会发信）
+        `UPDATE system_settings SET value = '""'`,
+        " WHERE key IN (",
+        "   'alibaba_access_key_id', 'alibaba_access_key_secret',",
+        "   'alibaba_from_email', 'tencent_secret_id', 'tencent_secret_key',",
+        "   'tencent_from_email', 'email_webhook_secret'",
+        " );",
+        // webhook 类 setting（按命名 + URL 形态兜底，防新增键漏网）：
+        // 只命中「名字像 webhook 且值是 URL」的行，避免误清 data_policy 等纯文本。
+        // 值是 JSON 字符串（带引号），正则允许可选的前导引号。
+        `UPDATE system_settings SET value = '""'`,
+        " WHERE key ~* 'webhook|slack|discord|feishu|lark'",
+        `   AND value ~* '^[[:space:]]*"?[[:space:]]*(https?|ftps?|wss?)://';`,
+        // LLM 题默认 Provider / 模型（env 兜底已在 env 中清空，这里清 DB 值）
+        `UPDATE system_settings SET value = '""'`,
+        " WHERE key IN ('llm_default_provider_id', 'llm_default_model');",
+        // LLM Provider：密钥与上游地址只存在于 DB，停用是唯一禁用开关
+        "UPDATE llm_providers SET enabled = false WHERE enabled;",
+    ].join("\n");
 }
 
 /**
@@ -316,11 +316,11 @@ export function renderDisableOutboundIntegrationsSql(): string {
  * 被 CI/文档引用，演练**不得**修改它；Compose 的多 `-f` 叠加语义正好用于此。
  */
 export function renderDrillOverride(subnet: string): string {
-  // 值统一 JSON 编码（YAML 1.2 双引号字符串兼容），空值写作 ""。
-  const coreEnv = Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES)
-    .map(([key, value]) => `      ${key}: ${JSON.stringify(value)}`)
-    .join("\n");
-  return `# restore-drill 自动生成的隔离覆盖：独立子网、不继承生产宿主机端口、禁用出站集成。
+    // 值统一 JSON 编码（YAML 1.2 双引号字符串兼容），空值写作 ""。
+    const coreEnv = Object.entries(DRILL_OUTBOUND_ENV_OVERRIDES)
+        .map(([key, value]) => `      ${key}: ${JSON.stringify(value)}`)
+        .join("\n");
+    return `# restore-drill 自动生成的隔离覆盖：独立子网、不继承生产宿主机端口、禁用出站集成。
 services:
   core:
     environment:
@@ -348,37 +348,37 @@ networks:
  * 子命令之前（Compose 的全局旗标语义，与 `--ansi` 同一类）。
  */
 export function drillComposeArgs(opts: {
-  projectName: string;
-  composeEnvFile: string;
-  composeFile: string;
-  overrideFile: string;
-  /** judge 是否启用（`--skip-judge` 时不带 profile）。 */
-  judge: boolean;
-  command: string[];
+    projectName: string;
+    composeEnvFile: string;
+    composeFile: string;
+    overrideFile: string;
+    /** judge 是否启用（`--skip-judge` 时不带 profile）。 */
+    judge: boolean;
+    command: string[];
 }): string[] {
-  const args = [
-    "compose",
-    "--project-name",
-    opts.projectName,
-    "--env-file",
-    opts.composeEnvFile,
-    "--file",
-    opts.composeFile,
-    "--file",
-    opts.overrideFile,
-  ];
-  if (opts.judge) args.push("--profile", "judge");
-  args.push(...opts.command);
-  return args;
+    const args = [
+        "compose",
+        "--project-name",
+        opts.projectName,
+        "--env-file",
+        opts.composeEnvFile,
+        "--file",
+        opts.composeFile,
+        "--file",
+        opts.overrideFile,
+    ];
+    if (opts.judge) args.push("--profile", "judge");
+    args.push(...opts.command);
+    return args;
 }
 
 /** {@link drillCleanupArgs} 的参数。 */
 export interface CleanupArgsOptions {
-  projectName: string;
-  composeEnvFile: string;
-  composeFile: string;
-  /** 覆盖文件路径；演练目录已被删时传 undefined。 */
-  overrideFile?: string;
+    projectName: string;
+    composeEnvFile: string;
+    composeFile: string;
+    /** 覆盖文件路径；演练目录已被删时传 undefined。 */
+    overrideFile?: string;
 }
 
 /**
@@ -388,28 +388,30 @@ export interface CleanupArgsOptions {
  * 复用到脏数据。这里与生产的安全性无关——项目名不同，卷名前缀就不同。
  */
 export function drillCleanupArgs(opts: CleanupArgsOptions): string[] {
-  const args = [
-    "compose",
-    "--project-name",
-    opts.projectName,
-    "--env-file",
-    opts.composeEnvFile,
-    "--file",
-    opts.composeFile,
-  ];
-  if (opts.overrideFile !== undefined) {
-    args.push("--file", opts.overrideFile);
-  }
-  args.push("down", "-v", "--remove-orphans");
-  return args;
+    const args = [
+        "compose",
+        "--project-name",
+        opts.projectName,
+        "--env-file",
+        opts.composeEnvFile,
+        "--file",
+        opts.composeFile,
+    ];
+    if (opts.overrideFile !== undefined) {
+        args.push("--file", opts.overrideFile);
+    }
+    args.push("down", "-v", "--remove-orphans");
+    return args;
 }
 
 /** 演练目录的默认名（`drill-<时间戳>`）。 */
 export function drillDirName(now: Date): string {
-  const p = (n: number): string => String(n).padStart(2, "0");
-  return `drill-${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}` +
-    `${p(now.getUTCDate())}-${p(now.getUTCHours())}${p(now.getUTCMinutes())}` +
-    `${p(now.getUTCSeconds())}`;
+    const p = (n: number): string => String(n).padStart(2, "0");
+    return `drill-${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}` +
+        `${p(now.getUTCDate())}-${p(now.getUTCHours())}${
+            p(now.getUTCMinutes())
+        }` +
+        `${p(now.getUTCSeconds())}`;
 }
 
 /**
@@ -419,27 +421,27 @@ export function drillDirName(now: Date): string {
  * 便于 `--keep` 时人工检查。
  */
 export async function allocateDrillDir(
-  snapshotPath: string,
-  now: Date,
-  explicit?: string,
+    snapshotPath: string,
+    now: Date,
+    explicit?: string,
 ): Promise<string> {
-  if (explicit !== undefined && explicit !== "") {
-    if (await pathExists(explicit)) {
-      throw new UsageError(`演练目录已存在：${explicit}`);
+    if (explicit !== undefined && explicit !== "") {
+        if (await pathExists(explicit)) {
+            throw new UsageError(`演练目录已存在：${explicit}`);
+        }
+        return explicit;
     }
-    return explicit;
-  }
-  const base = join(
-    dirname(snapshotPath.replace(/\/+$/, "")),
-    drillDirName(now),
-  );
-  let candidate = base;
-  let index = 1;
-  while (await pathExists(candidate)) {
-    candidate = `${base}-${index}`;
-    index++;
-  }
-  return candidate;
+    const base = join(
+        dirname(snapshotPath.replace(/\/+$/, "")),
+        drillDirName(now),
+    );
+    let candidate = base;
+    let index = 1;
+    while (await pathExists(candidate)) {
+        candidate = `${base}-${index}`;
+        index++;
+    }
+    return candidate;
 }
 
 /**
@@ -449,23 +451,23 @@ export async function allocateDrillDir(
  * 来说，"快照目录"是其所在目录——因此这里用 `dirname` 而非把快照当成目录。
  */
 export function resolveReportPath(
-  snapshotPath: string,
-  explicit?: string,
+    snapshotPath: string,
+    explicit?: string,
 ): string {
-  if (explicit !== undefined && explicit !== "") return explicit;
-  const clean = snapshotPath.replace(/\/+$/, "");
-  // 单文件容器：报告写到它**所在目录**；目录快照：写到该目录**之内**。
-  return clean.endsWith(".nojbackup")
-    ? join(dirname(clean), "restore-drill-report.txt")
-    : join(clean, "restore-drill-report.txt");
+    if (explicit !== undefined && explicit !== "") return explicit;
+    const clean = snapshotPath.replace(/\/+$/, "");
+    // 单文件容器：报告写到它**所在目录**；目录快照：写到该目录**之内**。
+    return clean.endsWith(".nojbackup")
+        ? join(dirname(clean), "restore-drill-report.txt")
+        : join(clean, "restore-drill-report.txt");
 }
 
 /** 演练的资源/参数前置失败（退出码 2 的语义载体）。 */
 export class DrillPreflightError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DrillPreflightError";
-  }
+    constructor(message: string) {
+        super(message);
+        this.name = "DrillPreflightError";
+    }
 }
 
 /**
@@ -476,20 +478,20 @@ export class DrillPreflightError extends Error {
  * （#516 验收："资源缺失 = 2，且必须在开始前"）。
  */
 export interface DrillPreflightOptions {
-  /** 解包后的快照 staging 目录（已校验）。 */
-  staging: string;
-  /** 生产安装目录。 */
-  dir: string;
-  /** 生产 `.env.prod` 路径。 */
-  envFile: string;
-  /** 生产 compose 文件路径。 */
-  composeFile: string;
-  /** 演练项目名（已校验）。 */
-  projectName: string;
-  /** 磁盘可用字节探测（注入；缺省不探测 = 测试友好的 no-op）。 */
-  freeBytes?: () => Promise<number>;
-  /** docker 可用性探测（注入；缺省不探测）。 */
-  dockerAvailable?: () => Promise<boolean>;
+    /** 解包后的快照 staging 目录（已校验）。 */
+    staging: string;
+    /** 生产安装目录。 */
+    dir: string;
+    /** 生产 `.env.prod` 路径。 */
+    envFile: string;
+    /** 生产 compose 文件路径。 */
+    composeFile: string;
+    /** 演练项目名（已校验）。 */
+    projectName: string;
+    /** 磁盘可用字节探测（注入；缺省不探测 = 测试友好的 no-op）。 */
+    freeBytes?: () => Promise<number>;
+    /** docker 可用性探测（注入；缺省不探测）。 */
+    dockerAvailable?: () => Promise<boolean>;
 }
 
 /**
@@ -499,40 +501,40 @@ export interface DrillPreflightOptions {
  * 数值。全部在**起任何容器之前**，因此"前置失败 ⇒ 零 compose 调用"。
  */
 export async function checkDrillPreflight(
-  opts: DrillPreflightOptions,
+    opts: DrillPreflightOptions,
 ): Promise<void> {
-  // 快照必需条目：校验由 verifyContainer 完成，
-  // 这里只断言它对容器形态的结论（payload_layout 已由 verify 校验）。
-  if (!(await isFile(join(opts.staging, "manifest.json")))) {
-    throw new DrillPreflightError("快照缺少 manifest.json");
-  }
-  if (!(await isFile(join(opts.staging, "SUCCESS")))) {
-    throw new DrillPreflightError("快照缺少成功标记 SUCCESS");
-  }
-  if (!(await isFile(opts.envFile))) {
-    throw new DrillPreflightError(`生产环境文件不存在：${opts.envFile}`);
-  }
-  if (!(await isFile(opts.composeFile))) {
-    throw new DrillPreflightError(
-      `生产 Compose 文件不存在：${opts.composeFile}`,
-    );
-  }
-  if (opts.dockerAvailable !== undefined && !(await opts.dockerAvailable())) {
-    throw new DrillPreflightError(
-      "无法连接 Docker（演练需要起隔离容器）；请确认 Docker 已安装并运行",
-    );
-  }
-  // 磁盘：演练要恢复完整数据 + 起容器
-  if (opts.freeBytes !== undefined) {
-    const free = await opts.freeBytes();
-    if (Number.isFinite(free) && free < DRILL_MIN_FREE_BYTES) {
-      throw new DrillPreflightError(
-        `磁盘可用空间不足：需要 ≥${
-          (DRILL_MIN_FREE_BYTES / 1024 / 1024 / 1024).toFixed(0)
-        }GiB，当前 ${(free / 1024 / 1024 / 1024).toFixed(1)}GiB`,
-      );
+    // 快照必需条目：校验由 verifyContainer 完成，
+    // 这里只断言它对容器形态的结论（payload_layout 已由 verify 校验）。
+    if (!(await isFile(join(opts.staging, "manifest.json")))) {
+        throw new DrillPreflightError("快照缺少 manifest.json");
     }
-  }
+    if (!(await isFile(join(opts.staging, "SUCCESS")))) {
+        throw new DrillPreflightError("快照缺少成功标记 SUCCESS");
+    }
+    if (!(await isFile(opts.envFile))) {
+        throw new DrillPreflightError(`生产环境文件不存在：${opts.envFile}`);
+    }
+    if (!(await isFile(opts.composeFile))) {
+        throw new DrillPreflightError(
+            `生产 Compose 文件不存在：${opts.composeFile}`,
+        );
+    }
+    if (opts.dockerAvailable !== undefined && !(await opts.dockerAvailable())) {
+        throw new DrillPreflightError(
+            "无法连接 Docker（演练需要起隔离容器）；请确认 Docker 已安装并运行",
+        );
+    }
+    // 磁盘：演练要恢复完整数据 + 起容器
+    if (opts.freeBytes !== undefined) {
+        const free = await opts.freeBytes();
+        if (Number.isFinite(free) && free < DRILL_MIN_FREE_BYTES) {
+            throw new DrillPreflightError(
+                `磁盘可用空间不足：需要 ≥${
+                    (DRILL_MIN_FREE_BYTES / 1024 / 1024 / 1024).toFixed(0)
+                }GiB，当前 ${(free / 1024 / 1024 / 1024).toFixed(1)}GiB`,
+            );
+        }
+    }
 }
 
 /**
@@ -542,32 +544,34 @@ export async function checkDrillPreflight(
  * （`maintain/drill.ts:204-205` 的既有结论）。
  */
 export function probeFreeBytes(
-  runner: CommandRunner,
-  dir: string,
+    runner: CommandRunner,
+    dir: string,
 ): () => Promise<number> {
-  return async () => {
-    const res: CmdResult = await runner.run("df", ["-Pk", dir]);
-    if (res.code !== 0) return Number.POSITIVE_INFINITY;
-    const lines = res.stdout.trim().split("\n");
-    const cols = lines[lines.length - 1]?.split(/\s+/) ?? [];
-    // df -Pk: Filesystem 1024-blocks Used Available Capacity Mounted
-    const availKb = Number(cols[3]);
-    return Number.isFinite(availKb) ? availKb * 1024 : Number.POSITIVE_INFINITY;
-  };
+    return async () => {
+        const res: CmdResult = await runner.run("df", ["-Pk", dir]);
+        if (res.code !== 0) return Number.POSITIVE_INFINITY;
+        const lines = res.stdout.trim().split("\n");
+        const cols = lines[lines.length - 1]?.split(/\s+/) ?? [];
+        // df -Pk: Filesystem 1024-blocks Used Available Capacity Mounted
+        const availKb = Number(cols[3]);
+        return Number.isFinite(availKb)
+            ? availKb * 1024
+            : Number.POSITIVE_INFINITY;
+    };
 }
 
 /** 探测 docker 可用性（`docker info` 的等价，经注入 runner）。 */
 export function probeDocker(
-  runner: CommandRunner,
-  dockerBin: string,
+    runner: CommandRunner,
+    dockerBin: string,
 ): () => Promise<boolean> {
-  return async () => {
-    try {
-      return (await runner.run(dockerBin, ["info"])).code === 0;
-    } catch {
-      return false;
-    }
-  };
+    return async () => {
+        try {
+            return (await runner.run(dockerBin, ["info"])).code === 0;
+        } catch {
+            return false;
+        }
+    };
 }
 
 /**
@@ -577,19 +581,19 @@ export function probeDocker(
  * "异地独立保管"这条要求作废。
  */
 export async function checkPassphraseFile(path: string): Promise<void> {
-  let st: Deno.FileInfo;
-  try {
-    st = await Deno.stat(path);
-  } catch {
-    throw new DrillPreflightError(`GPG 口令文件不存在：${path}`);
-  }
-  if (!st.isFile) {
-    throw new DrillPreflightError(`GPG 口令文件不是普通文件：${path}`);
-  }
-  const mode = ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0");
-  if (mode !== "600" && mode !== "400") {
-    throw new DrillPreflightError(
-      `GPG 口令文件权限必须为 600 或 400：${path}（当前 ${mode}）`,
-    );
-  }
+    let st: Deno.FileInfo;
+    try {
+        st = await Deno.stat(path);
+    } catch {
+        throw new DrillPreflightError(`GPG 口令文件不存在：${path}`);
+    }
+    if (!st.isFile) {
+        throw new DrillPreflightError(`GPG 口令文件不是普通文件：${path}`);
+    }
+    const mode = ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0");
+    if (mode !== "600" && mode !== "400") {
+        throw new DrillPreflightError(
+            `GPG 口令文件权限必须为 600 或 400：${path}（当前 ${mode}）`,
+        );
+    }
 }

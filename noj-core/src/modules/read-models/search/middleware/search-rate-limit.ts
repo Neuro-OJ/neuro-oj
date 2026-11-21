@@ -1,13 +1,13 @@
 import type { Context, MiddlewareHandler } from "hono";
 import {
-  getClientIp,
-  settingBool,
-  settingInt,
+    getClientIp,
+    settingBool,
+    settingInt,
 } from "../../../platform/contracts/cross-module/system_services_rate-limit-env.ts";
 import { RateLimitedError } from "../../../../shared/base/errors.ts";
 import {
-  checkRateLimit,
-  rateLimitHeaders,
+    checkRateLimit,
+    rateLimitHeaders,
 } from "../../../../shared/rate-limit/rate-limit.ts";
 import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 
@@ -30,66 +30,66 @@ import { checkPermission } from "../../../access/contracts/cross-module/identity
 export type SearchRateLimitDimension = "anon" | "authed" | "auto";
 
 export function searchRateLimit(
-  dimension: SearchRateLimitDimension,
+    dimension: SearchRateLimitDimension,
 ): MiddlewareHandler {
-  return async (c: Context, next) => {
-    if (!settingBool("rate_limit_search_enabled")) {
-      return next();
-    }
-    if (await checkPermission(c, "admin:full_access")) {
-      return next();
-    }
+    return async (c: Context, next) => {
+        if (!settingBool("rate_limit_search_enabled")) {
+            return next();
+        }
+        if (await checkPermission(c, "admin:full_access")) {
+            return next();
+        }
 
-    // 维度解析：auto 依据当前请求是否已通过 optionalAuth 注入 userId。
-    const userId = c.get("userId") as string | undefined;
-    const effective: "anon" | "authed" = dimension === "auto"
-      ? (userId ? "authed" : "anon")
-      : dimension;
+        // 维度解析：auto 依据当前请求是否已通过 optionalAuth 注入 userId。
+        const userId = c.get("userId") as string | undefined;
+        const effective: "anon" | "authed" = dimension === "auto"
+            ? (userId ? "authed" : "anon")
+            : dimension;
 
-    if (effective === "authed" && !userId) {
-      // 显式 authed 模式但无登录态：不计数（与既有语义一致）。
-      return next();
-    }
+        if (effective === "authed" && !userId) {
+            // 显式 authed 模式但无登录态：不计数（与既有语义一致）。
+            return next();
+        }
 
-    const windowSec = settingInt("rate_limit_search_window");
-    const max = effective === "anon"
-      ? settingInt("rate_limit_search_max_anon")
-      : settingInt("rate_limit_search_max_authed");
-    // **粗粒度 IP 兜底**（2026-09-22 评审）：`auto` 下登录用户只走用户桶，
-    // 这解决了校园机房 NAT 的误伤，但也意味着单账号轮换可以绕过 IP 维度、
-    // 且认证用户的搜索洪水不再在 IP 键上留痕（运维少一条线索）。
-    // 因此对认证用户额外加一个**量级远高**的 IP 上限作为安全网：
-    // 正常 NAT 出口不会撞到它，而异常洪水会在 IP 键上留痕并可见。
-    const maxIpTotal = settingInt("rate_limit_search_max_ip_total");
-    const ipKey = `search:ip:${getClientIp(c)}`;
+        const windowSec = settingInt("rate_limit_search_window");
+        const max = effective === "anon"
+            ? settingInt("rate_limit_search_max_anon")
+            : settingInt("rate_limit_search_max_authed");
+        // **粗粒度 IP 兜底**（2026-09-22 评审）：`auto` 下登录用户只走用户桶，
+        // 这解决了校园机房 NAT 的误伤，但也意味着单账号轮换可以绕过 IP 维度、
+        // 且认证用户的搜索洪水不再在 IP 键上留痕（运维少一条线索）。
+        // 因此对认证用户额外加一个**量级远高**的 IP 上限作为安全网：
+        // 正常 NAT 出口不会撞到它，而异常洪水会在 IP 键上留痕并可见。
+        const maxIpTotal = settingInt("rate_limit_search_max_ip_total");
+        const ipKey = `search:ip:${getClientIp(c)}`;
 
-    if (effective === "authed" && maxIpTotal > 0) {
-      const ipCfg = { windowSec, max: maxIpTotal };
-      const ipResult = await checkRateLimit(ipKey, ipCfg);
-      if (!ipResult.allowed) {
-        throw new RateLimitedError(
-          "搜索请求过于频繁，请稍后再试（IP 维度兜底）",
-          rateLimitHeaders(ipCfg, ipResult),
-        );
-      }
-    }
+        if (effective === "authed" && maxIpTotal > 0) {
+            const ipCfg = { windowSec, max: maxIpTotal };
+            const ipResult = await checkRateLimit(ipKey, ipCfg);
+            if (!ipResult.allowed) {
+                throw new RateLimitedError(
+                    "搜索请求过于频繁，请稍后再试（IP 维度兜底）",
+                    rateLimitHeaders(ipCfg, ipResult),
+                );
+            }
+        }
 
-    const key = effective === "authed" ? `search:user:${userId}` : ipKey;
+        const key = effective === "authed" ? `search:user:${userId}` : ipKey;
 
-    const cfg = { windowSec, max };
-    const result = await checkRateLimit(key, cfg);
-    if (!result.allowed) {
-      throw new RateLimitedError(
-        `搜索请求过于频繁，请稍后再试（${
-          effective === "anon" ? "IP" : "用户"
-        }维度）`,
-        rateLimitHeaders(cfg, result),
-      );
-    }
-    const headers = rateLimitHeaders(cfg, result);
-    for (const [k, v] of Object.entries(headers)) {
-      c.header(k, v);
-    }
-    await next();
-  };
+        const cfg = { windowSec, max };
+        const result = await checkRateLimit(key, cfg);
+        if (!result.allowed) {
+            throw new RateLimitedError(
+                `搜索请求过于频繁，请稍后再试（${
+                    effective === "anon" ? "IP" : "用户"
+                }维度）`,
+                rateLimitHeaders(cfg, result),
+            );
+        }
+        const headers = rateLimitHeaders(cfg, result);
+        for (const [k, v] of Object.entries(headers)) {
+            c.header(k, v);
+        }
+        await next();
+    };
 }

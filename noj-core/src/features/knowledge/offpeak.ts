@@ -20,8 +20,8 @@ const CST_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface ParsedWindow {
-  startMin: number;
-  endMin: number;
+    startMin: number;
+    endMin: number;
 }
 
 const WINDOW_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/;
@@ -31,32 +31,32 @@ const WINDOW_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/;
  * 含义不明确，回退默认以免误判）。
  */
 export function parseWindow(window: string): ParsedWindow | null {
-  const match = WINDOW_PATTERN.exec(window.trim());
-  if (!match) return null;
-  const startMin = Number(match[1]) * 60 + Number(match[2]);
-  const endMin = Number(match[3]) * 60 + Number(match[4]);
-  if (startMin === endMin) return null;
-  return { startMin, endMin };
+    const match = WINDOW_PATTERN.exec(window.trim());
+    if (!match) return null;
+    const startMin = Number(match[1]) * 60 + Number(match[2]);
+    const endMin = Number(match[3]) * 60 + Number(match[4]);
+    if (startMin === endMin) return null;
+    return { startMin, endMin };
 }
 
 /** 是否合法的时段字符串（供读取处校验）。 */
 export function isValidWindow(window: unknown): window is string {
-  return typeof window === "string" && parseWindow(window) !== null;
+    return typeof window === "string" && parseWindow(window) !== null;
 }
 
 /** 北京时间当天 00:00 对应的 UTC 毫秒。 */
 function cstDayStart(now: Date): number {
-  return Math.floor((now.getTime() + CST_OFFSET_MS) / DAY_MS) * DAY_MS -
-    CST_OFFSET_MS;
+    return Math.floor((now.getTime() + CST_OFFSET_MS) / DAY_MS) * DAY_MS -
+        CST_OFFSET_MS;
 }
 
 /** 当前时刻的北京时间当日分钟数。 */
 function cstMinuteOfDay(now: Date): number {
-  return Math.floor(((now.getTime() + CST_OFFSET_MS) % DAY_MS) / 60000);
+    return Math.floor(((now.getTime() + CST_OFFSET_MS) % DAY_MS) / 60000);
 }
 
 function safeWindow(window: string): ParsedWindow {
-  return parseWindow(window) ?? parseWindow(DEFAULT_OFFPEAK_WINDOW)!;
+    return parseWindow(window) ?? parseWindow(DEFAULT_OFFPEAK_WINDOW)!;
 }
 
 /**
@@ -66,10 +66,10 @@ function safeWindow(window: string): ParsedWindow {
  * `[start, 次日 end)`，即 `minute >= start || minute < end`。
  */
 export function isWithinWindow(now: Date, window: string): boolean {
-  const { startMin, endMin } = safeWindow(window);
-  const minute = cstMinuteOfDay(now);
-  if (startMin < endMin) return minute >= startMin && minute < endMin;
-  return minute >= startMin || minute < endMin;
+    const { startMin, endMin } = safeWindow(window);
+    const minute = cstMinuteOfDay(now);
+    if (startMin < endMin) return minute >= startMin && minute < endMin;
+    return minute >= startMin || minute < endMin;
 }
 
 /**
@@ -77,13 +77,13 @@ export function isWithinWindow(now: Date, window: string): boolean {
  * （恰在起点返回当天起点本身）。
  */
 export function nextWindowStart(now: Date, window: string): Date {
-  const { startMin } = safeWindow(window);
-  const dayStart = cstDayStart(now);
-  const todayStart = dayStart + startMin * 60000;
-  const result = now.getTime() <= todayStart
-    ? new Date(todayStart)
-    : new Date(dayStart + DAY_MS + startMin * 60000);
-  return result;
+    const { startMin } = safeWindow(window);
+    const dayStart = cstDayStart(now);
+    const todayStart = dayStart + startMin * 60000;
+    const result = now.getTime() <= todayStart
+        ? new Date(todayStart)
+        : new Date(dayStart + DAY_MS + startMin * 60000);
+    return result;
 }
 
 /** 测试注入的当前时刻（null = 真实时钟）；不得发起真实时间依赖的断言。 */
@@ -91,20 +91,20 @@ let nowOverride: Date | null = null;
 
 /** 测试注入点：传 `null` 恢复真实时钟。 */
 export function setOffpeakNowForTest(now: Date | null): void {
-  nowOverride = now;
+    nowOverride = now;
 }
 
 /** 当前时刻（测试可注入）。 */
 export function offpeakNow(): Date {
-  return nowOverride ?? new Date();
+    return nowOverride ?? new Date();
 }
 
 // ── 设置读取 ────────────────────────────────────────────
 
 /** 低峰时段策略（管理 API 与投递共用）。 */
 export interface OffpeakPolicy {
-  enabled: boolean;
-  window: string;
+    enabled: boolean;
+    window: string;
 }
 
 /**
@@ -114,32 +114,32 @@ export interface OffpeakPolicy {
  * 历史脏数据。
  */
 export function readOffpeakPolicy(): OffpeakPolicy {
-  const enabled = getSetting("knowledge_ai_offpeak_only")?.value !== false;
-  const raw = getSetting("knowledge_ai_offpeak_window")?.value;
-  let window = typeof raw === "string" ? raw.trim() : DEFAULT_OFFPEAK_WINDOW;
-  if (!isValidWindow(window)) {
-    console.warn(
-      `[knowledge] knowledge_ai_offpeak_window 非法（${
-        String(raw)
-      }），回退默认 ${DEFAULT_OFFPEAK_WINDOW}`,
-    );
-    window = DEFAULT_OFFPEAK_WINDOW;
-  }
-  return { enabled, window };
+    const enabled = getSetting("knowledge_ai_offpeak_only")?.value !== false;
+    const raw = getSetting("knowledge_ai_offpeak_window")?.value;
+    let window = typeof raw === "string" ? raw.trim() : DEFAULT_OFFPEAK_WINDOW;
+    if (!isValidWindow(window)) {
+        console.warn(
+            `[knowledge] knowledge_ai_offpeak_window 非法（${
+                String(raw)
+            }），回退默认 ${DEFAULT_OFFPEAK_WINDOW}`,
+        );
+        window = DEFAULT_OFFPEAK_WINDOW;
+    }
+    return { enabled, window };
 }
 
 /** 管理 API 视图：`{ enabled, window, next_start }`。 */
 export function offpeakView(
-  now: Date = offpeakNow(),
+    now: Date = offpeakNow(),
 ): { enabled: boolean; window: string; next_start: string | null } {
-  const policy = readOffpeakPolicy();
-  return {
-    enabled: policy.enabled,
-    window: policy.window,
-    next_start: policy.enabled
-      ? nextWindowStart(now, policy.window).toISOString()
-      : null,
-  };
+    const policy = readOffpeakPolicy();
+    return {
+        enabled: policy.enabled,
+        window: policy.window,
+        next_start: policy.enabled
+            ? nextWindowStart(now, policy.window).toISOString()
+            : null,
+    };
 }
 
 /**
@@ -149,8 +149,8 @@ export function offpeakView(
  * `available_at` 就在时段内，避免白天被反复领取再顺延。
  */
 export function offpeakAvailableAt(now: Date = offpeakNow()): string | null {
-  const policy = readOffpeakPolicy();
-  if (!policy.enabled) return null;
-  if (isWithinWindow(now, policy.window)) return null;
-  return nextWindowStart(now, policy.window).toISOString();
+    const policy = readOffpeakPolicy();
+    if (!policy.enabled) return null;
+    if (isWithinWindow(now, policy.window)) return null;
+    return nextWindowStart(now, policy.window).toISOString();
 }

@@ -29,9 +29,9 @@ import { isAbsolute } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 import {
-  assertDedicatedSocket,
-  JUDGE_SOCKET_CONTAINER_PATH,
-  type JudgePaths,
+    assertDedicatedSocket,
+    JUDGE_SOCKET_CONTAINER_PATH,
+    type JudgePaths,
 } from "./config.ts";
 
 /** Compose 里 judge 服务的镜像（默认 registry）。 */
@@ -39,26 +39,26 @@ export const DEFAULT_JUDGE_IMAGE_REGISTRY = "ghcr.io/neuro-oj";
 
 /** 渲染环境变量的默认值。 */
 export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
-  ...OI_ENV_DEFAULTS,
-  ...SCHEDULING_ENV_DEFAULTS,
-  JUDGE_QUEUE: "noj:judge:queue",
-  RESULT_QUEUE: "noj:judge:results",
-  JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
-  WORK_DIR: "/tmp/noj-judge",
+    ...OI_ENV_DEFAULTS,
+    ...SCHEDULING_ENV_DEFAULTS,
+    JUDGE_QUEUE: "noj:judge:queue",
+    RESULT_QUEUE: "noj:judge:results",
+    JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
+    WORK_DIR: "/tmp/noj-judge",
 
-  JUDGE_CPU_LIMIT_MILLICORES: "1000",
-  JUDGE_MAX_EVALUATOR_TIME_MS: "300000",
-  JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
-  JUDGE_IMAGE_PREFIX: "noj-",
-  JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
-  JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
-  // 审计 VULN-20：评测隔离网络（见同目录 config.ts 的同名默认值说明）。
-  JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
-  JUDGE_ALLOW_HTTP_S3: "false",
-  SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
-  SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",
-  SUPPORT_CACHE_MAX_ITEMS: "500",
-  SUPPORT_CACHE_MAX_MB: "2048",
+    JUDGE_CPU_LIMIT_MILLICORES: "1000",
+    JUDGE_MAX_EVALUATOR_TIME_MS: "300000",
+    JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
+    JUDGE_IMAGE_PREFIX: "noj-",
+    JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
+    JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
+    // 审计 VULN-20：评测隔离网络（见同目录 config.ts 的同名默认值说明）。
+    JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
+    JUDGE_ALLOW_HTTP_S3: "false",
+    SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
+    SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",
+    SUPPORT_CACHE_MAX_ITEMS: "500",
+    SUPPORT_CACHE_MAX_MB: "2048",
 };
 
 /**
@@ -73,41 +73,41 @@ export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
  * 直接调用（例如升级时从既有配置渲染）——防线不依赖调用方的纪律。
  */
 export function renderJudgeCompose(env: Record<string, string>): string {
-  const value = (key: string): string =>
-    env[key] !== undefined && env[key] !== ""
-      ? env[key]!
-      : COMPOSE_ENV_DEFAULTS[key] ?? "";
+    const value = (key: string): string =>
+        env[key] !== undefined && env[key] !== ""
+            ? env[key]!
+            : COMPOSE_ENV_DEFAULTS[key] ?? "";
 
-  const require = (key: string): string => {
-    const v = env[key] ?? "";
-    if (v === "") {
-      throw new UsageError(`渲染 Judge Compose 缺少必填项：${key}`);
-    }
-    return v;
-  };
+    const require = (key: string): string => {
+        const v = env[key] ?? "";
+        if (v === "") {
+            throw new UsageError(`渲染 Judge Compose 缺少必填项：${key}`);
+        }
+        return v;
+    };
 
-  const socketPath = require("JUDGE_DOCKER_SOCKET");
-  assertDedicatedSocket(socketPath);
+    const socketPath = require("JUDGE_DOCKER_SOCKET");
+    assertDedicatedSocket(socketPath);
 
-  const version = require("NOJ_VERSION");
-  const redisUrl = require("REDIS_URL");
-  const socketGid = require("JUDGE_DOCKER_SOCKET_GID");
-  const registry = env["JUDGE_IMAGE_REGISTRY"] !== undefined &&
-      env["JUDGE_IMAGE_REGISTRY"] !== ""
-    ? env["JUDGE_IMAGE_REGISTRY"]!
-    : DEFAULT_JUDGE_IMAGE_REGISTRY;
-  const uid = env["JUDGE_UID"] !== undefined && env["JUDGE_UID"] !== ""
-    ? env["JUDGE_UID"]!
-    : "10001";
-  const gid = env["JUDGE_GID"] !== undefined && env["JUDGE_GID"] !== ""
-    ? env["JUDGE_GID"]!
-    : "10001";
-  const dockerHost = env["JUDGE_DOCKER_HOST"] !== undefined &&
-      env["JUDGE_DOCKER_HOST"] !== ""
-    ? env["JUDGE_DOCKER_HOST"]!
-    : "unix://" + JUDGE_SOCKET_CONTAINER_PATH;
+    const version = require("NOJ_VERSION");
+    const redisUrl = require("REDIS_URL");
+    const socketGid = require("JUDGE_DOCKER_SOCKET_GID");
+    const registry = env["JUDGE_IMAGE_REGISTRY"] !== undefined &&
+            env["JUDGE_IMAGE_REGISTRY"] !== ""
+        ? env["JUDGE_IMAGE_REGISTRY"]!
+        : DEFAULT_JUDGE_IMAGE_REGISTRY;
+    const uid = env["JUDGE_UID"] !== undefined && env["JUDGE_UID"] !== ""
+        ? env["JUDGE_UID"]!
+        : "10001";
+    const gid = env["JUDGE_GID"] !== undefined && env["JUDGE_GID"] !== ""
+        ? env["JUDGE_GID"]!
+        : "10001";
+    const dockerHost = env["JUDGE_DOCKER_HOST"] !== undefined &&
+            env["JUDGE_DOCKER_HOST"] !== ""
+        ? env["JUDGE_DOCKER_HOST"]!
+        : "unix://" + JUDGE_SOCKET_CONTAINER_PATH;
 
-  return `services:
+    return `services:
   judge:
     image: "${registry}/noj-judge:${version}"
     environment:
@@ -115,24 +115,26 @@ export function renderJudgeCompose(env: Record<string, string>): string {
       JUDGE_QUEUE: "${value("JUDGE_QUEUE")}"
       RESULT_QUEUE: "${value("RESULT_QUEUE")}"
       JUDGE_PRIORITY_POLL_TIMEOUT_MS: "${
-    value("JUDGE_PRIORITY_POLL_TIMEOUT_MS")
-  }"
+        value("JUDGE_PRIORITY_POLL_TIMEOUT_MS")
+    }"
       WORK_DIR: "${value("WORK_DIR")}"
       ${
-    Object.keys(SCHEDULING_ENV_DEFAULTS).map((key) => `${key}: "${value(key)}"`)
-      .join("\n      ")
-  }
+        Object.keys(SCHEDULING_ENV_DEFAULTS).map((key) =>
+            `${key}: "${value(key)}"`
+        )
+            .join("\n      ")
+    }
       JUDGE_CPU_LIMIT_MILLICORES: "${value("JUDGE_CPU_LIMIT_MILLICORES")}"
       JUDGE_MAX_EVALUATOR_TIME_MS: "${value("JUDGE_MAX_EVALUATOR_TIME_MS")}"
       JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "${
-    value("JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS")
-  }"
+        value("JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS")
+    }"
       JUDGE_IMAGE_PREFIX: "${value("JUDGE_IMAGE_PREFIX")}"
 ${
-    Object.keys(OI_ENV_DEFAULTS).map((key) =>
-      `      ${key}: ${JSON.stringify(value(key)).replace(/\$/g, "$$$$")}`
-    ).join("\n")
-  }
+        Object.keys(OI_ENV_DEFAULTS).map((key) =>
+            `      ${key}: ${JSON.stringify(value(key)).replace(/\$/g, "$$$$")}`
+        ).join("\n")
+    }
       JUDGE_COMMAND_WHITELIST: "${value("JUDGE_COMMAND_WHITELIST")}"
       JUDGE_ALLOW_EVALUATOR_NETWORK: "${value("JUDGE_ALLOW_EVALUATOR_NETWORK")}"
       JUDGE_EVALUATOR_NETWORK: "${value("JUDGE_EVALUATOR_NETWORK")}"
@@ -140,8 +142,8 @@ ${
       JUDGE_DOCKER_HOST: "${dockerHost}"
       JUDGE_REQUIRE_ISOLATED_DOCKER: "true"
       SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "${
-    value("SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT")
-  }"
+        value("SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT")
+    }"
       SUPPORT_CACHE_DIR: "${value("SUPPORT_CACHE_DIR")}"
       SUPPORT_CACHE_MAX_ITEMS: "${value("SUPPORT_CACHE_MAX_ITEMS")}"
       SUPPORT_CACHE_MAX_MB: "${value("SUPPORT_CACHE_MAX_MB")}"
@@ -193,44 +195,44 @@ volumes:
 
 /** 构造 `docker compose … judge` 的**纯参数数组**。 */
 export function judgeComposeArgs(
-  paths: JudgePaths,
-  command: string[],
-  projectName = "noj-judge-standalone",
+    paths: JudgePaths,
+    command: string[],
+    projectName = "noj-judge-standalone",
 ): string[] {
-  return [
-    "compose",
-    "--project-name",
-    projectName,
-    "--env-file",
-    paths.envFile,
-    "-f",
-    paths.composeFile,
-    ...command,
-  ];
+    return [
+        "compose",
+        "--project-name",
+        projectName,
+        "--env-file",
+        paths.envFile,
+        "-f",
+        paths.composeFile,
+        ...command,
+    ];
 }
 
 // ---------------- socket 连通性与 GID ----------------.
 
 /** {@link checkStandaloneJudgeSocket} 的注入点。 */
 export interface JudgeSocketCheckOptions {
-  runner: CommandRunner;
-  dockerBin?: string;
-  /** socket GID 读取（`stat -c '%g'` 的等价）。 */
-  socketGid?: (path: string) => Promise<number | null>;
-  /** socket 权限读取（`stat -c '%a'` 的等价）。 */
-  socketMode?: (path: string) => Promise<string | null>;
-  /** 文件类型判定（`-S` 的等价）。 */
-  isSocket?: (path: string) => Promise<boolean>;
-  /** 读写权限判定（`-r -w` 的等价）。 */
-  isReadWritable?: (path: string) => Promise<boolean>;
+    runner: CommandRunner;
+    dockerBin?: string;
+    /** socket GID 读取（`stat -c '%g'` 的等价）。 */
+    socketGid?: (path: string) => Promise<number | null>;
+    /** socket 权限读取（`stat -c '%a'` 的等价）。 */
+    socketMode?: (path: string) => Promise<string | null>;
+    /** 文件类型判定（`-S` 的等价）。 */
+    isSocket?: (path: string) => Promise<boolean>;
+    /** 读写权限判定（`-r -w` 的等价）。 */
+    isReadWritable?: (path: string) => Promise<boolean>;
 }
 
 /** {@link checkStandaloneJudgeSocket} 的结果。 */
 export interface JudgeSocketCheckResult {
-  ok: boolean;
-  error: string | null;
-  /** 成功时的诊断信息（GID / 权限），供 `status` 展示。 */
-  detail: string | null;
+    ok: boolean;
+    error: string | null;
+    /** 成功时的诊断信息（GID / 权限），供 `status` 展示。 */
+    detail: string | null;
 }
 
 /**
@@ -252,144 +254,145 @@ export interface JudgeSocketCheckResult {
  * 任一条失败返回 `ok:false` 并给出**可操作**的错误（第 6 条附 rootless 准备指引）。
  */
 export async function checkStandaloneJudgeSocket(
-  env: Record<string, string>,
-  opts: JudgeSocketCheckOptions,
+    env: Record<string, string>,
+    opts: JudgeSocketCheckOptions,
 ): Promise<JudgeSocketCheckResult> {
-  const socketPath = (env["JUDGE_DOCKER_SOCKET"] ?? "").trim();
-  const dockerBin = opts.dockerBin ?? "docker";
+    const socketPath = (env["JUDGE_DOCKER_SOCKET"] ?? "").trim();
+    const dockerBin = opts.dockerBin ?? "docker";
 
-  try {
-    assertDedicatedSocket(socketPath);
-  } catch (err) {
-    return { ok: false, error: (err as Error).message, detail: null };
-  }
+    try {
+        assertDedicatedSocket(socketPath);
+    } catch (err) {
+        return { ok: false, error: (err as Error).message, detail: null };
+    }
 
-  const isSock = opts.isSocket ?? defaultIsSocket;
-  const readWrite = opts.isReadWritable ?? defaultIsReadWritable;
-  const readGid = opts.socketGid ?? defaultSocketGid;
-  const readMode = opts.socketMode ?? defaultSocketMode;
+    const isSock = opts.isSocket ?? defaultIsSocket;
+    const readWrite = opts.isReadWritable ?? defaultIsReadWritable;
+    const readGid = opts.socketGid ?? defaultSocketGid;
+    const readMode = opts.socketMode ?? defaultSocketMode;
 
-  if (!(await isSock(socketPath))) {
+    if (!(await isSock(socketPath))) {
+        return {
+            ok: false,
+            error: `专用 Docker socket 不存在或不是 Unix socket：${socketPath}`,
+            detail: null,
+        };
+    }
+    if (!(await readWrite(socketPath))) {
+        return {
+            ok: false,
+            error: `当前用户无法读写专用 Docker socket：${socketPath}`,
+            detail: null,
+        };
+    }
+
+    const actualGid = await readGid(socketPath);
+    const configuredGid = env["JUDGE_DOCKER_SOCKET_GID"] ?? "";
+    if (
+        actualGid !== null && configuredGid !== "" &&
+        String(actualGid) !== configuredGid
+    ) {
+        return {
+            ok: false,
+            error:
+                `Docker socket GID=${actualGid} 与配置 JUDGE_DOCKER_SOCKET_GID=` +
+                `${configuredGid} 不一致（可用 stat -c '%g' ${socketPath} 查询）`,
+            detail: null,
+        };
+    }
+
+    // 用**目标 socket** 探一次 daemon：这是唯一能证明 rootless daemon 真的在跑
+    // 且能被访问的方式。`DOCKER_HOST` 经 env 传入，不拼进命令行。
+    let code: number;
+    try {
+        const res = await opts.runner.run(dockerBin, ["info"], {
+            env: { DOCKER_HOST: `unix://${socketPath}` },
+        });
+        code = res.code;
+    } catch {
+        code = 1;
+    }
+    if (code !== 0) {
+        return {
+            ok: false,
+            error: `专用 rootless Docker daemon 不可连接：${socketPath}；` +
+                `请先执行 install-env 准备 rootless socket`,
+            detail: null,
+        };
+    }
+
+    const mode = await readMode(socketPath);
     return {
-      ok: false,
-      error: `专用 Docker socket 不存在或不是 Unix socket：${socketPath}`,
-      detail: null,
+        ok: true,
+        error: null,
+        detail: `专用 rootless Docker socket 可用（GID=${
+            actualGid ?? "?"
+        }，权限=${mode ?? "?"}）`,
     };
-  }
-  if (!(await readWrite(socketPath))) {
-    return {
-      ok: false,
-      error: `当前用户无法读写专用 Docker socket：${socketPath}`,
-      detail: null,
-    };
-  }
-
-  const actualGid = await readGid(socketPath);
-  const configuredGid = env["JUDGE_DOCKER_SOCKET_GID"] ?? "";
-  if (
-    actualGid !== null && configuredGid !== "" &&
-    String(actualGid) !== configuredGid
-  ) {
-    return {
-      ok: false,
-      error: `Docker socket GID=${actualGid} 与配置 JUDGE_DOCKER_SOCKET_GID=` +
-        `${configuredGid} 不一致（可用 stat -c '%g' ${socketPath} 查询）`,
-      detail: null,
-    };
-  }
-
-  // 用**目标 socket** 探一次 daemon：这是唯一能证明 rootless daemon 真的在跑
-  // 且能被访问的方式。`DOCKER_HOST` 经 env 传入，不拼进命令行。
-  let code: number;
-  try {
-    const res = await opts.runner.run(dockerBin, ["info"], {
-      env: { DOCKER_HOST: `unix://${socketPath}` },
-    });
-    code = res.code;
-  } catch {
-    code = 1;
-  }
-  if (code !== 0) {
-    return {
-      ok: false,
-      error: `专用 rootless Docker daemon 不可连接：${socketPath}；` +
-        `请先执行 install-env 准备 rootless socket`,
-      detail: null,
-    };
-  }
-
-  const mode = await readMode(socketPath);
-  return {
-    ok: true,
-    error: null,
-    detail: `专用 rootless Docker socket 可用（GID=${actualGid ?? "?"}，权限=${
-      mode ?? "?"
-    }）`,
-  };
 }
 
 /** `-S` 语义：Unix socket。 */
 async function defaultIsSocket(path: string): Promise<boolean> {
-  try {
-    const st = await Deno.stat(path);
-    return st.isSocket === true;
-  } catch {
-    return false;
-  }
+    try {
+        const st = await Deno.stat(path);
+        return st.isSocket === true;
+    } catch {
+        return false;
+    }
 }
 
 /** `-r -w` 语义：当前用户可读写（best-effort：无法判定时视为可读）。 */
 async function defaultIsReadWritable(path: string): Promise<boolean> {
-  try {
-    const st = await Deno.stat(path);
-    const mode = (st.mode ?? 0) & 0o777;
-    // 仅做权限位判断（真实的 access(2) 在 Deno 里没有绑定）。
-    // 判不出来时返回 true，交由第 6 步的 `docker info` 做最终裁决——
-    // 那里会真实地连接一次。
-    return (mode & 0o600) !== 0 || (mode & 0o066) !== 0 || mode === 0;
-  } catch {
-    return false;
-  }
+    try {
+        const st = await Deno.stat(path);
+        const mode = (st.mode ?? 0) & 0o777;
+        // 仅做权限位判断（真实的 access(2) 在 Deno 里没有绑定）。
+        // 判不出来时返回 true，交由第 6 步的 `docker info` 做最终裁决——
+        // 那里会真实地连接一次。
+        return (mode & 0o600) !== 0 || (mode & 0o066) !== 0 || mode === 0;
+    } catch {
+        return false;
+    }
 }
 
 /** `stat -c '%g'` 语义。 */
 async function defaultSocketGid(path: string): Promise<number | null> {
-  try {
-    const st = await Deno.stat(path);
-    return st.gid ?? null;
-  } catch {
-    return null;
-  }
+    try {
+        const st = await Deno.stat(path);
+        return st.gid ?? null;
+    } catch {
+        return null;
+    }
 }
 
 /** `stat -c '%a'` 语义（八进制串）。 */
 async function defaultSocketMode(path: string): Promise<string | null> {
-  try {
-    const st = await Deno.stat(path);
-    return ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0");
-  } catch {
-    return null;
-  }
+    try {
+        const st = await Deno.stat(path);
+        return ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0");
+    } catch {
+        return null;
+    }
 }
 
 // ---------------- Redis 校验 ----------------
 
 /** {@link checkJudgeRedis} 的注入点。 */
 export interface JudgeRedisCheckOptions {
-  runner: CommandRunner;
-  dockerBin?: string;
-  /** `redis-cli` 是否可用（`command -v redis-cli`）。 */
-  redisCliAvailable?: boolean;
-  /** 回退用的 Redis 客户端镜像。 */
-  redisImage?: string;
+    runner: CommandRunner;
+    dockerBin?: string;
+    /** `redis-cli` 是否可用（`command -v redis-cli`）。 */
+    redisCliAvailable?: boolean;
+    /** 回退用的 Redis 客户端镜像。 */
+    redisImage?: string;
 }
 
 /** {@link checkJudgeRedis} 的结果。 */
 export interface JudgeRedisCheckResult {
-  ok: boolean;
-  error: string | null;
-  /** 脱敏后的主机名（**绝不含口令**）。 */
-  host: string | null;
+    ok: boolean;
+    error: string | null;
+    /** 脱敏后的主机名（**绝不含口令**）。 */
+    host: string | null;
 }
 
 /**
@@ -406,82 +409,85 @@ export interface JudgeRedisCheckResult {
  * 错误信息里只出现**主机名**（{@link redisHostOf}），绝不回显口令。
  */
 export async function checkJudgeRedis(
-  env: Record<string, string>,
-  opts: JudgeRedisCheckOptions,
+    env: Record<string, string>,
+    opts: JudgeRedisCheckOptions,
 ): Promise<JudgeRedisCheckResult> {
-  const url = env["REDIS_URL"] ?? "";
-  const checkUrl = (env["REDIS_CHECK_URL"] ?? "") || url;
-  if (!/^rediss?:\/\//.test(url)) {
-    return {
-      ok: false,
-      error: `REDIS_URL 必须使用 redis:// 或 rediss://：${redactUrl(url)}`,
-      host: null,
-    };
-  }
-  if (!/^rediss?:\/\//.test(checkUrl)) {
-    return {
-      ok: false,
-      error: `REDIS_CHECK_URL 必须使用 redis:// 或 rediss://：${
-        redactUrl(checkUrl)
-      }`,
-      host: null,
-    };
-  }
-  const host = redisHostOf(checkUrl);
-  const dockerBin = opts.dockerBin ?? "docker";
-
-  if (opts.redisCliAvailable === true) {
-    let code: number;
-    try {
-      code =
-        (await opts.runner.run("redis-cli", ["-u", checkUrl, "ping"])).code;
-    } catch {
-      code = 1;
+    const url = env["REDIS_URL"] ?? "";
+    const checkUrl = (env["REDIS_CHECK_URL"] ?? "") || url;
+    if (!/^rediss?:\/\//.test(url)) {
+        return {
+            ok: false,
+            error: `REDIS_URL 必须使用 redis:// 或 rediss://：${
+                redactUrl(url)
+            }`,
+            host: null,
+        };
     }
-    return code === 0 ? { ok: true, error: null, host } : {
-      ok: false,
-      error: `Redis 连接失败：${host}（密码不会显示）`,
-      host,
-    };
-  }
-
-  // 回退：容器内 redis-cli。口令经 env-file 传入，**不进 argv**。
-  const envFile = await Deno.makeTempFile({
-    prefix: "noj-judge-redis-check-",
-    suffix: ".env",
-  });
-  try {
-    await Deno.writeTextFile(envFile, `REDIS_URL=${checkUrl}\n`);
-    await Deno.chmod(envFile, 0o600);
-    let code: number;
-    try {
-      code = (await opts.runner.run(
-        dockerBin,
-        [
-          "run",
-          "--rm",
-          "--network",
-          "host",
-          "--env-file",
-          envFile,
-          opts.redisImage ?? "redis:7-alpine",
-          "sh",
-          "-c",
-          'redis-cli -u "$REDIS_URL" ping',
-        ],
-      )).code;
-    } catch {
-      code = 1;
+    if (!/^rediss?:\/\//.test(checkUrl)) {
+        return {
+            ok: false,
+            error: `REDIS_CHECK_URL 必须使用 redis:// 或 rediss://：${
+                redactUrl(checkUrl)
+            }`,
+            host: null,
+        };
     }
-    return code === 0 ? { ok: true, error: null, host } : {
-      ok: false,
-      error: `Redis 连接失败：${host}；系统未安装 redis-cli，` +
-        `已尝试使用临时 Redis 客户端`,
-      host,
-    };
-  } finally {
-    await Deno.remove(envFile).catch(() => {});
-  }
+    const host = redisHostOf(checkUrl);
+    const dockerBin = opts.dockerBin ?? "docker";
+
+    if (opts.redisCliAvailable === true) {
+        let code: number;
+        try {
+            code =
+                (await opts.runner.run("redis-cli", ["-u", checkUrl, "ping"]))
+                    .code;
+        } catch {
+            code = 1;
+        }
+        return code === 0 ? { ok: true, error: null, host } : {
+            ok: false,
+            error: `Redis 连接失败：${host}（密码不会显示）`,
+            host,
+        };
+    }
+
+    // 回退：容器内 redis-cli。口令经 env-file 传入，**不进 argv**。
+    const envFile = await Deno.makeTempFile({
+        prefix: "noj-judge-redis-check-",
+        suffix: ".env",
+    });
+    try {
+        await Deno.writeTextFile(envFile, `REDIS_URL=${checkUrl}\n`);
+        await Deno.chmod(envFile, 0o600);
+        let code: number;
+        try {
+            code = (await opts.runner.run(
+                dockerBin,
+                [
+                    "run",
+                    "--rm",
+                    "--network",
+                    "host",
+                    "--env-file",
+                    envFile,
+                    opts.redisImage ?? "redis:7-alpine",
+                    "sh",
+                    "-c",
+                    'redis-cli -u "$REDIS_URL" ping',
+                ],
+            )).code;
+        } catch {
+            code = 1;
+        }
+        return code === 0 ? { ok: true, error: null, host } : {
+            ok: false,
+            error: `Redis 连接失败：${host}；系统未安装 redis-cli，` +
+                `已尝试使用临时 Redis 客户端`,
+            host,
+        };
+    } finally {
+        await Deno.remove(envFile).catch(() => {});
+    }
 }
 
 /**
@@ -491,31 +497,31 @@ export async function checkJudgeRedis(
  * 这个函数的存在就是为了让错误信息里永远不出现口令。
  */
 export function redisHostOf(url: string): string {
-  let rest = url;
-  const schemeAt = rest.indexOf("://");
-  if (schemeAt >= 0) rest = rest.slice(schemeAt + 3);
-  const at = rest.lastIndexOf("@");
-  if (at >= 0) rest = rest.slice(at + 1);
-  const slash = rest.indexOf("/");
-  if (slash >= 0) rest = rest.slice(0, slash);
-  const colon = rest.indexOf(":");
-  if (colon >= 0) rest = rest.slice(0, colon);
-  return rest === "" ? "未知主机" : rest;
+    let rest = url;
+    const schemeAt = rest.indexOf("://");
+    if (schemeAt >= 0) rest = rest.slice(schemeAt + 3);
+    const at = rest.lastIndexOf("@");
+    if (at >= 0) rest = rest.slice(at + 1);
+    const slash = rest.indexOf("/");
+    if (slash >= 0) rest = rest.slice(0, slash);
+    const colon = rest.indexOf(":");
+    if (colon >= 0) rest = rest.slice(0, colon);
+    return rest === "" ? "未知主机" : rest;
 }
 
 /** 把 URL 的认证段替换为 `***`（脱敏；供错误信息与 `status` 使用）。 */
 export function redactUrl(url: string): string {
-  return url.replace(/\/\/[^/@]*@/, "//***@");
+    return url.replace(/\/\/[^/@]*@/, "//***@");
 }
 
 // ---------------- 镜像架构 ----------------
 
 /** {@link checkJudgeImageArchitecture} 的结果。 */
 export interface ImageArchCheckResult {
-  ok: boolean;
-  error: string | null;
-  /** 实际架构（可用于诊断）。 */
-  arch: string | null;
+    ok: boolean;
+    error: string | null;
+    /** 实际架构（可用于诊断）。 */
+    arch: string | null;
 }
 
 /**
@@ -528,49 +534,49 @@ export interface ImageArchCheckResult {
  * 镜像不存在时**不算失败**（`compose pull` 会去拉），只有"存在但架构不符"才拒绝。
  */
 export async function checkJudgeImageArchitecture(
-  env: Record<string, string>,
-  opts: {
-    runner: CommandRunner;
-    dockerBin?: string;
-    /** 宿主机架构探测（`uname -m` 的等价）。 */
-    hostArch: () => Promise<string>;
-  },
+    env: Record<string, string>,
+    opts: {
+        runner: CommandRunner;
+        dockerBin?: string;
+        /** 宿主机架构探测（`uname -m` 的等价）。 */
+        hostArch: () => Promise<string>;
+    },
 ): Promise<ImageArchCheckResult> {
-  const registry = (env["JUDGE_IMAGE_REGISTRY"] ?? "") ||
-    DEFAULT_JUDGE_IMAGE_REGISTRY;
-  const version = env["NOJ_VERSION"] ?? "";
-  const image = `${registry}/noj-judge:${version}`;
-  const dockerBin = opts.dockerBin ?? "docker";
+    const registry = (env["JUDGE_IMAGE_REGISTRY"] ?? "") ||
+        DEFAULT_JUDGE_IMAGE_REGISTRY;
+    const version = env["NOJ_VERSION"] ?? "";
+    const image = `${registry}/noj-judge:${version}`;
+    const dockerBin = opts.dockerBin ?? "docker";
 
-  let local = "";
-  try {
-    const res = await opts.runner.run(dockerBin, [
-      "image",
-      "inspect",
-      image,
-      "--format",
-      "{{.Architecture}}",
-    ]);
-    if (res.code === 0) local = res.stdout.trim();
-  } catch {
-    local = "";
-  }
-  if (local === "") {
-    // 镜像尚未拉取：由 compose pull 负责，不算失败。
-    return { ok: true, error: null, arch: null };
-  }
+    let local = "";
+    try {
+        const res = await opts.runner.run(dockerBin, [
+            "image",
+            "inspect",
+            image,
+            "--format",
+            "{{.Architecture}}",
+        ]);
+        if (res.code === 0) local = res.stdout.trim();
+    } catch {
+        local = "";
+    }
+    if (local === "") {
+        // 镜像尚未拉取：由 compose pull 负责，不算失败。
+        return { ok: true, error: null, arch: null };
+    }
 
-  const host = dockerArchOf(await opts.hostArch());
-  if (local !== host) {
-    return {
-      ok: false,
-      error:
-        `本地 Judge 镜像架构（${local}）与宿主机（${host}）不一致：${image}；` +
-        `请拉取对应架构的镜像或删除本地镜像后重试`,
-      arch: local,
-    };
-  }
-  return { ok: true, error: null, arch: local };
+    const host = dockerArchOf(await opts.hostArch());
+    if (local !== host) {
+        return {
+            ok: false,
+            error:
+                `本地 Judge 镜像架构（${local}）与宿主机（${host}）不一致：${image}；` +
+                `请拉取对应架构的镜像或删除本地镜像后重试`,
+            arch: local,
+        };
+    }
+    return { ok: true, error: null, arch: local };
 }
 
 /**
@@ -580,27 +586,27 @@ export async function checkJudgeImageArchitecture(
  * `aarch64`/`armv7l`/`i686`——不映射就永远"不一致"，把一次正常的部署拒掉。
  */
 export function dockerArchOf(unameArch: string): string {
-  switch (unameArch.trim()) {
-    case "x86_64":
-    case "amd64":
-      return "amd64";
-    case "aarch64":
-    case "arm64":
-      return "arm64";
-    case "armv7l":
-    case "armv6l":
-      return "arm";
-    case "i386":
-    case "i686":
-      return "386";
-    default:
-      return unameArch.trim();
-  }
+    switch (unameArch.trim()) {
+        case "x86_64":
+        case "amd64":
+            return "amd64";
+        case "aarch64":
+        case "arm64":
+            return "arm64";
+        case "armv7l":
+        case "armv6l":
+            return "arm";
+        case "i386":
+        case "i686":
+            return "386";
+        default:
+            return unameArch.trim();
+    }
 }
 
 /** 校验路径为绝对路径（供调用方在拼 compose 参数前调用）。 */
 export function assertAbsolute(label: string, path: string): void {
-  if (!isAbsolute(path)) {
-    throw new UsageError(`${label} 必须是绝对路径：${path}`);
-  }
+    if (!isAbsolute(path)) {
+        throw new UsageError(`${label} 必须是绝对路径：${path}`);
+    }
 }

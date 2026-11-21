@@ -7,25 +7,25 @@
 import { observability } from "../../../shared/observability/registry.ts";
 export { observability };
 export type {
-  HealthProbe,
-  MetricDefinition,
-  SnapshotProvider,
+    HealthProbe,
+    MetricDefinition,
+    SnapshotProvider,
 } from "../../../shared/observability/contracts.ts";
 
 export function registerBusinessMetric(
-  def: Parameters<typeof observability.registerBusinessMetric>[0],
+    def: Parameters<typeof observability.registerBusinessMetric>[0],
 ): void {
-  observability.registerBusinessMetric(def);
+    observability.registerBusinessMetric(def);
 }
 
 export function registerHealthProbe(
-  probe: Parameters<typeof observability.registerHealthProbe>[0],
+    probe: Parameters<typeof observability.registerHealthProbe>[0],
 ): void {
-  observability.registerHealthProbe(probe);
+    observability.registerHealthProbe(probe);
 }
 
 export function registerSnapshotProvider(
-  provider: Parameters<typeof observability.registerSnapshotProvider>[0],
+    provider: Parameters<typeof observability.registerSnapshotProvider>[0],
 ): void {
-  observability.registerSnapshotProvider(provider);
+    observability.registerSnapshotProvider(provider);
 }

@@ -30,10 +30,10 @@
 import type { Context } from "hono";
 import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
-  checkPermission,
-  getUserPermissions,
-  isCurrentUserAdmin,
-  isUserAdmin,
+    checkPermission,
+    getUserPermissions,
+    isCurrentUserAdmin,
+    isUserAdmin,
 } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import type { CapabilityName } from "../../../../shared/access/roles.ts";
 import { getSetting } from "../../../platform/contracts/cross-module/services_system-settings.ts";
@@ -50,32 +50,33 @@ import { DEFAULT_EVALUATOR_COMMAND } from "../../types/problem-bundle.ts";
  * P 型沿用既有准入；无 HTTP Context 时仍查询真实权限，不依赖角色展示字符串。
  */
 export async function assertLlmProblemPermission(
-  type: string,
-  c?: Context,
-  userId?: string | null,
+    type: string,
+    c?: Context,
+    userId?: string | null,
 ): Promise<void> {
-  if (type === "P") return;
-  const allowed = c
-    ? await isCurrentUserAdmin(c)
-    : (userId ?? ROOT_USER_ID) === ROOT_USER_ID || await isUserAdmin(userId!);
-  if (!allowed) {
-    throw new ForbiddenError("仅管理员可为 U 型题配置 LLM", "FORBIDDEN");
-  }
+    if (type === "P") return;
+    const allowed = c
+        ? await isCurrentUserAdmin(c)
+        : (userId ?? ROOT_USER_ID) === ROOT_USER_ID ||
+            await isUserAdmin(userId!);
+    if (!allowed) {
+        throw new ForbiddenError("仅管理员可为 U 型题配置 LLM", "FORBIDDEN");
+    }
 }
 
 /** 敏感字段路径 → RBAC 权限项（`<section>.<field>` 结构） */
 export const SENSITIVE_FIELD_PERMISSIONS: Record<string, CapabilityName> = {
-  "evaluator.command": "problem:field_evaluator_command",
-  "evaluator.network": "problem:field_evaluator_network",
+    "evaluator.command": "problem:field_evaluator_command",
+    "evaluator.network": "problem:field_evaluator_network",
 };
 
 /** 资源限制字段路径 → 全局上限设置项 key */
 export const RESOURCE_LIMIT_SETTINGS: Record<string, string> = {
-  "evaluator.time_limit_ms": "judge_max_evaluator_time_limit_ms",
-  "evaluator.memory_limit_mb": "judge_max_evaluator_memory_limit_mb",
-  "evaluator.workspace_size_mb": "judge_max_prediction_workspace_mb",
-  "solution.call_timeout_ms": "judge_max_solution_call_timeout_ms",
-  "solution.memory_limit_mb": "judge_max_solution_memory_limit_mb",
+    "evaluator.time_limit_ms": "judge_max_evaluator_time_limit_ms",
+    "evaluator.memory_limit_mb": "judge_max_evaluator_memory_limit_mb",
+    "evaluator.workspace_size_mb": "judge_max_prediction_workspace_mb",
+    "solution.call_timeout_ms": "judge_max_solution_call_timeout_ms",
+    "solution.memory_limit_mb": "judge_max_solution_memory_limit_mb",
 };
 
 /** 已告警过的非数字上限 key（避免配置错误期间每次写入都刷屏日志） */
@@ -89,29 +90,30 @@ const warnedInvalidLimits = new Set<string>();
  * - 其他（未来扩展）字段：原始值序列化，null/undefined 归一为 null。
  */
 function effectiveSensitiveValue(
-  path: string,
-  rc: ProblemRuntimeConfig | null | undefined,
+    path: string,
+    rc: ProblemRuntimeConfig | null | undefined,
 ): string {
-  const [section, field] = path.split(".");
-  const container = (rc as unknown as
-    | Record<string, Record<string, unknown> | undefined>
-    | null
-    | undefined)?.[section];
-  const value = container && typeof container === "object"
-    ? container[field]
-    : undefined;
-  switch (path) {
-    case "evaluator.command":
-      return typeof value === "string" && value.trim()
-        ? value
-        : DEFAULT_EVALUATOR_COMMAND;
-    case "evaluator.network":
-      return String(
-        (value as { enabled?: unknown } | null | undefined)?.enabled === true,
-      );
-    default:
-      return JSON.stringify(value ?? null);
-  }
+    const [section, field] = path.split(".");
+    const container = (rc as unknown as
+        | Record<string, Record<string, unknown> | undefined>
+        | null
+        | undefined)?.[section];
+    const value = container && typeof container === "object"
+        ? container[field]
+        : undefined;
+    switch (path) {
+        case "evaluator.command":
+            return typeof value === "string" && value.trim()
+                ? value
+                : DEFAULT_EVALUATOR_COMMAND;
+        case "evaluator.network":
+            return String(
+                (value as { enabled?: unknown } | null | undefined)?.enabled ===
+                    true,
+            );
+        default:
+            return JSON.stringify(value ?? null);
+    }
 }
 
 /**
@@ -128,44 +130,44 @@ function effectiveSensitiveValue(
  * @throws {ForbiddenError} 无对应权限（HTTP 403 / FORBIDDEN）
  */
 export async function assertSensitiveFieldPermissions(
-  c: Context | undefined,
-  userId: string | undefined,
-  userRole: string | undefined,
-  runtimeConfig: ProblemRuntimeConfig,
-  previous?: ProblemRuntimeConfig | null,
+    c: Context | undefined,
+    userId: string | undefined,
+    userRole: string | undefined,
+    runtimeConfig: ProblemRuntimeConfig,
+    previous?: ProblemRuntimeConfig | null,
 ): Promise<void> {
-  if (!runtimeConfig || typeof runtimeConfig !== "object") return;
-  if (isOiRuntimeConfig(runtimeConfig)) return;
+    if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+    if (isOiRuntimeConfig(runtimeConfig)) return;
 
-  for (
-    const [path, permission] of Object.entries(SENSITIVE_FIELD_PERMISSIONS)
-  ) {
-    if (
-      effectiveSensitiveValue(path, runtimeConfig) ===
-        effectiveSensitiveValue(path, previous)
+    for (
+        const [path, permission] of Object.entries(SENSITIVE_FIELD_PERMISSIONS)
     ) {
-      continue;
+        if (
+            effectiveSensitiveValue(path, runtimeConfig) ===
+                effectiveSensitiveValue(path, previous)
+        ) {
+            continue;
+        }
+        if (c) {
+            // 显式带 FORBIDDEN code（assertPermission 的 ForbiddenError 无 code）
+            if (!(await checkPermission(c, permission))) {
+                throw new ForbiddenError(
+                    `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
+                    "FORBIDDEN",
+                );
+            }
+        } else if (
+            (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
+        ) {
+            const permissions = await getUserPermissions(userId!);
+            if (!permissions.has(permission)) {
+                throw new ForbiddenError(
+                    `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
+                    "FORBIDDEN",
+                );
+            }
+        }
     }
-    if (c) {
-      // 显式带 FORBIDDEN code（assertPermission 的 ForbiddenError 无 code）
-      if (!(await checkPermission(c, permission))) {
-        throw new ForbiddenError(
-          `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
-          "FORBIDDEN",
-        );
-      }
-    } else if (
-      (userId ?? ROOT_USER_ID) !== ROOT_USER_ID && userRole !== "admin"
-    ) {
-      const permissions = await getUserPermissions(userId!);
-      if (!permissions.has(permission)) {
-        throw new ForbiddenError(
-          `权限不足：设置敏感字段 ${path} 需要权限 ${permission}`,
-          "FORBIDDEN",
-        );
-      }
-    }
-  }
 }
 
 /**
@@ -177,40 +179,40 @@ export async function assertSensitiveFieldPermissions(
  * @throws {AppError} HTTP 400 / RESOURCE_LIMIT_EXCEEDED（含上限与实际值）
  */
 export function enforceResourceLimits(
-  runtimeConfig: ProblemRuntimeConfig,
+    runtimeConfig: ProblemRuntimeConfig,
 ): void {
-  if (!runtimeConfig || typeof runtimeConfig !== "object") return;
-  if (isOiRuntimeConfig(runtimeConfig)) return;
-  const rc = runtimeConfig as unknown as Record<
-    string,
-    Record<string, unknown>
-  >;
+    if (!runtimeConfig || typeof runtimeConfig !== "object") return;
+    if (isOiRuntimeConfig(runtimeConfig)) return;
+    const rc = runtimeConfig as unknown as Record<
+        string,
+        Record<string, unknown>
+    >;
 
-  for (const [path, settingKey] of Object.entries(RESOURCE_LIMIT_SETTINGS)) {
-    const [section, field] = path.split(".");
-    const value = rc[section]?.[field];
-    if (typeof value !== "number") continue; // 未显式设置或非法值（结构校验兜底）
+    for (const [path, settingKey] of Object.entries(RESOURCE_LIMIT_SETTINGS)) {
+        const [section, field] = path.split(".");
+        const value = rc[section]?.[field];
+        if (typeof value !== "number") continue; // 未显式设置或非法值（结构校验兜底）
 
-    const setting = getSetting(settingKey);
-    // env 兜底值可能为非数字（如 JUDGE_MAX_*=abc 经 parseInt 失败回落字符串）：
-    // 此时视为未配置（0），但显式告警便于运维发现配置错误（每 key 仅告警一次）
-    if (setting && typeof setting.value !== "number") {
-      if (!warnedInvalidLimits.has(settingKey)) {
-        warnedInvalidLimits.add(settingKey);
-        logger.warn(
-          "资源上限配置 {key} 的值非数字（{value}），按不限制处理",
-          { key: settingKey, value: String(setting.value) },
-        );
-      }
+        const setting = getSetting(settingKey);
+        // env 兜底值可能为非数字（如 JUDGE_MAX_*=abc 经 parseInt 失败回落字符串）：
+        // 此时视为未配置（0），但显式告警便于运维发现配置错误（每 key 仅告警一次）
+        if (setting && typeof setting.value !== "number") {
+            if (!warnedInvalidLimits.has(settingKey)) {
+                warnedInvalidLimits.add(settingKey);
+                logger.warn(
+                    "资源上限配置 {key} 的值非数字（{value}），按不限制处理",
+                    { key: settingKey, value: String(setting.value) },
+                );
+            }
+        }
+        const limit = typeof setting?.value === "number" ? setting.value : 0;
+        if (limit > 0 && value > limit) {
+            throw new AppError(
+                `资源限制超限：${path}（${value}）超过管理员配置上限（${limit}）`,
+                400,
+                "RESOURCE_LIMIT_EXCEEDED",
+                { field: path, value, limit },
+            );
+        }
     }
-    const limit = typeof setting?.value === "number" ? setting.value : 0;
-    if (limit > 0 && value > limit) {
-      throw new AppError(
-        `资源限制超限：${path}（${value}）超过管理员配置上限（${limit}）`,
-        400,
-        "RESOURCE_LIMIT_EXCEEDED",
-        { field: path, value, limit },
-      );
-    }
-  }
 }

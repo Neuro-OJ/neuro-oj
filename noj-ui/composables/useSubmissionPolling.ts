@@ -10,87 +10,87 @@ import { useEventSource } from './useEventSource';
 import { extractApiError } from '~/utils/server/apiError';
 
 export type SubmissionStatus =
-  | 'pending'
-  | 'judging'
-  | 'finished'
-  | 'error';
+    | 'pending'
+    | 'judging'
+    | 'finished'
+    | 'error';
 
 export interface PolledSubmission {
-  id: string;
-  status: SubmissionStatus;
-  score: number;
-  language: string;
-  created_at: string;
-  time_ms?: number;
-  memory_kb?: number;
-  result: {
-    status: string;
+    id: string;
+    status: SubmissionStatus;
     score: number;
+    language: string;
+    created_at: string;
     time_ms?: number;
     memory_kb?: number;
-  } | null;
+    result: {
+        status: string;
+        score: number;
+        time_ms?: number;
+        memory_kb?: number;
+    } | null;
 }
 
 const TERMINAL_STATUSES: SubmissionStatus[] = ['finished', 'error'];
 const FALLBACK_INTERVAL_MS = 1500;
 
 export function useSubmissionPolling(submissionIdRef: Ref<string | null>) {
-  const { api } = useApi();
-  const submission = ref<PolledSubmission | null>(null);
-  const isPolling = ref(false);
-  const error = ref<string | null>(null);
+    const { api } = useApi();
+    const submission = ref<PolledSubmission | null>(null);
+    const isPolling = ref(false);
+    const error = ref<string | null>(null);
 
-  function stop() {
-    isPolling.value = false;
-  }
-
-  async function fetchOnce() {
-    const id = submissionIdRef.value;
-    if (!id) return;
-    try {
-      // 轮询为静默请求：失败写入 error ref 由页面展示，不弹 toast
-      const res = await api.get<{ data: PolledSubmission }>(
-        `/api/v1/submissions/${id}`,
-        { silent: true },
-      );
-      submission.value = res.data;
-      error.value = null;
-      if (TERMINAL_STATUSES.includes(res.data.status)) {
-        stop();
-      }
-    } catch (e) {
-      error.value = extractApiError(e).message;
+    function stop() {
+        isPolling.value = false;
     }
-  }
 
-  const sseUrl = computed(() => submissionIdRef.value ? `/api/v1/submissions/${submissionIdRef.value}/events` : '');
+    async function fetchOnce() {
+        const id = submissionIdRef.value;
+        if (!id) return;
+        try {
+            // 轮询为静默请求：失败写入 error ref 由页面展示，不弹 toast
+            const res = await api.get<{ data: PolledSubmission }>(
+                `/api/v1/submissions/${id}`,
+                { silent: true },
+            );
+            submission.value = res.data;
+            error.value = null;
+            if (TERMINAL_STATUSES.includes(res.data.status)) {
+                stop();
+            }
+        } catch (e) {
+            error.value = extractApiError(e).message;
+        }
+    }
 
-  // SSE 优先 + fallback 轮询
-  useEventSource({
-    url: sseUrl,
-    enabled: isPolling,
-    onEvent: {
-      'submission:updated': () => fetchOnce(),
-    },
-    fetchFn: fetchOnce,
-    fallbackIntervalMs: FALLBACK_INTERVAL_MS,
-  });
+    const sseUrl = computed(() => submissionIdRef.value ? `/api/v1/submissions/${submissionIdRef.value}/events` : '');
 
-  function start(id: string) {
-    stop();
-    submission.value = null;
-    isPolling.value = true;
-    submissionIdRef.value = id;
-    void fetchOnce();
-  }
+    // SSE 优先 + fallback 轮询
+    useEventSource({
+        url: sseUrl,
+        enabled: isPolling,
+        onEvent: {
+            'submission:updated': () => fetchOnce(),
+        },
+        fetchFn: fetchOnce,
+        fallbackIntervalMs: FALLBACK_INTERVAL_MS,
+    });
 
-  onUnmounted(stop);
+    function start(id: string) {
+        stop();
+        submission.value = null;
+        isPolling.value = true;
+        submissionIdRef.value = id;
+        void fetchOnce();
+    }
 
-  return {
-    submission,
-    isPolling,
-    error,
-    start,
-    stop,
-  };
+    onUnmounted(stop);
+
+    return {
+        submission,
+        isPolling,
+        error,
+        start,
+        stop,
+    };
 }

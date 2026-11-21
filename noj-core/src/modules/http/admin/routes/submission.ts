@@ -3,18 +3,18 @@ import { Hono } from "hono";
 import type { AuthEnv } from "../../../access/identity/middleware/auth.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import {
-  deleteSubmissionCommand,
-  rejudgeProblemSubmissionsCommand,
-  rejudgeSubmissionCommand,
+    deleteSubmissionCommand,
+    rejudgeProblemSubmissionsCommand,
+    rejudgeSubmissionCommand,
 } from "../../../application/evaluations.ts";
 import {
-  getSubmission,
-  listSubmissions,
-  resolveSubmissionId,
+    getSubmission,
+    listSubmissions,
+    resolveSubmissionId,
 } from "../../../evaluations/services/submissions/submissions-crud.ts";
 import {
-  getQueueHealth,
-  removePendingSubmission,
+    getQueueHealth,
+    removePendingSubmission,
 } from "../../../evaluations/services/queue.ts";
 import { resolveProblem } from "../../../problems/services/problem-resolve.ts";
 import { SUBMISSION_STATUSES } from "../../../evaluations/types/index.ts";
@@ -37,59 +37,59 @@ const router = new Hono<AuthEnv>();
  * GET /api/v1/admin/submissions
  */
 router.get("/submissions", async (c) => {
-  let page = parseInt(c.req.query("page") ?? "", 10);
-  let perPage = parseInt(c.req.query("per_page") ?? "", 10);
+    let page = parseInt(c.req.query("page") ?? "", 10);
+    let perPage = parseInt(c.req.query("per_page") ?? "", 10);
 
-  if (isNaN(page) || page < 1) page = 1;
-  if (isNaN(perPage) || perPage < 1) perPage = 20;
-  if (perPage > 100) perPage = 100;
-  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）→ 回退默认页。
-  if (page > MAX_SAFE_PAGE) page = 1;
+    if (isNaN(page) || page < 1) page = 1;
+    if (isNaN(perPage) || perPage < 1) perPage = 20;
+    if (perPage > 100) perPage = 100;
+    // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）→ 回退默认页。
+    if (page > MAX_SAFE_PAGE) page = 1;
 
-  const userId = c.req.query("user_id") || undefined;
-  const userSearch = c.req.query("user_search") || undefined;
-  const problemId = c.req.query("problem_id") || undefined;
-  const problemSearch = c.req.query("problem_search") || undefined;
-  const submissionId = c.req.query("submission_id") || undefined;
-  const language = c.req.query("language") || undefined;
-  const status = c.req.query("status") || undefined;
-  const from = c.req.query("from") || undefined;
-  const to = c.req.query("to") || undefined;
+    const userId = c.req.query("user_id") || undefined;
+    const userSearch = c.req.query("user_search") || undefined;
+    const problemId = c.req.query("problem_id") || undefined;
+    const problemSearch = c.req.query("problem_search") || undefined;
+    const submissionId = c.req.query("submission_id") || undefined;
+    const language = c.req.query("language") || undefined;
+    const status = c.req.query("status") || undefined;
+    const from = c.req.query("from") || undefined;
+    const to = c.req.query("to") || undefined;
 
-  const validStatuses = SUBMISSION_STATUSES;
-  if (status && !(validStatuses as readonly string[]).includes(status)) {
-    throw new BadRequestError(
-      `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
-    );
-  }
+    const validStatuses = SUBMISSION_STATUSES;
+    if (status && !(validStatuses as readonly string[]).includes(status)) {
+        throw new BadRequestError(
+            `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
+        );
+    }
 
-  // 管理端取证列表：连"按结果/有效/通过筛选"也不受 OI 赛期遮蔽约束。
-  const result = await listSubmissions({
-    platformAdmin: "forensics",
-    userId,
-    userSearch,
-    problemId,
-    problemSearch,
-    submissionId,
-    language,
-    status,
-    from,
-    to,
-    page,
-    perPage,
-  });
+    // 管理端取证列表：连"按结果/有效/通过筛选"也不受 OI 赛期遮蔽约束。
+    const result = await listSubmissions({
+        platformAdmin: "forensics",
+        userId,
+        userSearch,
+        problemId,
+        problemSearch,
+        submissionId,
+        language,
+        status,
+        from,
+        to,
+        page,
+        perPage,
+    });
 
-  const totalPages = Math.ceil(result.total / perPage);
+    const totalPages = Math.ceil(result.total / perPage);
 
-  return c.json({
-    data: result.data,
-    pagination: {
-      page,
-      per_page: perPage,
-      total: result.total,
-      total_pages: totalPages,
-    },
-  });
+    return c.json({
+        data: result.data,
+        pagination: {
+            page,
+            per_page: perPage,
+            total: result.total,
+            total_pages: totalPages,
+        },
+    });
 });
 
 /**
@@ -97,10 +97,10 @@ router.get("/submissions", async (c) => {
  * GET /api/v1/admin/submissions/:id
  */
 router.get("/submissions/:id", async (c) => {
-  const id = await resolveSubmissionId(c.req.param("id") as string);
-  // 传入 userId/userRole 确保管理员能看到 code/output/details
-  const result = await getSubmission(id, c.var.actor.userId, undefined, c);
-  return c.json({ data: result });
+    const id = await resolveSubmissionId(c.req.param("id") as string);
+    // 传入 userId/userRole 确保管理员能看到 code/output/details
+    const result = await getSubmission(id, c.var.actor.userId, undefined, c);
+    return c.json({ data: result });
 });
 
 /**
@@ -108,14 +108,14 @@ router.get("/submissions/:id", async (c) => {
  * DELETE /api/v1/admin/submissions/:id
  */
 router.delete("/submissions/:id", async (c) => {
-  const id = await resolveSubmissionId(c.req.param("id") as string);
-  await deleteSubmissionCommand(c.var.actor, id);
-  await adminAudit(
-    "submissions.delete",
-    { action: "submissions.delete", submission_id: id },
-    { type: "submission", id },
-  );
-  return c.body(null, 204);
+    const id = await resolveSubmissionId(c.req.param("id") as string);
+    await deleteSubmissionCommand(c.var.actor, id);
+    await adminAudit(
+        "submissions.delete",
+        { action: "submissions.delete", submission_id: id },
+        { type: "submission", id },
+    );
+    return c.body(null, 204);
 });
 
 /**
@@ -123,15 +123,15 @@ router.delete("/submissions/:id", async (c) => {
  * GET /api/v1/admin/queue/health
  */
 router.get("/queue/health", async (c) => {
-  const health = await getQueueHealth();
-  return c.json(health);
+    const health = await getQueueHealth();
+    return c.json(health);
 });
 
 /** 管理员移除尚未领取的评测任务。 */
 router.delete("/queue/submissions/:id", async (c) => {
-  const id = await resolveSubmissionId(c.req.param("id") as string);
-  await removePendingSubmission(id);
-  return c.body(null, 204);
+    const id = await resolveSubmissionId(c.req.param("id") as string);
+    await removePendingSubmission(id);
+    return c.body(null, 204);
 });
 
 /**
@@ -139,20 +139,20 @@ router.delete("/queue/submissions/:id", async (c) => {
  * POST /api/v1/admin/submissions/:id/rejudge
  */
 router.post("/submissions/:id/rejudge", async (c) => {
-  const id = await resolveSubmissionId(c.req.param("id") as string);
-  const job = await rejudgeSubmissionCommand(c.var.actor, id);
-  return c.json(
-    {
-      data: {
-        message: "重测任务已受理",
-        submission_id: id,
-        job_id: job.job_id,
-        status: job.status,
-        total_items: job.total_items,
-      },
-    },
-    202,
-  );
+    const id = await resolveSubmissionId(c.req.param("id") as string);
+    const job = await rejudgeSubmissionCommand(c.var.actor, id);
+    return c.json(
+        {
+            data: {
+                message: "重测任务已受理",
+                submission_id: id,
+                job_id: job.job_id,
+                status: job.status,
+                total_items: job.total_items,
+            },
+        },
+        202,
+    );
 });
 
 /**
@@ -160,21 +160,21 @@ router.post("/submissions/:id/rejudge", async (c) => {
  * POST /api/v1/admin/problems/:id/rejudge
  */
 router.post("/problems/:id/rejudge", async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  const id = problem.id;
-  const job = await rejudgeProblemSubmissionsCommand(c.var.actor, id);
-  return c.json(
-    {
-      data: {
-        message: "批量重测任务已受理",
-        problem_id: id,
-        job_id: job.job_id,
-        status: job.status,
-        total_items: job.total_items,
-      },
-    },
-    202,
-  );
+    const problem = await resolveProblem(c.req.param("id") as string);
+    const id = problem.id;
+    const job = await rejudgeProblemSubmissionsCommand(c.var.actor, id);
+    return c.json(
+        {
+            data: {
+                message: "批量重测任务已受理",
+                problem_id: id,
+                job_id: job.job_id,
+                status: job.status,
+                total_items: job.total_items,
+            },
+        },
+        202,
+    );
 });
 
 export default router;

@@ -30,9 +30,9 @@ import { NotFoundError } from "../../../shared/base/errors.ts";
  * 的响应语义一致（404 而不是空结果）。
  */
 export async function assertContestExists(contestId: string): Promise<void> {
-  const db = getDb();
-  const [row] = await db.select({ id: contests.id }).from(contests).where(
-    eq(contests.id, contestId),
-  ).limit(1);
-  if (!row) throw new NotFoundError("竞赛不存在");
+    const db = getDb();
+    const [row] = await db.select({ id: contests.id }).from(contests).where(
+        eq(contests.id, contestId),
+    ).limit(1);
+    if (!row) throw new NotFoundError("竞赛不存在");
 }

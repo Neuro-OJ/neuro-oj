@@ -13,15 +13,15 @@ import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
-  BadRequestError,
-  UnauthorizedError,
+    BadRequestError,
+    UnauthorizedError,
 } from "../../../../../shared/base/errors.ts";
 
 const ts = Date.now();
 const TEST_USER = {
-  username: `cp-svc-${ts}`,
-  email: `cp-svc-${ts}@example.com`,
-  password: "OrigPwd-2024-Xy9",
+    username: `cp-svc-${ts}`,
+    email: `cp-svc-${ts}@example.com`,
+    password: "OrigPwd-2024-Xy9",
 };
 // 模块级 setup：事务外注册共享测试用户
 await resetDbForTest();
@@ -30,100 +30,108 @@ const testUserId = registeredUser.id;
 assertEquals(registeredUser.must_change_password, false);
 
 Deno.test({
-  name: "auth service changePassword: 正常改密返回 must_change_password=false",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const result = await changePassword(
-      testUserId,
-      TEST_USER.password,
-      "Aa123456",
-    );
-    assertEquals(result.user.must_change_password, false);
-    assertEquals(result.user.id, testUserId);
-    assertEquals(result.sessionVersion, 1);
-    // 改密后能用新密码登录
-    const loginResult = await loginUser({
-      login: TEST_USER.email,
-      password: "Aa123456",
-    });
-    assertEquals(loginResult.user.id, testUserId);
-  },
+    name:
+        "auth service changePassword: 正常改密返回 must_change_password=false",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const result = await changePassword(
+            testUserId,
+            TEST_USER.password,
+            "Aa123456",
+        );
+        assertEquals(result.user.must_change_password, false);
+        assertEquals(result.user.id, testUserId);
+        assertEquals(result.sessionVersion, 1);
+        // 改密后能用新密码登录
+        const loginResult = await loginUser({
+            login: TEST_USER.email,
+            password: "Aa123456",
+        });
+        assertEquals(loginResult.user.id, testUserId);
+    },
 });
 
 Deno.test({
-  name: "auth service changePassword: 旧密码错误抛 UnauthorizedError",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await assertRejects(
-      () => changePassword(testUserId, "WrongOldPass-123", "NewPass-2024-Xx1"),
-      UnauthorizedError,
-      "旧密码错误",
-    );
-  },
+    name: "auth service changePassword: 旧密码错误抛 UnauthorizedError",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await assertRejects(
+            () =>
+                changePassword(
+                    testUserId,
+                    "WrongOldPass-123",
+                    "NewPass-2024-Xx1",
+                ),
+            UnauthorizedError,
+            "旧密码错误",
+        );
+    },
 });
 
 Deno.test({
-  name: "auth service changePassword: 弱密码抛 BadRequestError",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    // 上一步已将测试用户密码改为恰好 8 位的 "Aa123456"
-    await assertRejects(
-      () => changePassword(testUserId, "Aa123456", "123"),
-      BadRequestError,
-    );
-  },
+    name: "auth service changePassword: 弱密码抛 BadRequestError",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        // 上一步已将测试用户密码改为恰好 8 位的 "Aa123456"
+        await assertRejects(
+            () => changePassword(testUserId, "Aa123456", "123"),
+            BadRequestError,
+        );
+    },
 });
 
 Deno.test({
-  name: "auth service changePassword: 新密码与旧密码相同抛 BadRequestError",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await assertRejects(
-      () =>
-        changePassword(
-          testUserId,
-          "Aa123456",
-          "Aa123456",
-        ),
-      BadRequestError,
-      "新密码不能与旧密码相同",
-    );
-  },
+    name: "auth service changePassword: 新密码与旧密码相同抛 BadRequestError",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await assertRejects(
+            () =>
+                changePassword(
+                    testUserId,
+                    "Aa123456",
+                    "Aa123456",
+                ),
+            BadRequestError,
+            "新密码不能与旧密码相同",
+        );
+    },
 });
 
 Deno.test({
-  name: "auth service changePassword: 不存在的用户抛 UnauthorizedError",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await assertRejects(
-      () =>
-        changePassword(
-          "00000000-0000-0000-0000-000000000000",
-          "AnyPass-2024-Ab1",
-          "NewPass-2024-Xx1",
-        ),
-      UnauthorizedError,
-      "用户不存在",
-    );
-  },
+    name: "auth service changePassword: 不存在的用户抛 UnauthorizedError",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await assertRejects(
+            () =>
+                changePassword(
+                    "00000000-0000-0000-0000-000000000000",
+                    "AnyPass-2024-Ab1",
+                    "NewPass-2024-Xx1",
+                ),
+            UnauthorizedError,
+            "用户不存在",
+        );
+    },
 });
 
 // 清理
 Deno.test({
-  name: "auth service changePassword: 清理测试用户",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    try {
-      const db = getDb();
-      await db.delete(users).where(eq(users.username, TEST_USER.username));
-    } catch {
-      // 忽略清理错误
-    }
-  },
+    name: "auth service changePassword: 清理测试用户",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        try {
+            const db = getDb();
+            await db.delete(users).where(
+                eq(users.username, TEST_USER.username),
+            );
+        } catch {
+            // 忽略清理错误
+        }
+    },
 });

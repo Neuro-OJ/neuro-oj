@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import {
-  accountNotifications,
-  communityModerationActions,
-  communityPosts,
+    accountNotifications,
+    communityModerationActions,
+    communityPosts,
 } from "../../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import { nowIso } from "../../../../../shared/base/dates.ts";
@@ -10,11 +10,11 @@ import type { CommunityPostStatus } from "../../types/community.ts";
 import { createNotification } from "../notifications.ts";
 import { logAudit } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import {
-  communityDb,
-  communityDomainId,
-  communityDomainWhere,
-  type CommunityScope,
-  publishCommunitySearchEvent,
+    communityDb,
+    communityDomainId,
+    communityDomainWhere,
+    type CommunityScope,
+    publishCommunitySearchEvent,
 } from "./community-scope.ts";
 
 /**
@@ -27,73 +27,78 @@ import {
  * @throws {NotFoundError} 帖子不存在时抛出。
  */
 export async function changePostStatus(
-  postId: string,
-  actorId: string,
-  status: CommunityPostStatus,
-  reason = "",
-  scope?: CommunityScope,
+    postId: string,
+    actorId: string,
+    status: CommunityPostStatus,
+    reason = "",
+    scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  const rows = await db.update(communityPosts).set({
-    status,
-    moderation_reason: reason || null,
-    published_at: status === "published" ? nowIso() : null,
-    updated_at: nowIso(),
-  }).where(
-    and(
-      eq(communityPosts.id, postId),
-      communityDomainWhere(communityPosts.domain_id, scope),
-    ),
-  ).returning();
-  if (!rows[0]) throw new NotFoundError("社区内容不存在");
-  await db.insert(communityModerationActions).values({
-    id: crypto.randomUUID(),
-    domain_id: communityDomainId(scope),
-    moderator_id: actorId,
-    action: status,
-    target_type: "post",
-    target_id: postId,
-    reason,
-    metadata: {},
-    created_at: nowIso(),
-  });
-  if (rows[0].author_id !== actorId) {
-    await createNotification(
-      rows[0].author_id,
-      actorId,
-      "moderation",
-      postId,
-      null,
-      { status, reason },
-      scope,
-    );
-  }
-  // 作者自删与审核员处置在审计 detail 中区分，便于追溯删除性质
-  const isSelfDelete = status === "deleted" && rows[0].author_id === actorId;
-  await logAudit(
-    "community.post_moderated",
-    {
-      action: "community.post_moderated",
-      status,
-      reason,
-      self_delete: isSelfDelete,
-    },
-    { type: "community_post", id: postId },
-  );
-
-  if (status === "deleted") {
-    // 帖子采用软删除，数据库 ON DELETE SET NULL 不会触发；通知必须显式降级到详情页。
-    await db.update(accountNotifications).set({
-      post_id: null,
-      comment_id: null,
+    const db = communityDb(scope);
+    const rows = await db.update(communityPosts).set({
+        status,
+        moderation_reason: reason || null,
+        published_at: status === "published" ? nowIso() : null,
+        updated_at: nowIso(),
     }).where(
-      eq(accountNotifications.post_id, postId),
+        and(
+            eq(communityPosts.id, postId),
+            communityDomainWhere(communityPosts.domain_id, scope),
+        ),
+    ).returning();
+    if (!rows[0]) throw new NotFoundError("社区内容不存在");
+    await db.insert(communityModerationActions).values({
+        id: crypto.randomUUID(),
+        domain_id: communityDomainId(scope),
+        moderator_id: actorId,
+        action: status,
+        target_type: "post",
+        target_id: postId,
+        reason,
+        metadata: {},
+        created_at: nowIso(),
+    });
+    if (rows[0].author_id !== actorId) {
+        await createNotification(
+            rows[0].author_id,
+            actorId,
+            "moderation",
+            postId,
+            null,
+            { status, reason },
+            scope,
+        );
+    }
+    // 作者自删与审核员处置在审计 detail 中区分，便于追溯删除性质
+    const isSelfDelete = status === "deleted" && rows[0].author_id === actorId;
+    await logAudit(
+        "community.post_moderated",
+        {
+            action: "community.post_moderated",
+            status,
+            reason,
+            self_delete: isSelfDelete,
+        },
+        { type: "community_post", id: postId },
     );
-  }
 
-  await publishCommunitySearchEvent("community_post", postId, "upsert", scope);
+    if (status === "deleted") {
+        // 帖子采用软删除，数据库 ON DELETE SET NULL 不会触发；通知必须显式降级到详情页。
+        await db.update(accountNotifications).set({
+            post_id: null,
+            comment_id: null,
+        }).where(
+            eq(accountNotifications.post_id, postId),
+        );
+    }
 
-  return rows[0];
+    await publishCommunitySearchEvent(
+        "community_post",
+        postId,
+        "upsert",
+        scope,
+    );
+
+    return rows[0];
 }
 
 /**
@@ -106,42 +111,42 @@ export async function changePostStatus(
  * @throws {NotFoundError} 帖子不存在时抛出。
  */
 export async function togglePostFlag(
-  postId: string,
-  actorId: string,
-  field: "is_locked" | "is_pinned",
-  value: boolean,
-  scope?: CommunityScope,
+    postId: string,
+    actorId: string,
+    field: "is_locked" | "is_pinned",
+    value: boolean,
+    scope?: CommunityScope,
 ) {
-  const db = communityDb(scope);
-  const rows = await db.update(communityPosts).set({
-    [field]: value,
-    updated_at: nowIso(),
-  }).where(
-    and(
-      eq(communityPosts.id, postId),
-      communityDomainWhere(communityPosts.domain_id, scope),
-    ),
-  ).returning();
-  if (!rows[0]) throw new NotFoundError("社区内容不存在");
-  await db.insert(communityModerationActions).values({
-    id: crypto.randomUUID(),
-    domain_id: communityDomainId(scope),
-    moderator_id: actorId,
-    action: field,
-    target_type: "post",
-    target_id: postId,
-    reason: "",
-    metadata: { value },
-    created_at: nowIso(),
-  });
-  await logAudit(
-    "community.post_moderated",
-    {
-      action: "community.post_moderated",
-      status: field === "is_locked" ? "locked" : "pinned",
-      reason: "",
-    },
-    { type: "community_post", id: postId },
-  );
-  return rows[0];
+    const db = communityDb(scope);
+    const rows = await db.update(communityPosts).set({
+        [field]: value,
+        updated_at: nowIso(),
+    }).where(
+        and(
+            eq(communityPosts.id, postId),
+            communityDomainWhere(communityPosts.domain_id, scope),
+        ),
+    ).returning();
+    if (!rows[0]) throw new NotFoundError("社区内容不存在");
+    await db.insert(communityModerationActions).values({
+        id: crypto.randomUUID(),
+        domain_id: communityDomainId(scope),
+        moderator_id: actorId,
+        action: field,
+        target_type: "post",
+        target_id: postId,
+        reason: "",
+        metadata: { value },
+        created_at: nowIso(),
+    });
+    await logAudit(
+        "community.post_moderated",
+        {
+            action: "community.post_moderated",
+            status: field === "is_locked" ? "locked" : "pinned",
+            reason: "",
+        },
+        { type: "community_post", id: postId },
+    );
+    return rows[0];
 }

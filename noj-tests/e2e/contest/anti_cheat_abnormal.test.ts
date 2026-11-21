@@ -2,19 +2,19 @@
  * 竞赛防作弊异常场景 E2E。
  */
 import {
-  apiPost,
-  BASE_URL,
-  e2eTest,
-  getAdminToken,
-  getProblemIdByNumber,
-  isE2E,
-  registerUser,
-  TEST_PASSWORD,
+    apiPost,
+    BASE_URL,
+    e2eTest,
+    getAdminToken,
+    getProblemIdByNumber,
+    isE2E,
+    registerUser,
+    TEST_PASSWORD,
 } from "../helper.ts";
 
 /** Compose 已移除固定 container_name；CI 通过 E2E_REDIS_CONTAINER 注入 ID。 */
 const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ??
-  "noj-e2e-redis";
+    "noj-e2e-redis";
 
 let adminToken = "";
 let userToken = "";
@@ -22,21 +22,21 @@ let contestId = "";
 
 /** 读取 SSE 流 `ms` 毫秒，返回收到的原始帧文本。 */
 async function readSseFrames(
-  res: Response,
-  ms: number,
+    res: Response,
+    ms: number,
 ): Promise<string> {
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  const deadline = Date.now() + ms;
-  let buffer = "";
-  while (Date.now() < deadline) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    if (buffer.includes("contest:submission:created")) break;
-  }
-  await reader.cancel().catch(() => {});
-  return buffer;
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    const deadline = Date.now() + ms;
+    let buffer = "";
+    while (Date.now() < deadline) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        if (buffer.includes("contest:submission:created")) break;
+    }
+    await reader.cancel().catch(() => {});
+    return buffer;
 }
 
 /**
@@ -46,141 +46,141 @@ async function readSseFrames(
  * 因此不能对整个缓冲区做 `includes('"user_id"')`，必须按事件隔离断言。
  */
 function extractSseEventData(frames: string, event: string): string | null {
-  for (const block of frames.split(/\r?\n\r?\n/)) {
-    const lines = block.split(/\r?\n/);
-    const eventName = lines
-      .find((line) => line.startsWith("event:"))
-      ?.slice("event:".length)
-      .trim();
-    if (eventName !== event) continue;
-    return lines
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice("data:".length).trimStart())
-      .join("\n");
-  }
-  return null;
+    for (const block of frames.split(/\r?\n\r?\n/)) {
+        const lines = block.split(/\r?\n/);
+        const eventName = lines
+            .find((line) => line.startsWith("event:"))
+            ?.slice("event:".length)
+            .trim();
+        if (eventName !== event) continue;
+        return lines
+            .filter((line) => line.startsWith("data:"))
+            .map((line) => line.slice("data:".length).trimStart())
+            .join("\n");
+    }
+    return null;
 }
 
 async function publishContestSubmissionEvent(
-  contestId: string,
+    contestId: string,
 ): Promise<boolean> {
-  try {
-    const cmd = new Deno.Command("docker", {
-      args: [
-        "exec",
-        REDIS_CONTAINER,
-        "redis-cli",
-        "PUBLISH",
-        `noj:events:contest:${contestId}:submission`,
-        JSON.stringify({ submission_id: "s1", user_id: "secret-user" }),
-      ],
-    });
-    const { success } = await cmd.output();
-    return success;
-  } catch {
-    return false;
-  }
+    try {
+        const cmd = new Deno.Command("docker", {
+            args: [
+                "exec",
+                REDIS_CONTAINER,
+                "redis-cli",
+                "PUBLISH",
+                `noj:events:contest:${contestId}:submission`,
+                JSON.stringify({ submission_id: "s1", user_id: "secret-user" }),
+            ],
+        });
+        const { success } = await cmd.output();
+        return success;
+    } catch {
+        return false;
+    }
 }
 
 e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
-  if (!isE2E) return;
-  adminToken = await getAdminToken();
-  const ts = Date.now().toString(36);
-  userToken = await registerUser(
-    "ac_user_" + ts,
-    "ac_user_" + ts + "@test.com",
-    TEST_PASSWORD,
-  );
-  const problemId = await getProblemIdByNumber(1001);
-  const now = Date.now();
-  const res = await apiPost(
-    "/api/v1/domains/main/contests",
-    {
-      title: "AC Abnormal " + ts,
-      type: "kaggle",
-      start_time: new Date(now - 3600_000).toISOString(),
-      end_time: new Date(now + 3600_000).toISOString(),
-      affect_global_ranking: false,
-      config: {},
-      problems: [{
-        problem_id: problemId,
-        sort_order: 0,
-        label: "A",
-        score: 100,
-      }],
-    },
-    adminToken,
-  );
-  if (res.status !== 201) throw new Error("创建竞赛失败 " + res.status);
-  contestId = (res.body as { data: { id: string } }).data.id;
+    if (!isE2E) return;
+    adminToken = await getAdminToken();
+    const ts = Date.now().toString(36);
+    userToken = await registerUser(
+        "ac_user_" + ts,
+        "ac_user_" + ts + "@test.com",
+        TEST_PASSWORD,
+    );
+    const problemId = await getProblemIdByNumber(1001);
+    const now = Date.now();
+    const res = await apiPost(
+        "/api/v1/domains/main/contests",
+        {
+            title: "AC Abnormal " + ts,
+            type: "kaggle",
+            start_time: new Date(now - 3600_000).toISOString(),
+            end_time: new Date(now + 3600_000).toISOString(),
+            affect_global_ranking: false,
+            config: {},
+            problems: [{
+                problem_id: problemId,
+                sort_order: 0,
+                label: "A",
+                score: 100,
+            }],
+        },
+        adminToken,
+    );
+    if (res.status !== 201) throw new Error("创建竞赛失败 " + res.status);
+    contestId = (res.body as { data: { id: string } }).data.id;
 });
 
 e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async () => {
-  if (!isE2E) return;
-  // 公开赛：未报名用户可以订阅（榜单事件），但不得收到任何提交事件帧。
-  const res = await fetch(
-    `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
-    { headers: { Authorization: "Bearer " + userToken } },
-  );
-  if (res.status !== 200) {
-    throw new Error(`公开赛订阅应 200，实际 ${res.status}`);
-  }
-  const published = await publishContestSubmissionEvent(contestId);
-  if (!published) {
-    throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
-  }
-  const frames = await readSseFrames(res, 5_000);
-  if (frames.includes("contest:submission:created")) {
-    throw new Error(`未报名用户收到了提交事件帧: ${frames.slice(0, 200)}`);
-  }
-});
-
-e2eTest(
-  "[e2e/anti-cheat-abnormal] 报名用户收到提交事件但不含 user_id",
-  async () => {
     if (!isE2E) return;
-    const reg = await apiPost(
-      `/api/v1/domains/main/contests/${contestId}/register`,
-      {},
-      userToken,
-    );
-    if (reg.status !== 200 && reg.status !== 201) {
-      throw new Error(`报名失败: ${reg.status}`);
-    }
+    // 公开赛：未报名用户可以订阅（榜单事件），但不得收到任何提交事件帧。
     const res = await fetch(
-      `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
-      { headers: { Authorization: "Bearer " + userToken } },
+        `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
+        { headers: { Authorization: "Bearer " + userToken } },
     );
     if (res.status !== 200) {
-      throw new Error(`报名用户订阅应 200，实际 ${res.status}`);
+        throw new Error(`公开赛订阅应 200，实际 ${res.status}`);
     }
     const published = await publishContestSubmissionEvent(contestId);
     if (!published) {
-      throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
+        throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
     }
-    const frames = await readSseFrames(res, 10_000);
-    const submissionData = extractSseEventData(
-      frames,
-      "contest:submission:created",
-    );
-    if (submissionData === null) {
-      throw new Error("报名用户未在 10s 内收到提交事件帧");
+    const frames = await readSseFrames(res, 5_000);
+    if (frames.includes("contest:submission:created")) {
+        throw new Error(`未报名用户收到了提交事件帧: ${frames.slice(0, 200)}`);
     }
-    if (
-      submissionData.includes("secret-user") ||
-      submissionData.includes('"user_id"')
-    ) {
-      throw new Error(
-        `提交事件帧泄露 user_id: ${submissionData.slice(0, 200)}`,
-      );
-    }
-    // 审计 VULN-10：仅剔除 user_id 不足以阻断监听链——保留 submission_id 时，
-    // 参赛者可用它订阅 /api/v1/domains/:slug/submissions/:id/events 实时监听他人评测完成。
-    // 故非管理员的事件帧同样不得包含 submission_id。
-    if (submissionData.includes('"submission_id"')) {
-      throw new Error(
-        `提交事件帧泄露 submission_id: ${submissionData.slice(0, 200)}`,
-      );
-    }
-  },
+});
+
+e2eTest(
+    "[e2e/anti-cheat-abnormal] 报名用户收到提交事件但不含 user_id",
+    async () => {
+        if (!isE2E) return;
+        const reg = await apiPost(
+            `/api/v1/domains/main/contests/${contestId}/register`,
+            {},
+            userToken,
+        );
+        if (reg.status !== 200 && reg.status !== 201) {
+            throw new Error(`报名失败: ${reg.status}`);
+        }
+        const res = await fetch(
+            `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
+            { headers: { Authorization: "Bearer " + userToken } },
+        );
+        if (res.status !== 200) {
+            throw new Error(`报名用户订阅应 200，实际 ${res.status}`);
+        }
+        const published = await publishContestSubmissionEvent(contestId);
+        if (!published) {
+            throw new Error(`docker exec ${REDIS_CONTAINER} 发布事件失败`);
+        }
+        const frames = await readSseFrames(res, 10_000);
+        const submissionData = extractSseEventData(
+            frames,
+            "contest:submission:created",
+        );
+        if (submissionData === null) {
+            throw new Error("报名用户未在 10s 内收到提交事件帧");
+        }
+        if (
+            submissionData.includes("secret-user") ||
+            submissionData.includes('"user_id"')
+        ) {
+            throw new Error(
+                `提交事件帧泄露 user_id: ${submissionData.slice(0, 200)}`,
+            );
+        }
+        // 审计 VULN-10：仅剔除 user_id 不足以阻断监听链——保留 submission_id 时，
+        // 参赛者可用它订阅 /api/v1/domains/:slug/submissions/:id/events 实时监听他人评测完成。
+        // 故非管理员的事件帧同样不得包含 submission_id。
+        if (submissionData.includes('"submission_id"')) {
+            throw new Error(
+                `提交事件帧泄露 submission_id: ${submissionData.slice(0, 200)}`,
+            );
+        }
+    },
 );

@@ -6,22 +6,22 @@
  */
 
 import {
-  apiDelete,
-  apiGet,
-  apiPatch,
-  apiPost,
-  domainProblemPath,
-  e2eTest,
-  getAdminToken,
-  getOrCreateUser,
-  getProblemIdByNumber,
-  isE2E,
-  pollSubmission,
-  publishProblemVersion,
-  requireJudgeCanary,
-  setProblemState,
-  submitCode,
-  waitForServer,
+    apiDelete,
+    apiGet,
+    apiPatch,
+    apiPost,
+    domainProblemPath,
+    e2eTest,
+    getAdminToken,
+    getOrCreateUser,
+    getProblemIdByNumber,
+    isE2E,
+    pollSubmission,
+    publishProblemVersion,
+    requireJudgeCanary,
+    setProblemState,
+    submitCode,
+    waitForServer,
 } from "../helper.ts";
 
 let adminToken = "";
@@ -31,328 +31,334 @@ let problemId = "";
 let gatingProblemId = "";
 
 e2eTest("[e2e/tags] Setup", async () => {
-  if (!isE2E) return;
-  await waitForServer();
-  adminToken = await getAdminToken();
-  console.log("  ✓ 管理员已登录并完成强制改密");
+    if (!isE2E) return;
+    await waitForServer();
+    adminToken = await getAdminToken();
+    console.log("  ✓ 管理员已登录并完成强制改密");
 });
 
 e2eTest("[e2e/tags] 1.1 GET 标签列表", async () => {
-  if (!isE2E) return;
-  const { status, body } = await apiGet("/api/v1/tags");
-  if (status !== 200) throw new Error("期望 200");
-  const d = body as { data: unknown[] };
-  if (!Array.isArray(d.data)) throw new Error("data 应为数组");
-  for (const item of d.data as Record<string, unknown>[]) {
-    if (
-      typeof item.id !== "string" || typeof item.name !== "string" ||
-      typeof item.kind !== "string" || typeof item.problem_count !== "number"
-    ) {
-      throw new Error("标签项字段不完整");
+    if (!isE2E) return;
+    const { status, body } = await apiGet("/api/v1/tags");
+    if (status !== 200) throw new Error("期望 200");
+    const d = body as { data: unknown[] };
+    if (!Array.isArray(d.data)) throw new Error("data 应为数组");
+    for (const item of d.data as Record<string, unknown>[]) {
+        if (
+            typeof item.id !== "string" || typeof item.name !== "string" ||
+            typeof item.kind !== "string" ||
+            typeof item.problem_count !== "number"
+        ) {
+            throw new Error("标签项字段不完整");
+        }
     }
-  }
-  console.log("  ✓ 标签列表正常");
+    console.log("  ✓ 标签列表正常");
 });
 
 e2eTest("[e2e/tags] 1.2 管理员创建题目标签与算法标签", async () => {
-  if (!isE2E) return;
-  const name = "E2E 标签 " + Date.now().toString(36);
-  const res = await apiPost(
-    "/api/v1/tags",
-    { name, kind: "problem" },
-    adminToken,
-  );
-  if (res.status !== 201) {
-    throw new Error("创建题目标签失败: " + res.status);
-  }
-  tagId = (res.body as { data: { id: string } }).data.id;
+    if (!isE2E) return;
+    const name = "E2E 标签 " + Date.now().toString(36);
+    const res = await apiPost(
+        "/api/v1/tags",
+        { name, kind: "problem" },
+        adminToken,
+    );
+    if (res.status !== 201) {
+        throw new Error("创建题目标签失败: " + res.status);
+    }
+    tagId = (res.body as { data: { id: string } }).data.id;
 
-  const algoName = "E2E 算法 " + Date.now().toString(36);
-  const algoRes = await apiPost(
-    "/api/v1/tags",
-    { name: algoName, kind: "algorithm" },
-    adminToken,
-  );
-  if (algoRes.status !== 201) {
-    throw new Error("创建算法标签失败: " + algoRes.status);
-  }
-  algorithmTagId = (algoRes.body as { data: { id: string } }).data.id;
-  console.log("  ✓ 创建双类标签");
+    const algoName = "E2E 算法 " + Date.now().toString(36);
+    const algoRes = await apiPost(
+        "/api/v1/tags",
+        { name: algoName, kind: "algorithm" },
+        adminToken,
+    );
+    if (algoRes.status !== 201) {
+        throw new Error("创建算法标签失败: " + algoRes.status);
+    }
+    algorithmTagId = (algoRes.body as { data: { id: string } }).data.id;
+    console.log("  ✓ 创建双类标签");
 });
 
 e2eTest("[e2e/tags] 1.3 未认证创建标签被拒", async () => {
-  if (!isE2E) return;
-  const { status } = await apiPost("/api/v1/tags", {
-    name: "Hack " + Date.now().toString(36),
-    kind: "problem",
-  });
-  if (status !== 401) throw new Error("期望 401, 实际 " + status);
-  console.log("  ✓ 未认证创建标签被拒");
+    if (!isE2E) return;
+    const { status } = await apiPost("/api/v1/tags", {
+        name: "Hack " + Date.now().toString(36),
+        kind: "problem",
+    });
+    if (status !== 401) throw new Error("期望 401, 实际 " + status);
+    console.log("  ✓ 未认证创建标签被拒");
 });
 
 e2eTest("[e2e/tags] 1.4 普通用户创建标签被拒（默认仅 admin）", async () => {
-  if (!isE2E) return;
-  const { token } = await getOrCreateUser(
-    "e2e_tag_user",
-    "e2e_tag_user",
-    "e2e_tag_user@e2e.local",
-  );
-  if (!token) throw new Error("获取普通用户失败");
-  const { status } = await apiPost(
-    "/api/v1/tags",
-    { name: "User Tag " + Date.now().toString(36), kind: "problem" },
-    token,
-  );
-  if (status !== 403) throw new Error("期望 403, 实际 " + status);
-  console.log("  ✓ 普通用户创建标签被拒");
+    if (!isE2E) return;
+    const { token } = await getOrCreateUser(
+        "e2e_tag_user",
+        "e2e_tag_user",
+        "e2e_tag_user@e2e.local",
+    );
+    if (!token) throw new Error("获取普通用户失败");
+    const { status } = await apiPost(
+        "/api/v1/tags",
+        { name: "User Tag " + Date.now().toString(36), kind: "problem" },
+        token,
+    );
+    if (status !== 403) throw new Error("期望 403, 实际 " + status);
+    console.log("  ✓ 普通用户创建标签被拒");
 });
 
 e2eTest("[e2e/tags] 1.5 重复标签名冲突", async () => {
-  if (!isE2E) return;
-  const name = "E2E 重复 " + Date.now().toString(36);
-  await apiPost("/api/v1/tags", { name, kind: "problem" }, adminToken);
-  const { status } = await apiPost(
-    "/api/v1/tags",
-    { name, kind: "algorithm" },
-    adminToken,
-  );
-  if (status !== 409) throw new Error("期望 409, 实际 " + status);
-  console.log("  ✓ 重复标签名冲突检测正常");
+    if (!isE2E) return;
+    const name = "E2E 重复 " + Date.now().toString(36);
+    await apiPost("/api/v1/tags", { name, kind: "problem" }, adminToken);
+    const { status } = await apiPost(
+        "/api/v1/tags",
+        { name, kind: "algorithm" },
+        adminToken,
+    );
+    if (status !== 409) throw new Error("期望 409, 实际 " + status);
+    console.log("  ✓ 重复标签名冲突检测正常");
 });
 
 e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
-  if (!isE2E) return;
-  // 创建默认域题目并带 tag_ids。
-  const title = "E2E 标签题目 " + Date.now().toString(36);
-  const res = await apiPost(
-    "/api/v1/domains/main/problems",
-    {
-      title,
-      description: "标签筛选测试",
-      difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
+    if (!isE2E) return;
+    // 创建默认域题目并带 tag_ids。
+    const title = "E2E 标签题目 " + Date.now().toString(36);
+    const res = await apiPost(
+        "/api/v1/domains/main/problems",
+        {
+            title,
+            description: "标签筛选测试",
+            difficulty: "easy",
+            runtime_config: {
+                evaluator: {
+                    image: "noj-evaluator-python",
+                    command: "python3 /workspace/evaluate.py",
+                    time_limit_ms: 5000,
+                    memory_limit_mb: 512,
+                },
+                solution: {
+                    image: "noj-solution-python",
+                    call_timeout_ms: 2000,
+                    memory_limit_mb: 512,
+                },
+            },
+            tag_ids: [tagId],
         },
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
-      tag_ids: [tagId],
-    },
-    adminToken,
-  );
-  if (res.status !== 201) {
-    throw new Error(
-      "创建带标签题目失败: " + res.status + " " +
-        JSON.stringify(res.body),
+        adminToken,
     );
-  }
-  problemId = (res.body as { problem_id: string }).problem_id;
+    if (res.status !== 201) {
+        throw new Error(
+            "创建带标签题目失败: " + res.status + " " +
+                JSON.stringify(res.body),
+        );
+    }
+    problemId = (res.body as { problem_id: string }).problem_id;
 
-  // 标签筛选与匿名详情需要公开可见：先发布（创建绑定）再改状态。
-  await publishProblemVersion(adminToken, problemId, "标签题发布");
-  const pubRes = await setProblemState(adminToken, problemId, {
-    visibility: "public",
-  });
-  if (pubRes.status !== 200) {
-    throw new Error(
-      "设置题目公开失败: " + pubRes.status + " " +
-        JSON.stringify(pubRes.body),
+    // 标签筛选与匿名详情需要公开可见：先发布（创建绑定）再改状态。
+    await publishProblemVersion(adminToken, problemId, "标签题发布");
+    const pubRes = await setProblemState(adminToken, problemId, {
+        visibility: "public",
+    });
+    if (pubRes.status !== 200) {
+        throw new Error(
+            "设置题目公开失败: " + pubRes.status + " " +
+                JSON.stringify(pubRes.body),
+        );
+    }
+
+    // 按标签筛选命中
+    const listRes = await apiGet(
+        `/api/v1/problems?tag=${tagId}`,
+        adminToken,
     );
-  }
-
-  // 按标签筛选命中
-  const listRes = await apiGet(
-    `/api/v1/problems?tag=${tagId}`,
-    adminToken,
-  );
-  if (listRes.status !== 200) throw new Error("筛选失败: " + listRes.status);
-  const items = (listRes.body as { data: { id: string }[] }).data;
-  if (!items.some((p) => p.id === problemId)) {
-    throw new Error("按标签筛选未命中");
-  }
-  console.log("  ✓ 打标签 → ?tag= 筛选命中");
+    if (listRes.status !== 200) throw new Error("筛选失败: " + listRes.status);
+    const items = (listRes.body as { data: { id: string }[] }).data;
+    if (!items.some((p) => p.id === problemId)) {
+        throw new Error("按标签筛选未命中");
+    }
+    console.log("  ✓ 打标签 → ?tag= 筛选命中");
 });
 
 e2eTest("[e2e/tags] 2.2 标签与难度组合筛选", async () => {
-  if (!isE2E) return;
-  const res = await apiGet(
-    `/api/v1/problems?tag=${tagId}&difficulty=easy`,
-    adminToken,
-  );
-  if (res.status !== 200) throw new Error("组合筛选失败: " + res.status);
-  const items = (res.body as { data: { id: string }[] }).data;
-  if (!items.some((p) => p.id === problemId)) {
-    throw new Error("组合筛选未命中");
-  }
-  console.log("  ✓ tag+difficulty 组合筛选");
+    if (!isE2E) return;
+    const res = await apiGet(
+        `/api/v1/problems?tag=${tagId}&difficulty=easy`,
+        adminToken,
+    );
+    if (res.status !== 200) throw new Error("组合筛选失败: " + res.status);
+    const items = (res.body as { data: { id: string }[] }).data;
+    if (!items.some((p) => p.id === problemId)) {
+        throw new Error("组合筛选未命中");
+    }
+    console.log("  ✓ tag+difficulty 组合筛选");
 });
 
 e2eTest("[e2e/tags] 3.1 合并标签后关联正确", async () => {
-  if (!isE2E) return;
-  // 目标标签
-  const targetName = "E2E 合并目标 " + Date.now().toString(36);
-  const targetRes = await apiPost(
-    "/api/v1/tags",
-    { name: targetName, kind: "problem" },
-    adminToken,
-  );
-  if (targetRes.status !== 201) throw new Error("创建目标标签失败");
-  const targetId = (targetRes.body as { data: { id: string } }).data.id;
+    if (!isE2E) return;
+    // 目标标签
+    const targetName = "E2E 合并目标 " + Date.now().toString(36);
+    const targetRes = await apiPost(
+        "/api/v1/tags",
+        { name: targetName, kind: "problem" },
+        adminToken,
+    );
+    if (targetRes.status !== 201) throw new Error("创建目标标签失败");
+    const targetId = (targetRes.body as { data: { id: string } }).data.id;
 
-  const mergeRes = await apiPost(
-    `/api/v1/tags/${tagId}/merge`,
-    { target_id: targetId },
-    adminToken,
-  );
-  if (mergeRes.status !== 204) {
-    throw new Error("合并失败: " + mergeRes.status);
-  }
+    const mergeRes = await apiPost(
+        `/api/v1/tags/${tagId}/merge`,
+        { target_id: targetId },
+        adminToken,
+    );
+    if (mergeRes.status !== 204) {
+        throw new Error("合并失败: " + mergeRes.status);
+    }
 
-  // 原标签已删除，关联重指向 target
-  const listRes = await apiGet(
-    `/api/v1/problems?tag=${targetId}`,
-    adminToken,
-  );
-  const items = (listRes.body as { data: { id: string }[] }).data;
-  if (!items.some((p) => p.id === problemId)) {
-    throw new Error("合并后关联未重指向目标标签");
-  }
-  // 更新 tagId 引用为 target（后续删除测试用）
-  tagId = targetId;
-  console.log("  ✓ 合并标签后关联正确");
+    // 原标签已删除，关联重指向 target
+    const listRes = await apiGet(
+        `/api/v1/problems?tag=${targetId}`,
+        adminToken,
+    );
+    const items = (listRes.body as { data: { id: string }[] }).data;
+    if (!items.some((p) => p.id === problemId)) {
+        throw new Error("合并后关联未重指向目标标签");
+    }
+    // 更新 tagId 引用为 target（后续删除测试用）
+    tagId = targetId;
+    console.log("  ✓ 合并标签后关联正确");
 });
 
 e2eTest("[e2e/tags] 3.2 删除标签后题目不受影响", async () => {
-  if (!isE2E) return;
-  const delRes = await apiDelete(`/api/v1/tags/${tagId}`, adminToken);
-  if (delRes.status !== 204) throw new Error("删除标签失败: " + delRes.status);
+    if (!isE2E) return;
+    const delRes = await apiDelete(`/api/v1/tags/${tagId}`, adminToken);
+    if (delRes.status !== 204) {
+        throw new Error("删除标签失败: " + delRes.status);
+    }
 
-  // 题目仍存在且不再关联该标签
-  const detailRes = await apiGet(`/api/v1/problems/${problemId}`);
-  if (detailRes.status !== 200) throw new Error("题目应仍存在");
-  const d = detailRes.body as { data: { tags: { id: string }[] } };
-  if (d.data.tags.some((t) => t.id === tagId)) {
-    throw new Error("删除标签后题目仍有关联");
-  }
-  console.log("  ✓ 删除标签级联清理，题目不受影响");
+    // 题目仍存在且不再关联该标签
+    const detailRes = await apiGet(`/api/v1/problems/${problemId}`);
+    if (detailRes.status !== 200) throw new Error("题目应仍存在");
+    const d = detailRes.body as { data: { tags: { id: string }[] } };
+    if (d.data.tags.some((t) => t.id === tagId)) {
+        throw new Error("删除标签后题目仍有关联");
+    }
+    console.log("  ✓ 删除标签级联清理，题目不受影响");
 });
 
 e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见", async () => {
-  if (!isE2E) return;
-  // 门控需要编程题（客观题禁止算法标签，打标会 400）：用经典 stdin/stdout
-  // 样例题 P1001（A+B）使用标准 stdin/stdout 格式，适合作为 AC 判定载体。
-  gatingProblemId = await getProblemIdByNumber(1001);
-  if (!gatingProblemId) {
-    console.log("  ⚠ 未找到 P1001，跳过门控隐藏场景");
-    return;
-  }
+    if (!isE2E) return;
+    // 门控需要编程题（客观题禁止算法标签，打标会 400）：用经典 stdin/stdout
+    // 样例题 P1001（A+B）使用标准 stdin/stdout 格式，适合作为 AC 判定载体。
+    gatingProblemId = await getProblemIdByNumber(1001);
+    if (!gatingProblemId) {
+        console.log("  ⚠ 未找到 P1001，跳过门控隐藏场景");
+        return;
+    }
 
-  // 给编程题打上算法标签（admin 更新）
-  const putRes = await apiPatch(
-    await domainProblemPath(gatingProblemId),
-    { tag_ids: [algorithmTagId] },
-    adminToken,
-  );
-  if (putRes.status !== 200) {
-    throw new Error("打算法标签失败: " + putRes.status);
-  }
+    // 给编程题打上算法标签（admin 更新）
+    const putRes = await apiPatch(
+        await domainProblemPath(gatingProblemId),
+        { tag_ids: [algorithmTagId] },
+        adminToken,
+    );
+    if (putRes.status !== 200) {
+        throw new Error("打算法标签失败: " + putRes.status);
+    }
 
-  // 匿名请求：has_hidden_algorithm_tags=true，tags 中无算法标签
-  const anonRes = await apiGet(`/api/v1/problems/${gatingProblemId}`);
-  const anonData = (anonRes.body as {
-    data: {
-      tags: { name: string; kind: string }[];
-      has_hidden_algorithm_tags: boolean;
-    };
-  }).data;
-  if (!anonData.has_hidden_algorithm_tags) {
-    throw new Error("匿名用户应收到隐藏标志");
-  }
-  if (anonData.tags.some((t) => t.kind === "algorithm")) {
-    throw new Error("匿名用户不应收到算法标签名");
-  }
+    // 匿名请求：has_hidden_algorithm_tags=true，tags 中无算法标签
+    const anonRes = await apiGet(`/api/v1/problems/${gatingProblemId}`);
+    const anonData = (anonRes.body as {
+        data: {
+            tags: { name: string; kind: string }[];
+            has_hidden_algorithm_tags: boolean;
+        };
+    }).data;
+    if (!anonData.has_hidden_algorithm_tags) {
+        throw new Error("匿名用户应收到隐藏标志");
+    }
+    if (anonData.tags.some((t) => t.kind === "algorithm")) {
+        throw new Error("匿名用户不应收到算法标签名");
+    }
 
-  // 未通过登录用户同样隐藏
-  const { token } = await getOrCreateUser(
-    "e2e_tag_viewer",
-    "e2e_tag_viewer",
-    "e2e_tag_viewer@e2e.local",
-  );
-  if (!token) throw new Error("获取用户失败");
-  const viewerRes = await apiGet(`/api/v1/problems/${gatingProblemId}`, token);
-  const viewerData = (viewerRes.body as {
-    data: {
-      tags: { kind: string }[];
-      has_hidden_algorithm_tags: boolean;
-    };
-  }).data;
-  if (!viewerData.has_hidden_algorithm_tags) {
-    throw new Error("未通过用户应收到隐藏标志");
-  }
-  if (viewerData.tags.some((t) => t.kind === "algorithm")) {
-    throw new Error("未通过用户不应收到算法标签名");
-  }
-  console.log("  ✓ 算法标签对匿名/未通过用户隐藏");
+    // 未通过登录用户同样隐藏
+    const { token } = await getOrCreateUser(
+        "e2e_tag_viewer",
+        "e2e_tag_viewer",
+        "e2e_tag_viewer@e2e.local",
+    );
+    if (!token) throw new Error("获取用户失败");
+    const viewerRes = await apiGet(
+        `/api/v1/problems/${gatingProblemId}`,
+        token,
+    );
+    const viewerData = (viewerRes.body as {
+        data: {
+            tags: { kind: string }[];
+            has_hidden_algorithm_tags: boolean;
+        };
+    }).data;
+    if (!viewerData.has_hidden_algorithm_tags) {
+        throw new Error("未通过用户应收到隐藏标志");
+    }
+    if (viewerData.tags.some((t) => t.kind === "algorithm")) {
+        throw new Error("未通过用户不应收到算法标签名");
+    }
+    console.log("  ✓ 算法标签对匿名/未通过用户隐藏");
 });
 
 e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
-  if (!isE2E) return;
-  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
-  await requireJudgeCanary();
+    if (!isE2E) return;
+    // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+    await requireJudgeCanary();
 
-  // 复用 4.1 获取的编程题；若 4.1 已跳过（无 P1001）则本场景同样跳过
-  if (!gatingProblemId) {
-    console.log("  ⚠ 无编程题（4.1 已跳过），跳过 AC 门控场景");
-    return;
-  }
-  const judgeProblemId = gatingProblemId;
-  const { token } = await getOrCreateUser(
-    "e2e_tag_solver",
-    "e2e_tag_solver",
-    "e2e_tag_solver@e2e.local",
-  );
-  if (!token) throw new Error("获取用户失败");
-
-  // 提交 A+B 解答并等待 AC（算法标签已在 4.1 打上）。
-  // P1001 为双容器函数调用型评测，需实现 solve(input_str) -> str。
-  const submissionId = await submitCode(
-    token,
-    judgeProblemId,
-    "def solve(input_str: str) -> str:\n    a, b = map(int, input_str.split())\n    return str(a + b)",
-  );
-  const result = await pollSubmission(token, submissionId, 45, 2000, true);
-  if (result.status !== "finished" || result.score <= 0) {
-    // Judge 已由 canary 证明可用；这里拿不到 AC 就是真实回归，不能静默跳过。
-    throw new Error(
-      `期望 AC 以验证算法标签门控，实际 ${result.status}（score=${result.score}）`,
+    // 复用 4.1 获取的编程题；若 4.1 已跳过（无 P1001）则本场景同样跳过
+    if (!gatingProblemId) {
+        console.log("  ⚠ 无编程题（4.1 已跳过），跳过 AC 门控场景");
+        return;
+    }
+    const judgeProblemId = gatingProblemId;
+    const { token } = await getOrCreateUser(
+        "e2e_tag_solver",
+        "e2e_tag_solver",
+        "e2e_tag_solver@e2e.local",
     );
-  }
+    if (!token) throw new Error("获取用户失败");
 
-  const res = await apiGet(`/api/v1/problems/${judgeProblemId}`, token);
-  const data = (res.body as {
-    data: { tags: { kind: string }[]; has_hidden_algorithm_tags: boolean };
-  }).data;
-  if (data.has_hidden_algorithm_tags) {
-    throw new Error("AC 用户不应收到隐藏标志");
-  }
-  if (!data.tags.some((t) => t.kind === "algorithm")) {
-    throw new Error("AC 用户应看到算法标签");
-  }
-  console.log("  ✓ 算法标签 AC 后可见");
+    // 提交 A+B 解答并等待 AC（算法标签已在 4.1 打上）。
+    // P1001 为双容器函数调用型评测，需实现 solve(input_str) -> str。
+    const submissionId = await submitCode(
+        token,
+        judgeProblemId,
+        "def solve(input_str: str) -> str:\n    a, b = map(int, input_str.split())\n    return str(a + b)",
+    );
+    const result = await pollSubmission(token, submissionId, 45, 2000, true);
+    if (result.status !== "finished" || result.score <= 0) {
+        // Judge 已由 canary 证明可用；这里拿不到 AC 就是真实回归，不能静默跳过。
+        throw new Error(
+            `期望 AC 以验证算法标签门控，实际 ${result.status}（score=${result.score}）`,
+        );
+    }
+
+    const res = await apiGet(`/api/v1/problems/${judgeProblemId}`, token);
+    const data = (res.body as {
+        data: { tags: { kind: string }[]; has_hidden_algorithm_tags: boolean };
+    }).data;
+    if (data.has_hidden_algorithm_tags) {
+        throw new Error("AC 用户不应收到隐藏标志");
+    }
+    if (!data.tags.some((t) => t.kind === "algorithm")) {
+        throw new Error("AC 用户应看到算法标签");
+    }
+    console.log("  ✓ 算法标签 AC 后可见");
 });
 
 e2eTest("[e2e/tags] Cleanup", async () => {
-  if (!isE2E) return;
-  // 清理测试标签（题目保留无妨，客观题会被 dev 数据清理覆盖）
-  for (const id of [tagId, algorithmTagId]) {
-    if (id) await apiDelete(`/api/v1/tags/${id}`, adminToken);
-  }
-  console.log("  ✓ 测试标签已清理");
+    if (!isE2E) return;
+    // 清理测试标签（题目保留无妨，客观题会被 dev 数据清理覆盖）
+    for (const id of [tagId, algorithmTagId]) {
+        if (id) await apiDelete(`/api/v1/tags/${id}`, adminToken);
+    }
+    console.log("  ✓ 测试标签已清理");
 });

@@ -5,13 +5,13 @@
  * 紧凑排版：小号字，去掉首尾块元素外边距，便于嵌入选项行。
  */
 defineProps<{
-  content: string
-}>()
+    content: string;
+}>();
 </script>
 
 <template>
-  <MarkdownRenderer
-    :content="content"
-    class="prose-sm min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0"
-  />
+    <MarkdownRenderer
+        :content="content"
+        class="prose-sm min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0"
+    />
 </template>

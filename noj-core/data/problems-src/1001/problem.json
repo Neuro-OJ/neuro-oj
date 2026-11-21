@@ -1,25 +1,25 @@
 {
-  "format_version": 3,
-  "kind": "ai",
-  "number": 1001,
-  "title": "A+B Problem",
-  "difficulty": "easy",
-  "runtime_config": {
-    "evaluator": {
-      "image": "noj-evaluator-python",
-      "time_limit_ms": 30000,
-      "memory_limit_mb": 256
+    "format_version": 3,
+    "kind": "ai",
+    "number": 1001,
+    "title": "A+B Problem",
+    "difficulty": "easy",
+    "runtime_config": {
+        "evaluator": {
+            "image": "noj-evaluator-python",
+            "time_limit_ms": 30000,
+            "memory_limit_mb": 256
+        },
+        "solution": {
+            "image": "noj-solution-python",
+            "call_timeout_ms": 5000,
+            "memory_limit_mb": 256
+        }
     },
-    "solution": {
-      "image": "noj-solution-python",
-      "call_timeout_ms": 5000,
-      "memory_limit_mb": 256
-    }
-  },
-  "template": "template.py",
-  "tags": [
-    "入门",
-    "LMCC 样例题",
-    "模拟"
-  ]
+    "template": "template.py",
+    "tags": [
+        "入门",
+        "LMCC 样例题",
+        "模拟"
+    ]
 }

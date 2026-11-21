@@ -17,16 +17,16 @@ import { and, eq, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-  problemDraftObjects,
-  problemDrafts,
-  problems,
-  problemVersionObjects,
-  problemVersions,
+    problemDraftObjects,
+    problemDrafts,
+    problems,
+    problemVersionObjects,
+    problemVersions,
 } from "../../../../shared/db/schema.ts";
 import type { ProblemObjectRole } from "../../../../shared/versioning/types.ts";
 import type {
-  ProblemContentKind,
-  ProblemDraftContent,
+    ProblemContentKind,
+    ProblemDraftContent,
 } from "../../types/problem-content.ts";
 import { problemContentKindOf } from "../../types/problem-content.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
@@ -37,14 +37,14 @@ export const PROBLEM_DRAFT_VIRTUAL_REVISION = 0;
 
 /** 草稿视图。 */
 export interface ProblemDraftView {
-  problem_id: string;
-  base_version_id: string | null;
-  revision: number;
-  content: ProblemDraftContent;
-  updated_by: string | null;
-  updated_at: string | null;
-  /** true = 数据库中没有草稿行，内容由最新版/题目投影派生。 */
-  synthesized: boolean;
+    problem_id: string;
+    base_version_id: string | null;
+    revision: number;
+    content: ProblemDraftContent;
+    updated_by: string | null;
+    updated_at: string | null;
+    /** true = 数据库中没有草稿行，内容由最新版/题目投影派生。 */
+    synthesized: boolean;
 }
 
 /** 题目身份行（草稿派生只需要这几列）。 */
@@ -52,47 +52,51 @@ export type ProblemIdentityRow = typeof problems.$inferSelect;
 
 /** 428：写草稿缺少预期 revision。 */
 export function draftRevisionRequired(): AppError {
-  return new AppError(
-    "保存草稿必须携带 If-Match: <revision>（缺少预期 revision）",
-    428,
-    "DRAFT_REVISION_REQUIRED",
-  );
+    return new AppError(
+        "保存草稿必须携带 If-Match: <revision>（缺少预期 revision）",
+        428,
+        "DRAFT_REVISION_REQUIRED",
+    );
 }
 
 /** 409：预期 revision 已过时。 */
 export function draftRevisionConflict(
-  expected: number,
-  actual: number,
+    expected: number,
+    actual: number,
 ): AppError {
-  return new AppError(
-    `草稿已被其他编辑更新（预期 revision ${expected}，当前 ${actual}）`,
-    409,
-    "DRAFT_REVISION_CONFLICT",
-  );
+    return new AppError(
+        `草稿已被其他编辑更新（预期 revision ${expected}，当前 ${actual}）`,
+        409,
+        "DRAFT_REVISION_CONFLICT",
+    );
 }
 
 /** 409：草稿基线已不是最新版（其他人已发布）。 */
 export function draftBaselineConflict(): AppError {
-  return new AppError(
-    "草稿基线已不是最新版：请刷新草稿后重新发布",
-    409,
-    "DRAFT_BASELINE_CONFLICT",
-  );
+    return new AppError(
+        "草稿基线已不是最新版：请刷新草稿后重新发布",
+        409,
+        "DRAFT_BASELINE_CONFLICT",
+    );
 }
 
 /** 读取题目身份行；不存在抛 404。 */
 export async function loadProblemIdentity(
-  problemId: string,
-  executor?: Executor,
+    problemId: string,
+    executor?: Executor,
 ): Promise<ProblemIdentityRow> {
-  const db = executor ?? getDb();
-  const [row] = await db.select().from(problems).where(
-    eq(problems.id, problemId),
-  ).limit(1);
-  if (!row) {
-    throw new AppError(`题目不存在：${problemId}`, 404, "PROBLEM_NOT_FOUND");
-  }
-  return row;
+    const db = executor ?? getDb();
+    const [row] = await db.select().from(problems).where(
+        eq(problems.id, problemId),
+    ).limit(1);
+    if (!row) {
+        throw new AppError(
+            `题目不存在：${problemId}`,
+            404,
+            "PROBLEM_NOT_FOUND",
+        );
+    }
+    return row;
 }
 
 /**
@@ -103,32 +107,32 @@ export async function loadProblemIdentity(
  * 不再有派生来源：未发布套卷的初值为空小题列表，由编辑器写入草稿。
  */
 export function deriveDraftContentFromProblem(
-  problem: ProblemIdentityRow,
+    problem: ProblemIdentityRow,
 ): ProblemDraftContent {
-  const kind = problemContentKindOf(problem);
-  const base = {
-    kind,
-    title: problem.title,
-    description: problem.description,
-    samples: (problem.samples as ProblemDraftContent["samples"]) ?? [],
-  } as ProblemDraftContent;
+    const kind = problemContentKindOf(problem);
+    const base = {
+        kind,
+        title: problem.title,
+        description: problem.description,
+        samples: (problem.samples as ProblemDraftContent["samples"]) ?? [],
+    } as ProblemDraftContent;
 
-  if (kind === "objective") {
-    return { ...base, questions: [] };
-  }
+    if (kind === "objective") {
+        return { ...base, questions: [] };
+    }
 
-  if (kind === "oi") {
-    return { ...base, runtime_config: problem.runtime_config };
-  }
+    if (kind === "oi") {
+        return { ...base, runtime_config: problem.runtime_config };
+    }
 
-  return {
-    ...base,
-    submission_mode: problem.submission_mode,
-    runtime_config: problem.runtime_config,
-    template_content: problem.template_content ?? "",
-    artifact_max_size_mb: problem.artifact_max_size_mb,
-    llm_config: problem.llm_config,
-  };
+    return {
+        ...base,
+        submission_mode: problem.submission_mode,
+        runtime_config: problem.runtime_config,
+        template_content: problem.template_content ?? "",
+        artifact_max_size_mb: problem.artifact_max_size_mb,
+        llm_config: problem.llm_config,
+    };
 }
 
 /**
@@ -149,38 +153,38 @@ export function deriveDraftContentFromProblem(
  * 仍处于"虚拟草稿"（revision 0）语义，因此首次保存写入 revision 1，与既有基线一致。
  */
 async function materializeDraftObjectsFromLatestVersion(
-  tx: Executor,
-  problemId: string,
-  latestVersionId: string | null,
+    tx: Executor,
+    problemId: string,
+    latestVersionId: string | null,
 ): Promise<boolean> {
-  // 优先最新版；基线不一致时（理论上不会发生）退回题目的 latest 指针。
-  let versionId = latestVersionId;
-  if (versionId) {
-    const [exists] = await tx.select({ id: problemVersions.id })
-      .from(problemVersions).where(
-        and(
-          eq(problemVersions.problem_id, problemId),
-          eq(problemVersions.id, versionId),
-        ),
-      ).limit(1);
-    if (!exists) versionId = null;
-  }
-  if (!versionId) return false;
+    // 优先最新版；基线不一致时（理论上不会发生）退回题目的 latest 指针。
+    let versionId = latestVersionId;
+    if (versionId) {
+        const [exists] = await tx.select({ id: problemVersions.id })
+            .from(problemVersions).where(
+                and(
+                    eq(problemVersions.problem_id, problemId),
+                    eq(problemVersions.id, versionId),
+                ),
+            ).limit(1);
+        if (!exists) versionId = null;
+    }
+    if (!versionId) return false;
 
-  const refs = await tx.select().from(problemVersionObjects).where(
-    eq(problemVersionObjects.version_id, versionId),
-  );
-  if (refs.length === 0) return false;
+    const refs = await tx.select().from(problemVersionObjects).where(
+        eq(problemVersionObjects.version_id, versionId),
+    );
+    if (refs.length === 0) return false;
 
-  for (const ref of refs) {
-    await tx.insert(problemDraftObjects).values({
-      problem_id: problemId,
-      role: ref.role,
-      path: ref.path,
-      storage_url: ref.storage_url,
-    }).onConflictDoNothing();
-  }
-  return true;
+    for (const ref of refs) {
+        await tx.insert(problemDraftObjects).values({
+            problem_id: problemId,
+            role: ref.role,
+            path: ref.path,
+            storage_url: ref.storage_url,
+        }).onConflictDoNothing();
+    }
+    return true;
 }
 
 /**
@@ -190,53 +194,53 @@ async function materializeDraftObjectsFromLatestVersion(
  * `revision = 0`、`synthesized = true`；不写库。
  */
 export async function getProblemDraft(
-  problemId: string,
-  problem?: ProblemIdentityRow,
-  executor?: Executor,
+    problemId: string,
+    problem?: ProblemIdentityRow,
+    executor?: Executor,
 ): Promise<ProblemDraftView> {
-  const db = executor ?? getDb();
-  const identity = problem ?? await loadProblemIdentity(problemId, db);
-  const [row] = await db.select().from(problemDrafts).where(
-    eq(problemDrafts.problem_id, problemId),
-  ).limit(1);
-
-  if (row) {
-    return {
-      problem_id: row.problem_id,
-      base_version_id: row.base_version_id,
-      revision: row.revision,
-      content: row.content as ProblemDraftContent,
-      updated_by: row.updated_by,
-      updated_at: row.updated_at,
-      synthesized: false,
-    };
-  }
-
-  // 派生：优先最新版内容（内容事实源），否则退回题目行投影
-  let content: ProblemDraftContent;
-  if (identity.latest_version_id) {
-    const [version] = await db.select().from(problemVersions).where(
-      and(
-        eq(problemVersions.problem_id, problemId),
-        eq(problemVersions.id, identity.latest_version_id),
-      ),
+    const db = executor ?? getDb();
+    const identity = problem ?? await loadProblemIdentity(problemId, db);
+    const [row] = await db.select().from(problemDrafts).where(
+        eq(problemDrafts.problem_id, problemId),
     ).limit(1);
-    content = version
-      ? version.content as ProblemDraftContent
-      : deriveDraftContentFromProblem(identity);
-  } else {
-    content = deriveDraftContentFromProblem(identity);
-  }
 
-  return {
-    problem_id: problemId,
-    base_version_id: identity.latest_version_id,
-    revision: PROBLEM_DRAFT_VIRTUAL_REVISION,
-    content,
-    updated_by: null,
-    updated_at: null,
-    synthesized: true,
-  };
+    if (row) {
+        return {
+            problem_id: row.problem_id,
+            base_version_id: row.base_version_id,
+            revision: row.revision,
+            content: row.content as ProblemDraftContent,
+            updated_by: row.updated_by,
+            updated_at: row.updated_at,
+            synthesized: false,
+        };
+    }
+
+    // 派生：优先最新版内容（内容事实源），否则退回题目行投影
+    let content: ProblemDraftContent;
+    if (identity.latest_version_id) {
+        const [version] = await db.select().from(problemVersions).where(
+            and(
+                eq(problemVersions.problem_id, problemId),
+                eq(problemVersions.id, identity.latest_version_id),
+            ),
+        ).limit(1);
+        content = version
+            ? version.content as ProblemDraftContent
+            : deriveDraftContentFromProblem(identity);
+    } else {
+        content = deriveDraftContentFromProblem(identity);
+    }
+
+    return {
+        problem_id: problemId,
+        base_version_id: identity.latest_version_id,
+        revision: PROBLEM_DRAFT_VIRTUAL_REVISION,
+        content,
+        updated_by: null,
+        updated_at: null,
+        synthesized: true,
+    };
 }
 
 /**
@@ -245,118 +249,126 @@ export async function getProblemDraft(
  * @throws {AppError} 428 缺少预期 revision；409 revision 过时；400 类别不可变
  */
 export async function saveProblemDraft(
-  problemId: string,
-  input: {
-    content: ProblemDraftContent;
-    expectedRevision: number | null | undefined;
-    actorId?: string | null;
-    context?: Context;
-    /**
-     * 客户端直接提交的草稿内容（`PUT /problems/:id/draft`）。为 true 时，AI 题的
-     * `template_content` 以当前草稿为准、忽略客户端值：模板只能由题包导入流程
-     * 写入（与 `updateProblem` 的守卫同一口径），编辑器回传的空串不能清掉它。
-     */
-    fromClient?: boolean;
-  },
-  executor?: Executor,
+    problemId: string,
+    input: {
+        content: ProblemDraftContent;
+        expectedRevision: number | null | undefined;
+        actorId?: string | null;
+        context?: Context;
+        /**
+         * 客户端直接提交的草稿内容（`PUT /problems/:id/draft`）。为 true 时，AI 题的
+         * `template_content` 以当前草稿为准、忽略客户端值：模板只能由题包导入流程
+         * 写入（与 `updateProblem` 的守卫同一口径），编辑器回传的空串不能清掉它。
+         */
+        fromClient?: boolean;
+    },
+    executor?: Executor,
 ): Promise<ProblemDraftView> {
-  if (input.expectedRevision == null) throw draftRevisionRequired();
-  const expected = Number(input.expectedRevision);
-  if (!Number.isInteger(expected) || expected < 0) {
-    throw new AppError("预期 revision 必须是非负整数", 400, "INVALID_REVISION");
-  }
+    if (input.expectedRevision == null) throw draftRevisionRequired();
+    const expected = Number(input.expectedRevision);
+    if (!Number.isInteger(expected) || expected < 0) {
+        throw new AppError(
+            "预期 revision 必须是非负整数",
+            400,
+            "INVALID_REVISION",
+        );
+    }
 
-  const db = getDb();
-  const identity = await loadProblemIdentity(problemId, executor);
-  await assertDraftContentSecurity(
-    identity,
-    input.content,
-    input.actorId,
-    input.context,
-  );
-  const kind: ProblemContentKind = problemContentKindOf(identity);
-  if (input.content?.kind !== kind) {
-    throw new AppError(
-      `题目内容类别不可变：期望 ${kind}，实际 ${String(input.content?.kind)}`,
-      400,
-      "CONTENT_KIND_IMMUTABLE",
+    const db = getDb();
+    const identity = await loadProblemIdentity(problemId, executor);
+    await assertDraftContentSecurity(
+        identity,
+        input.content,
+        input.actorId,
+        input.context,
     );
-  }
-
-  const write = async (tx: Executor): Promise<ProblemDraftView> => {
-    let content = input.content;
-    // 锁定题目行：串行化同一题的草稿编辑与发布，防止 revision 丢失
-    await tx.execute(
-      sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
-    );
-    const identity = await loadProblemIdentity(problemId, tx);
-    if (input.content.kind !== problemContentKindOf(identity)) {
-      throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
-    }
-    const [row] = await tx.select().from(problemDrafts).where(
-      eq(problemDrafts.problem_id, problemId),
-    ).limit(1);
-    const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
-    if (current !== expected) throw draftRevisionConflict(expected, current);
-
-    // 界面题的评测脚本由模板生成：编辑器保存时回传空模板曾把导入的模板清空，
-    // 发布后所有界面提交都因缺少模板函数而评测出错（2026-10-16 P23 事故）。
-    if (input.fromClient && content.kind === "ai") {
-      const base = row
-        ? row.content as ProblemDraftContent
-        : (await getProblemDraft(problemId, identity, tx)).content;
-      const template = base.kind === "ai" &&
-          typeof base.template_content === "string"
-        ? base.template_content
-        : "";
-      content = { ...content, template_content: template };
+    const kind: ProblemContentKind = problemContentKindOf(identity);
+    if (input.content?.kind !== kind) {
+        throw new AppError(
+            `题目内容类别不可变：期望 ${kind}，实际 ${
+                String(input.content?.kind)
+            }`,
+            400,
+            "CONTENT_KIND_IMMUTABLE",
+        );
     }
 
-    // 仅首次物化继承基线引用；已有草稿的空引用可能表示用户主动删除，不能补回。
-    if (!row) {
-      await materializeDraftObjectsFromLatestVersion(
-        tx,
-        problemId,
-        identity.latest_version_id,
-      );
-    }
+    const write = async (tx: Executor): Promise<ProblemDraftView> => {
+        let content = input.content;
+        // 锁定题目行：串行化同一题的草稿编辑与发布，防止 revision 丢失
+        await tx.execute(
+            sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
+        );
+        const identity = await loadProblemIdentity(problemId, tx);
+        if (input.content.kind !== problemContentKindOf(identity)) {
+            throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
+        }
+        const [row] = await tx.select().from(problemDrafts).where(
+            eq(problemDrafts.problem_id, problemId),
+        ).limit(1);
+        const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
+        if (current !== expected) {
+            throw draftRevisionConflict(expected, current);
+        }
 
-    const now = new Date().toISOString();
-    const nextRevision = current + 1;
-    const baseVersionId = row
-      ? row.base_version_id
-      : identity.latest_version_id;
+        // 界面题的评测脚本由模板生成：编辑器保存时回传空模板曾把导入的模板清空，
+        // 发布后所有界面提交都因缺少模板函数而评测出错（2026-10-16 P23 事故）。
+        if (input.fromClient && content.kind === "ai") {
+            const base = row
+                ? row.content as ProblemDraftContent
+                : (await getProblemDraft(problemId, identity, tx)).content;
+            const template = base.kind === "ai" &&
+                    typeof base.template_content === "string"
+                ? base.template_content
+                : "";
+            content = { ...content, template_content: template };
+        }
 
-    if (row) {
-      await tx.update(problemDrafts).set({
-        content,
-        revision: nextRevision,
-        base_version_id: baseVersionId,
-        updated_by: input.actorId ?? null,
-        updated_at: now,
-      }).where(eq(problemDrafts.problem_id, problemId));
-    } else {
-      await tx.insert(problemDrafts).values({
-        problem_id: problemId,
-        base_version_id: baseVersionId,
-        revision: nextRevision,
-        content,
-        updated_by: input.actorId ?? null,
-        updated_at: now,
-      });
-    }
+        // 仅首次物化继承基线引用；已有草稿的空引用可能表示用户主动删除，不能补回。
+        if (!row) {
+            await materializeDraftObjectsFromLatestVersion(
+                tx,
+                problemId,
+                identity.latest_version_id,
+            );
+        }
 
-    return {
-      problem_id: problemId,
-      base_version_id: baseVersionId,
-      revision: nextRevision,
-      content,
-      updated_by: input.actorId ?? null,
-      updated_at: now,
-      synthesized: false,
+        const now = new Date().toISOString();
+        const nextRevision = current + 1;
+        const baseVersionId = row
+            ? row.base_version_id
+            : identity.latest_version_id;
+
+        if (row) {
+            await tx.update(problemDrafts).set({
+                content,
+                revision: nextRevision,
+                base_version_id: baseVersionId,
+                updated_by: input.actorId ?? null,
+                updated_at: now,
+            }).where(eq(problemDrafts.problem_id, problemId));
+        } else {
+            await tx.insert(problemDrafts).values({
+                problem_id: problemId,
+                base_version_id: baseVersionId,
+                revision: nextRevision,
+                content,
+                updated_by: input.actorId ?? null,
+                updated_at: now,
+            });
+        }
+
+        return {
+            problem_id: problemId,
+            base_version_id: baseVersionId,
+            revision: nextRevision,
+            content,
+            updated_by: input.actorId ?? null,
+            updated_at: now,
+            synthesized: false,
+        };
     };
-  };
-  return executor ? await write(executor) : await db.transaction(write);
+    return executor ? await write(executor) : await db.transaction(write);
 }
 
 /**
@@ -371,167 +383,175 @@ export async function saveProblemDraft(
  * @throws {AppError} 428 缺少预期 revision；409 revision 过时；400 类别不可变
  */
 export async function saveProblemDraftWithObjects(
-  problemId: string,
-  input: {
-    content: ProblemDraftContent;
-    expectedRevision: number | null | undefined;
-    actorId?: string | null;
-    context?: Context;
-    /** 期望的最终引用集合；同一 role 下未列出的路径会被移除。 */
-    objects: readonly {
-      role: ProblemObjectRole;
-      path: string;
-      storage_url: string;
-    }[];
-  },
-  executor?: Executor,
+    problemId: string,
+    input: {
+        content: ProblemDraftContent;
+        expectedRevision: number | null | undefined;
+        actorId?: string | null;
+        context?: Context;
+        /** 期望的最终引用集合；同一 role 下未列出的路径会被移除。 */
+        objects: readonly {
+            role: ProblemObjectRole;
+            path: string;
+            storage_url: string;
+        }[];
+    },
+    executor?: Executor,
 ): Promise<ProblemDraftView> {
-  if (input.expectedRevision == null) throw draftRevisionRequired();
-  const expected = Number(input.expectedRevision);
-  if (!Number.isInteger(expected) || expected < 0) {
-    throw new AppError("预期 revision 必须是非负整数", 400, "INVALID_REVISION");
-  }
-
-  const db = getDb();
-  const identity = await loadProblemIdentity(problemId, executor);
-  await assertDraftContentSecurity(
-    identity,
-    input.content,
-    input.actorId,
-    input.context,
-  );
-  const kind: ProblemContentKind = problemContentKindOf(identity);
-  if (input.content?.kind !== kind) {
-    throw new AppError(
-      `题目内容类别不可变：期望 ${kind}，实际 ${String(input.content?.kind)}`,
-      400,
-      "CONTENT_KIND_IMMUTABLE",
-    );
-  }
-
-  const write = async (tx: Executor): Promise<ProblemDraftView> => {
-    await tx.execute(
-      sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
-    );
-    const identity = await loadProblemIdentity(problemId, tx);
-    if (input.content.kind !== problemContentKindOf(identity)) {
-      throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
-    }
-    const [row] = await tx.select().from(problemDrafts).where(
-      eq(problemDrafts.problem_id, problemId),
-    ).limit(1);
-    const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
-    if (current !== expected) throw draftRevisionConflict(expected, current);
-
-    if (!row) {
-      await materializeDraftObjectsFromLatestVersion(
-        tx,
-        problemId,
-        identity.latest_version_id,
-      );
-    }
-
-    // 引用替换：先确认新引用可绑定，再删除多余引用、写入目标引用
-    for (const ref of input.objects) {
-      await assertStorageObjectBindable(ref.storage_url, tx);
-    }
-    const existing = await tx.select().from(problemDraftObjects).where(
-      eq(problemDraftObjects.problem_id, problemId),
-    );
-    const wanted = new Set(
-      input.objects.map((ref) => `${ref.role}\u0000${ref.path}`),
-    );
-    for (const old of existing) {
-      if (!wanted.has(`${old.role}\u0000${old.path}`)) {
-        await tx.delete(problemDraftObjects).where(
-          and(
-            eq(problemDraftObjects.problem_id, problemId),
-            eq(problemDraftObjects.role, old.role),
-            eq(problemDraftObjects.path, old.path),
-          ),
+    if (input.expectedRevision == null) throw draftRevisionRequired();
+    const expected = Number(input.expectedRevision);
+    if (!Number.isInteger(expected) || expected < 0) {
+        throw new AppError(
+            "预期 revision 必须是非负整数",
+            400,
+            "INVALID_REVISION",
         );
-      }
-    }
-    for (const ref of input.objects) {
-      await tx.insert(problemDraftObjects).values({
-        problem_id: problemId,
-        role: ref.role,
-        path: ref.path,
-        storage_url: ref.storage_url,
-      }).onConflictDoUpdate({
-        target: [
-          problemDraftObjects.problem_id,
-          problemDraftObjects.role,
-          problemDraftObjects.path,
-        ],
-        set: { storage_url: ref.storage_url },
-      });
     }
 
-    const now = new Date().toISOString();
-    const nextRevision = current + 1;
-    const baseVersionId = row
-      ? row.base_version_id
-      : identity.latest_version_id;
-    if (row) {
-      await tx.update(problemDrafts).set({
-        content: input.content,
-        revision: nextRevision,
-        base_version_id: baseVersionId,
-        updated_by: input.actorId ?? null,
-        updated_at: now,
-      }).where(eq(problemDrafts.problem_id, problemId));
-    } else {
-      await tx.insert(problemDrafts).values({
-        problem_id: problemId,
-        base_version_id: baseVersionId,
-        revision: nextRevision,
-        content: input.content,
-        updated_by: input.actorId ?? null,
-        updated_at: now,
-      });
+    const db = getDb();
+    const identity = await loadProblemIdentity(problemId, executor);
+    await assertDraftContentSecurity(
+        identity,
+        input.content,
+        input.actorId,
+        input.context,
+    );
+    const kind: ProblemContentKind = problemContentKindOf(identity);
+    if (input.content?.kind !== kind) {
+        throw new AppError(
+            `题目内容类别不可变：期望 ${kind}，实际 ${
+                String(input.content?.kind)
+            }`,
+            400,
+            "CONTENT_KIND_IMMUTABLE",
+        );
     }
 
-    return {
-      problem_id: problemId,
-      base_version_id: baseVersionId,
-      revision: nextRevision,
-      content: input.content,
-      updated_by: input.actorId ?? null,
-      updated_at: now,
-      synthesized: false,
+    const write = async (tx: Executor): Promise<ProblemDraftView> => {
+        await tx.execute(
+            sql`SELECT id FROM problems WHERE id = ${problemId} FOR UPDATE`,
+        );
+        const identity = await loadProblemIdentity(problemId, tx);
+        if (input.content.kind !== problemContentKindOf(identity)) {
+            throw new AppError("题目类别已变化", 409, "CONTENT_KIND_IMMUTABLE");
+        }
+        const [row] = await tx.select().from(problemDrafts).where(
+            eq(problemDrafts.problem_id, problemId),
+        ).limit(1);
+        const current = row?.revision ?? PROBLEM_DRAFT_VIRTUAL_REVISION;
+        if (current !== expected) {
+            throw draftRevisionConflict(expected, current);
+        }
+
+        if (!row) {
+            await materializeDraftObjectsFromLatestVersion(
+                tx,
+                problemId,
+                identity.latest_version_id,
+            );
+        }
+
+        // 引用替换：先确认新引用可绑定，再删除多余引用、写入目标引用
+        for (const ref of input.objects) {
+            await assertStorageObjectBindable(ref.storage_url, tx);
+        }
+        const existing = await tx.select().from(problemDraftObjects).where(
+            eq(problemDraftObjects.problem_id, problemId),
+        );
+        const wanted = new Set(
+            input.objects.map((ref) => `${ref.role}\u0000${ref.path}`),
+        );
+        for (const old of existing) {
+            if (!wanted.has(`${old.role}\u0000${old.path}`)) {
+                await tx.delete(problemDraftObjects).where(
+                    and(
+                        eq(problemDraftObjects.problem_id, problemId),
+                        eq(problemDraftObjects.role, old.role),
+                        eq(problemDraftObjects.path, old.path),
+                    ),
+                );
+            }
+        }
+        for (const ref of input.objects) {
+            await tx.insert(problemDraftObjects).values({
+                problem_id: problemId,
+                role: ref.role,
+                path: ref.path,
+                storage_url: ref.storage_url,
+            }).onConflictDoUpdate({
+                target: [
+                    problemDraftObjects.problem_id,
+                    problemDraftObjects.role,
+                    problemDraftObjects.path,
+                ],
+                set: { storage_url: ref.storage_url },
+            });
+        }
+
+        const now = new Date().toISOString();
+        const nextRevision = current + 1;
+        const baseVersionId = row
+            ? row.base_version_id
+            : identity.latest_version_id;
+        if (row) {
+            await tx.update(problemDrafts).set({
+                content: input.content,
+                revision: nextRevision,
+                base_version_id: baseVersionId,
+                updated_by: input.actorId ?? null,
+                updated_at: now,
+            }).where(eq(problemDrafts.problem_id, problemId));
+        } else {
+            await tx.insert(problemDrafts).values({
+                problem_id: problemId,
+                base_version_id: baseVersionId,
+                revision: nextRevision,
+                content: input.content,
+                updated_by: input.actorId ?? null,
+                updated_at: now,
+            });
+        }
+
+        return {
+            problem_id: problemId,
+            base_version_id: baseVersionId,
+            revision: nextRevision,
+            content: input.content,
+            updated_by: input.actorId ?? null,
+            updated_at: now,
+            synthesized: false,
+        };
     };
-  };
-  return executor ? await write(executor) : await db.transaction(write);
+    return executor ? await write(executor) : await db.transaction(write);
 }
 
 /** 草稿文件引用行。 */
 export interface DraftObjectRef {
-  role: ProblemObjectRole;
-  path: string;
-  storage_url: string;
+    role: ProblemObjectRole;
+    path: string;
+    storage_url: string;
 }
 
 /** 列出草稿的全部文件引用（按 role、path 排序）。 */
 export async function listDraftObjects(
-  problemId: string,
-  executor?: Executor,
+    problemId: string,
+    executor?: Executor,
 ): Promise<DraftObjectRef[]> {
-  const db = executor ?? getDb();
-  const rows = await db.select().from(problemDraftObjects).where(
-    eq(problemDraftObjects.problem_id, problemId),
-  );
-  return rows
-    .map((row) => ({
-      role: row.role as ProblemObjectRole,
-      path: row.path,
-      storage_url: row.storage_url,
-    }))
-    .sort((a, b) =>
-      a.role === b.role
-        ? (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
-        : (a.role < b.role ? -1 : 1)
+    const db = executor ?? getDb();
+    const rows = await db.select().from(problemDraftObjects).where(
+        eq(problemDraftObjects.problem_id, problemId),
     );
+    return rows
+        .map((row) => ({
+            role: row.role as ProblemObjectRole,
+            path: row.path,
+            storage_url: row.storage_url,
+        }))
+        .sort((a, b) =>
+            a.role === b.role
+                ? (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+                : (a.role < b.role ? -1 : 1)
+        );
 }
 
 /**
@@ -541,47 +561,47 @@ export async function listDraftObjects(
  * 新引用不能绑定 `deleting` / `deleted` 对象。
  */
 export async function setDraftObject(
-  problemId: string,
-  ref: DraftObjectRef,
-  executor?: Executor,
+    problemId: string,
+    ref: DraftObjectRef,
+    executor?: Executor,
 ): Promise<void> {
-  if (!executor) {
-    return await getDb().transaction((tx) =>
-      setDraftObject(problemId, ref, tx)
-    );
-  }
-  const db = executor ?? getDb();
-  await assertStorageObjectBindable(ref.storage_url, executor);
-  await db.insert(problemDraftObjects).values({
-    problem_id: problemId,
-    role: ref.role,
-    path: ref.path,
-    storage_url: ref.storage_url,
-  }).onConflictDoUpdate({
-    target: [
-      problemDraftObjects.problem_id,
-      problemDraftObjects.role,
-      problemDraftObjects.path,
-    ],
-    set: { storage_url: ref.storage_url },
-  });
+    if (!executor) {
+        return await getDb().transaction((tx) =>
+            setDraftObject(problemId, ref, tx)
+        );
+    }
+    const db = executor ?? getDb();
+    await assertStorageObjectBindable(ref.storage_url, executor);
+    await db.insert(problemDraftObjects).values({
+        problem_id: problemId,
+        role: ref.role,
+        path: ref.path,
+        storage_url: ref.storage_url,
+    }).onConflictDoUpdate({
+        target: [
+            problemDraftObjects.problem_id,
+            problemDraftObjects.role,
+            problemDraftObjects.path,
+        ],
+        set: { storage_url: ref.storage_url },
+    });
 }
 
 /** 删除草稿文件引用（幂等）。 */
 export async function removeDraftObject(
-  problemId: string,
-  role: ProblemObjectRole,
-  path: string,
-  executor?: Executor,
+    problemId: string,
+    role: ProblemObjectRole,
+    path: string,
+    executor?: Executor,
 ): Promise<void> {
-  const db = executor ?? getDb();
-  await db.delete(problemDraftObjects).where(
-    and(
-      eq(problemDraftObjects.problem_id, problemId),
-      eq(problemDraftObjects.role, role),
-      eq(problemDraftObjects.path, path),
-    ),
-  );
+    const db = executor ?? getDb();
+    await db.delete(problemDraftObjects).where(
+        and(
+            eq(problemDraftObjects.problem_id, problemId),
+            eq(problemDraftObjects.role, role),
+            eq(problemDraftObjects.path, path),
+        ),
+    );
 }
 
 /**
@@ -590,34 +610,34 @@ export async function removeDraftObject(
  * 返回被移除的旧引用，供上传补偿判断是否需要回收对象。
  */
 export async function replaceDraftObjectsForRole(
-  problemId: string,
-  role: ProblemObjectRole,
-  refs: readonly { path: string; storage_url: string }[],
-  executor?: Executor,
+    problemId: string,
+    role: ProblemObjectRole,
+    refs: readonly { path: string; storage_url: string }[],
+    executor?: Executor,
 ): Promise<DraftObjectRef[]> {
-  const db = executor ?? getDb();
-  const existing = await db.select().from(problemDraftObjects).where(
-    and(
-      eq(problemDraftObjects.problem_id, problemId),
-      eq(problemDraftObjects.role, role),
-    ),
-  );
-  const keep = new Set(refs.map((ref) => ref.path));
-  for (const row of existing) {
-    if (!keep.has(row.path)) {
-      await removeDraftObject(problemId, role, row.path, executor);
+    const db = executor ?? getDb();
+    const existing = await db.select().from(problemDraftObjects).where(
+        and(
+            eq(problemDraftObjects.problem_id, problemId),
+            eq(problemDraftObjects.role, role),
+        ),
+    );
+    const keep = new Set(refs.map((ref) => ref.path));
+    for (const row of existing) {
+        if (!keep.has(row.path)) {
+            await removeDraftObject(problemId, role, row.path, executor);
+        }
     }
-  }
-  for (const ref of refs) {
-    await setDraftObject(problemId, {
-      role,
-      path: ref.path,
-      storage_url: ref.storage_url,
-    }, executor);
-  }
-  return existing.map((row) => ({
-    role: row.role as ProblemObjectRole,
-    path: row.path,
-    storage_url: row.storage_url,
-  }));
+    for (const ref of refs) {
+        await setDraftObject(problemId, {
+            role,
+            path: ref.path,
+            storage_url: ref.storage_url,
+        }, executor);
+    }
+    return existing.map((row) => ({
+        role: row.role as ProblemObjectRole,
+        path: row.path,
+        storage_url: row.storage_url,
+    }));
 }

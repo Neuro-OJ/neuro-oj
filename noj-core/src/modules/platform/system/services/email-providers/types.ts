@@ -12,13 +12,13 @@
  * @param expiresInMinutes - 过期时间（分钟），用于邮件正文展示
  */
 export type SendEmail = (
-  email: string,
-  subject: string,
-  html: string,
+    email: string,
+    subject: string,
+    html: string,
 ) => Promise<boolean>;
 
 export type SendPasswordResetEmail = (
-  email: string,
-  resetLink: string,
-  expiresInMinutes?: number,
+    email: string,
+    resetLink: string,
+    expiresInMinutes?: number,
 ) => Promise<void>;
