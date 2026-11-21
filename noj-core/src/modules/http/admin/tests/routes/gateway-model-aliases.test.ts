@@ -5,10 +5,8 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { llmModelAliases, problems } from "../../../../../shared/db/schema.ts";
 import { upsertLlmGatewayModelAlias } from "../../../../platform/gateway/index.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
-} from "../../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../../tests/helpers/workspace-actors.ts";
 import {
   deleteProblemFixtures,
   publishBaselineVersionForTest,

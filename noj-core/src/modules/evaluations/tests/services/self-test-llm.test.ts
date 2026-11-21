@@ -16,11 +16,11 @@ import {
 } from "../../../../shared/mq/connection.ts";
 import { _resetSystemSettingsForTest } from "../../../platform/system/index.ts";
 import { publishBaselineVersionForTest } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import {
   addDomainMember,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { startFakeRedis } from "../mq/_setup.ts";
 import { rebuildPendingTask } from "../../mq/pending-recovery.ts";
 import { recoverPendingSelfTests } from "../../mq/sweeper.ts";

@@ -17,7 +17,7 @@ import {
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
-import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   evaluationAttempts,
   problems,

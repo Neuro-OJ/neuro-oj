@@ -23,7 +23,7 @@ import {
   problems,
 } from "../../../../shared/db/schema.ts";
 import { assignmentFixture } from "../../../education/tests/_assignment-fixture.ts";
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   getStorageObject,
   uploadStorageObjectWithReservation,

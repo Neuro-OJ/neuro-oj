@@ -22,7 +22,7 @@ import { registerUser } from "../../services/auth/auth-register.ts";
 import { isUserAdmin } from "../../services/security/permissions.ts";
 import { comparePassword } from "../../services/security/password.ts";
 import { deleteOwnAccount } from "../../index.ts";
-import { transferDomain } from "../../../workspace/index.ts";
+import { transferDomain } from "../../../../../../tests/helpers/workspace-actors.ts";
 const input = {
   username: "site_admin",
   email: "admin@example.com",

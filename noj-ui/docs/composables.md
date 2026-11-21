@@ -54,7 +54,7 @@ URL 即状态：筛选条件写进 `useRoute().query` 并回灌，条件变化�
 `{ open, query, type, groups, flatItems, loading, error }`；`open()` / `close()`
 控制命令面板显隐，"全部"模式请求 8 类资源（题目 / 用户 / 帖子 / 评论 / 比赛 /
 提交 / 消息 / 公告）并按 `groups` 分组，按类型的结果页读
-`flatItems`。`Navbar.vue` 唤起面板， `SearchPalette` 与 `pages/search.vue`
+`flatItems`。`Navbar.vue` 唤起面板， `SearchPalette` 与 `pages/d/[slug]/search.vue`
 共写共读。
 
 并发与生命周期（改这段前先读完）：

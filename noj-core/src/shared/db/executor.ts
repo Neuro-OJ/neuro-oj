@@ -6,9 +6,9 @@
  * helper。两者故意从项目实际 `getDb()` 类型推导，不能用一个手写的
  * "看起来像数据库" interface 伪造事务。
  *
- * 迁移期间保留 `RootDb`、`Tx`、`Executor` 作为兼容别名。新生产代码禁止
- * 导入 `Executor`；锁、审计/事件登记、配额、投影和多表写入必须使用必填
- * `DbTx`。这些别名将在 P3 收尾时删除。
+ * 迁移期间保留 `Executor` 作为兼容联合类型。新生产代码禁止导入
+ * `Executor`；锁、审计/事件登记、配额、投影和多表写入必须使用必填
+ * `DbTx`。
  */
 
 import type { getDb } from "./connection.ts";
@@ -24,9 +24,3 @@ export type DbTx = Parameters<Parameters<DbRoot["transaction"]>[0]>[0];
  * 请在应用层使用 `DbRoot.transaction((tx) => fooTx(tx, ...))`。
  */
 export type Executor = DbRoot | DbTx;
-
-/** @deprecated 使用 `DbRoot`。 */
-export type RootDb = DbRoot;
-
-/** @deprecated 使用 `DbTx`。 */
-export type Tx = DbTx;

@@ -9,7 +9,7 @@ import {
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { getStorageProvider } from "../../../assets/storage/mod.ts";
-import { removeDomainMember } from "../../../access/workspace/index.ts";
+import { removeDomainMember } from "../../../../../tests/helpers/workspace-actors.ts";
 import { setClassroomMember } from "../../index.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 

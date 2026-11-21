@@ -12,11 +12,11 @@ import {
 } from "../../../../../shared/db/schema.ts";
 import { signToken } from "../../../identity/index.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
+import { requestDomainCreation } from "../../index.ts";
 import {
   createDomain,
-  requestDomainCreation,
   setDomainStatus,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 import { reserveDomainStorageUpload } from "../../../../assets/index.ts";
 import { jsonRequest } from "../../../../../../tests/helper.ts";
 

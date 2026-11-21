@@ -25,7 +25,7 @@ import {
 import {
   removeDomainMember,
   setDomainStatus,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   createDomainSubmission,
   getSubmission,

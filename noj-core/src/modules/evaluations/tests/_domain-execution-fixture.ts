@@ -14,7 +14,7 @@ import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-} from "../../access/workspace/index.ts";
+} from "../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../platform/system/index.ts";
 import { startFakeRedis } from "./_fake-redis.ts";
 import { setDomainProblemBindingState } from "../../problems/index.ts";

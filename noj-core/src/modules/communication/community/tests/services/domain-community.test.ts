@@ -13,7 +13,7 @@ import {
 import {
   removeDomainMember,
   setMemberRole,
-} from "../../../../access/workspace/index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 import { createDomainContest } from "../../../../contests/index.ts";
 import {
   resetSetting,

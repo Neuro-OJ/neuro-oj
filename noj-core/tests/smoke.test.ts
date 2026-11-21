@@ -18,7 +18,7 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../src/app.ts";
-import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "./helpers/workspace-actors.ts";
 import { resetDbForTest } from "./helpers/db.ts";
 import {
   _resetSystemSettingsForTest,

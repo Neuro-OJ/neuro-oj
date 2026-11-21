@@ -16,7 +16,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
-import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   domainLlmSettings,
   evaluationAttempts,

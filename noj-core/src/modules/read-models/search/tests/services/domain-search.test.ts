@@ -18,9 +18,9 @@ import {
 import { publishAllProblemsForTest } from "../../../../../../tests/helper.ts";
 import {
   DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
   presetConfiguration,
 } from "../../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../../tests/helpers/workspace-actors.ts";
 import { searchFlat, searchGrouped } from "../../services/search.ts";
 import {
   buildProblemEntry,

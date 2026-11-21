@@ -49,7 +49,7 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { getDb } from "../../../../shared/db/connection.ts";
-import type { RootDb } from "../../../../shared/db/executor.ts";
+import type { DbRoot } from "../../../../shared/db/executor.ts";
 import * as schema from "../../../../shared/db/schema.ts";
 import {
   contestProblems,
@@ -123,8 +123,8 @@ function createClient(appName: string): ReturnType<typeof postgres> {
 }
 
 /** 原生连接 → drizzle 根连接（作为受理函数的 `testRootDb` 注入点）。 */
-function testRootDbOf(client: ReturnType<typeof postgres>): RootDb {
-  return drizzlePg(client, { schema }) as unknown as RootDb;
+function testRootDbOf(client: ReturnType<typeof postgres>): DbRoot {
+  return drizzlePg(client, { schema }) as unknown as DbRoot;
 }
 
 function errorCode(error: unknown): string | null {

@@ -36,7 +36,7 @@ import { updateSetting } from "../../../platform/index.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 
 async function fixture() {
   await resetDbForTest();

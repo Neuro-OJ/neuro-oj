@@ -7,7 +7,7 @@ import {
   addDomainMember,
   createDomain,
   setMemberRole,
-} from "../../access/workspace/index.ts";
+} from "../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../platform/system/index.ts";
 import { createClassroom } from "../index.ts";
 

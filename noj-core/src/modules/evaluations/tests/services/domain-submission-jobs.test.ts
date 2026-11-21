@@ -18,11 +18,11 @@ import {
   submissions,
 } from "../../../../shared/db/schema.ts";
 import { setDomainProblemBindingPolicy } from "../../../problems/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import {
-  DEFAULT_DOMAIN_ID,
   removeDomainMember,
   setMemberRole,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   acceptDomainSubmissionJob,
   cancelDomainSubmissionJob,

@@ -40,7 +40,7 @@ import {
   addDomainMember,
   createDomain,
   setMemberRole,
-} from "../../modules/access/workspace/index.ts";
+} from "../../../tests/helpers/workspace-actors.ts";
 import { invalidateKnowledgeGraphCache } from "./graph.ts";
 import {
   computeNodeMastery,

@@ -387,16 +387,4 @@ export function startResultConsumerPool(
   };
 }
 
-/**
- * 启动结果消费者池（阻塞式旧入口，保留给既有调用方）。
- *
- * @deprecated 新代码用 {@link startResultConsumerPool} 获取可停止、可等待的句柄；
- * 本函数不返回句柄，关闭流程无法等待在途结果处理完成。
- */
-export async function startResultConsumerWithRetry(): Promise<void> {
-  const concurrency = parseResultConsumerConcurrency();
-  logger.info("评测结果消费者池已配置", { concurrency });
-  await createResultConsumerPool(concurrency)();
-}
-
 export { requestConsumerShutdown as requestResultConsumerShutdown };

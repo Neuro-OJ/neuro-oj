@@ -14,10 +14,8 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import {
-  createDomain,
-  DEFAULT_DOMAIN_ID,
-} from "../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
+import { createDomain } from "../../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import {
   createDefaultCatalogToken,

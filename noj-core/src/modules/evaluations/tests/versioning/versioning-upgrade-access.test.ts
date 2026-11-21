@@ -14,11 +14,11 @@ import { authorizeLegacyJobActorForTest } from "../_versioning-fixtures.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import {
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
   removeDomainMember,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   contestParticipants,
   contests,

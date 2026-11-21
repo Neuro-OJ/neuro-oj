@@ -417,7 +417,7 @@ const ROUTES: BreadcrumbRoute[] = [
   },
 
   // ── 榜单与队列 ──
-  { pattern: '/ranking', trail: [{ key: 'nav.ranking' }] },
+  { pattern: '/leaderboard', trail: [{ key: 'nav.ranking' }] },
   { pattern: '/queue', trail: [{ key: 'nav.queue' }] },
 
   // ── 单层工具页（深度 1，只有当前层）──

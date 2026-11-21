@@ -19,7 +19,7 @@ import {
 import { assertWorkspacePermission, loadWorkspaceTx } from "../../policy.ts";
 import { requireUserActor, type UserActor } from "../../contracts/actor.ts";
 import { workspaceAuditTx } from "../../audit.ts";
-import { getInstanceResourcePolicy } from "./instance.ts";
+import { getInstanceResourcePolicy } from "../../../platform/contracts/resource-policy.ts";
 import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 
 /** 当前域限额与实例上限始终组合；默认值只在新域创建时复制。 */

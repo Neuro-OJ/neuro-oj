@@ -18,7 +18,7 @@ import {
   ensureDefaultWorkspace,
   removeDomainMember,
   setMemberRole,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 await resetDbForTest();
 await initRedisForTest();

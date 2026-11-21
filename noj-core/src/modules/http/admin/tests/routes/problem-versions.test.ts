@@ -28,10 +28,8 @@ import {
   jsonRequest,
 } from "../../../../../../tests/helper.ts";
 import { createContest } from "../../../../contests/index.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
-} from "../../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../../tests/helpers/workspace-actors.ts";
 import { bindDefaultCatalogFixture } from "../../../../problems/tests/default-fixture.ts";
 
 const now = new Date().toISOString();

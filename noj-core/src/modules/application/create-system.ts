@@ -1,5 +1,5 @@
 import { createApp } from "../../app.ts";
-import { closeDbForShutdown, getDb } from "../../shared/db/connection.ts";
+import { closeDbForShutdown } from "../../shared/db/connection.ts";
 import { startQueueSweeper } from "../evaluations/mq/sweeper.ts";
 import { startResultConsumerPool } from "../evaluations/mq/consumer.ts";
 import { startSubmissionJobWorker } from "../evaluations/services/versioning/dispatch-job-item.ts";
@@ -21,11 +21,6 @@ import {
   startEducationEmailWorker,
   startEducationPublishingWorker,
 } from "../education/services/worker-lifecycle.ts";
-import {
-  EDUCATION_OUTBOX_MIGRATION_BATCH,
-  type EducationOutboxMigrationCursor,
-  migrateEducationOutboxTx,
-} from "../education/contracts/outbox-migration.ts";
 import { startTaskWorker } from "../runtime/tasks/worker.ts";
 import { createBackgroundHandlers } from "./background-handlers.ts";
 import { FEATURES } from "../../features.ts";
@@ -101,27 +96,6 @@ function buildProductionConfig(): ProductionConfig {
     s3SecretKey: configuredSetting("s3_secret_key"),
     s3Bucket: configuredSetting("s3_bucket"),
   };
-}
-
-/** 启动时把旧教学事实幂等映射到通用任务；不标记旧行完成，完成仍由 handler 负责。 */
-async function migrateEducationOutboxAtStartup(): Promise<void> {
-  let cursor: EducationOutboxMigrationCursor | undefined;
-  let migrated = 0;
-  for (let batchNo = 0; batchNo < 100_000; batchNo++) {
-    const result = await getDb().transaction((tx) =>
-      migrateEducationOutboxTx(tx, EDUCATION_OUTBOX_MIGRATION_BATCH, cursor)
-    );
-    migrated += result.items.length;
-    if (!result.nextCursor || result.items.length === 0) break;
-    cursor = result.nextCursor;
-    if (result.remaining === 0) break;
-    if (batchNo === 99_999) {
-      throw new Error("教学 outbox 迁移超过批次数上限");
-    }
-  }
-  if (migrated > 0) {
-    logger.info("教学 outbox 已迁入通用后台任务", { migrated });
-  }
 }
 
 /**
@@ -350,8 +324,6 @@ export async function startCore() {
       }
       logger.error("Redis 连接失败，评测分发功能不可用", { err });
     }
-
-    await fatalStep("教学 outbox 迁移", migrateEducationOutboxAtStartup);
 
     // 后台任务统一登记（P2a）：所有组件都提供 stop()/done，关闭时按逆序停止、
     // 等待在途工作结束，再关闭 Redis 与数据库连接。登记顺序即启动顺序。

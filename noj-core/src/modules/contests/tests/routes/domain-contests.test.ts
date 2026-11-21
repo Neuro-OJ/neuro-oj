@@ -17,7 +17,7 @@ import {
   createDomainInvitation,
   removeDomainMember,
   setMemberRole,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import {
   addDomainContestParticipants,

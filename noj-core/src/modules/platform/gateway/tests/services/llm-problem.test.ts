@@ -24,10 +24,8 @@ import {
   LlmGatewayError,
 } from "../../services/llm.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
-} from "../../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../../tests/helpers/workspace-actors.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { domainLlmSettings } from "../../../../../shared/db/schema.ts";
 

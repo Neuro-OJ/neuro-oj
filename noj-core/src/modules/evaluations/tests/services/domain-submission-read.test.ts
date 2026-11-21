@@ -15,7 +15,7 @@ import {
   createDomainInvitation,
   removeDomainMember,
   setMemberRole,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   createDomainSubmission,
   getDomainSubmission,

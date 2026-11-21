@@ -1,4 +1,4 @@
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { and, eq, sql } from "drizzle-orm";
 import { assertRejects } from "jsr:@std/assert@^1";

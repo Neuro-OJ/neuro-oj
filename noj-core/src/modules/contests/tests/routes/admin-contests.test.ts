@@ -11,7 +11,7 @@ import {
   jsonRequest,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
-import { createDomain } from "../../../access/workspace/index.ts";
+import { createDomain } from "../../../../../tests/helpers/workspace-actors.ts";
 
 // 测试进程通常没有本地 Redis；直接短路 JWT 撤销检查，避免 authMiddleware 503。
 Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");

@@ -43,7 +43,7 @@ import {
 import {
   getInstanceAccessPolicy,
   getInstanceResourcePolicy,
-} from "./workspace/services/instance.ts";
+} from "../platform/contracts/resource-policy.ts";
 import { combineDomainLimits } from "../../shared/workspace/resource-policy.ts";
 
 export interface DomainWriteMeta extends AccessAuditMeta {}

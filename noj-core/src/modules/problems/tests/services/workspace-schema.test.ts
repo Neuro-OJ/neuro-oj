@@ -12,9 +12,9 @@ import {
 } from "../../../../shared/db/schema.ts";
 import {
   DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
   presetConfiguration,
 } from "../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
 
 /** 每个违规写入使用独立事务，避免事务中止制造假阳性。 */
 async function constraintRejected(
