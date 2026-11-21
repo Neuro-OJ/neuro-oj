@@ -127,7 +127,7 @@ watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => 
     <UAlert v-else-if="failure" color="error" :title="failure" />
 
     <template v-else>
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 noj-panel border border-border bg-bg-panel p-4">
         <UCheckbox v-model="onlyLearning" label="只看有学生在学的知识点" data-testid="only-learning" />
         <span class="text-xs text-text-muted tabular-nums">
           共 <strong class="text-text font-semibold">{{ students.length }}</strong> 名学生 ·
@@ -146,7 +146,7 @@ watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => 
         当前没有学生在学的知识点，可取消筛选查看全部。
       </p>
 
-      <section v-else class="overflow-hidden rounded-lg border border-border bg-bg-panel" data-testid="mastery-matrix">
+      <section v-else class="overflow-hidden noj-panel border border-border bg-bg-panel" data-testid="mastery-matrix">
         <div
           v-for="area in areas"
           :key="area.id"

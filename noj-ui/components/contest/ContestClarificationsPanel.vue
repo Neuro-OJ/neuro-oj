@@ -165,9 +165,9 @@ onMounted(() => void load())
     </div>
 
     <!-- 提问表单：仅竞赛进行期间且已参赛用户可见 -->
-    <form v-if="canAsk" class="rounded-xl border border-border bg-bg-page p-4" @submit.prevent="submitQuestion">
+    <form v-if="canAsk" class="rounded-md border border-border bg-bg-page p-4" @submit.prevent="submitQuestion">
       <div class="mb-3 grid gap-3 sm:grid-cols-[220px_1fr]">
-        <select v-model="questionProblemId" class="rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary">
+        <select v-model="questionProblemId" class="rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary">
           <option value="">全局提问</option>
           <option v-for="problem in problems" :key="problem.problem_id" :value="problem.problem_id">{{ problem.label }}. {{ problem.title }}</option>
         </select>
@@ -175,7 +175,7 @@ onMounted(() => void load())
           v-model="questionContent"
           rows="3"
           maxlength="5000"
-          class="w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          class="w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
           placeholder="描述你的疑问（可挂到具体题目，或选择全局提问）"
         />
       </div>
@@ -185,16 +185,16 @@ onMounted(() => void load())
         <p v-if="questionError" class="text-xs text-error-text">{{ questionError }}</p>
       </div>
     </form>
-    <p v-else-if="user && contest.status === 'running' && contest.is_registered === false" class="rounded-lg border border-border bg-bg-page px-4 py-3 text-xs text-text-muted">报名参赛后可在竞赛进行期间提问。</p>
-    <p v-else-if="contest.status !== 'running'" class="rounded-lg border border-border bg-bg-page px-4 py-3 text-xs text-text-muted">竞赛非进行期间不可提问，可查看公开答疑。</p>
+    <p v-else-if="user && contest.status === 'running' && contest.is_registered === false" class="rounded-md border border-border bg-bg-page px-4 py-3 text-xs text-text-muted">报名参赛后可在竞赛进行期间提问。</p>
+    <p v-else-if="contest.status !== 'running'" class="rounded-md border border-border bg-bg-page px-4 py-3 text-xs text-text-muted">竞赛非进行期间不可提问，可查看公开答疑。</p>
 
-    <p v-if="loadError" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ loadError }}</p>
+    <p v-if="loadError" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ loadError }}</p>
     <div v-else-if="loading" class="py-12 text-center text-sm text-text-muted">答疑加载中...</div>
-    <div v-else-if="clarifications.length === 0" class="rounded-xl border border-dashed border-border py-12 text-center text-sm text-text-muted">暂无答疑，等待第一条提问。</div>
+    <div v-else-if="clarifications.length === 0" class="rounded-md border border-dashed border-border py-12 text-center text-sm text-text-muted">暂无答疑，等待第一条提问。</div>
 
     <!-- 答疑流：提问 + 回复线程 -->
     <div v-else class="space-y-4">
-      <div v-for="clarification in clarifications" :key="clarification.id" class="overflow-hidden rounded-xl border border-border bg-white">
+      <div v-for="clarification in clarifications" :key="clarification.id" class="overflow-hidden noj-panel border border-border bg-white">
         <div class="px-5 py-4">
           <div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
             <UserIdentity :user="clarification.sender" size="sm" />
@@ -229,11 +229,11 @@ onMounted(() => void load())
               v-model="draftFor(clarification.id).content"
               rows="3"
               maxlength="5000"
-              class="mb-2 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+              class="mb-2 w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
               placeholder="输入回复内容"
             />
             <div class="flex flex-wrap items-center gap-3">
-              <div class="flex items-center gap-1 rounded-lg border border-border bg-bg-page p-1 text-xs">
+              <div class="flex items-center gap-1 rounded-md border border-border bg-bg-page p-1 text-xs">
                 <button type="button" class="rounded-md px-2.5 py-1.5" :class="draftFor(clarification.id).isPublic ? 'bg-white text-success-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = true"><UIcon name="i-lucide-globe" class="mr-1 size-3" />公开</button>
                 <button type="button" class="rounded-md px-2.5 py-1.5" :class="!draftFor(clarification.id).isPublic ? 'bg-white text-warning-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = false"><UIcon name="i-lucide-lock" class="mr-1 size-3" />私密</button>
               </div>

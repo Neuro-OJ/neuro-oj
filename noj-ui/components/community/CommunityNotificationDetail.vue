@@ -89,7 +89,7 @@ function formatDateTime(value?: string | null): string {
     <p v-else-if="error" class="mt-6 py-12 text-center text-text-secondary">{{ error }}</p>
 
     <template v-else-if="item">
-      <article class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
+      <article class="mt-4 noj-panel border border-border bg-white p-6 shadow-card">
         <header class="flex items-start gap-3 border-b border-border pb-4">
           <span
             class="mt-0.5 flex size-9 flex-shrink-0 items-center justify-center rounded-full"

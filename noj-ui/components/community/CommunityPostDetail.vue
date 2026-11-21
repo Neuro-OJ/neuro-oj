@@ -254,7 +254,7 @@ watch(initialData, (value) => {
   <main class="mx-auto w-full max-w-4xl px-6 py-10">
     <UAlert v-if="initialError" color="error" :title="extractApiError(initialError).message" />
     <UButton v-if="initialError" class="mt-3" variant="outline" @click="refresh()">重试</UButton>
-    <article v-if="post" class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
+    <article v-if="post" class="mt-4 noj-panel border border-border bg-white p-6 shadow-card">
       <template v-if="post.post.status === 'deleted'">
         <p class="py-8 text-center text-text-secondary">该内容已删除。</p>
       </template>
@@ -316,7 +316,7 @@ watch(initialData, (value) => {
       <p v-else-if="isLoggedIn && config?.comments_enabled && contestSilenced" class="mb-5 rounded-md bg-primary-bg px-3 py-2 text-sm text-primary-text">本域公开赛进行期间暂停评论与编辑，赛后恢复；参赛提问请使用赛中答疑。</p>
       <p v-else-if="isLoggedIn && config?.comments_enabled" class="mb-5 rounded-md bg-primary-bg px-3 py-2 text-sm text-primary-text">当前账号没有评论权限。</p>
 
-      <div v-if="rootComments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">还没有评论，来抢沙发吧。</div>
+      <div v-if="rootComments.length === 0" class="rounded-md border border-dashed border-border p-10 text-center text-text-secondary">还没有评论，来抢沙发吧。</div>
       <div class="space-y-3">
         <article v-for="item in rootComments" :key="item.comment.id" class="rounded border border-border bg-white p-4">
           <CommunityCommentCard

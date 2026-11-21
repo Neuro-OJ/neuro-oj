@@ -167,7 +167,7 @@ useSeoMeta({ title: '提交' });
     </LibraryPageHeader>
 
     <!-- 筛选工具栏 -->
-    <div class="flex flex-wrap items-end gap-4 rounded-lg border border-border bg-bg-panel p-4">
+    <div class="flex flex-wrap items-end gap-4 noj-panel border border-border bg-bg-panel p-4">
       <!-- 提交者筛选 -->
       <div class="flex min-w-0 flex-1 flex-wrap items-end gap-2">
         <div class="min-w-40 flex-1">

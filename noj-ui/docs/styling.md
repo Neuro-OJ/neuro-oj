@@ -43,7 +43,7 @@
 
 | 配置项   | 值                                                               |
 | -------- | ---------------------------------------------------------------- |
-| 圆角     | `sm: 2px` / `DEFAULT: 4px` / `md: 6px` / `lg: 10px` / `xl: 14px` |
+| 圆角     | `sm: 2px` / `DEFAULT: 4px` / `md: 6px`；`lg` / `xl` / `2xl` / `3xl` 为 6px 别名（必须保留） |
 | 过渡时长 | `fast: 150ms` / `DEFAULT: 200ms` / `slow: 300ms`                 |
 | 排版插件 | `prose-neuro` 类（自定义代码块 / 表格 / 引用样式）               |
 | 字体栈   | `SF Mono → Fira Code → Consolas → monospace`（不指定中文字体）   |
@@ -57,7 +57,9 @@
 | 深邃科技海军蓝 | `#0b0f19` | `#131b2e` | 暗色底 / 暗色面板；正文另有 Slate 900 `#0f172a` |
 | 评测信号绿     | `#059669` | `#00e07a` | 评测状态、提交通过、运行就绪、动作              |
 
-- 圆角 2–6 px（默认 4 px），数值文本用 `tabular-nums`。
+- 圆角 2–6 px（默认 4 px）：卡片外壳用 `noj-panel`（4 px + 1 px 边框），
+  其余圆角块用 `rounded-md`（6 px），头像 / 状态点 / 数字角标才用 `rounded-full`；
+  数值文本用 `tabular-nums`。
 - 改品牌 token
   必须同步：`noj-ui/app.vue`、`noj-ui/assets/css/main.css`、`noj-docs` 主题，
   以及 `dev-docs/design/noj-design-tokens.md`。

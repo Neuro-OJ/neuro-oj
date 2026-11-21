@@ -3,7 +3,7 @@
   "generated_by": "scripts/check-ui-guards.ts --write-baseline",
   "scopes": {
     "s1": {
-      "radius": 176,
+      "radius": 0,
       "palette": 145,
       "motion": 0,
       "entrance": 0,
@@ -12,7 +12,7 @@
       "type": 68
     },
     "public": {
-      "radius": 190,
+      "radius": 15,
       "palette": 164,
       "motion": 0,
       "entrance": 0,
@@ -21,7 +21,7 @@
       "type": 80
     },
     "all": {
-      "radius": 231,
+      "radius": 55,
       "palette": 300,
       "motion": 5,
       "entrance": 0,

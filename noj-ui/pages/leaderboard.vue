@@ -56,7 +56,7 @@ function setCheckinMonth(month: string) {
   <div class="px-4 py-5 sm:px-7 sm:py-8 max-w-[960px] mx-auto">
     <div class="flex items-center justify-between mb-6">
       <div class="flex items-center gap-3">
-        <div class="flex size-10 items-center justify-center rounded-lg bg-primary-bg text-primary border border-primary/20 shadow-xs">
+        <div class="flex size-10 items-center justify-center rounded-md bg-primary-bg text-primary border border-primary/20 shadow-xs">
           <UIcon name="i-lucide-trophy" class="size-5" />
         </div>
         <div>
@@ -95,7 +95,7 @@ function setCheckinMonth(month: string) {
       </template>
 
       <!-- 榜单表格 -->
-      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
+      <div class="bg-white border border-border noj-panel shadow-card overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
             <tr>

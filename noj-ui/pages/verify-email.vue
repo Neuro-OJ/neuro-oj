@@ -44,7 +44,7 @@ async function resendEmail() {
 </script>
 
 <template>
-  <div class="w-full max-w-md rounded-lg border border-border bg-white p-8 text-center">
+  <div class="w-full max-w-md noj-panel border border-border bg-white p-8 text-center">
     <UIcon name="i-lucide-mail-check" class="mx-auto mb-4 size-12 text-primary" />
     <h1 class="text-xl font-bold">{{ t('verify.title') }}</h1>
     <p v-if="state === 'waiting' && deliveryFailed" class="mt-3 text-warning-text">{{ t('verify.deliveryFailed') }}</p>

@@ -18,7 +18,7 @@ function nodeTo(nodeId: string): string | null {
 </script>
 
 <template>
-  <div v-if="classified && view" class="space-y-1.5 rounded-lg border border-border bg-bg-sunken px-3 py-2">
+  <div v-if="classified && view" class="space-y-1.5 rounded-md border border-border bg-bg-sunken px-3 py-2">
     <div class="flex flex-wrap items-center gap-1.5">
       <span class="text-[11px] font-semibold tracking-wider text-text-muted">知识点</span>
       <template v-if="view.primary">

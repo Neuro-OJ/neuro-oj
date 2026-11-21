@@ -88,12 +88,17 @@
   --color-error-300: #fda4af;
   --color-error-600: #e11d48;
 
-  /* 圆角：近直角 2–6px */
-  --radius: 4px;
+  /* 圆角：近直角 2–6px，只允许 2 / 4 / 6。
+   * lg/xl/2xl/3xl 是**别名**，不得删除：Tailwind v4 删掉它们不会禁用类名，
+   * 只会回落到 Nuxt UI 的默认档（8 / 12 / 16 / 24px），Nuxt UI 内部仍在用，
+   * 删了会静默变样且无从察觉。 */
   --radius-sm: 2px;
+  --radius: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --radius-2xl: 6px;
+  --radius-3xl: 6px;
 
   /* 阴影：card / dropdown / modal */
   --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
@@ -163,6 +168,15 @@
   border: 1px solid rgba(194, 65, 12, 0.35);
   color: #9a3412;
   box-shadow: 0 1px 3px rgba(194, 65, 12, 0.1);
+}
+
+/* ---- 面板容器（卡片外壳）：面板底 + 1px 边框 + 4px 圆角。
+ * 取代此前的 `rounded-lg border border-border bg-white` 三件套，
+ * 让"这是卡片"由语义类表达，圆角与描边只在这里定义一次。 */
+@utility noj-panel {
+  background-color: var(--c-bg-panel);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius);
 }
 
 /* ---- 独立卡片专用立体感（白色专用面板底，彻底与浅蓝页面底分离） ---- */

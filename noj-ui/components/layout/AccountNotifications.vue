@@ -60,7 +60,7 @@ useSeoMeta({ title: '通知' });
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无通知" @retry="reload()">
       <div class="flex flex-col gap-3">
         <button v-for="item in data?.data" :key="item.notification.id" type="button" :disabled="!!opening"
-          class="flex w-full items-start gap-3 rounded-lg border border-border bg-bg-panel p-4 text-left transition-colors hover:border-primary hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary"
+          class="flex w-full items-start gap-3 rounded-md border border-border bg-bg-panel p-4 text-left transition-colors hover:border-primary hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary"
           :class="!item.notification.read_at && 'border-primary/40'" @click="open(item)">
           <UIcon :name="notificationTypeIcon(item.notification.type)" class="mt-1 size-5 shrink-0 text-primary" />
           <span class="min-w-0 flex-1">

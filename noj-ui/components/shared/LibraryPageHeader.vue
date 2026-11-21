@@ -5,7 +5,7 @@ defineProps<{ title: string; description?: string; icon: string; count?: string 
 <template>
   <header class="flex flex-wrap items-center justify-between gap-4">
     <div class="flex min-w-0 items-center gap-3">
-      <div class="flex size-10 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary-bg text-primary">
+      <div class="flex size-10 shrink-0 items-center justify-center rounded-md border border-primary/20 bg-primary-bg text-primary">
         <UIcon :name="icon" class="size-5" />
       </div>
       <div class="min-w-0">

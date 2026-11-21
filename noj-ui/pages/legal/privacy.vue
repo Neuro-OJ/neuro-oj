@@ -48,7 +48,7 @@ useSeoMeta({ title: "隐私政策" });
       运营者尚未发布隐私政策。请通过本部署已公布的渠道联系管理员。
     </p>
 
-    <section class="rounded-lg border border-border p-4 text-sm space-y-2">
+    <section class="rounded-md border border-border p-4 text-sm space-y-2">
       <h2 class="font-semibold">个人信息处理者</h2>
       <p v-if="operator.operator_name" class="text-text-secondary">
         处理者：{{ operator.operator_name }}

@@ -43,7 +43,7 @@ function copyStatement() {
 </script>
 
 <template>
-  <section :id="anchor" class="scroll-mt-20 rounded-xl border border-border bg-white">
+  <section :id="anchor" class="scroll-mt-20 noj-panel border border-border bg-white">
     <div class="flex flex-wrap items-center gap-2 border-b border-border px-6 py-3 lg:px-7">
       <h2 class="text-sm font-semibold text-text">{{ title }}</h2>
       <div class="ml-auto flex flex-wrap items-center gap-2">
@@ -51,7 +51,7 @@ function copyStatement() {
         <button
           v-if="copyable"
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
           @click="copyStatement"
         >
           <UIcon name="i-lucide-copy" class="size-3.5" />
@@ -60,7 +60,7 @@ function copyStatement() {
         <button
           v-if="collapsible && expanded"
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
           :aria-expanded="expanded"
           @click="expanded = false"
         >
@@ -70,7 +70,7 @@ function copyStatement() {
         <NuxtLink
           v-if="editTo"
           :to="editTo"
-          class="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-text-secondary no-underline transition-colors hover:border-primary/40 hover:text-primary"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary no-underline transition-colors hover:border-primary/40 hover:text-primary"
         >
           <UIcon name="i-lucide-pencil" class="size-3.5" />
           编辑

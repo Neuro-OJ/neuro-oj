@@ -29,7 +29,7 @@ defineExpose({ refresh });
 </script>
 
 <template>
-  <section class="rounded-xl border border-border bg-bg-panel p-5">
+  <section class="noj-panel border border-border bg-bg-panel p-5">
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-sm font-semibold text-text">{{ title ?? '我的提交' }}</h2>
       <NuxtLink v-if="user" :to="historyTo" class="text-xs text-primary no-underline hover:underline">全部提交</NuxtLink>

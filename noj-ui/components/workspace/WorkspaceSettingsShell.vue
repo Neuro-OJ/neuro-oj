@@ -65,7 +65,7 @@ function select(value: string) {
         <nav
           v-if="entries.length"
           aria-label="域设置"
-          class="sticky top-20 rounded-lg border border-border bg-white p-3 space-y-4 shadow-card"
+          class="sticky top-20 noj-panel border border-border bg-white p-3 space-y-4 shadow-card"
         >
           <div v-for="grp in groupedEntries" :key="grp.group" class="space-y-1.5">
             <div class="px-2.5 text-xs font-bold text-text-muted uppercase tracking-wider">
@@ -90,7 +90,7 @@ function select(value: string) {
         </nav>
         <div
           v-else-if="status === 'pending' || status === 'idle'"
-          class="sticky top-20 rounded-lg border border-border bg-white p-3 space-y-2 animate-pulse shadow-card"
+          class="sticky top-20 noj-panel border border-border bg-white p-3 space-y-2 animate-pulse shadow-card"
           aria-hidden="true"
         >
           <div v-for="i in 6" :key="i" class="h-8 rounded bg-bg-sunken" />

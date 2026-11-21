@@ -282,8 +282,8 @@ useSeoMeta({ title: '班级研练中心' });
     <div v-show="currentView === 'teaching'" class="space-y-6">
       <!-- 指标大盘卡片行 -->
       <div class="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
-          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary sm:size-10">
+        <div class="flex items-start gap-3 noj-panel border border-border bg-bg-panel p-3 sm:p-4">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-bg text-primary sm:size-10">
             <UIcon name="i-lucide-clipboard-check" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
@@ -295,9 +295,9 @@ useSeoMeta({ title: '班级研练中心' });
           </div>
         </div>
 
-        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+        <div class="flex items-start gap-3 noj-panel border border-border bg-bg-panel p-3 sm:p-4">
           <div
-            class="flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10"
+            class="flex size-9 shrink-0 items-center justify-center rounded-md sm:size-10"
             :class="teachingAttentionCount > 0 ? 'bg-warning-bg text-warning' : 'bg-bg-sunken text-text-secondary'"
           >
             <UIcon name="i-lucide-alert-circle" class="size-4 sm:size-[18px]" />
@@ -311,9 +311,9 @@ useSeoMeta({ title: '班级研练中心' });
           </div>
         </div>
 
-        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+        <div class="flex items-start gap-3 noj-panel border border-border bg-bg-panel p-3 sm:p-4">
           <div
-            class="flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10"
+            class="flex size-9 shrink-0 items-center justify-center rounded-md sm:size-10"
             :class="teachingPendingHelp.length > 0 ? 'bg-warning-bg text-warning' : 'bg-bg-sunken text-text-secondary'"
           >
             <UIcon name="i-lucide-message-circle-question" class="size-4 sm:size-[18px]" />
@@ -329,8 +329,8 @@ useSeoMeta({ title: '班级研练中心' });
           </div>
         </div>
 
-        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
-          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-bg-sunken text-text-secondary sm:size-10">
+        <div class="flex items-start gap-3 noj-panel border border-border bg-bg-panel p-3 sm:p-4">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-bg-sunken text-text-secondary sm:size-10">
             <UIcon name="i-lucide-school" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
@@ -348,7 +348,7 @@ useSeoMeta({ title: '班级研练中心' });
       <!-- 紧急待办与求助卡片 (如有未答复求助时突出展示) -->
       <div
         v-if="teachingPendingHelp.length > 0"
-        class="rounded-lg border border-warning/30 bg-warning-bg/40 p-4 space-y-3"
+        class="rounded-md border border-warning/30 bg-warning-bg/40 p-4 space-y-3"
       >
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2 text-warning font-semibold text-sm">
@@ -376,7 +376,7 @@ useSeoMeta({ title: '班级研练中心' });
         </div>
       </div>
 
-      <section class="rounded-lg border border-border bg-bg-panel">
+      <section class="noj-panel border border-border bg-bg-panel">
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-layers" class="size-5 text-primary" />
@@ -407,7 +407,7 @@ useSeoMeta({ title: '班级研练中心' });
           <div
             v-for="task in visibleTeachingTasks"
             :key="task.id"
-            class="group flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
+            class="group flex flex-col justify-between noj-panel border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
           >
             <div class="space-y-3">
               <!-- 班级来源与状态徽章 -->
@@ -450,7 +450,7 @@ useSeoMeta({ title: '班级研练中心' });
 
               <!-- 评测状态或学情诊断 -->
               <UAlert v-if="task.summary.updating" color="info" title="成绩正在评测更新中..." />
-              <div v-else class="rounded-lg bg-bg-sunken p-3 text-xs tabular-nums space-y-1 border border-border/40">
+              <div v-else class="rounded-md bg-bg-sunken p-3 text-xs tabular-nums space-y-1 border border-border/40">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <span v-if="task.summary.total_students != null" class="text-text-secondary">
                     目标学生：<strong class="text-text">{{ task.summary.total_students }}</strong> 人
@@ -518,8 +518,8 @@ useSeoMeta({ title: '班级研练中心' });
     <div v-show="currentView === 'learning'" class="space-y-6">
       <!-- 个人学习指标卡 -->
       <div class="grid grid-cols-2 gap-3 sm:gap-4">
-        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
-          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary sm:size-10">
+        <div class="flex items-start gap-3 noj-panel border border-border bg-bg-panel p-3 sm:p-4">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary-bg text-primary sm:size-10">
             <UIcon name="i-lucide-book-open" class="size-4 sm:size-[18px]" />
           </div>
           <div class="min-w-0">
@@ -529,9 +529,9 @@ useSeoMeta({ title: '班级研练中心' });
           </div>
         </div>
 
-        <div class="flex items-start gap-3 rounded-lg border border-border bg-bg-panel p-3 sm:p-4">
+        <div class="flex items-start gap-3 noj-panel border border-border bg-bg-panel p-3 sm:p-4">
           <div
-            class="flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10"
+            class="flex size-9 shrink-0 items-center justify-center rounded-md sm:size-10"
             :class="learningOpenHelpCount > 0 ? 'bg-warning-bg text-warning' : 'bg-bg-sunken text-text-secondary'"
           >
             <UIcon name="i-lucide-message-circle-question" class="size-4 sm:size-[18px]" />
@@ -549,7 +549,7 @@ useSeoMeta({ title: '班级研练中心' });
       </div>
 
       <!-- 学生作业卡片网格 -->
-      <section class="rounded-lg border border-border bg-bg-panel">
+      <section class="noj-panel border border-border bg-bg-panel">
         <header class="flex flex-wrap items-center gap-2 border-b border-border px-5 py-4">
           <UIcon name="i-lucide-book-open" class="size-5 text-primary" />
           <h2 class="font-semibold text-text text-base">我的作业任务</h2>
@@ -568,7 +568,7 @@ useSeoMeta({ title: '班级研练中心' });
           <div
             v-for="task in visibleLearningTasks"
             :key="task.id"
-            class="group flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
+            class="group flex flex-col justify-between noj-panel border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
           >
             <div class="space-y-3">
               <div class="flex items-start justify-between gap-2">
@@ -607,7 +607,7 @@ useSeoMeta({ title: '班级研练中心' });
               </div>
 
               <!-- 个人达标进度条 -->
-              <div class="rounded-lg bg-bg-sunken p-3 text-xs tabular-nums space-y-1.5 border border-border/40">
+              <div class="rounded-md bg-bg-sunken p-3 text-xs tabular-nums space-y-1.5 border border-border/40">
                 <div class="flex items-center justify-between font-medium">
                   <span class="text-text-secondary">个人达标进度</span>
                   <span class="text-text">
@@ -661,7 +661,7 @@ useSeoMeta({ title: '班级研练中心' });
       <ClassroomContests :slug="slug!" />
 
       <!-- 求助回复信箱卡片 -->
-      <div v-if="(learningData?.data.help_requests?.length ?? 0) > 0" class="rounded-lg border border-border bg-bg-panel p-4 space-y-3">
+      <div v-if="(learningData?.data.help_requests?.length ?? 0) > 0" class="noj-panel border border-border bg-bg-panel p-4 space-y-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-message-circle-question" class="size-5 text-primary" />
           <h3 class="font-semibold text-text text-sm">我的求助与教练回复</h3>
@@ -695,7 +695,7 @@ useSeoMeta({ title: '班级研练中心' });
     <!-- 视角 3: 班级大厅列表 (Rooms View) -->
     <div v-show="currentView === 'rooms'" class="space-y-4">
       <!-- 搜索与阶段过滤 -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 noj-panel border border-border bg-bg-panel p-4">
         <div class="flex flex-wrap items-center gap-2">
           <UInput
             v-model="roomSearch"
@@ -730,12 +730,12 @@ useSeoMeta({ title: '班级研练中心' });
           <div
             v-for="room in filteredRooms"
             :key="room.id"
-            class="flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
+            class="flex flex-col justify-between noj-panel border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
           >
             <div>
               <div class="flex items-start justify-between gap-3">
                 <div class="flex min-w-0 items-center gap-3">
-                  <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-bg text-primary">
+                  <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary-bg text-primary">
                     <UIcon name="i-lucide-school" class="size-5" />
                   </div>
                   <div class="min-w-0">
@@ -788,7 +788,7 @@ useSeoMeta({ title: '班级研练中心' });
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
+          <div class="flex flex-col items-center justify-center rounded-md border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
             <div class="flex size-12 items-center justify-center rounded-full bg-primary-bg text-primary mb-3">
               <UIcon name="i-lucide-graduation-cap" class="size-6" />
             </div>

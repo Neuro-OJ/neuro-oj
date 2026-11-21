@@ -25,7 +25,7 @@ const showCompact = computed(() =>
 </script>
 
 <template>
-  <section v-if="showCompact" class="rounded-lg border border-border bg-bg-panel px-5 py-3">
+  <section v-if="showCompact" class="noj-panel border border-border bg-bg-panel px-5 py-3">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2 text-sm text-text-secondary">
         <UIcon :name="error ? 'i-lucide-alert-circle' : 'i-lucide-trophy'" class="size-4 text-text-muted" />
@@ -46,7 +46,7 @@ const showCompact = computed(() =>
       </div>
     </div>
   </section>
-  <section v-else class="rounded-lg border border-border bg-bg-panel">
+  <section v-else class="noj-panel border border-border bg-bg-panel">
     <div class="border-b border-border px-5 py-4">
       <div class="flex items-center gap-2">
         <UIcon name="i-lucide-trophy" class="size-5 text-primary" />

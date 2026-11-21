@@ -2,7 +2,7 @@
     <div class="w-full max-w-[380px] relative">
         <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
 
-        <div class="bg-white border border-border rounded-lg p-8">
+        <div class="bg-white border border-border noj-panel p-8">
             <h1 class="text-22px font-bold text-center mb-6 text-text">重置密码</h1>
 
             <form @submit.prevent="handleSubmit">

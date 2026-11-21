@@ -31,7 +31,7 @@ const subtasks = computed(() =>
     <UAlert v-if="!visible" color="info" title="提交已受理，比赛规定的结果暂未公开" />
     <div
       v-else
-      class="rounded-lg border p-5 shadow-card transition-colors"
+      class="rounded-md border p-5 shadow-card transition-colors"
       :class="summary.tone === 'success' ? 'border-signal/30 bg-signal/5' : summary.tone === 'error' ? 'border-error-text/30 bg-error-text/5' : 'border-border bg-bg-panel'"
     >
       <div class="flex flex-wrap items-center justify-between gap-4">

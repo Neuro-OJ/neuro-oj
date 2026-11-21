@@ -82,7 +82,7 @@ function statusIcon(status: string) {
 <template>
   <section
     v-if="cases.length"
-    class="overflow-hidden rounded-xl border border-border bg-white"
+    class="overflow-hidden noj-panel border border-border bg-white"
     aria-labelledby="submission-case-results-title"
   >
     <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-bg-page px-4 py-3">
@@ -173,7 +173,7 @@ function statusIcon(status: string) {
                       <p class="text-[11px] font-semibold text-text-muted">期望输出</p>
                       <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-copy" @click.stop="copyText(item.expectedOutput, '期望输出')">复制</UButton>
                     </div>
-                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.expectedOutput ?? '--' }}</pre>
+                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.expectedOutput ?? '--' }}</pre>
                   </div>
                   <!-- 实际输出 -->
                   <div class="min-w-0">
@@ -181,7 +181,7 @@ function statusIcon(status: string) {
                       <p class="text-[11px] font-semibold text-text-muted">实际输出</p>
                       <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-copy" @click.stop="copyText(item.actualOutput, '实际输出')">复制</UButton>
                     </div>
-                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.actualOutput ?? '--' }}</pre>
+                    <pre class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.actualOutput ?? '--' }}</pre>
                   </div>
                 </div>
               </td>

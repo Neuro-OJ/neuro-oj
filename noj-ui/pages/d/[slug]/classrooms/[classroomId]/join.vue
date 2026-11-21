@@ -98,7 +98,7 @@ useSeoMeta({ title: '申请加入班级' });
         </template>
 
         <div class="space-y-4">
-          <div v-if="state.data.value.data.request" class="rounded-lg bg-bg-sunken p-3.5 text-sm space-y-1">
+          <div v-if="state.data.value.data.request" class="rounded-md bg-bg-sunken p-3.5 text-sm space-y-1">
             <div class="flex items-center justify-between text-xs text-text-muted">
               <span>申请提交时间：{{ new Date(state.data.value.data.request.created_at).toLocaleString() }}</span>
             </div>

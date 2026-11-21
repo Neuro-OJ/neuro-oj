@@ -73,7 +73,7 @@ const isCurrentMonth = computed(() => props.month >= currentUtcMonth())
         <p>该月还没有人签到</p>
       </template>
 
-      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
+      <div class="bg-white border border-border noj-panel shadow-card overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
             <tr>

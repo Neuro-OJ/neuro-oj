@@ -66,7 +66,7 @@ function onDrop(e: DragEvent) {
   <div class="flex flex-col gap-1.5">
     <div
       data-testid="zip-drop-zone"
-      class="relative flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed rounded-lg transition-colors"
+      class="relative flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed rounded-md transition-colors"
       :class="[
         isDragOver
           ? 'border-signal bg-primary-bg cursor-pointer'

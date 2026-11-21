@@ -8,7 +8,7 @@
                 </div>
                 <template v-if="!showText">
                     <button
-                        class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold transition-colors duration-[600ms] cursor-pointer"
+                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-semibold transition-colors duration-[600ms] cursor-pointer"
                         :class="checkedIn
                             ? (fadeWhite ? 'bg-white text-green-700 border border-white' : 'bg-green-50 text-green-700 border border-green-200')
                             : 'bg-signal text-on-signal border border-signal hover:bg-signal/80 hover:border-signal/80'"
@@ -54,7 +54,7 @@
             </div>
             <NuxtLink
                 to="/login"
-                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-signal text-on-signal border border-signal no-underline transition-colors duration-200 hover:bg-signal/80 hover:border-signal/80"
+                class="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold bg-signal text-on-signal border border-signal no-underline transition-colors duration-200 hover:bg-signal/80 hover:border-signal/80"
             >
                 <UIcon name="i-lucide-log-in" class="size-4" />
                 登录

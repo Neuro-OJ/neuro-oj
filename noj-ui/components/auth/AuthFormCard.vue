@@ -9,7 +9,7 @@
     <!-- Info banner slot (e.g. banned account message) -->
     <slot name="banner-info" />
 
-    <div class="bg-white border border-border rounded-lg p-8">
+    <div class="bg-white border border-border noj-panel p-8">
       <h1 class="text-22px font-bold text-center mb-3 text-text">{{ title }}</h1>
       <p v-if="subtitle" class="text-center text-sm text-text-secondary mb-6">{{ subtitle }}</p>
 

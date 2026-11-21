@@ -65,7 +65,7 @@ useSeoMeta({ title: '题单' });
         </div>
       </div>
     </details>
-    <form class="flex gap-3 rounded-lg border border-border bg-bg-panel p-4" @submit.prevent="search">
+    <form class="flex gap-3 noj-panel border border-border bg-bg-panel p-4" @submit.prevent="search">
       <UInput v-model="entered" icon="i-lucide-search" placeholder="搜索题单名称" aria-label="搜索题单名称" class="min-w-0 grow" />
       <UButton type="submit" variant="outline">搜索</UButton>
     </form>
@@ -73,7 +73,7 @@ useSeoMeta({ title: '题单' });
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
       <div class="grid gap-4 sm:grid-cols-2">
         <NuxtLink v-for="item in data?.items" :key="item.id" :to="workspacePath(slug!, `trainings/${item.id}`)"
-          class="group flex min-h-44 min-w-0 flex-col rounded-xl border border-border bg-bg-panel p-5 text-text no-underline transition-colors hover:border-primary/40">
+          class="group flex min-h-44 min-w-0 flex-col noj-panel border border-border bg-bg-panel p-5 text-text no-underline transition-colors hover:border-primary/40">
           <h2 class="line-clamp-2 text-lg font-bold group-hover:text-primary">{{ item.title }}</h2>
           <p class="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{{ item.description || '暂无简介' }}</p>
           <div class="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-text-secondary">

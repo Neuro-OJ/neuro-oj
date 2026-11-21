@@ -289,7 +289,7 @@ async function save() {
             color="error"
             :title="extractApiError(roster.error.value).message"
           />
-          <div class="rounded-lg border border-border bg-bg-sunken/40 p-3 max-h-60 overflow-auto">
+          <div class="rounded-md border border-border bg-bg-sunken/40 p-3 max-h-60 overflow-auto">
             <div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
               <div
                 v-for="student in students"
@@ -336,7 +336,7 @@ async function save() {
 
         <!-- 题单整单模式 -->
         <template v-if="mode === 'training'">
-          <div class="rounded-lg border border-border bg-bg-sunken/30 p-4 space-y-3">
+          <div class="rounded-md border border-border bg-bg-sunken/30 p-4 space-y-3">
             <div class="flex flex-wrap gap-2">
               <UInput
                 v-model="trainingLink"
@@ -417,7 +417,7 @@ async function save() {
           />
 
           <!-- 可选题目预览列表 -->
-          <div class="rounded-lg border border-border bg-white max-h-56 overflow-auto divide-y divide-border">
+          <div class="rounded-md border border-border bg-white max-h-56 overflow-auto divide-y divide-border">
             <div
               v-for="problem in problems.data.value?.items"
               :key="problem.binding_id"
@@ -466,7 +466,7 @@ async function save() {
             <div
               v-for="(item, localIndex) in visibleSelected"
               :key="item.binding_id"
-              class="flex flex-wrap items-center gap-3 rounded-lg border border-border px-3.5 py-3"
+              class="flex flex-wrap items-center gap-3 rounded-md border border-border px-3.5 py-3"
             >
               <span class="w-6 text-xs text-text-muted tabular-nums font-mono">{{ (selectedPage - 1) * 20 + localIndex + 1 }}.</span>
               <div class="min-w-0 flex-1"><p class="break-words text-sm font-medium">{{ titleByReference[item.reference] ?? `题目 ${item.reference}` }}</p><p class="mt-1 font-mono text-xs text-text-secondary">{{ item.reference }}</p></div>
@@ -524,7 +524,7 @@ async function save() {
             </div>
 
             <nav v-if="items.length > 20" class="flex items-center justify-between gap-3 py-3" aria-label="已选题目分页"><UButton type="button" variant="outline" :disabled="selectedPage <= 1" @click="selectedPage--">上一页</UButton><span class="text-sm tabular-nums">{{ selectedPage }} / {{ Math.ceil(items.length / 20) }}</span><UButton type="button" variant="outline" :disabled="selectedPage * 20 >= items.length" @click="selectedPage++">下一页</UButton></nav>
-            <div v-if="!items.length" class="rounded-lg border border-dashed border-border py-6 text-center text-xs text-text-muted">
+            <div v-if="!items.length" class="rounded-md border border-dashed border-border py-6 text-center text-xs text-text-muted">
               请从上方搜索题库或按题号添加到本作业
             </div>
           </div>

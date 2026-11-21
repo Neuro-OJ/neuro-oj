@@ -48,7 +48,7 @@ useSeoMeta({ title: '班级学生训练目录' });
     <UAlert v-if="room.error.value" color="error" :title="extractApiError(room.error.value).message" />
     <UAlert v-if="room.data.value && !allowed" color="info" title="当前账号未被授予本班学情或提交记录的读取权限" />
 
-    <section v-if="allowed" aria-label="学生训练名单" class="overflow-hidden rounded-lg border border-border bg-bg-panel">
+    <section v-if="allowed" aria-label="学生训练名单" class="overflow-hidden noj-panel border border-border bg-bg-panel">
       <div class="flex flex-wrap items-end gap-3 border-b border-border p-4 sm:gap-4 sm:px-5">
         <AdminFormField label="学生用户名" class="w-full sm:w-80">
           <UInput v-model="search" placeholder="输入用户名搜索" icon="i-lucide-search" aria-label="学生用户名" class="w-full" />

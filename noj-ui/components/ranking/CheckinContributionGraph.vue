@@ -77,7 +77,7 @@ function onLeave() {
           <template v-for="(cell, ci) in week.cells" :key="ci">
             <div
               v-if="cell"
-              class="m-[1px] h-3.5 w-3.5 rounded-[3px] outline-none focus-visible:ring-2 focus-visible:ring-signal"
+              class="m-[1px] h-3.5 w-3.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-signal"
               :class="cell.checked
                 ? 'bg-signal'
                 : cell.isToday

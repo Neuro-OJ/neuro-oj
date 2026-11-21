@@ -29,7 +29,7 @@ const to = computed(() => (next.value ? ladderItemPath(next.value) : null));
   <section
     v-if="to && next"
     aria-labelledby="knowledge-next-heading"
-    class="rounded-xl border border-border bg-white p-5"
+    class="noj-panel border border-border bg-white p-5"
   >
     <h2 id="knowledge-next-heading" class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-text">
       <UIcon name="i-lucide-arrow-up-right" class="size-4 text-primary" aria-hidden="true" />

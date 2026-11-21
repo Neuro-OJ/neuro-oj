@@ -79,7 +79,7 @@ useSeoMeta({ title: '题库' });
       @reset="router.push({query:{}})" />
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : rows.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无符合条件的题目" @retry="refresh()">
-      <div class="overflow-x-auto rounded-lg border border-border bg-bg-panel shadow-card">
+      <div class="overflow-x-auto noj-panel border border-border bg-bg-panel shadow-card">
         <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap px-3 py-3 text-xs',td:'px-3 py-3 text-sm'}">
           <template #reference-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"

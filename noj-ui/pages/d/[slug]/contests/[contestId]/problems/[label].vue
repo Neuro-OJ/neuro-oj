@@ -240,7 +240,7 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
         </div>
 
         <aside class="min-w-0 space-y-5 lg:col-span-4">
-          <section class="rounded-xl border border-border bg-bg-panel p-5">
+          <section class="noj-panel border border-border bg-bg-panel p-5">
             <h2 class="mb-3 text-sm font-semibold text-text">本场信息</h2>
             <dl class="space-y-2.5 text-sm">
               <div class="flex items-center justify-between gap-3">
@@ -280,7 +280,7 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
             </dl>
           </section>
 
-          <section class="rounded-xl border border-border bg-bg-panel p-5">
+          <section class="noj-panel border border-border bg-bg-panel p-5">
             <h2 class="mb-2 text-sm font-semibold text-text">成绩与判定</h2>
             <p class="text-xs leading-5 text-text-secondary">{{ scoreboardHint }}</p>
             <p class="mt-2 text-xs leading-5 text-text-muted">

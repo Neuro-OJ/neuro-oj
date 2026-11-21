@@ -34,7 +34,7 @@ const acceptanceText = computed(() => {
 </script>
 
 <template>
-  <section class="rounded-xl border border-border bg-white p-5">
+  <section class="noj-panel border border-border bg-white p-5">
     <h2 class="mb-3 text-sm font-semibold text-text">题目信息</h2>
     <dl class="space-y-2.5 text-sm">
       <div v-if="problemJudgeTypeLabel(problem)" class="flex items-center justify-between gap-3">

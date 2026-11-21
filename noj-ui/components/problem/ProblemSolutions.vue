@@ -41,7 +41,7 @@ const waitingForAccepted = computed(() => {
 </script>
 
 <template>
-  <section id="solutions" class="scroll-mt-24 rounded-xl border border-border bg-bg-panel p-5 sm:p-6">
+  <section id="solutions" class="scroll-mt-24 noj-panel border border-border bg-bg-panel p-5 sm:p-6">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div>
         <h2 class="text-base font-semibold text-text">题解</h2>

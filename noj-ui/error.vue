@@ -21,7 +21,7 @@ function goHome() {
 
 <template>
   <div class="flex min-h-screen items-center justify-center bg-bg-page px-4">
-    <div class="w-full max-w-md rounded-2xl border border-border bg-white p-8 text-center shadow-card">
+    <div class="w-full max-w-md noj-panel border border-border bg-white p-8 text-center shadow-card">
       <p class="text-6xl font-bold text-primary">{{ statusCode }}</p>
       <h1 class="mt-4 text-xl font-semibold text-text">{{ message }}</h1>
       <p v-if="statusCode === 403 && error.data?.contests" class="mt-3 text-sm text-text-secondary">此题的所有版本受比赛保护。请报名，并在开赛后从比赛页面作答；比赛结束后恢复普通访问。</p>

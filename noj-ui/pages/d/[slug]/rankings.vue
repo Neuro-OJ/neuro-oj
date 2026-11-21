@@ -20,7 +20,7 @@ useSeoMeta({ title: '域排行榜' });
       全站解题榜与每月签到活跃榜见
       <NuxtLink to="/leaderboard" class="text-primary underline">全站榜单</NuxtLink>。
     </p>
-    <div v-if="mine.data.value?.data" class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg/30 px-5 py-3.5 shadow-xs">
+    <div v-if="mine.data.value?.data" class="flex flex-wrap items-center justify-between gap-4 rounded-md border border-primary/20 bg-primary-bg/30 px-5 py-3.5 shadow-xs">
       <div class="flex items-center gap-3">
         <UIcon name="i-lucide-award" class="size-5 text-primary" />
         <span class="text-sm font-medium text-text">我的当前排名</span>
@@ -36,7 +36,7 @@ useSeoMeta({ title: '域排行榜' });
     </div>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无排名数据" @retry="refresh()">
-      <div class="overflow-x-auto rounded-lg border border-border bg-bg-panel shadow-card">
+      <div class="overflow-x-auto noj-panel border border-border bg-bg-panel shadow-card">
         <table class="w-full text-sm" aria-label="域排行榜">
           <thead class="border-b border-border bg-bg-sunken/40 text-left text-xs font-semibold text-text-muted">
             <tr>

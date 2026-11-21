@@ -11,7 +11,7 @@
           role="dialog"
           aria-modal="true"
           aria-label="搜索"
-          class="w-full max-w-2xl bg-white rounded-lg shadow-modal overflow-hidden"
+          class="w-full max-w-2xl bg-white rounded-md shadow-modal overflow-hidden"
           @keydown="onKeydown"
         >
           <div class="flex items-center gap-3 px-4 h-14 border-b border-border">

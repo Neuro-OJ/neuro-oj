@@ -103,7 +103,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
         </LibraryPageHeader>
 
         <!-- 班级状态与学情统计栏 -->
-        <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4 text-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 noj-panel border border-border bg-bg-panel p-4 text-sm">
           <div class="flex flex-wrap items-center gap-2">
             <UBadge :color="room.data.value?.data.status === 'archived' ? 'neutral' : 'success'" variant="subtle" size="sm">
               {{ room.data.value?.data.status === 'archived' ? '已归档' : '正常教学' }}
@@ -148,7 +148,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
         empty-text="暂无可查看的作业"
         @retry="tasks.refresh()"
       >
-        <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+        <div class="divide-y divide-border noj-panel border border-border bg-bg-panel">
           <article
             v-for="task in tasks.data.value?.data"
             :key="task.id"
@@ -205,7 +205,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
+          <div class="flex flex-col items-center justify-center rounded-md border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
             <div class="flex size-12 items-center justify-center rounded-full bg-primary-bg text-primary mb-3">
               <UIcon name="i-lucide-clipboard-plus" class="size-6" />
             </div>

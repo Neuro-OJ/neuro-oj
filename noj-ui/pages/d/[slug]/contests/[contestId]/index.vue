@@ -219,7 +219,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
     :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
     <div v-if="contest" class="space-y-6">
       <!-- ── 赛事头部：状态 / 标题 / 赛程 / 主操作 ────────────────── -->
-      <header class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
+      <header class="overflow-hidden noj-panel border border-border bg-bg-panel shadow-card">
         <div class="border-b border-border px-5 py-4 sm:px-7 sm:py-5">
           <div class="flex flex-wrap items-center gap-2 text-xs">
             <span
@@ -306,7 +306,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
         <div class="min-w-0 space-y-5 lg:col-span-8">
           <!-- ── 报名 ──────────────────────────────────────────── -->
           <section id="contest-register" ref="registerSection"
-            class="scroll-mt-24 rounded-lg border border-border bg-bg-panel p-5 shadow-card sm:p-6">
+            class="scroll-mt-24 noj-panel border border-border bg-bg-panel p-5 shadow-card sm:p-6">
             <template v-if="registration?.kind === 'login'">
               <h2 class="text-base font-semibold text-text">报名参赛</h2>
               <p class="mt-2 text-sm leading-6 text-text-secondary">
@@ -385,7 +385,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
           </section>
 
           <!-- ── 赛题 ──────────────────────────────────────────── -->
-          <section class="rounded-lg border border-border bg-bg-panel shadow-card">
+          <section class="noj-panel border border-border bg-bg-panel shadow-card">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5 sm:px-6">
               <h2 class="text-sm font-semibold text-text">赛题</h2>
               <span class="text-xs tabular-nums text-text-muted">
@@ -460,7 +460,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
           </section>
 
           <!-- ── 比赛说明 ──────────────────────────────────────── -->
-          <section class="rounded-lg border border-border bg-bg-panel px-5 py-5 shadow-card sm:px-6">
+          <section class="noj-panel border border-border bg-bg-panel px-5 py-5 shadow-card sm:px-6">
             <h2 class="mb-3 text-sm font-semibold text-text">比赛说明</h2>
             <div v-if="contest.description.trim()" class="text-sm leading-7">
               <MarkdownRenderer :content="contest.description" />
@@ -469,7 +469,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
           </section>
 
           <!-- ── 公告 ──────────────────────────────────────────── -->
-          <section v-if="announcement.trim()" class="rounded-lg border border-info-text/25 bg-info-text/5 px-5 py-5 sm:px-6">
+          <section v-if="announcement.trim()" class="rounded-md border border-info-text/25 bg-info-text/5 px-5 py-5 sm:px-6">
             <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold text-info-text">
               <UIcon name="i-lucide-megaphone" class="size-4" />
               比赛公告
@@ -481,7 +481,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
 
           <!-- ── 竞赛答疑 ──────────────────────────────────────── -->
           <section id="clarifications" ref="clarificationsSection"
-            class="scroll-mt-24 rounded-lg border border-border bg-bg-panel px-5 py-5 shadow-card sm:px-6">
+            class="scroll-mt-24 noj-panel border border-border bg-bg-panel px-5 py-5 shadow-card sm:px-6">
             <ContestClarificationsPanel :slug="slug!" :contest="contest" :problems="problems.data.value?.data ?? []" />
           </section>
         </div>
@@ -489,7 +489,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
         <!-- ── 右侧事实栏 ──────────────────────────────────────── -->
         <!-- 右侧事实栏随阅读滚动停留：长赛题列表下仍能看到赛制与入口 -->
         <aside class="min-w-0 space-y-5 lg:sticky lg:top-20 lg:col-span-4">
-          <section class="rounded-lg border border-border bg-bg-panel p-5">
+          <section class="noj-panel border border-border bg-bg-panel p-5">
             <h2 class="mb-3 text-sm font-semibold text-text">赛制与规则</h2>
             <dl class="space-y-3 text-sm">
               <div>
@@ -534,7 +534,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
             </dl>
           </section>
 
-          <section class="rounded-lg border border-border bg-bg-panel p-5">
+          <section class="noj-panel border border-border bg-bg-panel p-5">
             <h2 class="mb-3 text-sm font-semibold text-text">前往</h2>
             <div class="flex flex-col gap-2">
               <UButton :to="`/d/${slug}/contests`" color="neutral" variant="outline" icon="i-lucide-list"

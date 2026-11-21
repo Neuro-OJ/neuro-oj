@@ -18,7 +18,7 @@ defineProps<{
   <div
     v-if="contests.length > 0"
     role="status"
-    class="mb-4 flex items-start gap-2 rounded-xl border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text"
+    class="mb-4 flex items-start gap-2 rounded-md border border-warning-border bg-warning-bg px-4 py-3 text-sm text-warning-text"
   >
     <UIcon name="i-lucide-shield-alert" class="mt-0.5 size-4 shrink-0" />
     <p class="min-w-0">

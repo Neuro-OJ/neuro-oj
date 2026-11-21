@@ -142,7 +142,7 @@ useSeoMeta({ title: '班级成员' });
     <!-- Tab 1: 班级花名册 -->
     <div v-show="activeTab === 'roster'" class="space-y-4">
       <!-- 搜索、筛选与统计栏 -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 noj-panel border border-border bg-bg-panel p-4">
         <div class="flex flex-wrap items-center gap-2">
           <UInput
             v-model="search"
@@ -175,7 +175,7 @@ useSeoMeta({ title: '班级成员' });
         :empty-text="search ? '未找到匹配的成员' : '暂无成员'"
         @retry="refresh()"
       >
-        <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+        <div class="divide-y divide-border noj-panel border border-border bg-bg-panel">
           <div
             v-for="member in filteredRoster"
             :key="member.id"
@@ -247,7 +247,7 @@ useSeoMeta({ title: '班级成员' });
       <!-- 班级公开申请链接面板 -->
       <div
         v-if="manage"
-        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg px-5 py-4"
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-md border border-primary/20 bg-primary-bg px-5 py-4"
       >
         <div class="space-y-1">
           <div class="flex items-center gap-2 font-medium text-text">

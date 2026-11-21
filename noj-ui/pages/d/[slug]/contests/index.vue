@@ -28,7 +28,7 @@ useSeoMeta({ title: '比赛' });
       :error="error?extractApiError(error).message:undefined" empty-text="暂无比赛" @retry="refresh()">
       <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <NuxtLink v-for="contest in data?.data" :key="contest.id" :to="`/d/${slug}/contests/${contest.id}`"
-          class="group flex min-h-60 flex-col rounded-lg border border-border bg-bg-panel p-5 text-text no-underline shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/50 hover:shadow-dropdown">
+          class="group flex min-h-60 flex-col noj-panel border border-border bg-bg-panel p-5 text-text no-underline shadow-card transition-[border-color,box-shadow] duration-150 hover:border-primary/50 hover:shadow-dropdown">
           <div class="flex flex-wrap items-start justify-between gap-2">
             <UBadge color="primary"
               variant="subtle">{{ DOMAIN_CONTEST_TYPES.find((type) => type.value === contest.type)?.label }}</UBadge>

@@ -121,11 +121,15 @@ NOJ 采用「Clean Cyber Azure (浅蓝科技调)」统一品牌视觉体系：
 
 ## 圆角与排版
 
-- 默认圆角：`--radius: 4px`；
-- 小圆角：`--radius-sm: 2px`；
-- 中圆角：`--radius-md: 6px`；
-- 大圆角：`--radius-lg: 10px`；
-- 特大圆角：`--radius-xl: 14px`；
+- 只允许三档：`--radius-sm: 2px`、`--radius: 4px`、`--radius-md: 6px`；
+- 语义分配：
+  - 卡片外壳 → `noj-panel`（`--radius` 4px，含面板底与 1px 边框）；
+  - 输入 / 按钮容器 / 标签 / 面板内元素 → `rounded-md`（6px）；
+  - 弹层（对话框、下拉、命令面板）→ `rounded-md`（6px）；
+  - `rounded-full` 仅限头像、状态点、数字角标。
+- `--radius-lg` / `--radius-xl` / `--radius-2xl` / `--radius-3xl` 是 **6px 别名**，
+  必须保留：Tailwind v4 删除它们不会禁用类名，只会回落到 Nuxt UI 的默认档
+  （8 / 12 / 16 / 24px），且 Nuxt UI 内部仍在用，删了会静默变样；
 - 数值文本（分数、耗时、排名、提交数）使用 `tabular-nums`。
 
 ## 对比度要求

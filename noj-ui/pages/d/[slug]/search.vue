@@ -48,7 +48,7 @@ useSeoMeta({ title: '域内搜索' });
     <AsyncContent v-else
       :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.items.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
-      <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel shadow-card overflow-hidden">
+      <div class="divide-y divide-border noj-panel border border-border bg-bg-panel shadow-card overflow-hidden">
         <div v-for="item in data?.data.items" :key="`${item.entity_type}:${item.entity_id}`" class="space-y-1.5 p-4 hover:bg-primary-hover-bg/30 transition-colors">
           <NuxtLink v-if="href(item)" :to="href(item)"
             class="font-medium text-text no-underline hover:text-primary transition-colors flex items-center justify-between">

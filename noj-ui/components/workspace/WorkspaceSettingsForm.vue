@@ -111,7 +111,7 @@ async function setStatus(status: WorkspaceDetail['status']) {
         </AdminFormField>
 
         <!-- 访问政策快捷概览 -->
-        <div class="rounded-lg border border-border bg-bg-sunken/40 p-4 text-xs space-y-2">
+        <div class="rounded-md border border-border bg-bg-sunken/40 p-4 text-xs space-y-2">
           <div class="flex items-center justify-between">
             <span class="font-semibold text-text flex items-center gap-1.5">
               <UIcon name="i-lucide-door-open" class="size-4 text-primary" />
@@ -133,7 +133,7 @@ async function setStatus(status: WorkspaceDetail['status']) {
         </div>
 
         <!-- 域类型信息 -->
-        <div class="rounded-lg border border-border bg-bg-sunken/40 p-4 text-xs space-y-1.5">
+        <div class="rounded-md border border-border bg-bg-sunken/40 p-4 text-xs space-y-1.5">
           <div class="flex items-center gap-2">
             <span class="font-semibold text-text">域类型：</span>
             <UBadge color="primary" variant="subtle" size="xs">
