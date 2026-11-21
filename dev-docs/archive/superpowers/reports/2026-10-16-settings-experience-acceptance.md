@@ -2,7 +2,7 @@
 
 日期：2026-10-16。前端由 Gemini 3.8 Flash High 编写，主 Agent 负责后端、集成、
 实际验收及 jj 签名提交。范围见
-[实施清单](../../plans/2026-10-16-settings-invitations-submissions-queue.md)。
+[实施清单](../plans/2026-10-16-settings-invitations-submissions-queue.md)。
 
 ## 实现结果
 

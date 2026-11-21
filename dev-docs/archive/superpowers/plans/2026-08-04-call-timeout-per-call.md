@@ -1229,7 +1229,7 @@ answer = runner.call("solve", 1, 2, timeout_ms=5000)   # 本次调用 5s 超时
 - **Solution**（用户代码 `solution.py`）：调用超时 `call_timeout_ms`（**题目级默认值**，出题人可在 `evaluate.py` 中用 `runner.call(..., timeout_ms=...)` 按调用覆盖）、`memory_limit_mb`
 ```
 
-并补充一句：调用级超时缺省时回退该默认值，防止用户代码死循环拖垮整场评测（见[评测模型](judge-model.md)）。
+并补充一句：调用级超时缺省时回退该默认值，防止用户代码死循环拖垮整场评测（见[评测模型](../../../../noj-docs/docs/mechanisms/judge-model.md)）。
 
 - [ ] **Step 4: noj-core 注释同步**
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Deno 2 + Hono + Drizzle（noj-core）、Rust + Tokio + bollard（noj-judge）、Nuxt 4（noj-ui）、Deno（noj-tests e2e）、Redis（限额预算）。
 
-**Spec:** [dev-docs/archive/superpowers/specs/2026-09-05-contest-anti-cheat-fix-design.md](../../specs/2026-09-05-contest-anti-cheat-fix-design.md)
+**Spec:** [dev-docs/archive/superpowers/specs/2026-09-05-contest-anti-cheat-fix-design.md](../specs/2026-09-05-contest-anti-cheat-fix-design.md)
 
 ## Global Constraints
 

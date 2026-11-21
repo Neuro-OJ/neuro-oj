@@ -62,7 +62,7 @@ cd noj-core && deno task test:parallel
 cd noj-core && deno task test:domain <domain>
 cd noj-tests && deno task test:domain <domain>
 cd noj-tests && deno task test:domain cross-domain
-cd noj-judge && cargo nextest run --all-targets   # Docker E2E 加 NOJ_RUN_E2E=1
+cd noj-judge && cargo nextest run --all-targets   # 不含 Docker E2E；见 noj-judge/docs/testing.md 的 --ignored 命令
 ```
 
 **迁移与记录**

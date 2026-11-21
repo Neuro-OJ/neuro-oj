@@ -26,7 +26,14 @@
 - 向 noj-judge 分发评测任务，并消费结果落库。
 - 队列：`noj:judge:queue:{high,medium,low}` 下发任务；`:processing` 由 sweeper
   超时重投；`noj:judge:results` 回流结果。
-- 顺序：**先写 DB，再推 MQ**；推送失败时 submission 标记 `error`。
+- 顺序：**先写 DB，再推 MQ**：提交、attempt 与可恢复的 `evaluation.dispatch`
+  任务同事务落库，提交后再推队列（见
+  [`dispatch-handlers.ts`](../src/modules/application/dispatch-handlers.ts)）。
+- Redis **暂时**不可用（`network` / `capacity`）时 submission 保持
+  `pending`：后台派发任务沿用同一 attempt / run identity 按退避重试（5
+  秒起、上限 5 分钟）；pending 恢复扫描也会补派。
+- 只有**永久**入队失败（消息超限、队列布局需升级、准入事实无法重建）才写
+  `DISPATCH_FAILED`，把 attempt 标成 `platform_error`。
 - 评测脚本（AI 题 dual 双容器）输出 `---RESULT---` + `{score, details}`。
 - 协议 v3 携带 `attempt_id` / `problem_version_id` / `run_id` / `result_kind`；
   `details.cases[].hidden` 必须为布尔，隐藏用例不得输出输入 / 期望 / 实际输出。

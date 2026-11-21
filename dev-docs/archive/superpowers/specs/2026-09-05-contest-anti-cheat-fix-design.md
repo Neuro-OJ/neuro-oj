@@ -1,7 +1,7 @@
 # 竞赛防作弊修复设计（2026-09-05 审计整改）
 
 > 日期：2026-09-05
-> 关联审计：[dev-docs/audit/2026-09-05-noj-cheating-audit/summary.md](../../audit/2026-09-05-noj-cheating-audit/summary.md)
+> 关联审计：[dev-docs/audit/2026-09-05-noj-cheating-audit/summary.md](../../../audit/2026-09-05-noj-cheating-audit/summary.md)
 > 状态：设计经 brainstorming 流程与需求方确认，待评审
 > Scope: noj-core / noj-judge / noj-ui / noj-tests / noj-docs
 

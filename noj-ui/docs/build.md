@@ -10,17 +10,22 @@ CDN）。手动改编辑器相关代码时，若资源缺失先跑 `deno task co
 
 ## 编译单二进制（`deno task compile`）
 
+`deno task compile` 等价于依次执行（先复制 Monaco 静态资源，再构建、编译）：
+
 ```bash
-# 等价于依次执行
-deno run -A npm:nuxt build                    # SSR + 客户端
+deno task copy-monaco
+deno run -A npm:nuxt build
 mkdir -p dist
 deno compile -A --no-check \
-  --unstable-byonm \                          # CJS npm 包解析
-  --unstable-node-globals \                   # 提供 process / Buffer 等全局
-  --include .output/public \                  # 嵌入客户端静态资源
-  --output dist/noj-ui \                      # 输出路径
-  .output/server/index.mjs                    # 入口
+  --unstable-byonm \
+  --unstable-node-globals \
+  --include .output/public \
+  --output dist/noj-ui \
+  .output/server/index.mjs
 ```
+
+续行的反斜线必须是**行尾最后一个字符**：写成 `--unstable-byonm \  # 注释` 会让
+Bash 提前结束命令，后面的标志被当成独立命令执行；注释只能放在命令块之外。
 
 运行产物：
 
@@ -33,9 +38,12 @@ cd dist && ./noj-ui      # 默认 http://localhost:3000
 - `--unstable-byonm`：Nitro 输出依赖大量 CJS npm 包（Vue 编译器、highlight.js
   等），Deno 默认 npm 解析处理不了它们的 `require()`；byonm 让 Deno 按原生
   `node_modules` 结构解析。
+- `--unstable-node-globals`：提供 `process` / `Buffer` 等 Node 全局（Nitro 产物
+  按 Node 语义运行）。
 - `--include .output/public`：`deno compile`
   只打包入口模块及其依赖，不含客户端静态资源； 漏了它启动后所有 `/_nuxt/*` 返回
   404。
+- `--output dist/noj-ui`：产物路径，与 `deno task compile` 一致。
 - `nitro.preset: "deno-server"`：Deno 部署预设，`deno compile` 必需。
 - `hooks.close`：`nuxt.config.ts` 的 `close: () => process.exit(0)`，防止 Nitro
   关闭时 Deno 进程 hang。

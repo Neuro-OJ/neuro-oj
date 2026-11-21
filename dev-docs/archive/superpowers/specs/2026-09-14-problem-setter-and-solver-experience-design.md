@@ -76,7 +76,7 @@ export async function filterProblemsInRunningContest(
 
 **设计取舍（有意为之）**：**不使用缓存、不引入调度任务**。时间窗口实时比较，
 竞赛开始/结束无需任何状态翻转动作。这样不新增进程内可变状态，不触碰
-[`domain-boundaries.md`](../../engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
+[`domain-boundaries.md`](../../../engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
 的多副本约束表。查询走 `contest_problems(contest_id, problem_id)` 主键与
 `contests` 主键，成本为索引点查。
 
@@ -194,7 +194,7 @@ listAntiCheatSimilarSubmissions(contestId: string, query?: {
 ### 5.6 缓存
 
 结果按 `problem_id` 缓存 **5 分钟**。该缓存为**进程内状态**，必须登记进
-[`domain-boundaries.md`](../../engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
+[`domain-boundaries.md`](../../../engineering/domain-boundaries.md#多副本约束2026-09-12-架构评审-26)
 的「多副本约束」表，标注"单副本专用"（与既有 `stats-cache.ts` 同口径）。
 
 ### 5.7 UI

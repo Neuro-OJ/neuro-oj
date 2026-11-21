@@ -29,4 +29,4 @@
 
 浏览器工具不可连接时不冒用历史截图；仓库现有浏览器测试的运行结果另行记录。
 
-详细结果见[集成验收记录](../../reports/2026-10-16-critique-integration-acceptance.md)。
+详细结果见[集成验收记录](../reports/2026-10-16-critique-integration-acceptance.md)。

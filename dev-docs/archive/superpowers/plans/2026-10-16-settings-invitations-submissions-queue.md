@@ -71,4 +71,4 @@ Agent 负责后端、接口、权限和验收。使用 jj 管理签名小提交�
   浏览器追加文档宽度断言并通过。现有全站保持浅色基线；本轮未增加全站主题切换。
 - 完整仓库级门禁通过。远程 CI 与 E2E 以本轮分支重新运行，不使用旧提交的结果。
   详细环境、证据和远程状态入口见
-  [验收报告](../../reports/2026-10-16-settings-experience-acceptance.md)。
+  [验收报告](../reports/2026-10-16-settings-experience-acceptance.md)。

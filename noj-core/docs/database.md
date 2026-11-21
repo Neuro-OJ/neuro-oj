@@ -63,8 +63,11 @@ ALTER TABLE submissions ALTER COLUMN effective_score SET NOT NULL;
 ## 5. 提交与评测状态
 
 - 提交状态机：`pending → [judging, error]`，`judging → [finished, error]` 为
-  终态。
+  终态；派发**暂时**失败时 `pending` 会保持，不直接进 `error`。
 - 评测尝试终态不可覆盖；重测新建 attempt（递增 `sequence`，旧行标记
   `superseded`）。
-- 评测写入先落库再推 MQ；推送失败时 submission 标记 `error`。
+- 评测写入先落库再推 MQ；可重试的入队失败（Redis 暂时不可用、队列已满）由后台
+  派发任务/恢复扫描沿用同一 attempt 退避重试，只有**永久**失败（消息超限、队列
+  布局需升级、准入事实无法重建）才标记 `error`（attempt 终态
+  `DISPATCH_FAILED`）。
 - `sequence` 只在源提交行锁内分配，任务封套与落库值必须一致。

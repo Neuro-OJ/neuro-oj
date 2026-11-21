@@ -9,7 +9,7 @@
 
 **Tech Stack:** Deno 2.9.7（noj-core / noj-ui / noj-cli / noj-llm-gateway / noj-tests）、Rust 1.99-nightly + Tokio + bollard（noj-judge）、PostgreSQL 16、Redis 7、MinIO、Docker Compose、jj（Jujutsu）+ GPG。
 
-**Spec:** [`dev-docs/archive/superpowers/specs/2026-09-28-contest-readiness-unattended-audit-design.md`](../../specs/2026-09-28-contest-readiness-unattended-audit-design.md)
+**Spec:** [`dev-docs/archive/superpowers/specs/2026-09-28-contest-readiness-unattended-audit-design.md`](../specs/2026-09-28-contest-readiness-unattended-audit-design.md)
 
 ---
 

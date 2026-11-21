@@ -21,7 +21,7 @@ CI 已内置 `mozilla/sccache-action`（GHA cache backend），跨 run 复用编
 
 ```bash
 NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored --test-threads=1
-NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored test_dual_container_basic
+NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored dual_basic_call_round_trip
 ```
 
 前置：Docker daemon 在跑，且当前用户能访问 `/var/run/docker.sock`。

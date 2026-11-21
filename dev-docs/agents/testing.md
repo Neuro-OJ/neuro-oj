@@ -17,8 +17,12 @@ cd noj-core && deno task dev-setup   # 幂等：迁移 + 系统数据 + 管理�
 从源码运行 `noj-llm-gateway` 前必须先 `docker compose stop llm-gateway`，否则
 :8001 端口冲突。
 
-noj-core 启动顺序为 env 校验 → 迁移 → 后台任务 → HTTP，以
-[`noj-core/src/main.ts`](../../noj-core/src/main.ts) 的 `main()` 为准。
+noj-core 启动顺序为 env 校验 → **只读 schema 兼容检查** → 后台任务 → HTTP，以
+[`noj-core/src/main.ts`](../../noj-core/src/main.ts) 的 `main()` 为准。`startCore()`
+只做只读核对、不执行 DDL：库里有待执行（含缺失 / 漂移）的迁移时直接拒绝启动，
+所以迁移与系统初始化是**显式前置步骤**（`deno task db:migrate` /
+`deno task init:system`，与 [`noj-core/docs/ops.md`](../../noj-core/docs/ops.md)
+一致），HTTP 启动不隐式迁移。
 
 ## 2. 生产运维
 
@@ -31,18 +35,18 @@ noj-core 启动顺序为 env 校验 → 迁移 → 后台任务 → HTTP，以
 
 ## 3. 测试矩阵
 
-| 范围              | 命令                                                 | 说明                                                    |
-| ----------------- | ---------------------------------------------------- | ------------------------------------------------------- |
-| noj-core 全量     | `cd noj-core && deno task test:parallel`             | 优先使用                                                |
-| noj-core 全量(PG) | `cd noj-core && deno task test`                      | 真实 PostgreSQL，需 `TEST_PG_ADMIN_URL`；**不是零依赖** |
-| noj-core 零依赖   | `cd noj-core && deno task test:logic`                | 无外部依赖时                                            |
-| noj-core 快速     | `cd noj-core && deno task test:smoke`                | 快速反馈                                                |
-| noj-core 按域     | `cd noj-core && deno task test:domain <domain>`      | 单元/集成                                               |
-| noj-core 共享     | `cd noj-core && deno task test:shared`               | 等价 `bash scripts/test-shared.sh`                      |
-| noj-ui            | `cd noj-ui && deno task test`                        | 前端                                                    |
-| noj-judge         | `cd noj-judge && cargo nextest run --all-targets`    | Docker E2E 加 `NOJ_RUN_E2E=1`                           |
-| noj-tests E2E     | `cd noj-tests && deno task test:domain <domain>`     | 按域                                                    |
-| 跨域 E2E          | `cd noj-tests && deno task test:domain cross-domain` | 跨模块全链路                                            |
+| 范围              | 命令                                                 | 说明                                                                              |
+| ----------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------- |
+| noj-core 全量     | `cd noj-core && deno task test:parallel`             | 优先使用                                                                          |
+| noj-core 全量(PG) | `cd noj-core && deno task test`                      | 真实 PostgreSQL，需 `TEST_PG_ADMIN_URL`；**不是零依赖**                           |
+| noj-core 零依赖   | `cd noj-core && deno task test:logic`                | 无外部依赖时                                                                      |
+| noj-core 快速     | `cd noj-core && deno task test:smoke`                | 快速反馈                                                                          |
+| noj-core 按域     | `cd noj-core && deno task test:domain <domain>`      | 单元/集成                                                                         |
+| noj-core 共享     | `cd noj-core && deno task test:shared`               | 等价 `bash scripts/test-shared.sh`                                                |
+| noj-ui            | `cd noj-ui && deno task test`                        | 前端                                                                              |
+| noj-judge         | `cd noj-judge && cargo nextest run --all-targets`    | 不含 Docker E2E；`--ignored` 入口见 [testing.md](../../noj-judge/docs/testing.md) |
+| noj-tests E2E     | `cd noj-tests && deno task test:domain <domain>`     | 按域                                                                              |
+| 跨域 E2E          | `cd noj-tests && deno task test:domain cross-domain` | 跨模块全链路                                                                      |
 
 **禁止手拼 `deno test`**：上述命令统一处理迁移/种子、环境变量与测试路径；手拼会
 丢失必要配置，CI 与本地必须使用同一套命令。
