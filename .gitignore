@@ -126,3 +126,5 @@ dev-docs/review-snapshots/
 # 路由/事件目录：按需本地生成，不提交
 /dev-docs/engineering/route-catalog.md
 /dev-docs/engineering/event-catalog.md
+# impeccable UI 评审工具的本地产物（截图与报告，会重新生成）
+.impeccable/
