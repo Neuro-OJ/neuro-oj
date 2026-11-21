@@ -64,6 +64,16 @@ export interface ContainerPayloadOps {
   gpgEncrypt(src: string, dest: string, passphraseFile: string): Promise<void>;
   gpgDecrypt(src: string, dest: string, passphraseFile: string): Promise<void>;
   tarZst(stagingDir: string, dest: string, zstdLevel: number): Promise<void>;
+  /**
+   * 可选流式打包并整包加密（`tar | zstd | gpg`）：直接产出加密容器，
+   * 省去中间 `.tar.zst` 的磁盘峰值。
+   */
+  tarZstEncrypt?(
+    stagingDir: string,
+    dest: string,
+    zstdLevel: number,
+    passphraseFile: string,
+  ): Promise<void>;
   untarZst(src: string, destDir: string): Promise<void>;
 }
 
@@ -125,10 +135,10 @@ export async function createContainer(
   const stagingParent = opts.stagingParent ?? opts.backupDir;
   const staging = await Deno.makeTempDir({
     dir: stagingParent,
-    prefix: ".nojbackup-staging-",
+    prefix: `.nojbackup-staging-${Deno.pid}-`,
   });
   const tarZst = `${staging}.tar.zst`;
-  let encrypted: string | null = null;
+  let pendingTemp: string | null = null;
   let committed = false;
 
   try {
@@ -237,26 +247,39 @@ export async function createContainer(
       renderChecksums(checksumEntries),
     );
 
-    // ---- 9b. 单轮打包（manifest 不引用自身归档的摘要，见下方"自指不可能"）----
-    // **自指不可能**：manifest 位于容器内部，无法记录自己所在文件的摘要
-    // （"写摘要 → 摘要变 → 再写"是无限回归）。因此容器内容的整体摘要落在
-    // **同级 sidecar** `<容器名>.sha256`（见 CHECKSUM_SUFFIX），格式与仓库既有
-    // Release 资产校验文件一致，可直接 `sha256sum -c`。
-    // 单轮打包也因此足够：manifest 不需要引用它所属归档的摘要。
-    await opts.ops.tarZst(staging, tarZst, zstdLevel);
-
-    // ---- 10. 收紧权限----
+    // ---- 10. 打包/加密前收紧 staging 权限 ----
     await chmodPrivate(staging);
 
-    // ---- 11. 整包加密 + 原子提交 ----
+    // ---- 11. 打包并原子提交（优先流式降峰，且每一步落盘后立即释放上一步临时数据）----
     const finalPath = await allocateContainerPath(opts.backupDir, now);
     const tempPath = tempContainerPath(finalPath);
     try {
       if (noEncrypt) {
-        await Deno.copyFile(tarZst, tempPath);
+        pendingTemp = tempPath;
+        await opts.ops.tarZst(staging, tempPath, zstdLevel);
+        // 打包已写完，立即释放 staging，避免后续步骤或磁盘波动占用双份空间
+        await Deno.remove(staging, { recursive: true }).catch(() => {});
+      } else if (opts.ops.tarZstEncrypt !== undefined) {
+        pendingTemp = tempPath;
+        try {
+          await opts.ops.tarZstEncrypt(
+            staging,
+            tempPath,
+            zstdLevel,
+            passphraseFile,
+          );
+        } catch (err) {
+          if (err instanceof ContainerError) throw err;
+          throw new ContainerError("encrypt", (err as Error).message);
+        }
+        await Deno.remove(staging, { recursive: true }).catch(() => {});
       } else {
-        encrypted = tempPath;
+        await opts.ops.tarZst(staging, tarZst, zstdLevel);
+        // 回退路径下也必须在加密输出之前删掉 staging，将峰值从 3 份压低到 ≤ 2 份
+        await Deno.remove(staging, { recursive: true }).catch(() => {});
+        pendingTemp = tempPath;
         await opts.ops.gpgEncrypt(tarZst, tempPath, passphraseFile);
+        await Deno.remove(tarZst).catch(() => {});
       }
       await Deno.rename(tempPath, finalPath);
       // **最终产物也必须收紧权限**：`chmodPrivate` 只作用于
@@ -300,8 +323,8 @@ export async function createContainer(
     // 失败零残留：staging 与临时产物一律清理。
     // 注意 staged 的 `tar.zst` 是 `${staging}.tar.zst`（staging **同级**），
     // 故必须单独删——只删 staging 目录会漏掉它。
-    if (!committed && encrypted !== null) {
-      await Deno.remove(encrypted).catch(() => {});
+    if (!committed && pendingTemp !== null) {
+      await Deno.remove(pendingTemp).catch(() => {});
     }
     await Deno.remove(staging, { recursive: true }).catch(() => {});
     await Deno.remove(tarZst).catch(() => {});
