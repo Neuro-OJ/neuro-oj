@@ -22,6 +22,10 @@
   `utils/default-workspace.ts` 301 到 `main` 域，新增 `/queue` 与
   `/problems/new/bundle`；静态路径段不区分大小写；规则之外的未知路径一律
   404（#726）。
+- **core 删除无域题目草稿 / 版本读接口**（破坏性）：`GET /api/v1/problems/:id/draft`、
+  `/draft/preflight`、`/versions`、`/versions/:versionId` 改用域入口
+  `/api/v1/domains/:slug/problems/:reference/{draft,publish-preflight,versions}`，
+  历史版本用 `?version_id=` 读取。前端未调用的 `useProblemVersions` 一并删除（#726）。
 - **core 删除启动期「教学 outbox 迁移」步骤**：`education_outbox` 由 0.11 新建，
   且生产者始终同事务登记通用任务；正式升级路径不受影响（#726）。
 

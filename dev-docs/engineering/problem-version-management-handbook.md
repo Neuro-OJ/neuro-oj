@@ -440,14 +440,18 @@ materialized_revision   bigint，默认 0
 
 | 接口 | 行为 |
 |---|---|
-| `GET /problems/:id/draft` | 编辑者读取共享草稿及 revision；没有草稿时返回基于最新版的编辑初值 |
-| `PUT /problems/:id/draft` | 保存草稿，要求 `If-Match: revision` |
-| `GET /problems/:id/draft/preflight` | 对当前 revision 执行发布预检 |
-| `POST /problems/:id/versions` | 发布草稿，要求 `If-Match` |
-| `GET /problems/:id/versions` | 分页返回已发布版本元数据 |
-| `GET /problems/:id/versions/:versionId` | 返回经过权限裁剪的指定版本 |
-| `GET /problems/:id?version_id=...` | 显式读取该版本 |
-| `GET /problems/:id` | 返回默认作答版本 |
+以下路径均以 `/domains/:slug/problems/:reference` 为前缀（下表记作 `P`）；
+0.11.0 之后无域的 `/problems/:id/draft*`、`/problems/:id/versions*` 已全部删除。
+
+| 接口 | 行为 |
+|---|---|
+| `GET P/draft` | 编辑者读取共享草稿及 revision；没有草稿时返回基于最新版的编辑初值 |
+| `PUT P/draft` | 保存草稿，要求 `If-Match: revision` |
+| `GET P/publish-preflight` | 对当前 revision 执行发布预检 |
+| `POST P/publish` | 发布草稿，要求 `If-Match` |
+| `GET P/versions` | 分页返回已发布版本元数据 |
+| `GET P?version_id=...` | 显式读取该版本（经过权限裁剪） |
+| `GET P` | 返回默认作答版本 |
 
 发布请求：
 

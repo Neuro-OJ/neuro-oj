@@ -1,7 +1,47 @@
-import type { ProblemDraftView, PublishPreflightReport, PublishVersionResult } from './useProblemVersions';
 import type { DomainEditorContent } from '~/utils/domain-problem-editor';
 import { domainProblemApiPath } from '~/utils/domain-problems';
 import type { DomainProblemReference } from '~/utils/domain-problems';
+
+/** 共享草稿视图（`synthesized` 表示尚未落库、由服务端派生）。 */
+export interface ProblemDraftView {
+  problem_id: string;
+  base_version_id: string | null;
+  revision: number;
+  content: Record<string, unknown>;
+  updated_by: string | null;
+  updated_at: string | null;
+  synthesized: boolean;
+}
+
+/** 发布预检报告。 */
+export interface PublishPreflightReport {
+  problem_id: string;
+  revision: number;
+  base_version_id: string | null;
+  content_complete: boolean;
+  content_hash: string | null;
+  files: Array<{
+    role: string;
+    path: string;
+    state: string;
+    exists: boolean | null;
+    byte_size: number | null;
+    sha256: string | null;
+  }>;
+  errors: Array<{ code: string; message: string; path?: string }>;
+  warnings: Array<{ code: string; message: string; path?: string }>;
+  ready: boolean;
+}
+
+/** 发布结果。 */
+export interface PublishVersionResult {
+  problem_id: string;
+  version_id: string;
+  version: number;
+  draft_revision: number;
+  unchanged: boolean;
+}
+
 /** 编辑本域源题，不通过共享引用写来源域。 */
 export function useDomainProblemEditor() {
   const { api } = useApi();

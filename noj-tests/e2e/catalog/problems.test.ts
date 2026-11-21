@@ -89,12 +89,14 @@ e2eTest("[e2e/problems] 2.3 未认证创建被拒", async () => {
 
 e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   if (!isE2E) return;
-  const draft = await apiGet(`/api/v1/problems/${problemId}/draft`, adminToken);
+  const draft = await apiGet(
+    `${await domainProblemPath(problemId)}/draft`,
+    adminToken,
+  );
   if (draft.status !== 200) throw new Error("读取更新基线失败");
-  const revision = (draft.body as { data: { revision: number } }).data.revision;
+  const revision = (draft.body as { revision: number }).revision;
   const draftContent =
-    (draft.body as { data: { content: Record<string, unknown> } })
-      .data.content;
+    (draft.body as { content: Record<string, unknown> }).content;
   // 管理信息（难度）走域 PATCH；内容（标题）只写共享草稿。
   const { status, body } = await apiPatch(
     await domainProblemPath(problemId),
@@ -104,11 +106,10 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   if (status !== 200) throw new Error("更新失败: " + status);
   // PATCH 会推进草稿 revision：重新读取后再写内容，避免 409。
   const afterPatch = await apiGet(
-    `/api/v1/problems/${problemId}/draft`,
+    `${await domainProblemPath(problemId)}/draft`,
     adminToken,
   );
-  const patchRevision =
-    (afterPatch.body as { data: { revision: number } }).data.revision;
+  const patchRevision = (afterPatch.body as { revision: number }).revision;
   const patched = await apiPut(
     `${await domainProblemPath(problemId)}/draft`,
     { content: { ...draftContent, title: "E2E v2" } },
@@ -124,12 +125,10 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
   const d = body as { data: { difficulty: string } };
   if (d.data.difficulty !== "hard") throw new Error("管理信息未更新");
   const updatedDraft = await apiGet(
-    `/api/v1/problems/${problemId}/draft`,
+    `${await domainProblemPath(problemId)}/draft`,
     adminToken,
   );
-  const content =
-    (updatedDraft.body as { data: { content: { title: string } } }).data
-      .content;
+  const content = (updatedDraft.body as { content: { title: string } }).content;
   if (content.title !== "E2E v2") throw new Error("草稿标题未更新");
   const beforePublish = await apiGet(`/api/v1/problems/${problemId}`);
   if (
@@ -190,7 +189,7 @@ e2eTest("[e2e/problems] 2.8 已发布题目保护版本且在公开域保持可�
   const getRes = await apiGet(await domainProblemPath(problemId));
   if (getRes.status !== 200) throw new Error("公开域已发布题目匿名应 200");
   const retained = await apiGet(
-    `/api/v1/problems/${problemId}/versions`,
+    `${await domainProblemPath(problemId)}/versions`,
     adminToken,
   );
   if (retained.status !== 200) throw new Error("停止公开后历史版本应保留");
