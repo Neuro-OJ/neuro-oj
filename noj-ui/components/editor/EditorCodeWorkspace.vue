@@ -250,7 +250,7 @@ async function selfTest() {
     <UAlert v-if="failure || draft.state.value==='error'" color="error"
       :title="failure || '本地草稿保存失败，请复制代码后再离开'" class="shrink-0 rounded-none" />
     <div class="relative flex min-h-0 flex-1">
-      <ActivityBar :active="tab" :show-self-test="!contest" @select="value=>{tab=value;sidebarVisible=true;}" />
+      <EditorActivityBar :active="tab" :show-self-test="!contest" @select="value=>{tab=value;sidebarVisible=true;}" />
       <aside v-show="sidebarVisible" :style="{'--sidebar-width':sidebarWidth+'px'}"
         class="absolute inset-y-0 left-12 z-20 flex w-[calc(100%_-_3rem)] shrink-0 flex-col bg-bg-panel sm:static sm:z-auto sm:w-(--sidebar-width)">
         <UButton class="w-full rounded-none sm:hidden" color="neutral" variant="outline" icon="i-lucide-code-2"
@@ -272,7 +272,7 @@ async function selfTest() {
             <h3 class="text-sm font-semibold">提交记录</h3>
             <UAlert v-if="history.error.value" color="error" :title="extractApiError(history.error.value).message" />
             <UAlert v-if="active.error.value" color="error" :title="extractApiError(active.error.value).message" />
-            <DomainSubmissionResult v-if="active.data.value && !active.error.value"
+            <SubmissionResult v-if="active.data.value && !active.error.value"
               :submission="active.data.value.data" />
             <UButton v-if="activeId" :to="`/d/${slug}/submissions/${activeId}`" variant="outline"
               size="sm">查看评测</UButton>
@@ -290,7 +290,7 @@ async function selfTest() {
               variant="ghost" size="sm">查看全部提交</UButton>
           </template>
           <template #oi-self-test>
-            <DomainSelfTestPanel ref="selfTestPanel" :slug="slug" :problem="problem" :code="code" :language="language"
+            <ProblemSelfTestPanel ref="selfTestPanel" :slug="slug" :problem="problem" :code="code" :language="language"
               :version-id="version" :writable="writable && !submitting" :assignment-origin="assignmentOrigin" expanded
               @refresh="emit('refresh')" />
           </template>

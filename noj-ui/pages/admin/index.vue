@@ -173,7 +173,7 @@ function formatRelativeTime(dateStr: string): string {
       icon="i-lucide-layout-dashboard"
     >
       <template #actions>
-        <RefreshControl
+        <AdminRefreshControl
           v-model:interval="pollInterval"
           :last-refresh="lastSuccessfulRefresh"
           :refreshing="refreshing"

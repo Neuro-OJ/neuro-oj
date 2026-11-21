@@ -2,7 +2,7 @@
 import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import type { DomainLlmProvider } from '~/composables/useDomainLlm';
-import DomainLlmAliases from '~/components/feature/DomainLlmAliases.vue';
+import AdminLlmAliases from '~/components/admin/AdminLlmAliases.vue';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug, can, domain } = useWorkspace();
@@ -214,7 +214,7 @@ useSeoMeta({ title: 'LLM Provider 与别名 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="can('llm:manage')" class="space-y-6">
       <AdminPageHeader title="LLM Provider 与模型别名" description="配置空间专属的模型服务商、默认评测模型及模型别名。" icon="i-lucide-bot">
         <template #actions>
@@ -338,7 +338,7 @@ useSeoMeta({ title: 'LLM Provider 与别名 - 域设置' });
       </UCard>
 
       <!-- 别名管理 -->
-      <DomainLlmAliases v-if="data" :key="key" :slug="slug!" :providers="data.providers" :writable="writable" />
+      <AdminLlmAliases v-if="data" :key="key" :slug="slug!" :providers="data.providers" :writable="writable" />
 
       <!-- 测试连接弹窗 -->
       <UModal v-model:open="testModal" title="测试本域 Provider 连接">
@@ -389,5 +389,5 @@ useSeoMeta({ title: 'LLM Provider 与别名 - 域设置' });
       </UModal>
     </div>
     <UAlert v-else color="warning" title="没有当前域 LLM 管理权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

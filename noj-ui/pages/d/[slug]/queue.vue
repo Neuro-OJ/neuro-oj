@@ -205,7 +205,7 @@ useSeoMeta({ title: '评测队列' });
           <div v-if="data.judging.length === 0" class="p-6 text-center text-xs text-text-muted">
             暂无正在评测的任务
           </div>
-          <QueueRow v-for="item in data.judging" :key="item.id" :item="item" :now="now" show-elapsed />
+          <SubmissionQueueRow v-for="item in data.judging" :key="item.id" :item="item" :now="now" show-elapsed />
         </section>
 
         <!-- 排队中 -->
@@ -217,7 +217,7 @@ useSeoMeta({ title: '评测队列' });
           <div v-if="data.pending.length === 0" class="p-6 text-center text-xs text-text-muted">
             暂无排队中的任务
           </div>
-          <QueueRow v-for="item in data.pending" :key="item.id" :item="item" :now="now" />
+          <SubmissionQueueRow v-for="item in data.pending" :key="item.id" :item="item" :now="now" />
         </section>
 
         <!-- 最近完成 -->
@@ -229,7 +229,7 @@ useSeoMeta({ title: '评测队列' });
           <div v-if="data.recently_completed.length === 0" class="p-6 text-center text-xs text-text-muted">
             暂无最近完成的任务
           </div>
-          <QueueRow v-for="item in data.recently_completed" :key="item.id" :item="item" :now="now" show-score />
+          <SubmissionQueueRow v-for="item in data.recently_completed" :key="item.id" :item="item" :now="now" show-score />
         </section>
       </div>
     </AsyncContent>

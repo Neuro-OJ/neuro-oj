@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
-import TextInput from '~/components/form/TextInput.vue';
-import PasswordField from '~/components/form/PasswordField.vue';
+import TextInput from '~/components/auth/AuthTextInput.vue';
+import PasswordField from '~/components/auth/AuthPasswordField.vue';
 vi.stubGlobal('ref', ref);
 const stubs = {
   UFormField: { name: 'UFormField', props: ['error'], template: '<div><slot /></div>' },

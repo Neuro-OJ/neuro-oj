@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import DomainOiFiles from '~/components/editor/DomainOiFiles.vue';
+import DomainOiFiles from '~/components/editor/EditorOiFiles.vue';
 import { newDomainEditorContent } from '~/utils/domain-problem-editor';
 const api = { oiFiles: vi.fn(), oiFile: vi.fn(), oiSave: vi.fn() }, refresh = vi.fn();
 const stubs = {

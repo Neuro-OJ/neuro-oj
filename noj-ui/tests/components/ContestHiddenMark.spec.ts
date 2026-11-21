@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
-import ContestHiddenMark from '~/components/problem/ContestHiddenMark.vue';
+import ContestHiddenMark from '~/components/problem/ProblemContestHiddenMark.vue';
 import { CONTEST_HIDDEN_TIP } from '~/utils/contestHidden';
 
 /**

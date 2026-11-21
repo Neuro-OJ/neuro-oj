@@ -59,7 +59,7 @@ useSeoMeta({ title: '基本信息 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="permitted && context.domain.value" class="space-y-6">
       <AdminPageHeader title="基本信息" description="空间名称与简介。" icon="i-lucide-settings">
         <template #actions>
@@ -73,5 +73,5 @@ useSeoMeta({ title: '基本信息 - 域设置' });
         :can-archive="false" :disabled="!context.writable.value" @saved="refreshGeneral" />
     </div>
     <UAlert v-else-if="context.status.value !== 'pending' && context.domain.value" color="neutral" variant="subtle" title="你没有管理此域设置的权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

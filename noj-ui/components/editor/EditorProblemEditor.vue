@@ -177,19 +177,19 @@ onBeforeRouteLeave(async () =>
         </div>
       </UCard>
       <UCard v-if="form.kind === 'objective'">
-        <DomainObjectiveQuestions v-model="questions" @editing="questionEditing = $event" />
+        <EditorObjectiveQuestions v-model="questions" @editing="questionEditing = $event" />
         <p v-if="questionEditing"
           class="mt-3 text-xs text-text-muted">请先保存或取消正在编辑的小题，再保存整份草稿。</p>
       </UCard>
       <UCard v-else-if="form.kind === 'oi'">
-        <DomainOiRuntime v-model="oiRuntime" />
+        <EditorOiRuntime v-model="oiRuntime" />
         <div class="mt-5 border-t border-border pt-5">
-          <DomainOiFiles :slug="slug" :reference="reference" :content="form" :revision="revision"
+          <EditorOiFiles :slug="slug" :reference="reference" :content="form" :revision="revision"
             :writable="writable && !busy" :dirty="dirty" @saved="filesSaved" @state="fileState" />
         </div>
       </UCard>
       <UCard v-else>
-        <DomainAiRuntime v-model="form" :published="!!draft.base_version_id || publishedVersion !== null" />
+        <EditorAiRuntime v-model="form" :published="!!draft.base_version_id || publishedVersion !== null" />
       </UCard>
       <!-- 知识点不属于题目草稿/版本，单独保存；无编辑权限或功能关闭时内部自隐藏。 -->
       <KnowledgeEditorPanel :problem-id="draft.problem_id" :writable="writable" />

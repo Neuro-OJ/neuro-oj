@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
-import Menu from '~/components/feature/training/DomainAddToTrainingMenu.vue';
+import Menu from '~/components/training/TrainingAddToMenu.vue';
 
 const { success } = vi.hoisted(() => ({ success: vi.fn() }));
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: { success } }) }));

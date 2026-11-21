@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense } from 'vue';
-import Submissions from '~/components/problem/DomainProblemSubmissions.vue';
+import Submissions from '~/components/problem/ProblemSubmissions.vue';
 
 const list = vi.fn();
 let actor: ReturnType<typeof ref<{ id: string; username: string } | null>>;

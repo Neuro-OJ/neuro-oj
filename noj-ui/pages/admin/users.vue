@@ -274,7 +274,7 @@ async function confirmDeleteUser(user: User) {
       <template #actions>
         <AdminAccountDialogs :reset-user="resetTarget" @reset-closed="resetTarget = null"
           @changed="reloadAfterMutation" />
-        <RefreshControl
+        <AdminRefreshControl
           v-model:interval="pollInterval"
           :last-refresh="lastRefresh"
           @refresh="loadUsers(currentPage)"

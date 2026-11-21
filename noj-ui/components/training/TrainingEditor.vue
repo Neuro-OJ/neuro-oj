@@ -58,7 +58,7 @@ onBeforeRouteLeave(async () =>
           class="text-xs text-text-muted">发布后的访问范围由所属域决定。跨域复用须先复制为本域独立题目；比赛保护仍逐题生效。</p>
       </UCard>
       <UCard>
-        <DomainProblemChooser v-model="form.problems" :slug="slug" :disabled="saving" />
+        <ProblemChooser v-model="form.problems" :slug="slug" :disabled="saving" />
       </UCard>
     </fieldset>
     <UButton type="submit" :loading="saving"

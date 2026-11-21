@@ -274,7 +274,7 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
               class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3"
             >
               <span class="w-8 shrink-0 text-xs text-text-muted tabular-nums">{{ item.number ?? '—' }}</span>
-              <DifficultyBadge :difficulty="item.tier" />
+              <ProblemDifficultyBadge :difficulty="item.tier" />
               <span class="min-w-0 flex-1">
                 <NuxtLink
                   v-if="ladderItemPath(item)"

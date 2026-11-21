@@ -92,7 +92,7 @@ useSeoMeta({ title: '资源额度 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="permitted && context.domain.value" class="space-y-6">
       <AdminPageHeader
         title="资源额度"
@@ -189,5 +189,5 @@ useSeoMeta({ title: '资源额度 - 域设置' });
       </p>
     </div>
     <UAlert v-else-if="context.status.value !== 'pending' && context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间配额的权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

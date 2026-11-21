@@ -28,7 +28,7 @@ const isOwner = computed(() => !props.entry.user_id || (user?.value ? user.value
       variant="outline">来源作业</UButton>
     <UCard>
       <h3 class="mb-3 font-semibold">结果摘要</h3>
-      <OwnSubmissionSummary :entry="entry" />
+      <SubmissionOwnSummary :entry="entry" />
     </UCard>
     <UCard v-if="entry.can_view_source !== false && entry.code">
       <h3 class="mb-3 font-semibold">{{ isOwner ? '原提交代码' : '提交者原代码' }}</h3>
@@ -37,7 +37,7 @@ const isOwner = computed(() => !props.entry.user_id || (user?.value ? user.value
     <UCard v-if="entry.file_name">
       <p class="text-sm">原提交文件：{{ entry.file_name }}</p>
     </UCard>
-    <ArtifactDownload v-if="entry.kind === 'submission' && entry.has_artifact" :key="entry.id"
+    <SubmissionArtifactDownload v-if="entry.kind === 'submission' && entry.has_artifact" :key="entry.id"
       :endpoint="`/api/v1/me/submissions/submission/${encodeURIComponent(entry.id)}/artifact`"
       :file-name="entry.file_name ?? `submission-${entry.id}.zip`" />
     <UCard v-if="entry.kind === 'objective' && entry.can_view_answers !== false && entry.answers">

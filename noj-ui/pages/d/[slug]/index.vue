@@ -61,7 +61,7 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
     <section class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
       <div class="flex min-h-[320px] flex-col lg:flex-row">
         <WorkspaceHero :title="domain.name" :description="domain.description" />
-        <HomepageCheckIn :initial-check-in="section<{ data: { checked_in: boolean; streak: number } }>('checkin')?.data" />
+        <HomeCheckinPanel :initial-check-in="section<{ data: { checked_in: boolean; streak: number } }>('checkin')?.data" />
       </div>
     </section>
 
@@ -112,11 +112,11 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
 
     <!-- 教学待办与进行中任务 -->
     <div class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
-      <DomainHomeContent :initial-data="dashboard" />
+      <WorkspaceHomeContent :initial-data="dashboard" />
     </div>
 
     <!-- 最新评测 -->
-    <LatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
+    <HomeLatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
   </div>
   </AsyncContent>
 </template>

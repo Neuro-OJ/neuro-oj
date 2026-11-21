@@ -88,7 +88,7 @@ useSeoMeta({ title: '访问控制 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="permitted && context.domain.value" class="space-y-6 max-w-[768px]">
       <AdminPageHeader
         title="访问与加入政策"
@@ -169,5 +169,5 @@ useSeoMeta({ title: '访问控制 - 域设置' });
       </UCard>
     </div>
     <UAlert v-else-if="context.status.value !== 'pending' && context.domain.value" color="neutral" variant="subtle" title="你没有管理此域访问设置的权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

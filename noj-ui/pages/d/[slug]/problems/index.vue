@@ -83,7 +83,7 @@ useSeoMeta({ title: '题库' });
         <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap px-3 py-3 text-xs',td:'px-3 py-3 text-sm'}">
           <template #reference-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="whitespace-nowrap text-xs text-primary no-underline"><ProblemId :display-id="row.original.reference.display_ref" /></NuxtLink>
+              class="whitespace-nowrap text-xs text-primary no-underline"><ProblemIdBadge :display-id="row.original.reference.display_ref" /></NuxtLink>
           </template>
           <template #title-cell="{row}">
             <div :class="{'contest-protected': row.original.contest_protection?.length}">
@@ -99,7 +99,7 @@ useSeoMeta({ title: '题库' });
             </div>
           </template>
           <template
-            #difficulty-cell="{row}"><DifficultyBadge v-if="row.original.difficulty" :difficulty="row.original.difficulty" /><span v-else class="text-xs text-text-muted">—</span></template>
+            #difficulty-cell="{row}"><ProblemDifficultyBadge v-if="row.original.difficulty" :difficulty="row.original.difficulty" /><span v-else class="text-xs text-text-muted">—</span></template>
           <template #tags-cell="{row}">
             <div class="flex max-w-40 flex-wrap gap-1">
               <button v-for="label in row.original.tags" :key="label.id" type="button"

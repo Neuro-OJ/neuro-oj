@@ -4,7 +4,7 @@ import type { ClassroomMember } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 import { useCopyText } from '~/composables/useCopyText';
-import InvitationManager from '~/components/workspace/InvitationManager.vue';
+import WorkspaceInvitationManager from '~/components/workspace/WorkspaceInvitationManager.vue';
 import ClassroomImport from '~/components/education/ClassroomImport.vue';
 import ClassroomJoinRequests from '~/components/education/ClassroomJoinRequests.vue';
 
@@ -292,7 +292,7 @@ useSeoMeta({ title: '班级成员' });
       />
 
       <!-- 班级邀请码管理 -->
-      <InvitationManager
+      <WorkspaceInvitationManager
         v-if="manage"
         :domain-slug="slug!"
         :classroom-id="id"

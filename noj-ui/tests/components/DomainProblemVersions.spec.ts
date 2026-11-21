@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import DomainProblemVersions from '~/components/feature/DomainProblemVersions.vue';
+import DomainProblemVersions from '~/components/problem/ProblemVersions.vue';
 const versions = vi.fn();
 const stubs = {
   UCard: { template: '<div><slot /></div>' },

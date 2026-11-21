@@ -146,17 +146,17 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
     @submitted="submissionId = $event"
   >
     <template #code-extras="{ code: currentCode, language: currentLanguage }">
-      <DomainSelfTestPanel ref="selfTestPanel" :slug="slug" :problem="problem" :code="currentCode"
+      <ProblemSelfTestPanel ref="selfTestPanel" :slug="slug" :problem="problem" :code="currentCode"
         :language="currentLanguage" :version-id="problem.version_id" :writable="writable"
         :assignment-origin="assignmentOrigin" @result="selfTestRecord = $event" @refresh="emit('refresh')" />
     </template>
 
     <template #ui-extras="{ code: currentCode }">
       <ClientOnly>
-        <DomainSelfTestPanel ref="selfTestPanel" :slug="slug" :problem="problem" :code="currentCode" language="ui"
+        <ProblemSelfTestPanel ref="selfTestPanel" :slug="slug" :problem="problem" :code="currentCode" language="ui"
           :assignment-origin="assignmentOrigin" :version-id="problem.version_id" :writable="writable"
           @result="selfTestRecord = $event" @refresh="emit('refresh')" />
-        <DomainUiRuns :slug="slug" :problem-id="problem.reference.problem_id"
+        <UiProblemRuns :slug="slug" :problem-id="problem.reference.problem_id"
           :reference="problem.reference.display_ref" :submission-id="submissionId" :self-test="selfTestRecord"
           :code="currentCode" :writable="writable" @restore="panel?.setCode($event)" @result="uiResult = $event" />
       </ClientOnly>

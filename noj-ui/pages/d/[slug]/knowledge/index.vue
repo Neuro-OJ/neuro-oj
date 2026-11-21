@@ -154,7 +154,7 @@ useSeoMeta({ title: '我的学习' });
                   {{ item.next.number !== null ? `${item.next.number}. ` : '' }}{{ item.next.title }}
                 </NuxtLink>
                 <span v-else class="break-words font-medium text-text">{{ item.next.title }}</span>
-                <DifficultyBadge :difficulty="item.next.tier" />
+                <ProblemDifficultyBadge :difficulty="item.next.tier" />
               </div>
             </li>
           </ul>

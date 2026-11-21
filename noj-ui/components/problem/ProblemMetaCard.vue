@@ -52,7 +52,7 @@ const acceptanceText = computed(() => {
       <div class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">难度<span v-if="calibratedTier" class="ml-1 text-xs text-text-muted">校准</span></dt>
         <dd>
-          <DifficultyBadge v-if="calibratedTier || problem.difficulty" :difficulty="calibratedTier ?? problem.difficulty" />
+          <ProblemDifficultyBadge v-if="calibratedTier || problem.difficulty" :difficulty="calibratedTier ?? problem.difficulty" />
           <span v-else class="text-text-secondary">—</span>
         </dd>
       </div>
