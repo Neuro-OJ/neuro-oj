@@ -113,7 +113,7 @@ Deno.test({
     const createdSubmissionIds: string[] = [];
 
     try {
-      const create = await jsonRequest(app, "/api/v1/admin/contest/contests", {
+      const create = await jsonRequest(app, "/api/v1/domains/main/contests", {
         method: "POST",
         token: adminToken,
         body: {

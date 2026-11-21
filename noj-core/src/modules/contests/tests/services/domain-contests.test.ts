@@ -264,7 +264,6 @@ import {
   loadPublicContestSecrecy,
   publishDomainContestRanking,
   registerForDomainContest,
-  resolveDefaultContestAccess,
   updateDomainContest,
 } from "../../index.ts";
 
@@ -446,10 +445,6 @@ Deno.test({
     );
     await assertRejects(
       () => getDomainContest(b.domain.slug, contest.id, b.owner),
-      NotFoundError,
-    );
-    await assertRejects(
-      () => resolveDefaultContestAccess(contest.id, a.owner),
       NotFoundError,
     );
     await assertRejects(

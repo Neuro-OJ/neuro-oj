@@ -1,5 +1,5 @@
 import { partitionClassroomRanking } from "./classroom-contests.ts";
-import { eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import { contestProblems } from "../../../shared/db/schema.ts";
 import { ForbiddenError, NotFoundError } from "../../../shared/base/errors.ts";
@@ -9,6 +9,7 @@ import { loadDomainContest } from "./domain-access.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";
 import { computeContestStatus } from "./contests.ts";
 import {
+  getContestRankingSnapshotByVersion,
   getContestRankingView,
   getContestSettlementStatus,
   getLatestContestRankingSnapshot,
@@ -17,6 +18,10 @@ import {
 } from "./contest-ranking.ts";
 import type { ContestType, KaggleRankingRow } from "../types/contests.ts";
 import { loadDomainProblemProtection } from "../../access/contest-policy.ts";
+import {
+  findSimilarSubmissions,
+  type FindSimilarSubmissionsOptions,
+} from "./contest-similarity.ts";
 
 /** 赛题从固定版本读取，引用题每次读取实时验证源共享；来源题号保持不变。 */
 export async function getDomainContestProblems(
@@ -188,5 +193,70 @@ export async function publishDomainContestRanking(
       allow_failed: input.allow_failed ?? false,
     });
     return result;
+  });
+}
+
+/**
+ * 载入正式成绩快照供组织端导出（含逐行明细）。
+ *
+ * @param version 指定版本号；缺省取最新版
+ * @returns 比赛 ID 与快照；快照不存在时为 null
+ */
+export async function getDomainContestSnapshotExport(
+  slug: string,
+  reference: string,
+  actorId: string,
+  version?: number,
+) {
+  const access = await loadDomainContest(slug, reference, actorId, {
+    manage: true,
+  });
+  const snapshot = version === undefined
+    ? await getLatestContestRankingSnapshot(access.contest.id)
+    : await getContestRankingSnapshotByVersion(access.contest.id, version);
+  return { contestId: access.contest.id, snapshot };
+}
+
+/**
+ * 比赛内高度相似的提交对，仅供组织者人工复核。
+ *
+ * 除组织者身份外还要求 `contest:anti_cheat_read`；`problem` 只在本场比赛的
+ * 赛题内解析（题目 ID 或赛题标签），不能借此探测域外题目。
+ */
+export async function findDomainContestSimilarSubmissions(
+  slug: string,
+  reference: string,
+  actorId: string,
+  options: Omit<FindSimilarSubmissionsOptions, "problemId"> & {
+    problem?: string;
+  },
+) {
+  const access = await loadDomainContest(slug, reference, actorId, {
+    manage: true,
+  });
+  if (
+    !access.platformAdmin &&
+    !access.context.domainPermissions.has("contest:anti_cheat_read")
+  ) {
+    throw new ForbiddenError("缺少查看相似提交的权限");
+  }
+  let problemId: string | undefined;
+  if (options.problem) {
+    const [row] = await getDb().select({
+      problem_id: contestProblems.problem_id,
+    }).from(contestProblems).where(and(
+      eq(contestProblems.contest_id, access.contest.id),
+      or(
+        eq(contestProblems.problem_id, options.problem),
+        eq(contestProblems.label, options.problem),
+      ),
+    ));
+    if (!row) throw new NotFoundError("比赛中没有该题目");
+    problemId = row.problem_id;
+  }
+  return await findSimilarSubmissions(access.contest.id, {
+    threshold: options.threshold,
+    limit: options.limit,
+    problemId,
   });
 }
