@@ -860,3 +860,133 @@ Deno.test("产物 .nojbackup 与 sidecar 必须是 600（不随 umask 放宽）"
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+Deno.test("create：流式 tarZstEncrypt 优先调用且不落中间 .tar.zst，失败零残留", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const spawns: SpawnRecord[] = [];
+    let tarZstCalled = false;
+    let streamCalled = 0;
+    const ops = makeFakeOps({
+      runner: makeStrictRunner(spawns),
+      override: {
+        tarZst() {
+          tarZstCalled = true;
+          return Promise.resolve();
+        },
+        async tarZstEncrypt(stagingDir, dest) {
+          streamCalled += 1;
+          await Deno.writeTextFile(dest, "STREAM-ENC:" + stagingDir);
+        },
+      },
+    });
+    const result = await createContainer(await createOptions(root, ops));
+    assertEquals(streamCalled, 1);
+    assertEquals(
+      tarZstCalled,
+      false,
+      "加密路径有 tarZstEncrypt 时不应调用 tarZst",
+    );
+    assertStringIncludes(await Deno.readTextFile(result.path), "STREAM-ENC:");
+    await assertNoStaging(root);
+
+    // 失败场景：tarZstEncrypt 写出部分临时文件后抛错 -> 必须零残留
+    const opsFail = makeFakeOps({
+      runner: makeStrictRunner(spawns),
+      override: {
+        async tarZstEncrypt(_stagingDir, dest) {
+          await Deno.writeTextFile(dest, "PARTIAL");
+          throw new Error("stream disk full");
+        },
+      },
+    });
+    const backupDir2 = join(root, "backups-fail");
+    await assertRejects(
+      () =>
+        createContainer({
+          ...createOptionsSync(root, opsFail),
+          backupDir: backupDir2,
+          stagingParent: backupDir2,
+        }),
+      Error,
+      "stream disk full",
+    );
+    await assertNoArtifacts(backupDir2);
+    await assertNoStaging(backupDir2);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("create：回退路径在 gpgEncrypt 前删除 staging，--no-encrypt 直出目标容器", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const spawns: SpawnRecord[] = [];
+    let stagingExistsDuringGpg = true;
+    const ops = makeFakeOps({
+      runner: makeStrictRunner(spawns),
+      override: {
+        async gpgEncrypt(src, dest) {
+          if (src.endsWith(".tar.zst")) {
+            const stagingPath = src.slice(0, -".tar.zst".length);
+            stagingExistsDuringGpg = await Deno.stat(stagingPath)
+              .then(() => true)
+              .catch(() => false);
+          }
+          await Deno.copyFile(src, dest);
+        },
+      },
+    });
+    const result = await createContainer(await createOptions(root, ops));
+    assert(result.path.endsWith(BACKUP_SUFFIX));
+    assertEquals(
+      stagingExistsDuringGpg,
+      false,
+      "回退路径在加密阶段前必须已删除 staging 以降低峰值",
+    );
+
+    // `--no-encrypt` 直接打包到临时容器（不先生成 .tar.zst 再 copyFile）
+    let tarDest = "";
+    const opsPlain = makeFakeOps({
+      runner: makeStrictRunner(spawns),
+      override: {
+        async tarZst(_stagingDir, dest) {
+          tarDest = dest;
+          await Deno.writeTextFile(dest, "PLAIN-TARZST");
+        },
+      },
+    });
+    const plain = await createContainer({
+      ...createOptionsSync(root, opsPlain),
+      noEncrypt: true,
+      passphraseFile: undefined,
+      backupDir: join(root, "backups-plain"),
+      stagingParent: join(root, "backups-plain"),
+    });
+    assertEquals(
+      tarDest.endsWith(".tmp"),
+      true,
+      `--no-encrypt 应直接写入临时提交文件而非中间 .tar.zst，实得 ${tarDest}`,
+    );
+    assertEquals(await Deno.readTextFile(plain.path), "PLAIN-TARZST");
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+function createOptionsSync(root: string, ops: ContainerPayloadOps) {
+  const envFile = join(root, ".env.prod");
+  const passphraseFile = join(root, "pass");
+  Deno.writeTextFileSync(envFile, "POSTGRES_DB=noj\n");
+  Deno.writeTextFileSync(passphraseFile, "secret\n");
+  return {
+    backupDir: join(root, "backups"),
+    stagingParent: root,
+    passphraseFile,
+    envFile,
+    postgresDatabase: "noj",
+    migrationStatus: "abc:1700000000000",
+    ops,
+    now: new Date("2026-09-19T12:00:00Z"),
+  };
+}

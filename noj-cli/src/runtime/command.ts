@@ -26,6 +26,22 @@ export interface SpawnHandle {
   kill(): Promise<void>;
 }
 
+/** `pipe` 单侧子进程规格。 */
+export interface PipeSpec {
+  cmd: string;
+  args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+/** `pipe` 双子进程管道执行结果。 */
+export interface PipeResult {
+  firstCode: number;
+  secondCode: number;
+  firstStderr: string;
+  secondStderr: string;
+}
+
 /**
  * 系统命令/进程抽象：deploy 的所有 docker 调用与进程管理只经该接口，
  * 便于测试注入 fake 模拟 docker / process。
@@ -42,6 +58,12 @@ export interface CommandRunner {
     },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
+  /**
+   * 无 shell 直连管道：`first.stdout` 字节流直接 `pipeTo` `second.stdin`。
+   *
+   * 可选：既有仅测试 non-pipe 行为的 fake 可不实现。
+   */
+  pipe?(first: PipeSpec, second: PipeSpec): Promise<PipeResult>;
   /**
    * 逐行流式执行命令；`onLine` 每收到一行（不含换行）回调一次，返回退出码。
    *
@@ -261,6 +283,94 @@ export function realRunner(): CommandRunner {
       const code = (await child.status).code;
       await stderrDone;
       return code;
+    },
+    async pipe(first, second) {
+      const firstChild = new Deno.Command(first.cmd, {
+        args: first.args,
+        cwd: first.cwd,
+        env: first.env ?? {},
+        stdin: "null",
+        stdout: "piped",
+        stderr: "piped",
+      }).spawn();
+      const secondChild = new Deno.Command(second.cmd, {
+        args: second.args,
+        cwd: second.cwd,
+        env: second.env ?? {},
+        stdin: "piped",
+        stdout: "piped",
+        stderr: "piped",
+      }).spawn();
+
+      let pipeDone = false;
+      const pipePromise = firstChild.stdout
+        .pipeTo(secondChild.stdin)
+        .catch(() => {
+          // 下游提前退出导致写入端 EPIPE 时及时终止上游，避免写入阻塞
+          try {
+            firstChild.kill("SIGTERM");
+          } catch {
+            // 已退出则忽略
+          }
+        })
+        .finally(() => {
+          pipeDone = true;
+        });
+
+      // 并发排空两个子进程的 stderr 以及下游 stdout，防止 64KiB 管道缓冲写满死锁
+      const firstStderrPromise = new Response(firstChild.stderr)
+        .arrayBuffer()
+        .catch(() => new ArrayBuffer(0));
+      const secondStdoutPromise = new Response(secondChild.stdout)
+        .arrayBuffer()
+        .catch(() => new ArrayBuffer(0));
+      const secondStderrPromise = new Response(secondChild.stderr)
+        .arrayBuffer()
+        .catch(() => new ArrayBuffer(0));
+
+      const secondStatusPromise = secondChild.status;
+      const watchEarlyExit = (async () => {
+        await secondStatusPromise;
+        if (pipeDone) return;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          pipePromise,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 20);
+          }),
+        ]);
+        if (timer !== undefined) clearTimeout(timer);
+        if (!pipeDone) {
+          try {
+            firstChild.kill("SIGTERM");
+          } catch {
+            // 已退出则忽略
+          }
+        }
+      })();
+
+      const [
+        firstStatus,
+        secondStatus,
+        firstStderrBuf,
+        _secondStdoutBuf,
+        secondStderrBuf,
+      ] = await Promise.all([
+        firstChild.status,
+        secondStatusPromise,
+        firstStderrPromise,
+        secondStdoutPromise,
+        secondStderrPromise,
+        pipePromise,
+        watchEarlyExit,
+      ]);
+
+      return {
+        firstCode: firstStatus.code,
+        secondCode: secondStatus.code,
+        firstStderr: decoder.decode(firstStderrBuf),
+        secondStderr: decoder.decode(secondStderrBuf),
+      };
     },
   };
 }

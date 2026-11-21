@@ -10,6 +10,11 @@ import type { ColorMode } from "../../util/color.ts";
 import { composeLogs, composePs } from "../compose.ts";
 import type { ComposeOptions } from "../compose.ts";
 import {
+  type DiskUsageReport,
+  formatDiskReportLines,
+  probeDiskUsageReport,
+} from "../disk-space.ts";
+import {
   applyLogsColor,
   decideLogsColor,
   mergeColorSource,
@@ -49,6 +54,8 @@ export interface LifecycleOptions {
    * 端口冲突告警，**不阻断**命令。
    */
   probePort?: (port: number) => Promise<boolean>;
+  /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN`）；缺省 `"docker"`。 */
+  dockerBin?: string;
 }
 
 /** 四个生命周期命令的公共结果形状。 */
@@ -69,6 +76,8 @@ export interface LifecycleBaseResult {
 export interface StatusResult extends LifecycleBaseResult {
   /** `docker compose ps` 的原始 stdout（`status --json` 的机器可读通道）。 */
   psOutput: string;
+  /** 安装目录与 Docker 数据目录分区的磁盘余量报告（不可探测时省略/为 null）。 */
+  disk?: DiskUsageReport | null;
 }
 
 export { failed, jsonPayload, lifecycleContext };
@@ -395,11 +404,32 @@ export async function status(opts: LifecycleOptions): Promise<StatusResult> {
     return { ...failed(ctx.dir, probe.error), psOutput: "" };
   }
 
+  const disk = await probeDiskUsageReport({
+    runner: opts.runner,
+    installDir: ctx.dir,
+    dockerBin: opts.dockerBin,
+  });
+
   if (ctx.jsonMode) {
-    emitJson({ dir: ctx.dir, state: probe.state, ps: probe.psOutput }, ctx.io);
+    const payload: Record<string, unknown> = {
+      dir: ctx.dir,
+      state: probe.state,
+      ps: probe.psOutput,
+    };
+    if (disk !== null) {
+      payload["disk"] = disk.partitions;
+    }
+    emitJson(payload, ctx.io);
   }
   const label = stateLabel(probe.state);
   ctx.status(label.kind, label.text);
+  if (disk !== null) {
+    const lines = formatDiskReportLines(disk);
+    for (let i = 0; i < disk.entries.length; i++) {
+      const entry = disk.entries[i]!;
+      ctx.status(entry.status === "ok" ? "info" : "warning", lines[i]!);
+    }
+  }
   if (probe.psOutput !== "") emitHuman(probe.psOutput, ctx.io);
 
   return {
@@ -409,6 +439,7 @@ export async function status(opts: LifecycleOptions): Promise<StatusResult> {
     exitCode: 0,
     error: null,
     psOutput: probe.psOutput,
+    ...(disk !== null ? { disk } : {}),
   };
 }
 

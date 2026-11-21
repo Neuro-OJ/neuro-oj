@@ -114,10 +114,20 @@ export function renderProductionCommandHelp(command: string): string {
     ? [
       "",
       "backup 常用选项:",
-      "  create --retention-days N --min-free-mb N   保留天数 / 可用空间下限",
+      "  create --retention-days N --min-free-mb N   保留天数 / 兜底可用空间下限（结合 PG/Redis/MinIO 预估）",
       "  verify|restore|drill --passphrase-file FILE  GPG 口令（或用",
       "      NOJ_BACKUP_PASSPHRASE_FILE，或 .env.prod 中的同名键）",
       "  restore 省略 --confirm（或显式 --dry-run）为只规划、零副作用",
+    ]
+    : command === "update" || command === "upgrade"
+    ? [
+      "",
+      "update 常用选项:",
+      "  --latest                 升级到最新稳定正式 Release",
+      "  --min-free-mb N          备份峰值预检兜底下限（默认 1024 MiB）",
+      "  --skip-drain             跳过维护模式自动排空",
+      "  --drain-timeout N        等待排空超时秒数",
+      "  --recover                从上次未完成 checkpoint 恢复升级",
     ]
     : [];
   return renderCommandHelp(`noj-cli ${command} [选项]`, [

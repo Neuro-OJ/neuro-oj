@@ -821,3 +821,89 @@ Deno.test("前置：缺少 .env.prod → 明确报错（请先执行 install）"
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("status: 展示同/异分区磁盘余量、低空间告警及 --json disk 字段", async () => {
+  const dir = await makeInstalledDir();
+  const dockerRoot = await Deno.makeTempDir();
+  try {
+    let same = true;
+    const runner = {
+      run(cmd: string, args: string[]) {
+        if (cmd === "docker" && args[0] === "info") {
+          return Promise.resolve({
+            code: 0,
+            stdout: `${dockerRoot}\n`,
+            stderr: "",
+          });
+        }
+        if (cmd === "df") {
+          const target = args[args.length - 1] ?? "";
+          if (same || target !== dockerRoot) {
+            return Promise.resolve({
+              code: 0,
+              stdout:
+                "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+                `/dev/vda1 104857600 102760448 ${512 * 1024} 99% /\n`,
+              stderr: "",
+            });
+          }
+          return Promise.resolve({
+            code: 0,
+            stdout:
+              "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+              `/dev/vdb1 104857600 20971520 ${
+                80 * 1024 * 1024
+              } 20% /var/lib/docker\n`,
+            stderr: "",
+          });
+        }
+        if (cmd === "docker" && args.includes("ps")) {
+          return Promise.resolve({ code: 0, stdout: PS_RUNNING, stderr: "" });
+        }
+        return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      },
+      spawn() {
+        throw new Error("no spawn");
+      },
+    };
+
+    // 同分区 + 严重告警（人类模式）
+    const { io, stdout } = captureRenderIO();
+    const humanRes = await status({
+      dir,
+      runner,
+      socketExists: SOCKET_PRESENT,
+      io,
+      color: NO_COLOR,
+    });
+    assertEquals(humanRes.exitCode, 0);
+    assert(humanRes.disk !== undefined && humanRes.disk !== null);
+    assertEquals(humanRes.disk!.samePartition, true);
+    const outText = stdout.join("");
+    assertStringIncludes(outText, "安装目录 / Docker 数据目录");
+    assertStringIncludes(outText, "告警");
+    assertStringIncludes(outText, "512 MiB");
+
+    // 异分区 + JSON 模式（包含 disk.partitions）
+    same = false;
+    const jsonCap = captureRenderIO(true);
+    const jsonRes = await status({
+      dir,
+      runner,
+      socketExists: SOCKET_PRESENT,
+      io: jsonCap.io,
+      args: ["--json"],
+      color: NO_COLOR,
+    });
+    assertEquals(jsonRes.exitCode, 0);
+    const parsed = JSON.parse(jsonCap.stdout.join(""));
+    assertEquals(parsed.state, "running");
+    assertEquals(Array.isArray(parsed.disk), true);
+    assertEquals(parsed.disk.length, 2);
+    assertEquals(parsed.disk[0].status, "critical");
+    assertEquals(parsed.disk[1].status, "ok");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+    await Deno.remove(dockerRoot, { recursive: true });
+  }
+});

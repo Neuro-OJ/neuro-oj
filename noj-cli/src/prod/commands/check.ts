@@ -1,12 +1,34 @@
-/** `check` / `verify` 命令：配置校验与镜像签名验证。 */
+/** `check` / `verify` 命令：配置校验、磁盘余量展示与镜像签名验证。 */
 
+import { formatDiskReportLines, probeDiskUsageReport } from "../disk-space.ts";
+import { hasJson } from "./args.ts";
 import { prodDeps } from "./deps.ts";
 import type { ProdCliDeps, ProdCliResult } from "./types.ts";
 
-/** `check`：配置与依赖校验（复用 `lifecycle/steps.ts:prepareAndCheck` 六步）。 */
+async function emitDiskCheckSummary(
+  dir: string,
+  args: string[],
+  d: ReturnType<typeof prodDeps>,
+  deps: ProdCliDeps,
+): Promise<void> {
+  const report = await probeDiskUsageReport({
+    runner: d.runner,
+    installDir: dir,
+    dockerBin: d.processEnv["NOJ_DEPLOY_DOCKER_BIN"],
+  });
+  if (report === null) return;
+  const sink = hasJson(args)
+    ? (deps.err ?? ((t: string) => console.error(t)))
+    : (deps.out ?? ((t: string) => d.io.write(t + "\n")));
+  for (const line of formatDiskReportLines(report)) {
+    sink(line);
+  }
+}
+
+/** `check`：配置与依赖校验（复用 `lifecycle/steps.ts:prepareAndCheck` 六步）并展示磁盘余量。 */
 export async function runProdCheck(
   dir: string,
-  _args: string[],
+  args: string[],
   deps: ProdCliDeps,
 ): Promise<ProdCliResult> {
   const d = prodDeps(deps);
@@ -17,11 +39,12 @@ export async function runProdCheck(
     write: (text) => d.io.write(text + "\n"),
   });
   if (!prepared.ok) return { exitCode: 1, message: prepared.error };
+  await emitDiskCheckSummary(dir, args, d, deps);
   return { exitCode: 0, message: "生产配置检查通过" };
 }
 
 /**
- * `verify`：配置校验 **+ 镜像签名验证**。
+ * `verify`：配置校验 **+ 磁盘余量展示 + 镜像签名验证**。
  *
  * ## 为什么必须有这个函数
  *
@@ -33,7 +56,7 @@ export async function runProdCheck(
  */
 export async function runProdVerify(
   dir: string,
-  _args: string[],
+  args: string[],
   deps: ProdCliDeps,
 ): Promise<ProdCliResult> {
   const d = prodDeps(deps);
@@ -44,6 +67,7 @@ export async function runProdVerify(
     write: (text) => d.io.write(text + "\n"),
   });
   if (!prepared.ok) return { exitCode: 1, message: prepared.error };
+  await emitDiskCheckSummary(dir, args, d, deps);
 
   const { probeCosign } = await import("../lifecycle.ts");
   const { verifyImageSignatures } = await import("../config.ts");

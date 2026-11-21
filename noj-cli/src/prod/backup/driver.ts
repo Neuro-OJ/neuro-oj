@@ -275,6 +275,15 @@ export interface ProdPayloadOps {
   gpgDecrypt(src: string, dest: string, passphraseFile: string): Promise<void>;
   /** `tar -I 'zstd -<level>' -cf dest -C staging .` 打包。 */
   tarZst(stagingDir: string, dest: string, zstdLevel: number): Promise<void>;
+  /**
+   * 流式打包并整包加密：`tar | zstd | gpg` 直接写出加密产物，不落中间 `.tar.zst`。
+   */
+  tarZstEncrypt?(
+    stagingDir: string,
+    dest: string,
+    zstdLevel: number,
+    passphraseFile: string,
+  ): Promise<void>;
   /** `tar -I zstd -xf src -C destDir` 解包。 */
   untarZst(src: string, destDir: string): Promise<void>;
 }
@@ -303,6 +312,36 @@ export function postgresEnvOf(
   };
 }
 
+function tarZstArgs(
+  stagingDir: string,
+  dest: string,
+  zstdLevel: number,
+): string[] {
+  return ["-I", `zstd -${zstdLevel}`, "-cf", dest, "-C", stagingDir, "."];
+}
+
+function gpgSymmetricArgs(
+  passphraseFile: string,
+  dest: string,
+  src?: string,
+): string[] {
+  const args = [
+    "--batch",
+    "--yes",
+    "--pinentry-mode",
+    "loopback",
+    "--passphrase-file",
+    passphraseFile,
+    "--symmetric",
+    "--cipher-algo",
+    "AES256",
+    "--output",
+    dest,
+  ];
+  if (src !== undefined) args.push(src);
+  return args;
+}
+
 /**
  * 构造 prod-raw 操作集。
  *
@@ -311,9 +350,10 @@ export function postgresEnvOf(
  *   的 stdout **重定向到文件**；
  * - `redis.rdb`：`compose exec -T redis sh -c 'REDISCLI_AUTH=… redis-cli
  *   --no-auth-warning --rdb -'` 的 stdout **重定向到文件**；
- * - `pg_restore --list` 的**输入**是文件（`< dump`），输出是文本文件。
+ * - `pg_restore --list` 的**输入**是文件（`< dump`），输出是文本文件；
+ * - `tarZstEncrypt` 经 `CommandRunner.pipe` 将 `tar | zstd` 直接喂给 `gpg`。
  *
- * 三处都不经字符串——这是本模块的核心约束，见模块头。
+ * 采集/打包二进制流均不经过字符串——这是本模块的核心约束，见模块头。
  */
 export function createProdPayloadOps(opts: ProdPayloadOptions): ProdPayloadOps {
   const { runner, driver, compose, env } = opts;
@@ -490,20 +530,10 @@ export function createProdPayloadOps(opts: ProdPayloadOptions): ProdPayloadOps {
     },
 
     async gpgEncrypt(src, dest, passphraseFile) {
-      const res = await runner.run(gpgBin, [
-        "--batch",
-        "--yes",
-        "--pinentry-mode",
-        "loopback",
-        "--passphrase-file",
-        passphraseFile,
-        "--symmetric",
-        "--cipher-algo",
-        "AES256",
-        "--output",
-        dest,
-        src,
-      ]);
+      const res = await runner.run(
+        gpgBin,
+        gpgSymmetricArgs(passphraseFile, dest, src),
+      );
       if (res.code !== 0) {
         throw new CaptureError("gpg 加密", res.code, res.stderr.trim());
       }
@@ -528,17 +558,56 @@ export function createProdPayloadOps(opts: ProdPayloadOptions): ProdPayloadOps {
     },
 
     async tarZst(stagingDir, dest, zstdLevel) {
-      const res = await runner.run(tarBin, [
-        "-I",
-        `zstd -${zstdLevel}`,
-        "-cf",
-        dest,
-        "-C",
-        stagingDir,
-        ".",
-      ]);
+      const res = await runner.run(
+        tarBin,
+        tarZstArgs(stagingDir, dest, zstdLevel),
+      );
       if (res.code !== 0) {
         throw new CaptureError("tar 打包", res.code, res.stderr.trim());
+      }
+    },
+
+    async tarZstEncrypt(stagingDir, dest, zstdLevel, passphraseFile) {
+      if (runner.pipe !== undefined) {
+        const res = await runner.pipe(
+          { cmd: tarBin, args: tarZstArgs(stagingDir, "-", zstdLevel) },
+          { cmd: gpgBin, args: gpgSymmetricArgs(passphraseFile, dest) },
+        );
+        if (res.firstCode !== 0) {
+          throw new CaptureError(
+            "tar 打包",
+            res.firstCode,
+            res.firstStderr.trim(),
+          );
+        }
+        if (res.secondCode !== 0) {
+          throw new CaptureError(
+            "gpg 加密",
+            res.secondCode,
+            res.secondStderr.trim(),
+          );
+        }
+        return;
+      }
+      // 兼容未实现 pipe() 的轻量 runner：走临时归档并在 finally 清理
+      const tempArchive = `${dest}.${crypto.randomUUID()}.tar.zst`;
+      try {
+        const tarRes = await runner.run(
+          tarBin,
+          tarZstArgs(stagingDir, tempArchive, zstdLevel),
+        );
+        if (tarRes.code !== 0) {
+          throw new CaptureError("tar 打包", tarRes.code, tarRes.stderr.trim());
+        }
+        const gpgRes = await runner.run(
+          gpgBin,
+          gpgSymmetricArgs(passphraseFile, dest, tempArchive),
+        );
+        if (gpgRes.code !== 0) {
+          throw new CaptureError("gpg 加密", gpgRes.code, gpgRes.stderr.trim());
+        }
+      } finally {
+        await Deno.remove(tempArchive).catch(() => {});
       }
     },
 
