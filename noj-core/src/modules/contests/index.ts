@@ -125,5 +125,4 @@ export {
   getDomainContestTemplate,
   getDomainContestUi,
 } from "./services/domain-content.ts";
-export { resolveDefaultContestAccess } from "./services/default-access.ts";
 export { loadContestTeachingBasis } from "./services/teaching-basis.ts";

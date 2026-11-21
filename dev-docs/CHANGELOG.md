@@ -26,6 +26,12 @@
   `/draft/preflight`、`/versions`、`/versions/:versionId` 改用域入口
   `/api/v1/domains/:slug/problems/:reference/{draft,publish-preflight,versions}`，
   历史版本用 `?version_id=` 读取。前端未调用的 `useProblemVersions` 一并删除（#726）。
+- **core 删除管理端无域比赛接口 `/api/v1/admin/contest/**`**（破坏性）：比赛
+  CRUD、参与者、提交列表与成绩发布早已有域入口；独有的两项迁到域入口——
+  正式成绩导出 `GET /api/v1/domains/:slug/contests/:id/snapshots/<latest|版本号>.<json|csv>`、
+  相似提交 `GET /api/v1/domains/:slug/contests/:id/anti-cheat/similar-submissions`
+  （需比赛组织者 + `contest:anti_cheat_read`，`problem_id` 只接受本场赛题）。
+  比赛管理页的正式成绩版本列表新增「导出 CSV」（#726）。
 - **core 删除启动期「教学 outbox 迁移」步骤**：`education_outbox` 由 0.11 新建，
   且生产者始终同事务登记通用任务；正式升级路径不受影响（#726）。
 

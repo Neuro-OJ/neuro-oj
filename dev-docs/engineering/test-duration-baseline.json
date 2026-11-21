@@ -78,7 +78,6 @@
     "src/modules/communication/community/tests/services/domain-community.test.ts": 2960,
     "src/modules/communication/community/tests/services/query-limit.test.ts": 0,
     "src/modules/communication/community/tests/services/search-events.test.ts": 416,
-    "src/modules/contests/tests/routes/admin-contests.test.ts": 118,
     "src/modules/contests/tests/routes/contest-submit-version.test.ts": 281,
     "src/modules/contests/tests/routes/domain-content.test.ts": 864,
     "src/modules/contests/tests/routes/domain-contests.test.ts": 3142,

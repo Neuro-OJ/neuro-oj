@@ -35,6 +35,29 @@ async function publish() {
     if (operation.isCurrent()) publishing.value = false;
   }
 }
+const exporting = ref<number | null>(null);
+async function exportCsv(version: number) {
+  if (exporting.value !== null) return;
+  const operation = scope(), contestId = id.value;
+  exporting.value = version;
+  failure.value = '';
+  try {
+    const csv = await api.snapshotCsv(operation.slug, contestId, version);
+    if (!operation.isCurrent() || id.value !== contestId) return;
+    // 解码时 BOM 会被去掉；补回以免 Excel 把中文识别成乱码
+    const body = csv.startsWith('\uFEFF') ? csv : `\uFEFF${csv}`;
+    const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' })),
+      link = document.createElement('a');
+    link.href = url;
+    link.download = `contest-${contestId}-ranking-v${version}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    if (operation.isCurrent()) failure.value = extractApiError(e).message;
+  } finally {
+    exporting.value = null;
+  }
+}
 useSeoMeta({ title: '管理比赛' });
 </script>
 <template>
@@ -64,8 +87,12 @@ useSeoMeta({ title: '管理比赛' });
           @click="publish">发布新版本正式成绩</UButton>
         <p class="mt-3 text-xs text-text-muted">正式快照保留发布时成绩，后续重测不会自动改写；再次发布将产生新版本。</p>
         <ul class="mt-4 space-y-2 text-sm">
-          <li v-for="snapshot in snapshots?.data"
-            :key="snapshot.id">V{{ snapshot.version }} · {{ new Date(snapshot.created_at).toLocaleString() }} · {{ snapshot.note || '首次发布' }}</li>
+          <li v-for="snapshot in snapshots?.data" :key="snapshot.id" class="flex items-center gap-2">
+            <span
+              class="flex-1">V{{ snapshot.version }} · {{ new Date(snapshot.created_at).toLocaleString() }} · {{ snapshot.note || '首次发布' }}</span>
+            <UButton size="xs" variant="outline" icon="i-lucide-download" :loading="exporting === snapshot.version"
+              :disabled="exporting !== null" @click="exportCsv(snapshot.version)">导出 CSV</UButton>
+          </li>
         </ul>
       </UCard>
     </template>

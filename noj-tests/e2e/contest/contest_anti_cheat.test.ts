@@ -127,7 +127,7 @@ async function createContest(
       score: 100,
     }],
   };
-  const res = await apiPost("/api/v1/admin/contest/contests", body, adminToken);
+  const res = await apiPost("/api/v1/domains/main/contests", body, adminToken);
   if (res.status !== 201) {
     throw new Error(
       `创建竞赛失败: ${res.status} ${JSON.stringify(res.body)}`,
