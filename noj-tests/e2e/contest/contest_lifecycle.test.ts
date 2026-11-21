@@ -7,8 +7,8 @@
 
 import {
   apiGet,
+  apiPatch,
   apiPost,
-  apiPut,
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
@@ -56,7 +56,7 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
   if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
-    "/api/v1/admin/contest/contests",
+    "/api/v1/domains/main/contests",
     {
       title: `E2E 生命周期竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
@@ -172,10 +172,16 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
   // 测试 2 在 1s 内产生的提交会被当作赛后提交排除而偶发失败。
   // 因此把 end_time 设在当前时刻之后（晚于所有已产生的提交），再等待其到期。
   const endTime = Date.now() + 300;
-  const updateResult = await apiPut(
-    `/api/v1/admin/contest/contests/${contestId}`,
+  const current = await apiGet(
+    `/api/v1/domains/main/contests/${contestId}`,
+    adminToken,
+  );
+  const { revision } = (current.body as { data: { revision: number } }).data;
+  const updateResult = await apiPatch(
+    `/api/v1/domains/main/contests/${contestId}`,
     { end_time: new Date(endTime).toISOString() },
     adminToken,
+    { "If-Match": String(revision) },
   );
   if (updateResult.status !== 200) {
     throw new Error(
@@ -198,7 +204,7 @@ e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名
 
   // 新结算门禁：竞赛结束后需先发布正式成绩快照，公开排名才会展示最终分数。
   const publishResult = await apiPost(
-    `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots`,
+    `/api/v1/domains/main/contests/${contestId}/publish-ranking`,
     { note: "E2E 发布正式成绩" },
     adminToken,
   );

@@ -124,6 +124,11 @@ export function useDomainContests() {
         `${path(slug, id)}/snapshots`,
         { silent: true },
       ),
+    /** 正式成绩 CSV（逐人逐题明细，分数为展示量纲）。 */
+    snapshotCsv: (slug: string, id: string, version: number) =>
+      api.get<string>(`${path(slug, id)}/snapshots/${version}.csv`, {
+        responseType: 'text',
+      }),
     publish: (slug: string, id: string, note: string, allow_failed: boolean) =>
       api.post(`${path(slug, id)}/publish-ranking`, { note, allow_failed }),
   };

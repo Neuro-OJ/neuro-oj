@@ -44,7 +44,7 @@ async function createRunningContestWithRegistration(): Promise<string> {
   const ts = Date.now().toString(36);
   const now = Date.now();
   const contest = await apiPost(
-    "/api/v1/admin/contest/contests",
+    "/api/v1/domains/main/contests",
     {
       title: `pq-${ts}`,
       start_time: new Date(now - 60_000).toISOString(),
