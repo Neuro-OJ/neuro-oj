@@ -1,7 +1,7 @@
 # 代码结构与功能切片（noj-core）
 
 > 目标形态是 `shared/` + `features/<name>/` 两层；方案与分阶段计划以
-> [`../../openspec/changes/refactor-core-feature-slices/`](../../openspec/changes/refactor-core-feature-slices/)
+> [`../../dev-docs/refactor/core-feature-slices/`](../../dev-docs/refactor/core-feature-slices/)
 > 的 `proposal.md` / `design.md` 为准。旧 `modules/`（含 `application/` 编排层）
 > 仍在，原则是「改到即迁」，不要为了迁移而迁移。
 

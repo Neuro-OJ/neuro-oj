@@ -11,12 +11,13 @@
 | [`engineering/`](engineering/README.md)  | 工程规范：架构、边界、安全、可观测性、WASM、测试    | 活文档，见其 README |
 | [`design/`](design/)                     | 设计 token 与 UI 视觉契约                           | 活文档，代码与 CI 引用 |
 | [`product/`](product/)                   | 进行中的产品设计与路线图：`DESIGN.md` / `PRODUCT.md` / `ROADMAP.md` | 活文档            |
+| [`refactor/`](refactor/)                 | 进行中的设计：core 功能切片重构提案（proposal/design/tasks） | 活文档            |
 | [`audit/`](audit/)                       | 时点审计，按日期建目录                              | 只读快照          |
 | [`reviews/`](reviews/)                   | 时点评审与验证记录                                  | 只读快照          |
 | [`acceptance/`](acceptance/)             | 时点验收记录（含 PR body 存档）                     | 只读快照          |
 | [`unattended/`](unattended/)             | 无人值守改造的过程记录与证据                        | 只读快照          |
 | [`postmortem/`](postmortem/)             | 事故复盘                                            | 只读快照          |
-| [`archive/`](archive/)                   | 历史存档：`superpowers/`（plans 69、specs 42、reviews、reports） | 归档，勿新增      |
+| [`archive/`](archive/)                   | 历史存档：`superpowers/` 与 `openspec-changes/`（10 个已下线历史提案） | 归档，勿新增      |
 
 ## 约定
 

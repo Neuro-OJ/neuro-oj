@@ -36,7 +36,6 @@
 | `noj-tests/`          | 跨模块 E2E 测试                                         |
 | `noj-docs/`           | 文档站（架构、运维、安全、FAQ）                         |
 | `dev-docs/`           | 工程规范、设计、评审与 Agent 细节（本目录）             |
-| `openspec/`           | 变更提案（重构方案与分阶段计划）                        |
 | `scripts/`            | 构建与门禁脚本（边界、迁移安全、链接、Agent Note 格式） |
 | `deploy/` `fixtures/` | 部署编排与测试夹具                                      |
 
@@ -56,7 +55,7 @@ noj-core 正从 `modules/`（+ `application/` 编排层与跨模块合同层）�
 **`shared/` + `features/<name>/`** 两层；期间新旧结构并存，旧模块「改到即迁」。
 
 方案与分阶段计划以
-[openspec/changes/refactor-core-feature-slices/](../../openspec/changes/refactor-core-feature-slices/)
+[dev-docs/refactor/core-feature-slices/](../../dev-docs/refactor/core-feature-slices/)
 （`proposal.md`、`design.md`）为准；新增功能的结构与依赖规则依提案，不要自行发明。
 
 **新功能照样例写**：复制
@@ -87,5 +86,5 @@ noj-core 正从 `modules/`（+ `application/` 编排层与跨模块合同层）�
 | noj-cli / 生产部署 | [`noj-cli/README.md`](../../noj-cli/README.md)、[production-deploy.md](../../noj-docs/docs/operators/production-deploy.md)                         |
 | E2E 测试指南       | [`noj-tests/E2E_TESTING.md`](../../noj-tests/E2E_TESTING.md)                                                                                       |
 | 工程规范           | [`dev-docs/engineering/README.md`](../engineering/README.md)                                                                                       |
-| core 重构提案      | [`openspec/changes/refactor-core-feature-slices/`](../../openspec/changes/refactor-core-feature-slices/)                                           |
+| core 重构提案      | [`dev-docs/refactor/core-feature-slices/`](../../dev-docs/refactor/core-feature-slices/)                                                           |
 | 品牌设计 Token     | [`dev-docs/design/noj-design-tokens.md`](../design/noj-design-tokens.md)                                                                           |

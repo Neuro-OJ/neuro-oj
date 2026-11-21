@@ -5,7 +5,7 @@ Deno 2 + Hono 的 RESTful API 与业务后端。仓库级规则见
 
 > 本文件只保留**禁令、命令、细节路由**；背景、schema 与领域约定在
 > [`docs/`](./docs/)。架构方向为 `shared/` + `features/<name>/`，依据
-> [`../openspec/changes/refactor-core-feature-slices/`](../openspec/changes/refactor-core-feature-slices/)。
+> [`../dev-docs/refactor/core-feature-slices/`](../dev-docs/refactor/core-feature-slices/)。
 
 ## 禁令
 
