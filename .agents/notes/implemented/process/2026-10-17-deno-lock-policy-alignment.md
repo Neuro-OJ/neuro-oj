@@ -21,7 +21,7 @@ deno.lock  # 不锁定依赖版本——社区库遵循 semver 即可
 
 该行同时是失效规则：`.gitignore` 不支持行尾注释，整行被当作字面模式
 `deno.lock  # 不锁定依赖版本……`，从未匹配任何文件。规则未真正生效，但注释表达的
-「不锁版本」意图会误导贡献者，也被 `dev-docs/superpowers/plans/2026-08-31-noj-cli-*`
+「不锁版本」意图会误导贡献者，也被 `dev-docs/archive/superpowers/plans/2026-08-31-noj-cli-*`
 等历史计划引用。
 
 ## Decision

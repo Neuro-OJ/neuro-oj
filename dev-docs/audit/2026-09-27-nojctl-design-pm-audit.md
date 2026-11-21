@@ -1,6 +1,6 @@
 # nojctl 部署运维 CLI 设计 —— 产品视角审计
 
-- 审计对象：`dev-docs/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`（665 行，`Status: draft`，基线 `main @ fc20865e`）
+- 审计对象：`dev-docs/archive/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`（665 行，`Status: draft`，基线 `main @ fc20865e`）
 - 审计视角：产品（用户价值 / 用户旅程 / 信息架构 / 风险与信任 / 范围 / 度量），**不是**代码评审
 - 目标用户：没接触过服务器运维的运营者，典型画像 = **学校教练**（拿得到一台 Linux 服务器和一个域名，但不能被迫理解 compose / env 文件 / rootless Docker / 迁移不可逆）
 - 审计方式：**只读**。除本文件外未修改任何文件、未提交、未运行任何改变系统状态的命令
@@ -649,7 +649,7 @@ uninstall（默认）→ 目录里剩 .env.prod + backups/ → deploy 拒绝（�
 
 ## 附录 B：证据索引（`file:line`）
 
-**spec（`dev-docs/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`）**：§1.1 L26-40 · §1.2 L42-53 · §2 L57-69 · §3 L73-99 · §4.1 L105-125 · §4.2 L127-143 · §5.1 L149-180 · §5.2 L182-193 · §5.3 L195-206 · §5.4 L208-228 · §5.5 L230-247 · §5.6 L249-274 · §5.7 L276-288 · §6.1 L294-317 · §6.3 L326-339 · §6.4 L341-345 · §6.6 L352-362 · §6.7 L364-386 · §7.1 L392-402 · §7.2 L404-417 · §7.3 L419-449 · §7.4 L451-456 · §8.1 L478-493 · §8.2 L495-503 · §8.3 L505-520 · §8.4 L522-525 · §9.1 L531-538 · §9.2 L540-550 · §9.3 L552-564 · §9.4 L566-571 · §9.5 L573-577 · §10.5 L611-614 · §11 L623-633 · §12 L637-650 · §13 L654-665
+**spec（`dev-docs/archive/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`）**：§1.1 L26-40 · §1.2 L42-53 · §2 L57-69 · §3 L73-99 · §4.1 L105-125 · §4.2 L127-143 · §5.1 L149-180 · §5.2 L182-193 · §5.3 L195-206 · §5.4 L208-228 · §5.5 L230-247 · §5.6 L249-274 · §5.7 L276-288 · §6.1 L294-317 · §6.3 L326-339 · §6.4 L341-345 · §6.6 L352-362 · §6.7 L364-386 · §7.1 L392-402 · §7.2 L404-417 · §7.3 L419-449 · §7.4 L451-456 · §8.1 L478-493 · §8.2 L495-503 · §8.3 L505-520 · §8.4 L522-525 · §9.1 L531-538 · §9.2 L540-550 · §9.3 L552-564 · §9.4 L566-571 · §9.5 L573-577 · §10.5 L611-614 · §11 L623-633 · §12 L637-650 · §13 L654-665
 
 **仓库**：
 `docker-compose.prod.yml:8,10,12,46,148,152,317` · `.env.prod.example:32-43,40,132`（69 键 / 250 行） · `noj-core/src/main.ts:68,172-188,195-203,273` · `noj-core/src/shared/config/production-config.ts:68-126` · `noj-core/src/shared/config/settings-registry.ts:261-270` · `noj-core/src/domains/admin/routes/system.ts:233-245` · `noj-core/src/domains/identity/routes/auth.ts:347-356,725` · `noj-core/src/domains/identity/services/security/revokedTokens.ts:79` · `noj-ui/server/api/[...slug].ts:31-45,237` · `noj-cli/src/prod/config.ts:1071` · `noj-cli/README.md:26-29,57,76,82-89,99-104` · `noj-docs/docs/operators/production-deploy.md:21-22,27,32-35,55,71,75-76,93-95,125,131-132,143-146,169-179,190-217,238-268,285` · `noj-docs/docs/operators/judge-workers.md:14,16-31,69-73,103-111,113-168,305-307,318-323` · `noj-docs/docs/operators/cli.md:8-12,20-22,25-38,44-54,90-92,98-105` · `noj-core/data/problems-src/1001`（样例题）

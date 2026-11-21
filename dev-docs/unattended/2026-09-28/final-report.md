@@ -1,8 +1,8 @@
 # 公开赛开赛前无人值守审计 —— 最终报告（2026-09-28 / 29）
 
 > 窗口：2026-09-28 22:00 → 2026-09-29 07:00（CST）
-> Spec：[`2026-09-28-contest-readiness-unattended-audit-design.md`](../../superpowers/specs/2026-09-28-contest-readiness-unattended-audit-design.md)
-> Plan：[`2026-09-28-contest-readiness-unattended-audit.md`](../../superpowers/plans/2026-09-28-contest-readiness-unattended-audit.md)
+> Spec：[`2026-09-28-contest-readiness-unattended-audit-design.md`](../../archive/superpowers/specs/2026-09-28-contest-readiness-unattended-audit-design.md)
+> Plan：[`2026-09-28-contest-readiness-unattended-audit.md`](../../archive/superpowers/plans/2026-09-28-contest-readiness-unattended-audit.md)
 
 ## 先看这里（给 Owner 的 60 秒摘要）
 

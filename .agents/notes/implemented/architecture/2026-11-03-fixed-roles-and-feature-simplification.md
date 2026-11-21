@@ -14,7 +14,7 @@ moment、训练时间窗比较、首页随机推荐、跨域共享语义与旧 B
 上发现真实代码 缺口，随后按计划第 1–9 批补齐并验收；主题分支
 `refactor/fixed-roles-and-feature-simplification` 通过草稿 PR #717
 交付。完整计划与 固定合同见
-[`dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md`](../../../../dev-docs/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md)。
+[`dev-docs/archive/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md`](../../../../dev-docs/archive/superpowers/plans/2026-11-04-fixed-roles-feature-completion.md)。
 
 评审确认的缺口与关闭方式（2026-11-04 补齐）：
 

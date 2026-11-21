@@ -7,7 +7,7 @@
 >
 > 本文件作为**历史记录保留**，不逐条回改（#510 明确不校准历史归档）。
 > 仅下方 2.1 标注了与现状的冲突，以免读者照它去操作不存在的脚本。
-> 现行做法见 `dev-docs/superpowers/specs/2026-09-19-noj-cli-pure-ts-rewrite-design.md`
+> 现行做法见 `dev-docs/archive/superpowers/specs/2026-09-19-noj-cli-pure-ts-rewrite-design.md`
 > 与 `noj-cli/README.md`。
 
 ## 1. 统一命令入口

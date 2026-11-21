@@ -153,4 +153,4 @@ deno task check:types
 catalog 的工作空间场景覆盖来源题号、版本同题约束、绑定策略独立、回填幂等、
 实时授权及容量检查；不代表提交、附件、搜索、IDE 和教学全部入口已验收。
 持续进度见根目录
-[任务清单](../../../../../dev-docs/superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
+[任务清单](../../../../../dev-docs/archive/superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。

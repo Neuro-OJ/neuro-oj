@@ -1,7 +1,7 @@
 # NOJ 架构整治 P0：架构基线冻结（2026-10-20）
 
 > **时点快照**：本文档是 P0 批次交付物，对应
-> [NOJ 架构整治方案](../superpowers/plans/2026-10-20-architecture-remediation.md)（下称"方案"）
+> [NOJ 架构整治方案](../archive/superpowers/plans/2026-10-20-architecture-remediation.md)（下称"方案"）
 > §5 的 P0 行与 §7 跟踪清单第 1 项。它只登记**测量时刻**的事实：受审版本、当前代码分区、
 > 目标模块映射、表与后台任务所有权、代表性请求/查询/行为基线。本文不回溯修改既有结论；
 > 被后续代码推翻时按 [工程规范 README](README.md) 的时效约定处理（评审/审计类文档为时点快照）。
@@ -520,7 +520,7 @@ for (const f of readdirSync(dir)) if (f.endsWith(".ts") && f !== "index.ts" && f
 
 ## 9. 快速索引（本文引用的关键文件）
 
-- 方案：[架构整治方案](../superpowers/plans/2026-10-20-architecture-remediation.md)
+- 方案：[架构整治方案](../archive/superpowers/plans/2026-10-20-architecture-remediation.md)
 - 版本：[main.ts](../../noj-core/src/main.ts)、[app.ts](../../noj-core/src/app.ts)、
   [schema/index.ts](../../noj-core/src/shared/db/schema/index.ts)、
   [schema.ts](../../noj-core/src/shared/db/schema.ts)、
