@@ -170,7 +170,7 @@ Deno.test({
     const { createApp } = await import("../../src/app.ts");
     const { jsonRequest } = await import("../helper.ts");
     const { ensureDefaultWorkspace } = await import(
-      "../../src/modules/access/workspace/index.ts"
+      "../helpers/workspace-actors.ts"
     );
     await ensureDefaultWorkspace();
     const app = createApp();
