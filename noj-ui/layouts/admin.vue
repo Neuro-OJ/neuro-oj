@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue';
 
 const route = useRoute();
+const knowledge = useKnowledge();
 const sidebarOpen = ref(true);
 const isMobile = ref(false);
 const commandPaletteOpen = ref(false);
@@ -87,6 +88,16 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+const visibleNavGroups = computed(() => {
+  if (!knowledge.disabled.value) return navGroups;
+  return navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.to !== '/admin/knowledge'),
+    }))
+    .filter((group) => group.items.length > 0);
+});
+
 function isActive(path: string) {
   if (path === '/admin') return route.path === '/admin';
   return route.path.startsWith(path);
@@ -133,7 +144,7 @@ function isActive(path: string) {
 
       <!-- 导航列表 -->
       <nav class="flex-1 p-2 flex flex-col gap-3 overflow-y-auto">
-        <section v-for="group in navGroups" :key="group.label" class="flex flex-col gap-0.5">
+        <section v-for="group in visibleNavGroups" :key="group.label" class="flex flex-col gap-0.5">
           <h2 v-show="sidebarOpen" class="px-3 pt-1 text-[11px] font-semibold text-text-muted tracking-wider">
             {{ group.label }}
           </h2>

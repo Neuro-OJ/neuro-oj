@@ -3,7 +3,7 @@ import { classroomCan, educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);

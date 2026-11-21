@@ -3,11 +3,11 @@
 import { assertEquals } from 'jsr:@std/assert@^1';
 import { teachingNoticeTarget } from '../utils/education-notifications.ts';
 import type { TeachingNotice } from '../utils/education-notifications.ts';
-Deno.test('教学通知：链接保留使用域，反馈与求助只传定位，不传成绩或正文', () => {
+Deno.test('教学通知：链接保留使用域，求助直达独立详情页，通知只传定位，不传成绩或正文', () => {
   const notice = { assignment_id: 'task', type: 'help_reply', help_id: 'help', feedback_id: null } as TeachingNotice;
   assertEquals(teachingNoticeTarget('school-one', notice), {
-    path: '/d/school-one/assignments/task',
-    query: { help: 'help' },
+    path: '/d/school-one/assignments/task/help/help',
+    query: {},
   });
   assertEquals(
     teachingNoticeTarget('school-two', { ...notice, type: 'feedback', help_id: null, feedback_id: 'feedback' }),

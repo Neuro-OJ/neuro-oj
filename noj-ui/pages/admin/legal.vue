@@ -366,9 +366,14 @@ onMounted(loadAll);
         </AdminFormField>
         <AdminFormField
           label="部署补充说明"
-          hint="存储区域、保留期限、备份、第三方服务及额外用途；在「数据使用与注销说明」页公开展示"
+          hint="存储区域、保留期限、备份、第三方服务及额外用途；在「数据使用与注销说明」页公开展示（支持 Markdown）"
         >
-          <UTextarea v-model="drafts.legal_deployment_notes" :rows="6" />
+          <MarkdownEditor
+            v-model="drafts.legal_deployment_notes"
+            default-mode="edit"
+            height="220px"
+            aria-label="部署补充说明"
+          />
         </AdminFormField>
         <AdminFormField label="ICP 备案号" hint="未备案留空，页脚不显示">
           <UInput v-model="drafts.legal_icp_number" placeholder="如：京ICP备00000000号" />

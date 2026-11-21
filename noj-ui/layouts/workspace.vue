@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { extractApiError } from '~/utils/apiError';
+import { resolveWorkspaceWidth } from '~/utils/workspace-layout';
 
 const { domain, status, error, refresh } = provideWorkspaceContext();
 const route = useRoute();
+const containerClass = computed(() => resolveWorkspaceWidth(route.meta).className);
 
 const apiError = computed(() => (error.value ? extractApiError(error.value) : null));
 const errStatus = computed(() => apiError.value?.status);
@@ -32,8 +34,7 @@ const contentStatus = computed(() => {
 </script>
 <template>
   <NuxtLayout name="default">
-    <div class="mx-auto w-full px-4 py-6 sm:px-6"
-      :class="route.meta.workspaceWidth === 'home' ? 'max-w-[1360px]' : route.meta.workspaceWidth === 'library' ? 'max-w-[1008px]' : route.meta.workspaceWidth === 'problem' ? 'max-w-7xl' : route.meta.problemWorkspace ? 'max-w-[1600px]' : 'max-w-6xl'">
+    <div class="mx-auto w-full px-4 py-6 sm:px-6" :class="containerClass">
       <AsyncContent
         :status="contentStatus"
         :error="error ? (apiError?.message || '读取空间失败') : undefined" empty-text="空间不存在或不可访问"

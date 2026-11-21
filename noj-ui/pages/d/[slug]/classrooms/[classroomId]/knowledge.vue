@@ -24,7 +24,7 @@ import {
 } from '~/utils/knowledge';
 import { workspacePath } from '~/utils/workspace';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '88rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], workspaceWidth: 'workspace' });
 
 const route = useRoute();
 const { slug, domain } = useWorkspace();
@@ -86,7 +86,7 @@ function cellState(userId: string, nodeId: string): MasteryState {
 function cellBoxClass(state: MasteryState) {
   const color = masteryStateColor(state);
   return color === 'success'
-    ? 'bg-success'
+    ? 'bg-signal'
     : color === 'primary'
       ? 'bg-primary'
       : 'border border-border bg-transparent';
@@ -99,7 +99,7 @@ useSeoMeta({ title: '知识点掌握' });
 // 权限未加载完不发请求；权限变化（如身份切换）时再加载。
 watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => {
   matrix.value = null;
-  if (canRead.value) load();
+  if (canRead.value && !knowledge.disabled.value) load();
 }, { immediate: true });
 </script>
 
@@ -120,14 +120,15 @@ watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => 
     <UAlert
       v-else-if="!canRead"
       color="warning"
+      variant="subtle"
       title="仅班级教练可查看知识点掌握情况"
       data-testid="knowledge-forbidden"
     />
 
-    <UAlert v-else-if="failure" color="error" :title="failure" />
+    <UAlert v-else-if="failure" color="error" variant="subtle" :title="failure" />
 
     <template v-else>
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-bg-panel p-4">
         <UCheckbox v-model="onlyLearning" label="只看有学生在学的知识点" data-testid="only-learning" />
         <span class="text-xs text-text-muted tabular-nums">
           共 <strong class="text-text font-semibold">{{ students.length }}</strong> 名学生 ·
@@ -146,7 +147,7 @@ watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => 
         当前没有学生在学的知识点，可取消筛选查看全部。
       </p>
 
-      <section v-else class="overflow-hidden rounded-lg border border-border bg-bg-panel" data-testid="mastery-matrix">
+      <section v-else class="overflow-hidden rounded-md border border-border bg-bg-panel" data-testid="mastery-matrix">
         <div
           v-for="area in areas"
           :key="area.id"
@@ -232,7 +233,7 @@ watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => 
       </section>
 
       <div class="flex flex-wrap items-center gap-4 text-xs text-text-muted">
-        <span class="inline-flex items-center gap-1.5"><span class="size-3 rounded-sm bg-success" />已掌握</span>
+        <span class="inline-flex items-center gap-1.5"><span class="size-3 rounded-sm bg-signal" />已掌握</span>
         <span class="inline-flex items-center gap-1.5"><span class="size-3 rounded-sm bg-primary" />学习中</span>
         <span class="inline-flex items-center gap-1.5"><span class="size-3 rounded-sm border border-border" />未开始</span>
         <span class="ml-auto">悬停单元格可查看具体状态</span>

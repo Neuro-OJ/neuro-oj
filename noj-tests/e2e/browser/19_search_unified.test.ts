@@ -134,20 +134,18 @@ Deno.test({
           })?.__vue_app__,
         )
       );
-      // 桌面导航把同一入口折叠为快捷键；“搜索当前域”链接仅在窄屏菜单中可见。
-      // 这里验收真实的 Control+K 入口，不等待一个按响应式规则隐藏的节点。
+      // 桌面导航与全局快捷键统一唤起域内 ⌘K 命令面板。
       await session.page.keyboard.press("Control+K");
-      await session.page.waitForURL((url) => url.pathname === "/d/main/search");
-      await session.page.getByRole("textbox", { name: "域内搜索关键词" }).fill(
-        QUERY,
-      );
-      await session.page.getByRole("button", { name: "搜索", exact: true })
-        .click();
-      const result = session.page.getByRole("link", {
+      const paletteInput = session.page.getByRole("textbox", {
+        name: "在当前域内搜索或跳转",
+      });
+      await expect(paletteInput).toBeVisible();
+      await paletteInput.fill(QUERY);
+      const option = session.page.getByRole("option", {
         name: new RegExp(TITLE),
       });
-      await expect(result).toBeVisible();
-      await result.click();
+      await expect(option).toBeVisible({ timeout: 15_000 });
+      await option.click();
       await session.page.waitForURL((url) =>
         url.pathname === `/d/main/problems/${problemNumber}`
       );

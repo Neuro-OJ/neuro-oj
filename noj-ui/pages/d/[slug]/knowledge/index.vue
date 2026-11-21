@@ -36,6 +36,12 @@ const hidden = computed(() => knowledge.disabled.value);
 async function load() {
   const domain = slug.value;
   if (!domain) return;
+  if (hidden.value) {
+    loading.value = false;
+    mastery.value = null;
+    recommendations.value = [];
+    return;
+  }
   if (!isLoggedIn.value) {
     loading.value = false;
     mastery.value = null;

@@ -279,10 +279,28 @@ export function useEducationApi() {
     readNotification: (slug: string, id: string) =>
       api.post(`${root(slug)}/notifications/${encodeURIComponent(id)}/read`, {}),
     addFeedback: (slug: string, id: string, body: string, target: string | null, key: string) =>
-      api.post(`${task(slug, id)}/feedback`, { body, target_user_id: target }, idempotent(key)),
-    help: (slug: string, id: string, page = 1) =>
+      api.post<{ data: AssignmentFeedback }>(
+        `${task(slug, id)}/feedback`,
+        { body, target_user_id: target },
+        idempotent(key),
+      ),
+    updateFeedback: (
+      slug: string,
+      id: string,
+      feedbackId: string,
+      current: number,
+      input: { body?: string; withdraw?: boolean },
+    ) =>
+      input.withdraw
+        ? api.delete(`${task(slug, id)}/feedback/${encodeURIComponent(feedbackId)}`, revision(current))
+        : api.patch<{ data: AssignmentFeedback }>(
+          `${task(slug, id)}/feedback/${encodeURIComponent(feedbackId)}`,
+          { body: input.body },
+          revision(current),
+        ),
+    help: (slug: string, id: string, page = 1, state?: 'open' | 'resolved') =>
       api.get<{ data: TeachingPage<AssignmentHelp> }>(`${task(slug, id)}/help-requests`, {
-        query: { page },
+        query: { page, ...(state ? { state } : {}) },
         silent: true,
       }),
     helpDetail: (slug: string, id: string, helpId: string, page = 1) =>
@@ -291,11 +309,25 @@ export function useEducationApi() {
         silent: true,
       }),
     ask: (slug: string, id: string, body: string, key: string, itemId?: string | null) =>
-      api.post(`${task(slug, id)}/help-requests`, { body, item_id: itemId ?? null }, idempotent(key)),
-    reply: (slug: string, id: string, helpId: string, body: string, key: string) =>
-      api.post(`${task(slug, id)}/help-requests/${encodeURIComponent(helpId)}/replies`, { body }, idempotent(key)),
+      api.post<{ data: AssignmentHelp }>(
+        `${task(slug, id)}/help-requests`,
+        { body, item_id: itemId ?? null },
+        idempotent(key),
+      ),
+    reply: (slug: string, id: string, helpId: string, body: string, key: string, resolve?: boolean) =>
+      api.post(
+        `${task(slug, id)}/help-requests/${encodeURIComponent(helpId)}/replies`,
+        { body, ...(resolve ? { resolve: true } : {}) },
+        idempotent(key),
+      ),
+    setHelpState: (slug: string, id: string, helpId: string, current: number, state: 'open' | 'resolved') =>
+      api.patch<{ data: AssignmentHelp }>(
+        `${task(slug, id)}/help-requests/${encodeURIComponent(helpId)}`,
+        { state },
+        revision(current),
+      ),
     resolve: (slug: string, id: string, helpId: string, current: number) =>
-      api.patch(
+      api.patch<{ data: AssignmentHelp }>(
         `${task(slug, id)}/help-requests/${encodeURIComponent(helpId)}`,
         { state: 'resolved' },
         revision(current),

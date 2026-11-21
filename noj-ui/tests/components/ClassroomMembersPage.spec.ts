@@ -131,6 +131,7 @@ describe('pages/d/[slug]/classrooms/[classroomId]/members.vue', () => {
     expect(view.text()).toContain('班级成员');
     expect(view.text()).toContain('算法进阶班');
     expect(view.text()).toContain('student_bob');
+    expect(view.find('a[href="/d/edu-domain/classrooms/room-1/students/u-1"]').exists()).toBe(true);
 
     // 验证 InvitationManager 被挂载且接收了 domainSlug 与 classroomId
     const inviteMgr = view.find('[data-testid="invitation-manager"]');

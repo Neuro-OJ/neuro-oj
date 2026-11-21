@@ -1,4 +1,4 @@
-import { and, count, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import {
@@ -140,7 +140,7 @@ async function helpReader(
   return { access, all };
 }
 
-/** 求助目录只显示本人或获授权的本班求助，过滤在分页和计数之前。 */
+/** 求助目录只显示本人或获授权的本班求助，过滤在分页和计数之前，并附带提问人、回复数与教练响应标记。 */
 export async function listAssignmentHelp(
   slug: string,
   id: string,
@@ -163,10 +163,76 @@ export async function listAssignmentHelp(
   const [total] = await db.select({ count: count() }).from(
     assignmentHelpRequests,
   ).where(where);
-  const data = await db.select().from(assignmentHelpRequests).where(where)
-    .orderBy(assignmentHelpRequests.updated_at, assignmentHelpRequests.id)
-    .limit(50).offset((page - 1) * 50);
-  return { page, per_page: 50, total: total.count, data };
+  const rows = await db.select({
+    help: assignmentHelpRequests,
+    username: users.username,
+    deleted_at: users.deleted_at,
+  })
+    .from(assignmentHelpRequests)
+    .innerJoin(users, eq(users.id, assignmentHelpRequests.user_id))
+    .where(where)
+    .orderBy(
+      desc(assignmentHelpRequests.updated_at),
+      desc(assignmentHelpRequests.id),
+    )
+    .limit(50)
+    .offset((page - 1) * 50);
+
+  // 仅对当前页求助（≤50 条）统计总回复数与教练回复数，避免 N+1 查询
+  const helpIds = rows.map((row) => row.help.id);
+  const replyStats = new Map<
+    string,
+    { count: number; answeredByCoach: boolean }
+  >();
+  if (helpIds.length) {
+    const [totals, coachCounts] = await Promise.all([
+      db.select({
+        help_id: assignmentHelpReplies.help_id,
+        total: count(),
+      })
+        .from(assignmentHelpReplies)
+        .where(inArray(assignmentHelpReplies.help_id, helpIds))
+        .groupBy(assignmentHelpReplies.help_id),
+      db.select({
+        help_id: assignmentHelpReplies.help_id,
+        total: count(),
+      })
+        .from(assignmentHelpReplies)
+        .innerJoin(
+          assignmentHelpRequests,
+          eq(assignmentHelpRequests.id, assignmentHelpReplies.help_id),
+        )
+        .where(and(
+          inArray(assignmentHelpReplies.help_id, helpIds),
+          ne(assignmentHelpReplies.author_id, assignmentHelpRequests.user_id),
+        ))
+        .groupBy(assignmentHelpReplies.help_id),
+    ]);
+    for (const row of totals) {
+      replyStats.set(row.help_id, { count: row.total, answeredByCoach: false });
+    }
+    for (const row of coachCounts) {
+      const current = replyStats.get(row.help_id) ??
+        { count: 0, answeredByCoach: false };
+      current.answeredByCoach = row.total > 0;
+      replyStats.set(row.help_id, current);
+    }
+  }
+
+  return {
+    page,
+    per_page: 50,
+    total: total.count,
+    data: rows.map((row) => {
+      const stats = replyStats.get(row.help.id);
+      return {
+        ...row.help,
+        author_name: row.deleted_at ? "已注销账号" : row.username,
+        reply_count: stats?.count ?? 0,
+        answered_by_coach: stats?.answeredByCoach ?? false,
+      };
+    }),
+  };
 }
 
 /** 通知点击不能依赖旧访问结果，详情重新验证目标学生与当前教学权限。 */
@@ -179,36 +245,56 @@ export async function getAssignmentHelp(
   executor: Executor = getDb(),
 ) {
   const { all } = await helpReader(slug, id, actorId, executor);
-  const [help] = await executor.select().from(assignmentHelpRequests).where(
-    and(
-      eq(assignmentHelpRequests.assignment_id, id),
-      eq(assignmentHelpRequests.id, helpId),
-      all ? undefined : eq(assignmentHelpRequests.user_id, actorId),
-    ),
-  );
-  if (!help) throw new NotFoundError("求助不存在或不可访问");
+  const [helpRow] = await executor.select({
+    help: assignmentHelpRequests,
+    username: users.username,
+    deleted_at: users.deleted_at,
+  })
+    .from(assignmentHelpRequests)
+    .innerJoin(users, eq(users.id, assignmentHelpRequests.user_id))
+    .where(
+      and(
+        eq(assignmentHelpRequests.assignment_id, id),
+        eq(assignmentHelpRequests.id, helpId),
+        all ? undefined : eq(assignmentHelpRequests.user_id, actorId),
+      ),
+    );
+  if (!helpRow) throw new NotFoundError("求助不存在或不可访问");
+  const help = helpRow.help;
   if (!Number.isSafeInteger(replyPage) || replyPage < 1 || replyPage > 100000) {
     throw new BadRequestError("回复分页格式错误");
   }
   const db = executor,
-    [total] = await db.select({ count: count() }).from(assignmentHelpReplies)
-      .where(eq(assignmentHelpReplies.help_id, helpId));
-  const rows = await db.select({
-    reply: assignmentHelpReplies,
-    username: users.username,
-    deleted_at: users.deleted_at,
-  }).from(assignmentHelpReplies)
-    .innerJoin(users, eq(users.id, assignmentHelpReplies.author_id)).where(
-      eq(assignmentHelpReplies.help_id, helpId),
-    )
-    .orderBy(assignmentHelpReplies.created_at, assignmentHelpReplies.id).limit(
-      50,
-    ).offset((replyPage - 1) * 50);
+    [[total], [coachTotal], rows] = await Promise.all([
+      db.select({ count: count() }).from(assignmentHelpReplies)
+        .where(eq(assignmentHelpReplies.help_id, helpId)),
+      db.select({ count: count() }).from(assignmentHelpReplies)
+        .where(and(
+          eq(assignmentHelpReplies.help_id, helpId),
+          ne(assignmentHelpReplies.author_id, help.user_id),
+        )),
+      db.select({
+        reply: assignmentHelpReplies,
+        username: users.username,
+        deleted_at: users.deleted_at,
+      }).from(assignmentHelpReplies)
+        .innerJoin(users, eq(users.id, assignmentHelpReplies.author_id)).where(
+          eq(assignmentHelpReplies.help_id, helpId),
+        )
+        .orderBy(assignmentHelpReplies.created_at, assignmentHelpReplies.id)
+        .limit(
+          50,
+        ).offset((replyPage - 1) * 50),
+    ]);
   return {
     ...help,
+    author_name: helpRow.deleted_at ? "已注销账号" : helpRow.username,
+    reply_count: total.count,
+    answered_by_coach: coachTotal.count > 0,
     replies: rows.map((row) => ({
       ...row.reply,
       author_name: row.deleted_at ? "已注销账号" : row.username,
+      is_coach: row.reply.author_id !== help.user_id,
     })),
     reply_page: replyPage,
     reply_total: total.count,

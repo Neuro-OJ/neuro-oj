@@ -1,11 +1,35 @@
 <script setup lang="ts">
-import { workspacePath } from '~/utils/workspace';
+import { workspaceCacheKey, workspacePath, type WorkspaceSummary } from '~/utils/workspace';
 import { workspaceNavigation } from '~/utils/workspace-navigation';
-const { user } = useAuth();
+const { user, isLoggedIn } = useAuth();
 const route = useRoute(), slug = useNavigationDomain(), workspace = useOptionalWorkspace();
+const workspaces = useWorkspaceApi();
+const commandPalette = useDomainCommandPalette();
 const mobileOpen = ref(false), headerRef = ref<HTMLElement | null>(null);
 const navRef = ref<HTMLElement | null>(null), measureRef = ref<HTMLElement | null>(null), navWidth = ref(Infinity);
 const knowledge = useKnowledge();
+
+// 与 UserMenu 共用同一份已加入域列表缓存
+const { data: spacesData } = useAsyncData(
+  () => workspaceCacheKey('', user.value?.id ?? null, 'user-menu-domains'),
+  () => user.value ? workspaces.list(true) : Promise.resolve({ data: [] as WorkspaceSummary[] }),
+);
+
+const currentDomainLabel = computed(() => workspace?.domain.value?.name || slug.value);
+const domainSwitcherItems = computed(() => [
+  [
+    ...(spacesData.value?.data ?? []).map((space) => ({
+      label: `${space.name} · @${space.slug}`,
+      icon: space.slug === slug.value ? 'i-lucide-check' : 'i-lucide-building-2',
+      onSelect: async () => {
+        await workspaces.remember(space.slug);
+        await navigateTo(workspacePath(space.slug));
+      },
+    })),
+  ],
+  [{ label: '浏览与管理域', icon: 'i-lucide-grid-2x2', to: '/workspaces' }],
+]);
+
 // 知识图谱总开关：不在导航里主动探测（避免每页水合多一次请求），只沿用已知的
 // 关闭状态（任一知识图谱接口返回 KNOWLEDGE_DISABLED 后隐藏入口）。
 const knowledgeEnabled = computed(() => !knowledge.disabled.value);
@@ -17,7 +41,8 @@ const entries = computed(() => workspace?.domain.value
     { label: '比赛', section: 'contests', to: workspacePath(slug.value, 'contests'), icon: 'i-lucide-trophy' },
     { label: '题单', section: 'trainings', to: workspacePath(slug.value, 'trainings'), icon: 'i-lucide-list-ordered' },
   ]);
-const candidates = computed(() => entries.value.filter(entry => !['search', 'members', 'settings', 'llm', 'problem-bindings', 'submissions', 'queue'].includes(entry.section)));
+// 「提交」释放回主导航候选池（按宽度溢出时自动进「更多」），低频设置/资源页仍收拢
+const candidates = computed(() => entries.value.filter(entry => !['search', 'members', 'settings', 'llm', 'problem-bindings', 'queue'].includes(entry.section)));
 const visibleCount = ref(Infinity);
 const primary = computed(() => candidates.value.slice(0, visibleCount.value));
 const more = computed(() => entries.value.filter(entry => entry.section !== 'search' && !primary.value.includes(entry)));
@@ -48,17 +73,17 @@ onMounted(() => {
 });
 </script>
 <template>
-  <header ref="headerRef" class="fixed inset-x-0 top-0 z-[100] border-b border-border bg-white/95 backdrop-blur-sm">
-    <div v-if="user?.must_change_password" class="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-700">
+  <header ref="headerRef" class="fixed inset-x-0 top-0 z-[100] border-b border-border bg-bg-panel/95 backdrop-blur-sm">
+    <div v-if="user?.must_change_password" class="border-b border-error-text/25 bg-verdict-wrong-bg px-4 py-2 text-center text-sm text-error-text">
       请先修改临时密码，再使用完整功能。
     </div>
-    <div class="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:px-6">
+    <div class="mx-auto flex h-16 max-w-[1440px] items-center gap-2.5 px-4 sm:px-6">
       <UDrawer v-model:open="mobileOpen" title="导航" direction="left" :handle="false" :close="true">
         <UButton class="lg:hidden" color="neutral" variant="ghost" square icon="i-lucide-menu" aria-label="打开菜单" />
         <template #body>
           <nav class="flex w-64 flex-col gap-1" aria-label="移动端导航">
             <NuxtLink v-for="entry in entries" :key="entry.to" :to="entry.to"
-              class="flex items-center gap-3 rounded px-3 py-2.5 text-sm text-text-secondary hover:bg-primary-bg"
+              class="flex items-center gap-3 rounded-sm px-3 py-2.5 text-sm text-text-secondary hover:bg-primary-bg"
               active-class="bg-primary-bg font-semibold text-primary" :exact-active-class="entry.section === '' ? 'bg-primary-bg text-primary' : ''"
               @click="mobileOpen = false">
               <UIcon :name="entry.icon" class="size-4" />{{ entry.label }}
@@ -67,31 +92,53 @@ onMounted(() => {
         </template>
       </UDrawer>
       <BrandLogo :to="workspacePath(slug)" text-class="hidden sm:inline" />
-      <nav ref="navRef" class="relative ml-3 hidden min-w-0 flex-1 items-center gap-1 lg:flex" aria-label="空间导航">
+      <!-- 域上下文指示 / 快捷切换器 -->
+      <span class="hidden text-border-strong select-none sm:inline" aria-hidden="true">/</span>
+      <UDropdownMenu v-if="isLoggedIn" :items="domainSwitcherItems" :content="{ align: 'start' }" :ui="{ content: 'w-64' }">
+        <button
+          type="button"
+          class="inline-flex max-w-36 sm:max-w-48 items-center gap-1.5 rounded-sm border border-border bg-bg-sunken/70 px-2.5 py-1 text-xs font-medium text-text transition-colors hover:border-border-strong hover:bg-bg-sunken"
+          aria-label="切换当前域"
+          :title="`当前域：${currentDomainLabel} (@${slug})`"
+        >
+          <span class="truncate">{{ currentDomainLabel }}</span>
+          <UIcon name="i-lucide-chevrons-up-down" class="size-3 shrink-0 text-text-muted" />
+        </button>
+      </UDropdownMenu>
+      <NuxtLink
+        v-else
+        :to="workspacePath(slug)"
+        class="inline-flex max-w-36 sm:max-w-48 items-center gap-1.5 rounded-sm border border-border bg-bg-sunken/70 px-2.5 py-1 text-xs font-medium text-text no-underline transition-colors hover:border-border-strong"
+        :title="`当前域：${currentDomainLabel} (@${slug})`"
+      >
+        <span class="truncate">{{ currentDomainLabel }}</span>
+      </NuxtLink>
+      <nav ref="navRef" class="relative ml-2 hidden min-w-0 flex-1 items-center gap-1 lg:flex" aria-label="空间导航">
         <div ref="measureRef" class="pointer-events-none invisible absolute flex w-max" aria-hidden="true">
           <span v-for="entry in candidates" :key="entry.to" class="whitespace-nowrap px-3 py-2 text-sm font-semibold">{{ entry.label }}</span>
         </div>
         <NuxtLink v-for="entry in primary" :key="entry.to" :to="entry.to"
-          class="whitespace-nowrap rounded px-3 py-2 text-sm text-text-secondary hover:bg-primary-bg"
+          class="whitespace-nowrap rounded-sm px-3 py-1.5 text-sm text-text-secondary transition-colors hover:bg-primary-bg hover:text-text"
           :active-class="entry.section === '' ? '' : 'bg-primary-bg font-semibold text-primary'"
           exact-active-class="bg-primary-bg font-semibold text-primary">{{ entry.label }}</NuxtLink>
         <UDropdownMenu v-if="more.length" :items="more.map(entry => ({ label: entry.label, icon: entry.icon, to: entry.to }))">
-          <UButton color="neutral" variant="ghost" trailing-icon="i-lucide-chevron-down">更多</UButton>
+          <UButton color="neutral" variant="ghost" size="sm" trailing-icon="i-lucide-chevron-down">更多</UButton>
         </UDropdownMenu>
       </nav>
       <div class="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
-        <NuxtLink
-          :to="workspacePath(slug, 'search')"
-          class="hidden sm:inline-flex items-center gap-2 rounded-md border border-border/80 bg-bg-sunken/60 px-2.5 py-1.5 text-xs text-text-muted hover:border-primary/40 hover:text-text transition-colors no-underline"
-          aria-label="全局搜索 (快捷键 Ctrl+K)"
+        <button
+          type="button"
+          class="hidden sm:inline-flex items-center gap-2 rounded-sm border border-border bg-bg-sunken/70 px-2.5 py-1.5 text-xs text-text-muted transition-colors hover:border-primary/40 hover:text-text"
+          aria-label="打开域内命令面板 (快捷键 Ctrl+K)"
+          @click="commandPalette.open()"
         >
           <UIcon name="i-lucide-search" class="size-3.5 text-text-muted" />
-          <span class="text-xs">搜索...</span>
-          <kbd class="ml-1 inline-flex items-center gap-0.5 rounded border border-border bg-white px-1.5 py-0.5 font-mono text-[10px] text-text-secondary shadow-xs">
-            <span class="text-[9px]">⌘</span>K
+          <span class="text-xs">搜索或跳转...</span>
+          <kbd class="ml-1 inline-flex items-center gap-0.5 rounded-sm border border-border bg-bg-panel px-1.5 py-0.5 font-mono text-[10px] text-text-secondary">
+            <span>⌘</span>K
           </kbd>
-        </NuxtLink>
-        <UButton :to="workspacePath(slug, 'search')" class="sm:hidden" color="neutral" variant="ghost" icon="i-lucide-search" aria-label="搜索当前域" />
+        </button>
+        <UButton class="sm:hidden" color="neutral" variant="ghost" icon="i-lucide-search" aria-label="打开命令搜索" @click="commandPalette.open()" />
         <UButton v-if="user" to="/notifications" color="neutral" variant="ghost" icon="i-lucide-bell" aria-label="通知" class="relative">
           <span v-if="unreadCount" class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-error-text px-1 text-[10px] font-bold text-white tabular-nums">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </UButton>

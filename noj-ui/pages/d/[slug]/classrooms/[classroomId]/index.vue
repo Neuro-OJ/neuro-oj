@@ -2,8 +2,9 @@
 import { assignmentPhase, classroomCan, educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
+import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute();
 const { slug, domain } = useWorkspace();
@@ -67,20 +68,11 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
       <div class="space-y-4">
         <LibraryPageHeader
           :title="room.data.value?.data.name ?? '班级'"
-          :description="room.data.value?.data.description || '暂无班级说明'"
+          :description="room.data.value?.data.stage_tag ? `阶段标签：${room.data.value.data.stage_tag}` : '班级概览与作业调度'"
           icon="i-lucide-graduation-cap"
         >
           <template #actions>
             <div class="flex flex-wrap items-center gap-2">
-              <UButton
-                v-if="isCoach || room.data.value?.data.membership?.role === 'student'"
-                :to="workspacePath(slug!, `classrooms/${id}/members`)"
-                variant="outline"
-                color="neutral"
-                icon="i-lucide-users"
-              >
-                班级成员
-              </UButton>
               <UButton
                 v-if="canManageAssignments && classroomCan(room.data.value!.data, 'progress:read')"
                 :to="workspacePath(slug!, `classrooms/${id}/contest-remediation`)"
@@ -102,8 +94,14 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
           </template>
         </LibraryPageHeader>
 
+        <UCard v-if="room.data.value?.data.description?.trim()">
+          <div class="text-sm [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+            <MarkdownRenderer :content="room.data.value.data.description" />
+          </div>
+        </UCard>
+
         <!-- 班级状态与学情统计栏 -->
-        <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4 text-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-bg-panel px-4 py-3 text-sm">
           <div class="flex flex-wrap items-center gap-2">
             <UBadge :color="room.data.value?.data.status === 'archived' ? 'neutral' : 'success'" variant="subtle" size="sm">
               {{ room.data.value?.data.status === 'archived' ? '已归档' : '正常教学' }}
@@ -116,13 +114,14 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
           <div class="text-xs text-text-muted tabular-nums">
             <template v-if="assignmentsTruncated">本页</template><template v-else>共</template>
             <strong class="text-text font-semibold">{{ tasks.data.value?.data.length ?? 0 }}</strong> 份作业
-            <span class="ml-1 text-success">（{{ activeTasksCount }} 份进行中）</span>
+            <span class="ml-1 text-signal-deep">（{{ activeTasksCount }} 份进行中）</span>
           </div>
         </div>
 
         <UAlert
           v-if="room.data.value?.data.status === 'archived'"
           color="warning"
+          variant="subtle"
           title="班级已归档，可以继续查看获授权的历史记录与作业反馈"
         />
       </div>
@@ -148,7 +147,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
         empty-text="暂无可查看的作业"
         @retry="tasks.refresh()"
       >
-        <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+        <div class="divide-y divide-border rounded-md border border-border bg-bg-panel">
           <article
             v-for="task in tasks.data.value?.data"
             :key="task.id"
@@ -205,7 +204,7 @@ useSeoMeta({ title: () => room.data.value?.data.name ?? '班级概览' });
         </div>
 
         <template #empty>
-          <div class="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
+          <div class="flex flex-col items-center justify-center rounded-md border border-dashed border-border bg-bg-panel py-12 px-4 text-center">
             <div class="flex size-12 items-center justify-center rounded-full bg-primary-bg text-primary mb-3">
               <UIcon name="i-lucide-clipboard-plus" class="size-6" />
             </div>

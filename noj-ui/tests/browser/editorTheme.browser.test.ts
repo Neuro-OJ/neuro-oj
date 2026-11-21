@@ -134,7 +134,7 @@ for (const width of [1440, 390]) {
           const toggle = page.getByRole('button', { name: theme === 'dark' ? '切换到暗色' : '切换到亮色' });
           if (await toggle.count()) await toggle.click();
           const panel = prose.locator('xpath=ancestor::div[contains(@class,"overflow-y-auto")][1]');
-          const expectedBackground = theme === 'dark' ? 'rgb(19, 27, 46)' : 'rgb(255, 255, 255)';
+          const expectedBackground = theme === 'dark' ? 'rgb(17, 24, 39)' : 'rgb(255, 255, 255)';
           await expect(panel).toHaveCSS('background-color', expectedBackground);
           const expectedText = theme === 'dark' ? 'rgb(248, 250, 252)' : 'rgb(15, 23, 42)';
           await expect(prose.locator('p').first()).toHaveCSS('color', expectedText);

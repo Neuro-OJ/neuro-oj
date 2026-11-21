@@ -43,7 +43,7 @@ const events = useEventSource({
 });
 </script>
 <template>
-  <section class="flex h-full min-h-64 flex-col rounded border border-border bg-bg-panel">
+  <section class="flex h-full min-h-64 flex-col rounded-md border border-border bg-bg-panel">
     <div class="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3.5">
       <UIcon name="i-lucide-clock" class="size-4 shrink-0 text-primary" />
       <h2 class="text-sm font-semibold text-text">最新评测</h2>

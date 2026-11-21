@@ -143,14 +143,15 @@ const ROUTES: BreadcrumbRoute[] = [
   {
     pattern: '/d/:slug/classrooms/:classroomId/students',
     trail: [{ param: 'slug' }, { key: 'breadcrumb.classrooms', to: '/d/:slug/classrooms' }, { param: 'classroomId' }, {
-      key: 'breadcrumb.studentTraining',
+      key: 'breadcrumb.members',
+      to: '/d/:slug/classrooms/:classroomId/members',
     }],
   },
   {
     pattern: '/d/:slug/classrooms/:classroomId/students/:userId',
     trail: [{ param: 'slug' }, { param: 'classroomId' }, {
-      key: 'breadcrumb.studentTraining',
-      to: '/d/:slug/classrooms/:classroomId/students',
+      key: 'breadcrumb.members',
+      to: '/d/:slug/classrooms/:classroomId/members',
     }, { param: 'userId' }],
   },
   { pattern: '/d/:slug/problems', trail: [{ param: 'slug' }, { key: 'nav.problems' }] },
@@ -281,6 +282,12 @@ const ROUTES: BreadcrumbRoute[] = [
   {
     pattern: '/d/:slug/assignments/:assignmentId',
     trail: [{ key: 'breadcrumb.workspaces', to: '/workspaces' }, { param: 'slug' }, { param: 'assignmentId' }],
+  },
+  {
+    pattern: '/d/:slug/assignments/:assignmentId/help/:helpId',
+    trail: [{ param: 'slug' }, { param: 'assignmentId', to: '/d/:slug/assignments/:assignmentId' }, {
+      param: 'helpId',
+    }],
   },
   { pattern: '/problems', trail: [{ key: 'nav.problems' }] },
   {

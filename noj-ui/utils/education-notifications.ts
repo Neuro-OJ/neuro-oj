@@ -20,16 +20,21 @@ export const TEACHING_NOTICE_LABELS: Record<TeachingNoticeType, string> = {
   assignment: '收到作业',
   assignment_changed: '作业或题库口径发生变化',
   resource_unavailable: '作业资源暂不可用',
-  feedback: '收到作业反馈',
+  feedback: '收到作业通知',
   help: '有学生求助',
   help_reply: '求助收到回复',
 };
-/** 链接保留使用域，只带稳定定位；进入页面后重新读取内容。 */
+/** 链接保留使用域，只带稳定定位；求助直达独立详情页，进入页面后重新读取内容。 */
 export function teachingNoticeTarget(slug: string, notice: TeachingNotice) {
+  if (notice.help_id) {
+    return {
+      path: workspacePath(slug, `assignments/${notice.assignment_id}/help/${notice.help_id}`),
+      query: {},
+    };
+  }
   return {
     path: workspacePath(slug, `assignments/${notice.assignment_id}`),
     query: {
-      ...(notice.help_id ? { help: notice.help_id } : {}),
       ...(notice.feedback_id ? { feedback: notice.feedback_id } : {}),
     },
   };

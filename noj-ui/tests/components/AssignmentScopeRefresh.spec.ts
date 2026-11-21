@@ -64,22 +64,22 @@ async function assignment() {
           setup: (_, { emit }) => () => h('button', { onClick: () => emit('select', 'student', cell) }, '查看学生'),
         }),
         AssignmentCellSubmissions: { template: '<p>读取中的学生提交</p>' },
-        AssignmentConversation: defineComponent({
-          props: ['targetUserName'],
-          setup: (props) => {
-            const body = ref('');
+        AssignmentNotices: defineComponent({
+          setup: () => {
+            const draft = ref('');
             return () =>
               h('div', [
-                h('p', '反馈给' + (props.targetUserName ?? '')),
                 h('textarea', {
-                  value: body.value,
+                  value: draft.value,
                   onInput: (event: Event) => {
-                    body.value = (event.target as HTMLTextAreaElement).value;
+                    draft.value = (event.target as HTMLTextAreaElement).value;
                   },
                 }),
               ]);
           },
         }),
+        AssignmentHelpList: { template: '<div data-testid="help-list" />' },
+        MarkdownRenderer: { props: ['content'], template: '<div class="md">{{ content }}</div>' },
         ClientOnly: true,
         UButton: { template: '<button><slot /></button>' },
         USelect: true,
@@ -98,26 +98,20 @@ function matrixButton(
   return view.findAll('button').find((button) => button.text() === '查看学生');
 }
 describe('作业选择与身份刷新', () => {
-  it('查看学生只打开抽屉，显式写反馈才绑定对象；换账号才清空', async () => {
+  it('查看学生打开抽屉且不显示定向个人反馈入口；同账号刷新保留，换账号才清空', async () => {
     const view = await assignment();
     await matrixButton(view)!.trigger('click');
     expect(view.text()).toContain('读取中的学生提交');
-    expect(view.text()).not.toContain('反馈给学生甲');
-    const writeButton = view.findAll('button').find((button) => button.text() === '写反馈给该生');
-    expect(writeButton).toBeTruthy();
-    await writeButton!.trigger('click');
-    await flushPromises();
-    expect(view.text()).toContain('反馈给学生甲');
-    expect(view.text()).not.toContain('读取中的学生提交');
+    expect(view.text()).not.toContain('写反馈给该生');
     actor.value = { ...actor.value, username: '刷新后的教练姓名' };
     await flushPromises();
-    expect(view.text()).toContain('反馈给学生甲');
+    expect(view.text()).toContain('读取中的学生提交');
     actor.value = { id: 'another-teacher', username: '另一教练' };
     await flushPromises();
-    expect(view.text()).not.toContain('反馈给学生甲');
+    expect(view.text()).not.toContain('读取中的学生提交');
     view.unmount();
   });
-  it('后台请求处于 pending 时保留反馈草稿和抽屉，最新单元成绩原位更新', async () => {
+  it('后台请求处于 pending 时保留全体通知草稿和抽屉，最新单元成绩原位更新', async () => {
     const view = await assignment();
     await matrixButton(view)!.trigger('click');
     await view.get('textarea').setValue('请检查边界条件');
