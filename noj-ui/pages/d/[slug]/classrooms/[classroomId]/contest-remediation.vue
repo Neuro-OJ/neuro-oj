@@ -3,7 +3,7 @@ import { classroomCan, educationCacheKey } from '~/utils/education';
 import { workspacePath } from '~/utils/workspace';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
@@ -50,7 +50,7 @@ useSeoMeta({ title: '按比赛成绩布置补题' });
       />
     </ClientOnly>
 
-    <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级，无权在此创建补题任务" />
+    <UAlert v-else-if="room.data.value" color="warning" variant="subtle" title="当前只能读取班级，无权在此创建补题任务" />
     </AsyncContent>
   </div>
 </template>

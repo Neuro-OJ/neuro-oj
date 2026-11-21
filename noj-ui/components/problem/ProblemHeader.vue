@@ -12,19 +12,23 @@ import type { PublicProblemStats } from '~/utils/problemStats';
  *
  * 由独立题目页与竞赛做题页共用，消除第二份题面实现与第二套硬编码难度色。
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   problem: ProblemView;
   /** 公开统计；null 表示未加载或接口不可用（不渲染对应数值项）。 */
   stats?: PublicProblemStats | null;
   /** 竞赛进行中时后端抑制统计，显示占位而非空白。 */
   suppressedReason?: 'running_contest' | null;
   showOwner?: boolean;
+  /** 是否在 Header 中展示题目类型、评测后端及通过统计（独立详情页已由右栏承载时传 false 去重）。 */
+  showStats?: boolean;
   /**
    * 知识图谱的校准难度档位（P2）：有值时优先于出题人自报难度显示，
    * 没有时沿用原显示，保证关闭知识图谱后行为不变。
    */
   calibratedTier?: 'easy' | 'medium' | 'hard' | null;
-}>();
+}>(), {
+  showStats: true,
+});
 
 /**
  * 插槽：
@@ -50,19 +54,19 @@ const suppressed = computed(
       <div class="mb-2 flex flex-wrap items-center gap-2">
         <slot name="leading" />
         <span
-          class="inline-flex items-center rounded-full px-2 py-0.5 font-mono text-xs font-semibold bg-primary/10 text-primary"
+          class="inline-flex items-center rounded-sm px-2 py-0.5 font-mono text-xs font-semibold bg-primary/10 text-primary"
         >
           {{ defaultProblemLabel(problem.display_id) }}
         </span>
         <span
-          v-if="problemJudgeTypeLabel(problem)"
-          class="inline-flex items-center rounded border border-primary/20 bg-primary/5 px-2 py-0.5 text-xs font-semibold text-primary"
+          v-if="showStats && problemJudgeTypeLabel(problem)"
+          class="inline-flex items-center rounded-sm border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs font-semibold text-primary"
         >
           {{ problemJudgeTypeLabel(problem) }}
         </span>
         <span
-          v-if="!problem.is_objective && problem.judge_backend"
-          class="inline-flex items-center rounded border border-border px-2 py-0.5 font-mono text-xs text-text-secondary"
+          v-if="showStats && !problem.is_objective && problem.judge_backend"
+          class="inline-flex items-center rounded-sm border border-border px-2 py-0.5 font-mono text-xs text-text-secondary"
           aria-label="评测后端"
         >
           {{ problem.judge_backend }}
@@ -96,13 +100,13 @@ const suppressed = computed(
         <slot name="actions" />
       </div>
       <dl class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-text-secondary sm:justify-end">
-        <template v-if="suppressed">
+        <template v-if="showStats && suppressed">
           <div class="flex items-center gap-1">
             <UIcon name="i-lucide-trophy" class="size-3.5" />
             <span>竞赛进行中，暂不显示通过率</span>
           </div>
         </template>
-        <template v-else>
+        <template v-else-if="showStats">
           <div v-if="stats" class="flex items-center gap-1">
             <dt class="sr-only">提交数</dt>
             <UIcon name="i-lucide-send" class="size-3.5" />

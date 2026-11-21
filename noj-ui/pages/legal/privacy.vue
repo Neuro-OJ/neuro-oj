@@ -5,6 +5,7 @@
 // 运营者在「法律与合规」后台发布内容。页尾展示个人信息处理者信息与第三方清单。
 
 import { buildThirdPartyList, EMPTY_SITE_META } from "~/utils/siteMeta";
+import MarkdownRenderer from "~/components/shared/MarkdownRenderer.vue";
 
 const { api } = useApi();
 
@@ -61,7 +62,9 @@ useSeoMeta({ title: "隐私政策" });
       </p>
       <template v-if="operator.deployment_notes">
         <h3 class="font-semibold pt-2">部署与数据留存说明</h3>
-        <p class="text-text-secondary whitespace-pre-wrap">{{ operator.deployment_notes }}</p>
+        <div class="text-sm text-text-secondary [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+          <MarkdownRenderer :content="operator.deployment_notes" />
+        </div>
       </template>
       <template v-if="thirdParties.length > 0">
         <h3 class="font-semibold pt-2">第三方服务</h3>

@@ -124,7 +124,7 @@ watch(
           empty-text="暂无可访问的比赛"
           @retry="options.refresh()"
         >
-          <div class="rounded-lg border border-border bg-bg-sunken/40 p-4 max-h-64 overflow-auto">
+          <div class="rounded-md border border-border bg-bg-sunken/40 p-4 max-h-64 overflow-auto">
             <URadioGroup
               v-model="contestId"
               :disabled="saving || loading"

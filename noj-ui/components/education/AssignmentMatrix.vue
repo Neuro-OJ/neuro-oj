@@ -26,6 +26,10 @@ function requirementLabel(item: { requirement: 'accepted' | 'min_score'; minimum
 function achievedInColumn(itemId: string) {
   return rows.value.filter(row => row.cells.some(cell => cell.item_id === itemId && !cell.updating && cell.status === 'achieved')).length;
 }
+function achievedPercent(itemId: string) {
+  if (!rows.value.length) return 0;
+  return Math.round((achievedInColumn(itemId) / rows.value.length) * 100);
+}
 function rowAchieved(cells: TeachingCell[]) {
   return cells.filter(cell => !cell.updating && cell.status === 'achieved').length;
 }
@@ -33,16 +37,69 @@ function rowSummary(cells: TeachingCell[]) {
   if (props.matrix.updating || cells.some(cell => cell.updating)) return '成绩更新中';
   return `已达标 ${rowAchieved(cells)} / ${cells.length}`;
 }
-interface CellView { icon: string; spin: boolean; text: string; cls: string; aria: string; dot?: boolean }
+interface CellView { icon: string; spin: boolean; text: string; cls: string; surface: string; aria: string; dot?: boolean }
 function cellView(cell: TeachingCell | undefined): CellView | null {
   if (!cell) return null;
-  if (cell.updating) return { icon: 'i-lucide-loader-circle', spin: true, text: '', cls: 'text-text-muted', aria: '更新中' };
+  if (cell.updating) {
+    return {
+      icon: 'i-lucide-loader-circle',
+      spin: true,
+      text: '',
+      cls: 'text-text-muted',
+      surface: 'hover:bg-bg-sunken',
+      aria: '更新中',
+    };
+  }
   const score = cell.score === null ? '' : String(cell.score / 100);
-  if (cell.status === 'achieved') return { icon: 'i-lucide-check', spin: false, text: score, cls: 'text-signal-deep', aria: teachingCellLabel(cell) };
-  if (cell.status === 'below_target') return { icon: '', spin: false, dot: true, text: score || '未达标', cls: 'text-text', aria: teachingCellLabel(cell) };
-  if (cell.status === 'judging') return { icon: 'i-lucide-loader-circle', spin: true, text: '评测中', cls: 'text-primary-dark', aria: teachingCellLabel(cell) };
-  if (cell.status === 'unavailable') return { icon: 'i-lucide-circle-slash', spin: false, text: '', cls: 'text-text-muted', aria: '资源不可用' };
-  return { icon: '', spin: false, text: '—', cls: 'text-text-muted', aria: '未开始' };
+  if (cell.status === 'achieved') {
+    return {
+      icon: 'i-lucide-check',
+      spin: false,
+      text: score,
+      cls: 'text-signal-deep font-medium',
+      surface: 'bg-verdict-accepted-bg/55 hover:bg-verdict-accepted-bg',
+      aria: teachingCellLabel(cell),
+    };
+  }
+  if (cell.status === 'below_target') {
+    return {
+      icon: '',
+      spin: false,
+      dot: true,
+      text: score || '未达标',
+      cls: 'text-text',
+      surface: 'bg-verdict-partial-bg/45 hover:bg-verdict-partial-bg/85',
+      aria: teachingCellLabel(cell),
+    };
+  }
+  if (cell.status === 'judging') {
+    return {
+      icon: 'i-lucide-loader-circle',
+      spin: true,
+      text: '评测中',
+      cls: 'text-primary-dark',
+      surface: 'bg-verdict-judging-bg/55 hover:bg-verdict-judging-bg',
+      aria: teachingCellLabel(cell),
+    };
+  }
+  if (cell.status === 'unavailable') {
+    return {
+      icon: 'i-lucide-circle-slash',
+      spin: false,
+      text: '',
+      cls: 'text-error-text',
+      surface: 'bg-verdict-wrong-bg/45 hover:bg-verdict-wrong-bg/80',
+      aria: '资源不可用',
+    };
+  }
+  return {
+    icon: '',
+    spin: false,
+    text: '—',
+    cls: 'text-text-muted',
+    surface: 'hover:bg-bg-sunken',
+    aria: '未开始',
+  };
 }
 function cellAt(row: MatrixData['rows'][number], itemId: string) {
   return row.cells.find(cell => cell.item_id === itemId);
@@ -98,14 +155,17 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
                 {{ requirementLabel(item) }}
                 · <span class="tabular-nums">{{ achievedInColumn(item.id) }}/{{ matrix.rows.length }} 达标</span>
               </p>
+              <div class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-border/60" aria-hidden="true">
+                <div class="h-full rounded-full bg-signal transition-[width] duration-300" :style="{ width: `${achievedPercent(item.id)}%` }" />
+              </div>
             </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(row, rowIndex) in matrix.rows" :key="row.user_id"
-            class="group border-b border-border last:border-0 hover:bg-primary-bg/60">
+            class="group border-b border-border last:border-0 hover:bg-primary-bg/40">
             <th scope="row"
-              class="sticky left-0 z-10 min-w-44 bg-bg-panel px-4 py-2 text-left font-normal group-hover:bg-primary-bg/60">
+              class="sticky left-0 z-10 min-w-44 bg-bg-panel px-4 py-2 text-left font-normal group-hover:bg-primary-bg">
               <span class="block break-words font-medium">{{ row.username }}</span>
               <span class="mt-0.5 block text-11px text-text-muted tabular-nums">
                 {{ rowSummary(row.cells) }}<template v-if="row.recipient_status !== 'active'"> · 历史学生</template>
@@ -116,8 +176,8 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
                 :tabindex="cellTabIndex(rowIndex, colIndex)"
                 :aria-label="`${row.username} ${item.reference.display_ref} ${cellView(cellAt(row, item.id))?.aria ?? ''}`"
                 title="查看提交与反馈"
-                class="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-bg-sunken"
-                :class="cellView(cellAt(row, item.id))?.cls" @focus="onCellFocus(rowIndex, colIndex)"
+                class="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-sm transition-colors"
+                :class="[cellView(cellAt(row, item.id))?.cls, cellView(cellAt(row, item.id))?.surface]" @focus="onCellFocus(rowIndex, colIndex)"
                 @keydown="onCellKeydown($event, rowIndex, colIndex)" @click="select(row.user_id, cellAt(row, item.id))">
                 <UIcon v-if="cellView(cellAt(row, item.id))?.spin" name="i-lucide-loader-circle"
                   class="size-4 shrink-0 animate-spin-slow" aria-hidden="true" />

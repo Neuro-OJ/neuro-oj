@@ -121,7 +121,7 @@ function formatElapsed(iso: string) {
 
 <template>
   <div
-    class="h-full overflow-y-auto bg-white text-text border-r border-border transition-colors duration-300 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
+    class="h-full overflow-y-auto bg-bg-panel text-text border-r border-border transition-colors duration-200 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-text-muted">
     <div class="h-full">
       <!-- 描述 tab -->
       <div v-show="active === 'description'" class="p-4 space-y-4">
@@ -147,8 +147,8 @@ function formatElapsed(iso: string) {
           <span
             v-for="tag in problem.tags"
             :key="tag.id"
-            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-            :class="tag.kind === 'algorithm' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-blue-50 text-blue-700 border border-blue-200'"
+            class="inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium border"
+            :class="tag.kind === 'algorithm' ? 'bg-verdict-accepted-bg text-signal-deep border-signal/25' : 'bg-primary-bg text-primary border-primary/20'"
           >
           {{ tag.name }}
         </span>
@@ -265,7 +265,7 @@ function formatElapsed(iso: string) {
             <UIcon name="i-lucide-loader-2" class="animate-spin text-primary size-3" v-if="isPollingSelfTest" />
           </div>
 
-          <div v-if="selfTestError" class="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+          <div v-if="selfTestError" class="text-xs text-error-text bg-verdict-wrong-bg border border-error-text/25 rounded-md px-3 py-2">
         {{ selfTestError }}
       </div>
 
@@ -356,12 +356,29 @@ function formatElapsed(iso: string) {
 
         <div class="pt-2 border-t border-border">
           <button
-            class="w-full inline-flex items-center justify-center gap-2 py-2 px-3 border border-red-200 text-red-700 bg-red-50 rounded-md text-sm hover:bg-red-100 transition-colors"
+            type="button"
+            class="w-full inline-flex items-center justify-center gap-2 py-2 px-3 border border-error-text/30 text-error-text bg-verdict-wrong-bg rounded-sm text-sm hover:opacity-90 transition-opacity"
             @click="emit('clear-draft')"
           >
           <UIcon name="i-lucide-trash-2" class="size-3.5" />
           清除当前草稿
         </button>
+        </div>
+
+        <div class="space-y-2 border-t border-border pt-3 text-xs text-text-secondary">
+          <div class="font-medium text-text">工作区快捷键</div>
+          <div class="flex items-center justify-between">
+            <span>提交评测</span>
+            <kbd class="rounded-sm border border-border bg-bg-sunken px-1.5 py-0.5 font-mono text-[11px]">Ctrl/⌘ + Enter</kbd>
+          </div>
+          <div v-if="showSelfTest" class="flex items-center justify-between">
+            <span>运行自测</span>
+            <kbd class="rounded-sm border border-border bg-bg-sunken px-1.5 py-0.5 font-mono text-[11px]">Ctrl/⌘ + '</kbd>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>折叠 / 展开侧栏</span>
+            <kbd class="rounded-sm border border-border bg-bg-sunken px-1.5 py-0.5 font-mono text-[11px]">Ctrl/⌘ + B</kbd>
+          </div>
         </div>
       </div>
     </div>

@@ -2,6 +2,8 @@
 import type { CommentRow } from "~/composables/useCommunity"
 import { useToast } from "~/composables/useToast"
 import { isCommunityEdited } from "~/utils/communityEdited"
+import MarkdownEditor from "~/components/shared/MarkdownEditor.vue"
+import MarkdownRenderer from "~/components/shared/MarkdownRenderer.vue"
 
 const props = defineProps<{
   row: CommentRow
@@ -11,6 +13,7 @@ const props = defineProps<{
   canDelete: boolean
   canReport: boolean
   commentMaxLength: number
+  allowExternalImages?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -63,13 +66,26 @@ async function save() {
       </div>
     </div>
     <template v-if="editing">
-      <textarea v-model="editContent" class="mt-2 min-h-16 w-full rounded border border-border px-3 py-2" />
+      <MarkdownEditor
+        v-model="editContent"
+        compact
+        height="110px"
+        :maxlength="commentMaxLength"
+        :allow-external-images="allowExternalImages"
+        aria-label="编辑评论正文"
+        class="mt-2"
+      />
       <div class="mt-2 flex justify-end gap-2">
         <UButton color="primary" variant="outline" class="text-xs" type="button" @click="editing = false">取消</UButton>
         <UButton color="primary" class="text-xs" :disabled="saving || !editContent.trim() || editContent.length > commentMaxLength" @click="save">{{ saving ? '保存中…' : '保存' }}</UButton>
       </div>
     </template>
-    <p v-else class="mt-2 whitespace-pre-wrap text-sm leading-6 text-text-secondary">{{ row.comment.content }}</p>
+    <div
+      v-else
+      class="mt-2 text-sm text-text-secondary [&_p:first-child]:mt-0 [&_p:last-child]:mb-0"
+    >
+      <MarkdownRenderer :content="row.comment.content" :allow-external-images="allowExternalImages" />
+    </div>
     <slot />
   </article>
 </template>

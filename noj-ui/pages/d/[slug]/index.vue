@@ -56,11 +56,11 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
 <template>
   <AsyncContent v-if="domain" :status="viewError ? 'error' : viewStatus === 'pending' ? 'loading' : view ? 'data' : 'empty'"
     :error="viewError ? '首页数据读取失败，请重试' : undefined" @retry="refreshView()">
-  <div :key="domain.id + ':' + (user?.id ?? 'guest')" class="space-y-6">
-    <!-- 头部核心区：域简介与签到 -->
-    <section class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
-      <div class="flex min-h-[320px] flex-col lg:flex-row">
-        <WorkspaceHero :title="domain.name" :description="domain.description" />
+  <div :key="domain.id + ':' + (user?.id ?? 'guest')" class="space-y-5">
+    <!-- 头部核心区：域命令头与紧凑签到 -->
+    <section class="overflow-hidden rounded-md border border-border bg-bg-panel">
+      <div class="flex flex-col lg:flex-row">
+        <WorkspaceHero :title="domain.name" :description="domain.description" :slug="domain.slug" />
         <HomepageCheckIn :initial-check-in="section<{ data: { checked_in: boolean; streak: number } }>('checkin')?.data" />
       </div>
     </section>
@@ -68,7 +68,7 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
     <!-- 加入空间引导条（非成员且非仅邀请，排除默认主域） -->
     <section
       v-if="domain.slug !== 'main' && !domain.is_member && domain.status === 'active' && domain.configuration.join_policy !== 'invite'"
-      class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg/40 px-5 py-3.5 text-sm shadow-xs"
+      class="flex flex-wrap items-center justify-between gap-4 rounded-md border border-primary/25 bg-primary-bg/60 px-5 py-3.5 text-sm"
       aria-label="加入空间"
     >
       <div class="flex items-center gap-2.5">
@@ -106,12 +106,12 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
     </section>
 
     <!-- 空间公告 -->
-    <div class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
+    <div class="overflow-hidden rounded-md border border-border bg-bg-panel">
       <AnnouncementSection :domain-slug="domain.slug" :initial-data="announcements" />
     </div>
 
     <!-- 教学待办与进行中任务 -->
-    <div class="overflow-hidden rounded-lg border border-border bg-bg-panel shadow-card">
+    <div class="overflow-hidden rounded-md border border-border bg-bg-panel">
       <DomainHomeContent :initial-data="dashboard" />
     </div>
 

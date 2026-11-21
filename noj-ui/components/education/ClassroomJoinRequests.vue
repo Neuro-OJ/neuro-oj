@@ -179,7 +179,7 @@ function handleBatchApproveAll() {
 <template>
   <div class="space-y-4">
     <!-- 控制栏与筛选 -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border border-border bg-bg-panel p-4">
       <div class="flex flex-wrap items-center gap-3">
         <div class="flex items-center gap-2">
           <UIcon name="i-lucide-user-plus" class="size-5 text-primary" />
@@ -215,7 +215,7 @@ function handleBatchApproveAll() {
     <!-- 批量快捷操作栏 (当有待审核记录且可写时呈现) -->
     <div
       v-if="state === 'pending' && writable && pendingList.length > 0"
-      class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-sunken px-4 py-2.5 text-sm"
+      class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-bg-sunken px-4 py-2.5 text-sm"
     >
       <div class="flex items-center gap-3">
         <UCheckbox
@@ -271,10 +271,10 @@ function handleBatchApproveAll() {
       </div>
     </div>
 
-    <UAlert v-if="error" color="error" :title="error" />
+    <UAlert v-if="error" color="error" variant="subtle" :title="error" />
 
     <!-- 批量进度指示 -->
-    <div v-if="busy && progress" class="flex items-center gap-2 rounded-lg bg-primary-bg px-4 py-2 text-sm text-primary">
+    <div v-if="busy && progress" class="flex items-center gap-2 rounded-md bg-primary-bg px-4 py-2 text-sm text-primary">
       <UIcon name="i-lucide-loader-2" class="size-4 animate-spin shrink-0" />
       <span>正在批量处理入班申请 ({{ progress.current }} / {{ progress.total }})...</span>
     </div>
@@ -286,7 +286,7 @@ function handleBatchApproveAll() {
       :empty-text="state === 'pending' ? '当前没有待审核的入班申请' : '暂无此状态的申请记录'"
       @retry="requests.refresh()"
     >
-      <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+      <div class="divide-y divide-border rounded-md border border-border bg-bg-panel">
         <article
           v-for="request in currentList"
           :key="request.id"

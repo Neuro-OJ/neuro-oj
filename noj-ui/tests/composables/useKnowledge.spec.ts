@@ -52,6 +52,20 @@ describe('useKnowledge', () => {
     await expect(knowledge.loadReviews(1)).resolves.toBeNull();
   });
 
+  it('前端 feature flag knowledgeEnabled=false：直接关闭且不发任何网络请求', async () => {
+    vi.stubGlobal('useRuntimeConfig', () => ({ public: { authCookiePrefix: 'noj', knowledgeEnabled: false } }));
+    const fetch = vi.fn();
+    vi.stubGlobal('$fetch', fetch);
+    const knowledge = useKnowledge();
+    expect(knowledge.disabled.value).toBe(true);
+    await expect(knowledge.loadGraph()).resolves.toBeNull();
+    await expect(knowledge.loadMyMastery('school')).resolves.toBeNull();
+    await expect(knowledge.loadRecommendations('school')).resolves.toBeNull();
+    await expect(knowledge.loadClassroomMastery('school', 'c1')).resolves.toBeNull();
+    await expect(knowledge.loadCoverage()).resolves.toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('题目接口 404（不存在/保护期）返回 null，不视为功能关闭', async () => {
     vi.stubGlobal('$fetch', vi.fn(() => Promise.reject({ status: 404, data: { error: '题目不存在' } })));
     const knowledge = useKnowledge();

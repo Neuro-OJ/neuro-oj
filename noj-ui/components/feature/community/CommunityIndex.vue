@@ -13,6 +13,7 @@ import { useToast } from "~/composables/useToast"
 import { useBanStatus } from "~/composables/useBanStatus"
 import { extractApiError } from "~/utils/apiError"
 import { isCommunityEdited } from "~/utils/communityEdited"
+import MarkdownEditor from "~/components/shared/MarkdownEditor.vue"
 import { onMounted } from 'vue'
 
 defineProps<{ embedded?: boolean }>()
@@ -57,7 +58,6 @@ const isFiltering = computed(
 )
 
 const showEditor = ref(false)
-const previewMode = ref(false)
 const title = ref("")
 const content = ref("")
 const boardId = ref("")
@@ -186,7 +186,6 @@ async function changeType(type: PostType) {
   if (type === activeType.value) return
   activeType.value = type
   showEditor.value = false
-  previewMode.value = false
   syncUrl()
   await Promise.all([loadPosts(), loadCounts()])
 }
@@ -226,7 +225,6 @@ async function prepareEditor() {
     toast.error("暂无可用板块，无法发布讨论")
     return
   }
-  previewMode.value = false
   showEditor.value = true
 }
 
@@ -446,11 +444,6 @@ onMounted(() => {
       <form v-if="showEditor" class="mb-6 rounded-lg border border-border bg-white p-5 shadow-card" @submit.prevent="publish">
         <div class="mb-3 flex items-center justify-between gap-2">
           <h2 class="font-semibold">发布{{ typeLabel[activeType] }}</h2>
-          <UButton color="neutral" variant="outline" size="sm" class="border-border py-1 text-text-secondary hover:bg-primary-bg" type="button"  @click="previewMode = !previewMode">
-            <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
-            <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
-            {{ previewMode ? "编辑" : "预览" }}
-          </UButton>
         </div>
         <input v-model="title" class="mb-3 w-full rounded border border-border px-3 py-2" :placeholder="activeType === 'solution' ? '题解标题' : '讨论标题'" required>
         <div v-if="activeType === 'solution'" class="relative mb-3">
@@ -468,18 +461,17 @@ onMounted(() => {
         <p v-if="config?.under_review" class="mb-3 rounded border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
           新账号内容需经审核后公开：提交后仅你与审核员可见，审核通过会出现在列表中。
         </p>
-        <template v-if="!previewMode">
-          <textarea v-model="content" class="min-h-36 w-full rounded border border-border px-3 py-2" :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`" required />
-        </template>
-        <template v-else>
-          <div class="min-h-36 rounded border border-border px-3 py-2">
-            <MarkdownRenderer v-if="content.trim()" :content="content" />
-            <p v-else class="text-sm text-text-muted">暂无内容</p>
-          </div>
-        </template>
-        <div class="mt-3 flex items-center justify-between gap-2">
-          <p class="text-xs text-text-muted">{{ content.length }} / {{ postMaxLength }}</p>
-          <div class="flex gap-2"><UButton color="primary" variant="outline" type="button"  :disabled="publishing" @click="showEditor = false">取消</UButton><UButton color="primary" type="submit" :disabled="publishing || !content.trim() || content.length > postMaxLength">{{ publishing ? '发布中…' : '发布' }}</UButton></div>
+        <MarkdownEditor
+          v-model="content"
+          default-mode="edit"
+          height="280px"
+          :maxlength="postMaxLength"
+          :allow-external-images="config?.external_images_enabled === true"
+          aria-label="帖子正文"
+          :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`"
+        />
+        <div class="mt-3 flex items-center justify-end gap-2">
+          <UButton color="primary" variant="outline" type="button"  :disabled="publishing" @click="showEditor = false">取消</UButton><UButton color="primary" type="submit" :disabled="publishing || !content.trim() || content.length > postMaxLength">{{ publishing ? '发布中…' : '发布' }}</UButton>
         </div>
       </form>
 

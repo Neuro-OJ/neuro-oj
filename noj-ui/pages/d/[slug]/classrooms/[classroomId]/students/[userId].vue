@@ -2,7 +2,7 @@
 import { classroomCan, educationCacheKey } from '~/utils/education';
 import { extractApiError } from '~/utils/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute(), { slug, domain } = useWorkspace(), { user } = useAuth(), education = useEducationApi();
 const id = computed(() => String(route.params.classroomId)), studentId = computed(() => String(route.params.userId));
@@ -38,7 +38,7 @@ useSeoMeta({ title: () => student.value ? `${student.value.username} 的训练�
   <div class="flex flex-col gap-6">
     <ClassroomNavigation :slug="slug!" :classroom-id="id" :classroom="room.data.value?.data" />
 
-    <UAlert v-if="roster.error.value" color="error" :title="extractApiError(roster.error.value).message" />
+    <UAlert v-if="roster.error.value" color="error" variant="subtle" :title="extractApiError(roster.error.value).message" />
 
     <AsyncContent
       :status="room.error.value ? 'error' : room.status.value === 'pending' ? 'loading' : room.data.value ? 'data' : 'empty'"
@@ -55,7 +55,7 @@ useSeoMeta({ title: () => student.value ? `${student.value.username} 的训练�
           :writable="domain?.status === 'active' && room.data.value.data.status === 'active' && !!domain.configuration.features.classroom && !!domain.configuration.features.assignment"
         />
       </ClientOnly>
-      <UAlert v-else color="info" title="未授予本班学生学情或提交记录的读取能力" />
+      <UAlert v-else color="info" variant="subtle" title="未授予本班学生学情或提交记录的读取能力" />
     </AsyncContent>
   </div>
 </template>

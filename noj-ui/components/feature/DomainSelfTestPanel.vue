@@ -81,6 +81,24 @@ watch(customs, (value) => {
 function add() {
   customs.value.push({ id: `custom_${crypto.randomUUID()}`, input: '', enabled: true });
 }
+function loadSample(input: string, output?: string) {
+  if (!isOi.value) return;
+  const existing = customs.value.find((item) => item.input === input && item.expected_output === output);
+  if (existing) {
+    existing.enabled = true;
+    return;
+  }
+  if (customs.value.length + samples.value.length >= 30) {
+    failure.value = '自测用例总数已达 30 条上限';
+    return;
+  }
+  customs.value.push({
+    id: `custom_${crypto.randomUUID()}`,
+    input,
+    ...(output !== undefined ? { expected_output: output } : {}),
+    enabled: true,
+  });
+}
 function expected(item: DomainSelfTestCase, enabled: boolean) {
   if (enabled) item.expected_output = '';
   else delete item.expected_output;
@@ -133,7 +151,7 @@ async function cancel() {
     if (scope.isCurrent()) cancelling.value = false;
   }
 }
-defineExpose({ run });
+defineExpose({ run, loadSample });
 </script>
 <template>
   <details :open="expanded" class="mt-4 rounded border border-border p-4">

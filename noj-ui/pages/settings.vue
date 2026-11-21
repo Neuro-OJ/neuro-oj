@@ -59,7 +59,6 @@ watch(
 
 // Bio 编辑
 const bio = ref("")
-const previewMode = ref(false)
 const saving = ref(false)
 const saveSuccess = ref(false)
 const saveError = ref("")
@@ -599,37 +598,15 @@ async function handleDeleteAccount() {
 
         <!-- Bio 编辑区 -->
         <div class="flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <label class="text-sm font-semibold text-text">个人简介</label>
-            <UButton color="neutral" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5 text-text-secondary border border-border bg-transparent rounded-md cursor-pointer hover:bg-gray-100 hover:text-text transition-colors" @click="previewMode = !previewMode">
-              <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
-              <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
-              {{ previewMode ? "编辑" : "预览" }}
-            </UButton>
-          </div>
-
-          <!-- 编辑器 -->
-          <textarea
-            v-if="!previewMode"
+          <label class="text-sm font-semibold text-text">个人简介</label>
+          <MarkdownEditor
             v-model="bio"
-            class="w-full min-h-[200px] px-4 py-3 border border-border rounded-lg text-sm font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            default-mode="edit"
+            height="220px"
+            :maxlength="5000"
+            aria-label="个人简介"
             placeholder="用 Markdown 介绍自己..."
-            maxlength="5000"
           />
-
-          <!-- 预览（Markdown 渲染） -->
-          <div
-            v-else
-            class="min-h-[200px] px-4 py-3 border border-border rounded-lg bg-white"
-          >
-            <MarkdownRenderer v-if="bio.trim()" :content="bio" />
-            <p v-else class="text-text-muted text-sm italic">暂无个人简介</p>
-          </div>
-
-          <div class="flex items-center justify-between text-xs text-text-muted">
-            <span>支持 Markdown 格式，最多 5000 字</span>
-            <span>{{ bio.length }} / 5000</span>
-          </div>
         </div>
 
         <!-- 保存按钮 -->

@@ -74,4 +74,28 @@ describe('MarkdownEditor', () => {
     const wrapper = mountEditor('12345', { maxlength: 100 });
     expect(wrapper.text()).toContain('5 / 100 字符');
   });
+
+  it('紧凑模式：默认仅显示编辑区与编辑/预览切换，并透传 ariaLabel', async () => {
+    const wrapper = mountEditor('hello', { compact: true, ariaLabel: '评论正文' });
+    const textarea = wrapper.find('textarea');
+    expect(textarea.attributes('aria-label')).toBe('评论正文');
+    expect(textarea.isVisible()).toBe(true);
+    expect(wrapper.find('.md-stub').exists()).toBe(false);
+    const tabs = wrapper.findAll('[role="tab"]');
+    expect(tabs.map((t) => t.text().trim())).toEqual(['编辑', '预览']);
+    await tabs[1]!.trigger('click');
+    expect(wrapper.find('.md-stub').text()).toBe('hello');
+  });
+
+  it('Ctrl+K 插入链接时阻止事件冒泡，不触发全局命令面板', async () => {
+    const globalKeySpy = vi.fn();
+    globalThis.addEventListener('keydown', globalKeySpy);
+    const wrapper = mountEditor('link');
+    const el = wrapper.find('textarea').element as HTMLTextAreaElement;
+    el.setSelectionRange(0, 4);
+    await wrapper.find('textarea').trigger('keydown', { key: 'k', ctrlKey: true });
+    expect(wrapper.props('modelValue')).toBe('[link](https://)');
+    expect(globalKeySpy).not.toHaveBeenCalled();
+    globalThis.removeEventListener('keydown', globalKeySpy);
+  });
 });

@@ -19,6 +19,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const knowledge = useKnowledge()
 const query = ref("")
 const selectedIndex = ref(0)
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -58,10 +59,14 @@ const allItems: PaletteItem[] = [
   { id: "audit", label: "审计日志", to: "/admin/audit-logs", icon: "i-lucide-scroll-text", group: "系统运维", keywords: ["shenji", "audit", "log", "security"] },
 ]
 
+const availableItems = computed(() =>
+  knowledge.disabled.value ? allItems.filter((item) => item.id !== 'knowledge') : allItems
+)
+
 const filteredItems = computed(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q) return allItems
-  return allItems.filter((item) =>
+  if (!q) return availableItems.value
+  return availableItems.value.filter((item) =>
     item.label.toLowerCase().includes(q) ||
     item.group.toLowerCase().includes(q) ||
     item.to.toLowerCase().includes(q) ||

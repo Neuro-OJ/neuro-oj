@@ -16,9 +16,9 @@ const showStreak = ref(false);
 const checkInLoading = ref(false);
 const checkInLoaded = ref(props.initialCheckIn !== undefined);
 
-// 签到动画时序（加载恢复 vs 手动签到，两套不同节奏）
-const RESTORE_ANIM_DELAYS = { anim: 600, white: 200, text: 400, streak: 700 };
-const CHECKIN_ANIM_DELAYS = { anim: 600, white: 1500, text: 2200, streak: 2500 };
+// 签到动画时序（加载恢复零延迟，手动签到 450ms 内完成反馈）
+const RESTORE_ANIM_DELAYS = { anim: 0, white: 0, text: 0, streak: 0 };
+const CHECKIN_ANIM_DELAYS = { anim: 180, white: 100, text: 260, streak: 420 };
 
 function playCheckInAnim(delays: {
   anim: number;
@@ -26,6 +26,12 @@ function playCheckInAnim(delays: {
   text: number;
   streak: number;
 }) {
+  if (delays.white === 0 && delays.text === 0 && delays.streak === 0) {
+    fadeWhite.value = true;
+    showText.value = true;
+    showStreak.value = true;
+    return;
+  }
   setTimeout(() => {
     fadeWhite.value = true;
   }, delays.white);
@@ -112,8 +118,8 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="w-full lg:w-[300px] lg:aspect-square lg:self-start shrink-0 flex flex-col bg-gradient-to-br from-white to-bg-sunken/60 border-t lg:border-t-0 lg:border-l border-border">
-    <div class="flex items-center justify-center gap-1.5 pt-5 text-xs text-text-muted leading-tight">
+    class="w-full lg:w-[290px] lg:self-stretch shrink-0 flex flex-col justify-between bg-bg-sunken/40 border-t lg:border-t-0 lg:border-l border-border">
+    <div class="flex items-center justify-center gap-1.5 pt-4 px-4 text-xs text-text-muted leading-tight">
       <UIcon name="i-lucide-calendar" class="size-3.5 text-primary shrink-0" />
       <span>{{ todayDateStr }}</span>
       <ClientOnly>

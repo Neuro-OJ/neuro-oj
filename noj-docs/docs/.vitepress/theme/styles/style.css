@@ -1,6 +1,6 @@
 /**
- * Neuro OJ Documentation Theme - Clean Cyber Azure (浅蓝科技调)
- * 遵循近直角工业美学与高对比度易读性规范
+ * Neuro OJ Documentation Theme - Precision Instrument (精密评测工作台)
+ * 与 noj-ui 保持统一的三层表面、深钴天青交互与 6px 近直角圆角规范
  */
 
 /* ==========================================================================
@@ -8,67 +8,67 @@
  * ========================================================================== */
 
 :root {
-  /* 基础底色与层次：清爽天青浅蓝 */
-  --vp-c-bg: #f5f8fc;
+  /* 基础底色与层次：去噪冷白纸底 */
+  --vp-c-bg: #f7f8fa;
   --vp-c-bg-alt: #ffffff;
-  --vp-c-bg-elv: #edf2f9;
-  --vp-c-bg-soft: #e2eaf4;
+  --vp-c-bg-elv: #f1f5f9;
+  --vp-c-bg-soft: #e2e8f0;
 
-  /* 边框与分割线：晶莹淡蓝灰 */
-  --vp-c-border: #e1e8f2;
-  --vp-c-divider: #e1e8f2;
-  --vp-c-gutter: #e1e8f2;
+  /* 边框与分割线：1px 建筑发丝线 */
+  --vp-c-border: #e2e8f0;
+  --vp-c-divider: #e2e8f0;
+  --vp-c-gutter: #e2e8f0;
 
-  /* 文字排版：深海蓝黑墨 (Slate 900) 保证顶级可读性 */
+  /* 文字排版：Slate 900 高对比墨黑 */
   --vp-c-text-1: #0f172a;
   --vp-c-text-2: #475569;
   --vp-c-text-3: #64748b;
 
-  /* 品牌天青蓝 (Brand Azure) */
-  --vp-c-brand-1: #0284c7;
-  --vp-c-brand-2: #0369a1;
-  --vp-c-brand-3: #075985;
-  --vp-c-brand-soft: rgba(2, 132, 199, 0.08);
+  /* 品牌天青蓝 (Sky 700 / 800，白底对比度 > 5.7:1) */
+  --vp-c-brand-1: #0369a1;
+  --vp-c-brand-2: #075985;
+  --vp-c-brand-3: #0c4a6e;
+  --vp-c-brand-soft: rgba(3, 105, 161, 0.08);
 
-  /* 评测信号绿 (Signal Green) */
-  --c-signal: #059669;
-  --c-signal-deep: #047857;
-  --c-signal-rgb: 5, 150, 105;
+  /* 评测信号绿 (Emerald 700) */
+  --c-signal: #047857;
+  --c-signal-deep: #065f46;
+  --c-signal-rgb: 4, 120, 87;
 
   /* 状态语义色 */
-  --vp-c-tip-1: #0284c7;
-  --vp-c-tip-2: #0369a1;
-  --vp-c-tip-3: #075985;
-  --vp-c-tip-soft: rgba(2, 132, 199, 0.06);
+  --vp-c-tip-1: #0369a1;
+  --vp-c-tip-2: #075985;
+  --vp-c-tip-3: #0c4a6e;
+  --vp-c-tip-soft: rgba(3, 105, 161, 0.06);
 
-  --vp-c-warning-1: #d97706;
-  --vp-c-warning-2: #b45309;
-  --vp-c-warning-3: #92400e;
-  --vp-c-warning-soft: rgba(217, 119, 6, 0.07);
+  --vp-c-warning-1: #b45309;
+  --vp-c-warning-2: #92400e;
+  --vp-c-warning-3: #78350f;
+  --vp-c-warning-soft: rgba(180, 83, 9, 0.07);
 
-  --vp-c-danger-1: #e11d48;
-  --vp-c-danger-2: #be123c;
-  --vp-c-danger-3: #9f1239;
-  --vp-c-danger-soft: rgba(225, 29, 72, 0.07);
+  --vp-c-danger-1: #be123c;
+  --vp-c-danger-2: #9f1239;
+  --vp-c-danger-3: #881337;
+  --vp-c-danger-soft: rgba(190, 18, 60, 0.07);
 
-  /* 工业形态：2–6px 近直角规范 */
-  --vp-border-radius: 4px;
+  /* 近直角圆角：4px / 6px */
+  --vp-border-radius: 6px;
   --vp-button-border-radius: 4px;
 }
 
 .dark {
   /* 基础底色与层次：深邃海军蓝黑 */
-  --vp-c-bg: #0b0f19;
-  --vp-c-bg-alt: #131b2e;
-  --vp-c-bg-elv: #070a12;
+  --vp-c-bg: #0b1120;
+  --vp-c-bg-alt: #111827;
+  --vp-c-bg-elv: #070b14;
   --vp-c-bg-soft: #1e293b;
 
-  /* 边框与分割线：深海科技暗线 */
+  /* 边框与分割线 */
   --vp-c-border: #1e293b;
   --vp-c-divider: #1e293b;
   --vp-c-gutter: #1e293b;
 
-  /* 文字排版：纯净冷白，对比锐利 */
+  /* 文字排版 */
   --vp-c-text-1: #f8fafc;
   --vp-c-text-2: #94a3b8;
   --vp-c-text-3: #64748b;
@@ -102,17 +102,15 @@
 }
 
 /* ==========================================================================
- * 2. 背景微质感装饰 (Azure Tech Grid)
+ * 2. 纯净工作面背景 (Precision Surface)
  * ========================================================================== */
 
 .VPContent {
-  background-image: radial-gradient(rgba(2, 132, 199, 0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: none;
 }
 
 .dark .VPContent {
-  background-image: radial-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: none;
 }
 
 /* ==========================================================================

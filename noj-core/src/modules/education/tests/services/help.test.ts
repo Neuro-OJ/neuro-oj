@@ -167,6 +167,13 @@ Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本
   );
   assertEquals(detail.state, "resolved");
   assertEquals(detail.replies.length, 1);
+  assertEquals(detail.answered_by_coach, true);
+  assertEquals(detail.replies[0].is_coach, true);
+  assertEquals(typeof detail.author_name, "string");
+  const listed = await listAssignmentHelp(f.school.slug, f.task.id, f.teacher);
+  assertEquals(listed.data[0].reply_count, 1);
+  assertEquals(listed.data[0].answered_by_coach, true);
+  assertEquals(listed.data[0].author_name, detail.author_name);
   await assertRejects(
     () =>
       setAssignmentHelpState(
@@ -207,6 +214,8 @@ Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本
   );
   assertEquals(detail.state, "open");
   assertEquals(detail.handled_by, null);
+  assertEquals(detail.replies[1].is_coach, false);
+  assertEquals(detail.reply_count, 2);
   await assertRejects(
     () =>
       setAssignmentHelpState(

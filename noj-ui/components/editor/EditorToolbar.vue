@@ -74,13 +74,13 @@ const draftLabel = computed(() => {
 const draftDotClass = computed(() => {
   switch (props.draftState) {
     case 'dirty':
-      return 'bg-orange-500';
+      return 'bg-warning-text';
     case 'saving':
-      return 'bg-blue-500 animate-pulse';
+      return 'bg-primary animate-pulse';
     case 'error':
-      return 'bg-red-500';
+      return 'bg-error-text';
     case 'saved':
-      return 'bg-green-500';
+      return 'bg-signal';
     default:
       return 'bg-text-muted';
   }
@@ -132,13 +132,15 @@ const draftDotClass = computed(() => {
       <USelect
         :model-value="language"
         :items="languages"
-        size="xs"
-        class="min-w-24" aria-label="提交语言"
+        size="sm"
+        class="min-w-24"
+        aria-label="提交语言"
         @update:model-value="(v) => emit('update:language', v as string)"
       />
 
       <button
-        class="size-8 inline-flex items-center justify-center rounded-md hover:bg-bg-page text-text-secondary transition-colors"
+        type="button"
+        class="size-8 inline-flex items-center justify-center rounded-sm hover:bg-bg-sunken text-text-secondary transition-colors"
         :aria-label="themeMode === 'dark' ? '切换到亮色' : '切换到暗色'"
         :title="themeMode === 'dark' ? '切换到亮色' : '切换到暗色'"
         @click="toggleTheme"
@@ -148,31 +150,37 @@ const draftDotClass = computed(() => {
       </button>
 
       <button
-        class="size-8 inline-flex items-center justify-center rounded-md hover:bg-bg-page text-text-secondary transition-colors"
-        :class="sidebarVisible ? 'bg-bg-page text-primary' : ''"
+        type="button"
+        class="size-8 inline-flex items-center justify-center rounded-sm hover:bg-bg-sunken text-text-secondary transition-colors"
+        :class="sidebarVisible ? 'bg-primary-bg text-primary' : ''"
         aria-label="切换侧栏"
-        title="切换侧栏"
+        title="切换侧栏 (Ctrl/Cmd + B)"
         @click="emit('toggle-sidebar')"
       >
         <UIcon name="i-lucide-sidebar" class="size-4" />
       </button>
 
       <button
-        class="hidden size-8 items-center justify-center rounded-md hover:bg-bg-page text-text-secondary transition-colors sm:inline-flex"
+        type="button"
+        class="hidden size-8 items-center justify-center rounded-sm hover:bg-bg-sunken text-text-secondary transition-colors sm:inline-flex"
         aria-label="设置"
-        title="设置"
+        title="编辑器设置与快捷键"
         @click="emit('open-settings')"
       >
         <UIcon name="i-lucide-settings" class="size-4" />
       </button>
 
+      <span class="hidden sm:block h-4 w-px bg-border mx-0.5" aria-hidden="true" />
+
       <UButton
         v-if="canResetTemplate"
         color="neutral"
         variant="outline"
-        size="md"
-        class="ml-1 shrink-0 whitespace-nowrap font-medium"
-        :disabled="templateLoading" aria-label="重置为模板" title="重置为模板"
+        size="sm"
+        class="shrink-0 whitespace-nowrap font-medium"
+        :disabled="templateLoading"
+        aria-label="重置为模板"
+        title="重置为模板"
         @click="emit('reset-template')"
       >
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="templateLoading" />
@@ -184,9 +192,11 @@ const draftDotClass = computed(() => {
         v-if="canSelfTest"
         color="neutral"
         variant="outline"
-        size="md"
-        class="ml-1 shrink-0 whitespace-nowrap font-medium"
-        :disabled="!canSelfTest || selfTesting" aria-label="运行自测" title="运行自测"
+        size="sm"
+        class="shrink-0 whitespace-nowrap font-medium"
+        :disabled="!canSelfTest || selfTesting"
+        aria-label="运行自测"
+        title="运行自测 (Ctrl/Cmd + ')"
         @click="emit('self-test')"
       >
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="selfTesting" />
@@ -194,9 +204,15 @@ const draftDotClass = computed(() => {
         <span class="hidden sm:inline">{{ selfTesting ? '自测中...' : '自测' }}</span>
       </UButton>
 
-      <UButton color="primary" size="md" class="ml-1 shrink-0 whitespace-nowrap font-medium"
-        :disabled="!canSubmit || submitting" aria-label="提交评测"
-        @click="emit('submit')">
+      <UButton
+        color="primary"
+        size="sm"
+        class="shrink-0 whitespace-nowrap font-medium"
+        :disabled="!canSubmit || submitting"
+        aria-label="提交评测"
+        title="提交评测 (Ctrl/Cmd + Enter)"
+        @click="emit('submit')"
+      >
         <UIcon name="i-lucide-loader-2" class="animate-spin size-3.5" v-if="submitting" />
         <UIcon name="i-lucide-send" class="size-3.5" v-else />
         <span class="hidden sm:inline">{{ submitting ? '提交中...' : '提交评测' }}</span><span class="sm:hidden">{{ submitting ? '提交中' : '提交' }}</span>
