@@ -86,7 +86,7 @@ function formatNumber(n?: number): string {
             GitHub
           </a>
         </div>
-        <div class="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-xs text-amber-900 dark:text-amber-200">
+        <div class="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-xs text-amber-900">
           <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-px text-amber-600" />
           <span>Neuro OJ 与 CCF 及 LMCC 无任何官方关系，为独立社区项目。</span>
         </div>
@@ -125,7 +125,7 @@ function formatNumber(n?: number): string {
         与传统 OJ 的核心区别
       </h2>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
+        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown transition-shadow">
           <div class="w-10 h-10 rounded-lg bg-primary-bg text-primary flex items-center justify-center shrink-0">
             <UIcon name="i-lucide-grid" class="size-5" />
           </div>
@@ -138,7 +138,7 @@ function formatNumber(n?: number): string {
           </p>
         </article>
 
-        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
+        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown transition-shadow">
           <div class="w-10 h-10 rounded-lg bg-primary-bg text-primary flex items-center justify-center shrink-0">
             <UIcon name="i-lucide-box" class="size-5" />
           </div>
@@ -151,7 +151,7 @@ function formatNumber(n?: number): string {
           </p>
         </article>
 
-        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
+        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown transition-shadow">
           <div class="w-10 h-10 rounded-lg bg-primary-bg text-primary flex items-center justify-center shrink-0">
             <UIcon name="i-lucide-monitor" class="size-5" />
           </div>

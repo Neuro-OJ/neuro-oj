@@ -65,11 +65,6 @@ onUnmounted(() => {
     to { text-shadow: 0 0 20px rgba(59, 130, 246, 0.7); }
 }
 
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(24px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
 @keyframes float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }

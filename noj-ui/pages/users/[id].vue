@@ -254,7 +254,7 @@ function formatDate(iso: string): string {
           </span>
           <div class="mt-1 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
             <div
-              class="h-full rounded-full bg-blue-500 transition-all duration-500"
+              class="h-full rounded-full bg-blue-500 transition-[width] duration-500"
               :style="{ width: `${Math.min(100, Math.max(0, profile.stats.acceptance_rate * 100))}%` }"
             ></div>
           </div>

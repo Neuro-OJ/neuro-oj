@@ -4,28 +4,28 @@
   "scopes": {
     "s1": {
       "radius": 176,
-      "palette": 146,
-      "motion": 23,
-      "entrance": 29,
-      "dark": 7,
+      "palette": 145,
+      "motion": 0,
+      "entrance": 0,
+      "dark": 0,
       "raw-control": 74,
       "type": 68
     },
     "public": {
       "radius": 190,
-      "palette": 165,
-      "motion": 23,
-      "entrance": 29,
-      "dark": 13,
+      "palette": 164,
+      "motion": 0,
+      "entrance": 0,
+      "dark": 6,
       "raw-control": 87,
       "type": 80
     },
     "all": {
       "radius": 231,
-      "palette": 301,
-      "motion": 28,
-      "entrance": 29,
-      "dark": 16,
+      "palette": 300,
+      "motion": 5,
+      "entrance": 0,
+      "dark": 9,
       "raw-control": 127,
       "type": 131
     }

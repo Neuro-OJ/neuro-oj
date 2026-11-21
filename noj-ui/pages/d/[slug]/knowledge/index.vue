@@ -191,7 +191,7 @@ useSeoMeta({ title: '我的学习' });
               aria-label="掌握率"
             >
               <div
-                class="h-full bg-success transition-all"
+                class="h-full bg-success transition-[width]"
                 :style="{ width: `${masteryPercent(mastery.mastered, mastery.total)}%` }"
               />
             </div>

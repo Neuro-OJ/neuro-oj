@@ -10,8 +10,8 @@
     <slot name="banner-info" />
 
     <div class="bg-white border border-border rounded-lg p-8">
-      <h1 class="text-22px font-bold text-center mb-3 text-text animate-[fadeInUp_0.5s_ease_both]">{{ title }}</h1>
-      <p v-if="subtitle" class="text-center text-sm text-text-secondary mb-6 animate-[fadeInUp_0.5s_ease_0.05s_both]">{{ subtitle }}</p>
+      <h1 class="text-22px font-bold text-center mb-3 text-text">{{ title }}</h1>
+      <p v-if="subtitle" class="text-center text-sm text-text-secondary mb-6">{{ subtitle }}</p>
 
       <form class="flex flex-col gap-6" @submit.prevent="$emit('submit')">
         <slot />
@@ -115,17 +115,5 @@ defineEmits<{
 .icon-leave-to {
   opacity: 0;
   transform: translate(6px, 6px);
-}
-
-/* @keyframes fadeInUp (用于入场动画) */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 </style>

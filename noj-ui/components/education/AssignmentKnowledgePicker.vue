@@ -138,7 +138,7 @@ defineExpose({ runPreview, addAll });
       <p class="text-xs text-text-secondary">
         「{{ nodeName(graph, previewNode) }}」挑选了 {{ items.length }} 道题：
       </p>
-      <div class="divide-y divide-border rounded border border-border bg-white dark:bg-bg-panel">
+      <div class="divide-y divide-border rounded border border-border bg-white">
         <div
           v-for="item in items"
           :key="item.problem_id"

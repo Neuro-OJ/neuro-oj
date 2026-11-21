@@ -294,7 +294,7 @@ async function save() {
               <div
                 v-for="student in students"
                 :key="student.user_id"
-                class="flex items-center gap-2 rounded px-2.5 py-1.5 hover:bg-white dark:hover:bg-bg-panel transition-colors"
+                class="flex items-center gap-2 rounded px-2.5 py-1.5 hover:bg-white transition-colors"
               >
                 <UCheckbox
                   :model-value="selectedStudents.includes(student.user_id)"
@@ -417,7 +417,7 @@ async function save() {
           />
 
           <!-- 可选题目预览列表 -->
-          <div class="rounded-lg border border-border bg-white dark:bg-bg-panel max-h-56 overflow-auto divide-y divide-border">
+          <div class="rounded-lg border border-border bg-white max-h-56 overflow-auto divide-y divide-border">
             <div
               v-for="problem in problems.data.value?.items"
               :key="problem.binding_id"

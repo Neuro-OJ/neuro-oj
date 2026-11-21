@@ -4,10 +4,10 @@
             <UIcon name="i-lucide-bar-chart-3" class="shrink-0 size-[11px] size-4" />
             <span class="inline-flex items-center">
                 <span class="grid grid-cols-1 grid-rows-1 overflow-hidden">
-                    <span class="row-span-full col-span-full transition-all duration-350"
+                    <span class="row-span-full col-span-full transition-[transform,opacity] duration-350"
                         :class="mode === 'today' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-full'"
                     >今天</span>
-                    <span class="row-span-full col-span-full transition-all duration-350"
+                    <span class="row-span-full col-span-full transition-[transform,opacity] duration-350"
                         :class="mode === 'total' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full'"
                     >总共</span>
                 </span>评测

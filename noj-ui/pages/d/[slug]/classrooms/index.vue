@@ -407,7 +407,7 @@ useSeoMeta({ title: '班级研练中心' });
           <div
             v-for="task in visibleTeachingTasks"
             :key="task.id"
-            class="group flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-all hover:border-primary/50"
+            class="group flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
           >
             <div class="space-y-3">
               <!-- 班级来源与状态徽章 -->
@@ -568,7 +568,7 @@ useSeoMeta({ title: '班级研练中心' });
           <div
             v-for="task in visibleLearningTasks"
             :key="task.id"
-            class="group flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-all hover:border-primary/50"
+            class="group flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
           >
             <div class="space-y-3">
               <div class="flex items-start justify-between gap-2">
@@ -616,7 +616,7 @@ useSeoMeta({ title: '班级研练中心' });
                 </div>
                 <div class="w-full bg-border/60 rounded-full h-1.5 overflow-hidden">
                   <div
-                    class="bg-success h-full transition-all duration-300"
+                    class="bg-success h-full transition-[width] duration-300"
                     :style="{
                       width: `${Math.min(100, Math.round(((task.summary.achieved_cells ?? 0) / Math.max(1, task.summary.total_items)) * 100))}%`
                     }"
@@ -730,7 +730,7 @@ useSeoMeta({ title: '班级研练中心' });
           <div
             v-for="room in filteredRooms"
             :key="room.id"
-            class="flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-all hover:border-primary/50"
+            class="flex flex-col justify-between rounded-lg border border-border bg-bg-panel p-5 transition-colors hover:border-primary/50"
           >
             <div>
               <div class="flex items-start justify-between gap-3">

@@ -3,10 +3,10 @@
         <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
 
         <div class="bg-white border border-border rounded-lg p-8">
-            <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">重置密码</h1>
+            <h1 class="text-22px font-bold text-center mb-6 text-text">重置密码</h1>
 
             <form @submit.prevent="handleSubmit">
-                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
+                <div class="relative mb-7">
                     <label for="password" class="block text-sm font-semibold text-text mb-1">新密码 <span class="text-red-600">*</span></label>
                     <div class="relative flex items-center">
                         <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
@@ -34,7 +34,7 @@
                     </Transition>
                 </div>
 
-                <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
+                <div class="relative mb-7">
                     <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码 <span class="text-red-600">*</span></label>
                     <div class="relative flex items-center">
                         <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
@@ -62,13 +62,13 @@
                     </Transition>
                 </div>
 
-                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.15s_both]" type="submit"  :disabled="loading">
+                <UButton color="primary" size="md" block type="submit"  :disabled="loading">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? '重置中...' : '重置密码' }}
                 </UButton>
             </form>
 
-            <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.2s_both]">
+            <p class="text-center mt-5 text-sm text-text-secondary">
                 <NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">返回登录</NuxtLink>
             </p>
         </div>
@@ -187,16 +187,5 @@ async function handleSubmit() {
 .icon-leave-to {
     opacity: 0;
     transform: translate(6px, 6px);
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(12px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
 }
 </style>
