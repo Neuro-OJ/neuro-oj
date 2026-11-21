@@ -1,135 +1,139 @@
-# NOJ 设计 Token 规范
+# NOJ 设计 Token 规范（Precision Instrument）
 
-> 本文是 NOJ 品牌视觉系统的单一事实来源。前端 token 定义在 `noj-ui/app.vue` 的
-> `:root`，Tailwind/Nuxt UI 映射在 `noj-ui/assets/css/main.css`。
+> 本文是 NOJ 品牌视觉系统的单一事实来源。前端 token 定义在 `noj-ui/app.vue` 的 `:root` 与 `.editor-dark`，Tailwind/Nuxt UI 映射在 `noj-ui/assets/css/main.css`，文档站主题同步在 `noj-docs/docs/.vitepress/theme/styles/style.css`。
 
 ## 设计语言
 
-NOJ 采用「Clean Cyber Azure (浅蓝科技调)」统一品牌视觉体系：
+NOJ 采用 **Precision Instrument（精密评测工作台）** 视觉体系——面向高频刷题、教学审阅与竞赛评测的冷静、精准、高信噪比界面：
 
-- **清爽天青底与纯白面板是主体**：页面底色 `#f5f8fc`，面板卡片 `#ffffff`，沉底块
-  `#edf2f9`，分割线边框 `#e1e8f2`，背景点阵微质感（28px radial dot grid）；
-- **品牌天青蓝是活力与交互核心**：`#0284c7`（亮色 Sky 600）/ `#38bdf8`（暗色 Sky
-  400），用于高亮链接、关键按钮、激活项、焦点环；
-- **深邃科技海军蓝是基底与品牌身份**：深海蓝黑 `#0b0f19` / `#131b2e` /
-  `#0f172a`（Slate 900），用于品牌 Logo、Hero 暗色沉浸块、代码终端与暗色模式；
-- **评测信号绿是核心状态反馈**：`#059669`（亮色 Emerald 600）/
-  `#00e07a`（暗色荧光绿），用于评测状态、提交通过、运行就绪、成功通知；
-- **近直角工业形态**：2–6px 圆角（默认 4px），数值文本使用 `tabular-nums`。
+- **去噪冷白纸底与纯白工作面**：页面底色 `#f7f8fa`，工作面板 `#ffffff`，沉底表头/代码块/凹槽 `#f1f5f9`，1px 建筑发丝线 `#e2e8f0`（交互强调 `#cbd5e1`）；取消数据页默认背景点阵噪声；
+- **深钴天青主交互色**：`#0369a1`（亮色 Sky 700，白底对比度 > 5.7:1）/ `#38bdf8`（暗色 Sky 400），用于主按钮、激活态、焦点环与品牌链接；
+- **评测信号绿**：`#047857`（亮色 Emerald 700）/ `#00e07a`（暗色荧光绿），专用于评测通过、运行就绪、提交成功状态；
+- **全等宽遥测与状态表达**：分数、耗时、内存、排名、通过率一律使用 `tabular-nums`；状态表达通过语义点、状态徽章与结构化遥测值传递，禁止使用 > 1px 的彩色侧边装饰框；
+- **严格 3 档近直角圆角**：`4px`（标签/按钮/输入框）、`6px`（默认卡片/表格容器）、`10px`（命令面板/抽屉/弹窗）。
 
 ## 色板
 
-### 亮色模式
+### 1. 表面与边框（Surface & Border）
 
-| Token                | 值          | 用途                              |
-| -------------------- | ----------- | --------------------------------- |
-| `--c-bg-page`        | `#f5f8fc`   | 页面天青浅蓝底                    |
-| `--c-bg-panel`       | `#ffffff`   | 纯白卡片/面板                     |
-| `--c-bg-sunken`      | `#edf2f9`   | 沉底块/表头/代码微层级            |
-| `--c-border`         | `#e1e8f2`   | 晶莹淡蓝灰边框                    |
-| `--c-text`           | `#0f172a`   | 正文 (Slate 900)                  |
-| `--c-text-secondary` | `#475569`   | 次要文字 (Slate 600)              |
-| `--c-text-muted`     | `#64748b`   | 弱化文字 (Slate 500)              |
-| `--c-primary`        | `#0284c7`   | 品牌天青蓝 (Sky 600)              |
-| `--c-primary-dark`   | `#0369a1`   | 品牌蓝深色 (Sky 700)              |
-| `--c-primary-light`  | `#38bdf8`   | 品牌蓝浅色 (Sky 400)              |
-| `--c-signal`         | `#059669`   | 评测信号绿 (Emerald 600)          |
-| `--c-signal-deep`    | `#047857`   | 亮色底绿色文字/图标 (Emerald 700) |
-| `--c-signal-rgb`     | `5,150,105` | 信号绿半透明层                    |
-| `--c-on-signal`      | `#ffffff`   | 信号绿底上的文字                  |
-| `--c-success-text`   | `#059669`   | 成功/通过                         |
-| `--c-warning-text`   | `#d97706`   | 警告 (Amber 600)                  |
-| `--c-error-text`     | `#e11d48`   | 错误 (Rose 600)                   |
-| `--c-info-text`      | `#0284c7`   | 信息 (Sky 600)                    |
+| Token | 亮色值 | 暗色值（`.editor-dark`） | 用途 |
+| --- | --- | --- | --- |
+| `--c-bg-page` | `#f7f8fa` | `#0b1120` | 页面画布底色 |
+| `--c-bg-panel` | `#ffffff` | `#111827` | 主面板/卡片/表格容器 |
+| `--c-bg-card` | `#ffffff` | `#111827` | 兼容别名（同 `--c-bg-panel`） |
+| `--c-bg-elevated` | `#ffffff` | `#182235` | 浮层/下拉菜单/命令面板 |
+| `--c-bg-sunken` | `#f1f5f9` | `#070b14` | 表头/代码块/凹陷槽 |
+| `--c-border` / `--c-border-subtle` | `#e2e8f0` | `#1e293b` | 常规 1px 发丝分割线 |
+| `--c-border-strong` | `#cbd5e1` | `#334155` | 悬停态边框/强调分割线 |
 
-### 暗色模式
+### 2. 文字（Typography Colors）
 
-| Token                | 值          | 用途                      |
-| -------------------- | ----------- | ------------------------- |
-| `--c-bg-page`        | `#0b0f19`   | 深邃海军蓝黑底            |
-| `--c-bg-panel`       | `#131b2e`   | 深蓝科技面板              |
-| `--c-bg-sunken`      | `#070a12`   | 沉底黑块                  |
-| `--c-border`         | `#1e293b`   | 暗色科技边框 (Slate 800)  |
-| `--c-text`           | `#f8fafc`   | 正文 (Slate 50)           |
-| `--c-text-secondary` | `#94a3b8`   | 次要文字 (Slate 400)      |
-| `--c-text-muted`     | `#64748b`   | 弱化文字 (Slate 500)      |
-| `--c-primary`        | `#38bdf8`   | 品牌蓝 (Sky 400 荧光高光) |
-| `--c-primary-dark`   | `#0ea5e9`   | 品牌蓝深色 (Sky 500)      |
-| `--c-primary-light`  | `#7dd3fc`   | 品牌蓝浅色 (Sky 300)      |
-| `--c-signal`         | `#00e07a`   | 评测信号绿 (荧光绿)       |
-| `--c-signal-deep`    | `#00d68a`   | 暗色底绿色文字/图标       |
-| `--c-signal-rgb`     | `0,224,122` | 信号绿半透明层            |
-| `--c-on-signal`      | `#0b0f19`   | 信号绿底上的文字          |
-| `--c-success-text`   | `#00e07a`   | 成功/通过                 |
-| `--c-warning-text`   | `#fbbf24`   | 警告 (Amber 400)          |
-| `--c-error-text`     | `#fb7185`   | 错误 (Rose 400)           |
-| `--c-info-text`      | `#38bdf8`   | 信息 (Sky 400)            |
+| Token | 亮色值 | 暗色值（`.editor-dark`） | 用途 |
+| --- | --- | --- | --- |
+| `--c-text` | `#0f172a` | `#f8fafc` | 主正文与标题 |
+| `--c-text-secondary` | `#475569` | `#94a3b8` | 次要说明/表格次级列 |
+| `--c-text-muted` | `#64748b` | `#64748b` | 辅助标签/时间戳/空态说明 |
+| `--c-text-on-color` | `#ffffff` | `#ffffff` | 实心品牌按钮文字 |
+| `--c-text-on-dark` | `#f8fafc` | `#f8fafc` | 深色块上正文 |
+
+### 3. 品牌与交互（Brand & Interactive）
+
+| Token | 亮色值 | 暗色值（`.editor-dark`） | 用途 |
+| --- | --- | --- | --- |
+| `--c-primary` | `#0369a1` | `#38bdf8` | 品牌主色、焦点环、关键交互 |
+| `--c-primary-dark` | `#075985` | `#0ea5e9` | 主按钮悬停/深强调 |
+| `--c-primary-light` | `#0284c7` | `#7dd3fc` | 浅阶品牌辅助 |
+| `--c-primary-bg` | `#f0f9ff` | `rgba(56,189,248,0.12)` | 选中项底色/信息标签底 |
+| `--c-primary-hover-bg` | `#e0f2fe` | `rgba(56,189,248,0.2)` | 浅色交互悬停底 |
+| `--c-primary-active-bg` | `#bae6fd` | `rgba(56,189,248,0.28)` | 按下态底色 |
+| `--c-primary-text` | `#0369a1` | `#38bdf8` | 品牌链接与高亮文字 |
+| `--c-signal` | `#047857` | `#00e07a` | 评测信号绿 |
+| `--c-signal-deep` | `#065f46` | `#00d68a` | 绿底/浅底上的高对比信号文字 |
+| `--c-signal-rgb` | `4,120,87` | `0,224,122` | 信号绿半透明通道 |
+| `--c-on-signal` | `#ffffff` | `#0b1120` | 信号绿按钮上的文字 |
+
+### 4. 状态、评测结果与难度（Status, Verdict & Difficulty）
+
+| Token | 亮色值 | 暗色值（`.editor-dark`） | 用途 |
+| --- | --- | --- | --- |
+| `--c-success-text` | `#047857` | `#00e07a` | 成功/通过 |
+| `--c-info-text` | `#0369a1` | `#38bdf8` | 信息/进行中 |
+| `--c-warning-text` | `#b45309` | `#fbbf24` | 警告/部分通过 |
+| `--c-error-text` | `#be123c` | `#fb7185` | 错误/失败 |
+| `--c-verdict-accepted` | `#047857` | `#00e07a` | 全部通过（AC） |
+| `--c-verdict-accepted-bg` | `#ecfdf5` | `rgba(0,224,122,0.12)` | AC 浅底 |
+| `--c-verdict-partial` | `#b45309` | `#fbbf24` | 部分得分 |
+| `--c-verdict-partial-bg` | `#fffbeb` | `rgba(251,191,36,0.12)` | 部分得分浅底 |
+| `--c-verdict-wrong` | `#be123c` | `#fb7185` | 答案错误/编译或运行失败 |
+| `--c-verdict-wrong-bg` | `#fff1f2` | `rgba(251,113,133,0.12)` | 错误浅底 |
+| `--c-verdict-limit` | `#c2410c` | `#fb923c` | 超时/超内存（TLE/MLE） |
+| `--c-verdict-limit-bg` | `#fff7ed` | `rgba(251,146,60,0.12)` | 限额超标浅底 |
+| `--c-verdict-judging` | `#0369a1` | `#38bdf8` | 评测中 |
+| `--c-verdict-judging-bg` | `#f0f9ff` | `rgba(56,189,248,0.12)` | 评测中浅底 |
+| `--c-verdict-pending` | `#64748b` | `#94a3b8` | 排队中 |
+| `--c-verdict-pending-bg` | `#f1f5f9` | `rgba(148,163,184,0.12)` | 排队中浅底 |
+| `--c-diff-easy` | `#047857` | `#34d399` | 简单难度 |
+| `--c-diff-medium` | `#b45309` | `#fbbf24` | 中等难度 |
+| `--c-diff-hard` | `#be123c` | `#fb7185` | 困难难度 |
+
+## 排版、圆角、阴影与容器宽度
+
+- **无衬线字体栈 `--font-sans`**：`"Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif`（完全离线，不请求外网字体 API）；
+- **等宽字体栈 `--font-mono`**：`"SF Mono", "Fira Code", "Consolas", "Noto Sans Mono CJK SC", monospace`；
+- **圆角（严格 3 档）**：`--radius-sm: 4px`、`--radius-md: 6px`（`--radius: 6px` 默认）、`--radius-lg: 10px`；
+- **阴影层次（卡片静置无多余阴影，仅浮层使用投影）**：
+  - `--shadow-card`: `0 1px 2px rgba(15, 23, 42, 0.04)`
+  - `--shadow-dropdown`: `0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04)`
+  - `--shadow-modal`: `0 24px 48px -12px rgba(15, 23, 42, 0.18)`
+- **布局宽度单一事实来源**（定义在 `noj-ui/utils/workspace-layout.ts`）：
+  - `library`: `1040px`（题库 / 提交记录 / 比赛 / 题单等列表页）
+  - `default`: `1152px`（常规域内子页）
+  - `problem`: `1280px`（题目详情双栏阅读）
+  - `home`: `1320px`（域首页）
+  - `workspace`: `1440px`（编辑器/宽表工作区）
 
 ## CLI / 终端
 
-终端没有 CSS/HTML，只有 ANSI SGR 转义，而且**前景色与背景色由用户终端决定**——
-本规范不假设落在亮色还是暗色纸面上。因此下面这张表是上文色板的**降级表示**，
-不是第二套调色板：亮/暗两套 hex 收敛到同一个 16 色 ANSI 槽位，选择标准是
-「在浅色终端与深色终端上都可读」。
+终端没有 CSS/HTML，只有 ANSI SGR 转义，且**前景色与背景色由用户终端决定**——本规范不假设落在亮色还是暗色纸面上。下面这张表是上文色板的**降级表示**，选择标准是「在浅色终端与深色终端上都可读」。
 
 ### 语义色 → ANSI 映射
 
-| Token                | 亮色 hex  | 暗色 hex  | ANSI SGR   | 终端效果        | 用途                    |
-| -------------------- | --------- | --------- | ---------- | --------------- | ----------------------- |
-| `--c-success-text`   | `#059669` | `#00e07a` | `\x1b[32m` | 绿色            | 成功/通过               |
-| `--c-warning-text`   | `#d97706` | `#fbbf24` | `\x1b[33m` | 黄色            | 警告                    |
-| `--c-error-text`     | `#e11d48` | `#fb7185` | `\x1b[31m` | 红色            | 错误/失败               |
-| `--c-info-text`      | `#0284c7` | `#38bdf8` | `\x1b[36m` | 青色            | 信息                    |
-| `--c-primary`        | `#0284c7` | `#38bdf8` | `\x1b[36m` | 青色            | 品牌天青蓝/强调         |
-| `--c-signal`         | `#059669` | `#00e07a` | `\x1b[92m` | 亮绿色          | 评测信号（进行中/动作） |
-| `--c-text-muted`     | `#64748b` | `#64748b` | `\x1b[90m` | 亮黑（灰）      | 弱化文字                |
-| `--c-text-secondary` | `#475569` | `#94a3b8` | `\x1b[2m`  | 暗淡（SGR dim） | 次要文字                |
+| Token | 亮色 hex | 暗色 hex | ANSI SGR | 终端效果 | 用途 |
+| --- | --- | --- | --- | --- | --- |
+| `--c-success-text` | `#047857` | `#00e07a` | `\x1b[32m` | 绿色 | 成功/通过 |
+| `--c-warning-text` | `#b45309` | `#fbbf24` | `\x1b[33m` | 黄色 | 警告 |
+| `--c-error-text` | `#be123c` | `#fb7185` | `\x1b[31m` | 红色 | 错误/失败 |
+| `--c-info-text` | `#0369a1` | `#38bdf8` | `\x1b[36m` | 青色 | 信息 |
+| `--c-primary` | `#0369a1` | `#38bdf8` | `\x1b[36m` | 青色 | 品牌天青蓝/强调 |
+| `--c-signal` | `#047857` | `#00e07a` | `\x1b[92m` | 亮绿色 | 评测信号（进行中/动作） |
+| `--c-text-muted` | `#64748b` | `#64748b` | `\x1b[90m` | 亮黑（灰） | 弱化文字 |
+| `--c-text-secondary` | `#475569` | `#94a3b8` | `\x1b[2m` | 暗淡（SGR dim） | 次要文字 |
 
-- Reset 统一用
-  `\x1b[0m`；**只对语义片段（状态符号、模块前缀）着色，不整行着色**—— 行内自带
-  SGR 的转发日志会被外层 reset 清掉，理由见 `noj-cli/src/util/color.ts` 的
-  `prefixLine` 注释。
-- 状态符号：`✓` 成功、`!` 警告、`✗` 错误、`ℹ` 信息。符号与颜色**成对**出现，
-  于是颜色被关闭时仅靠符号也能区分语义（色盲友好）。
+- Reset 统一用 `\x1b[0m`；**只对语义片段（状态符号、模块前缀）着色，不整行着色**。
+- 状态符号：`✓` 成功、`!` 警告、`✗` 错误、`ℹ` 信息。符号与颜色**成对**出现，保证色盲友好。
 
 ### 降级规则
 
-任一「关」条件命中即**完全关闭着色**——输出中不得出现任何 ANSI 转义序列
-（不是「颜色变淡」）：
+任一「关」条件命中即**完全关闭着色**：
 
-| 触发条件                                     | 行为    | 判定顺序                          |
-| -------------------------------------------- | ------- | --------------------------------- |
-| `NO_COLOR` 非空                              | 关      | 最高优先级，压过 `--color=always` |
-| `--color=never`                              | 关      |                                   |
-| `--color=auto` 且目标流非 TTY（重定向/管道） | 关      | stdout 与 stderr **分别**探测     |
-| `--color=always`                             | 开      |                                   |
-| `LOG_COLOR=never` / `LOG_COLOR=always`       | 关 / 开 | 仅在 `auto` 下生效                |
+| 触发条件 | 行为 | 判定顺序 |
+| --- | --- | --- |
+| `NO_COLOR` 非空 | 关 | 最高优先级，压过 `--color=always` |
+| `--color=never` | 关 | |
+| `--color=auto` 且目标流非 TTY | 关 | stdout 与 stderr **分别**探测 |
+| `--color=always` | 开 | |
+| `LOG_COLOR=never` / `LOG_COLOR=always` | 关 / 开 | 仅在 `auto` 下生效 |
 
-判定唯一实现是 `noj-cli/src/util/color.ts` 的 `resolveColor(mode, stream)`；
-`noj-cli/src/output/theme.ts` 只消费其结果，**不得**复制一份 `NO_COLOR`/TTY 判定
-（两条路径必然漂移）。`--color` 的合法取值与解析见 `parseColorMode`。
+判定唯一实现是 `noj-cli/src/util/color.ts` 的 `resolveColor(mode, stream)`；`noj-cli/src/output/theme.ts` 只消费其结果。
 
-### 排版
+### CLI 排版
 
-- 表格列宽按**显示宽度**对齐：CJK 全角字符占 2 列（实现见
-  `noj-cli/src/output/render.ts` 的 `displayWidth`）；
-- 给定最大宽度时保证总宽 ≤ 该值：先均匀收缩最宽列、超宽单元格以 `…` 截断；
-  宽度小于最小可行宽度（每列 1 列 + 列间距）时对整行硬截断，仍保证不超宽；
-- 分隔线与表格分隔线使用 ASCII `-`，不用制表符 `─`：`─`(U+2500) 属 East Asian
-  Ambiguous，部分终端按 2 列渲染会破坏对齐；
+- 表格列宽按**显示宽度**对齐：CJK 全角字符占 2 列（实现见 `noj-cli/src/output/render.ts` 的 `displayWidth`）；
+- 分隔线与表格分隔线使用 ASCII `-`，不用制表符 `─`；
 - 空表渲染为空串，不抛错，也不写任何输出流。
-
-## 圆角与排版
-
-- 默认圆角：`--radius: 4px`；
-- 小圆角：`--radius-sm: 2px`；
-- 中圆角：`--radius-md: 6px`；
-- 大圆角：`--radius-lg: 10px`；
-- 特大圆角：`--radius-xl: 14px`；
-- 数值文本（分数、耗时、排名、提交数）使用 `tabular-nums`。
 
 ## 对比度要求
 
-- 正文对纸底 ≥ 4.5:1；
+- 正文与辅助文本对所在表面 ≥ 4.5:1（大字 ≥ 3:1）；
 - 品牌蓝/信号绿作为文字时，对实际落面 ≥ 4.5:1；
-- 装饰性点阵不参与正文对比度，但应保持低存在感（约 1.06–1.6:1 的合成对比度）。
+- 键盘焦点环统一 2px 实线 `--c-primary`，与背景形成明确分离。

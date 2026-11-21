@@ -268,8 +268,13 @@ function areaLabel(areaId: string): string {
   return knowledge.graph.value?.areas.find((area) => area.id === areaId)?.name ?? areaId;
 }
 
-// 初始化：先试用量；一旦功能关闭就整页隐藏，不再请求其他接口。
+// 初始化：先看总开关；关闭就整页隐藏，不再请求接口。
 onMounted(async () => {
+  if (knowledge.disabled.value) {
+    usageLoading.value = false;
+    reviewsLoading.value = false;
+    return;
+  }
   await loadUsage();
   if (knowledge.disabled.value) {
     usageLoading.value = false;

@@ -8,7 +8,7 @@ import WorkspaceInvitationManager from '~/components/workspace/WorkspaceInvitati
 import ClassroomImport from '~/components/education/ClassroomImport.vue';
 import ClassroomJoinRequests from '~/components/education/ClassroomJoinRequests.vue';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute();
 const { slug, domain } = useWorkspace();
@@ -83,6 +83,15 @@ const rosterStats = computed(() => {
   return { total: activeList.length, students };
 });
 
+const canViewTraining = computed(() =>
+  !!room.data.value &&
+  (classroomCan(room.data.value.data, 'submissions:read') || classroomCan(room.data.value.data, 'progress:read'))
+);
+
+function studentTrainingPath(member: ClassroomMember) {
+  return workspacePath(slug.value!, `classrooms/${id.value}/students/${member.user_id}`);
+}
+
 const error = ref('');
 const saving = ref(false);
 const capture = useWorkspaceActionScope();
@@ -130,11 +139,11 @@ useSeoMeta({ title: '班级成员' });
 
     <LibraryPageHeader
       title="班级成员"
-      :description="room.data.value?.data.name ? `管理「${room.data.value.data.name}」的学生名单` : '管理班级学生名单'"
+      :description="room.data.value?.data.name ? `查看「${room.data.value.data.name}」学员训练进展并管理班级名单` : '管理班级成员与学员训练'"
       icon="i-lucide-user-check"
     />
 
-    <UAlert v-if="error" color="error" :title="error" />
+    <UAlert v-if="error" color="error" variant="subtle" :title="error" />
 
     <!-- 成员管理三段式 Tab 导航 -->
     <UTabs v-model="activeTab" :items="tabItems" :content="false" class="w-full sm:w-fit" />
@@ -142,7 +151,7 @@ useSeoMeta({ title: '班级成员' });
     <!-- Tab 1: 班级花名册 -->
     <div v-show="activeTab === 'roster'" class="space-y-4">
       <!-- 搜索、筛选与统计栏 -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel p-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-md border border-border bg-bg-panel p-3 sm:p-4">
         <div class="flex flex-wrap items-center gap-2">
           <UInput
             v-model="search"
@@ -175,19 +184,23 @@ useSeoMeta({ title: '班级成员' });
         :empty-text="search ? '未找到匹配的成员' : '暂无成员'"
         @retry="refresh()"
       >
-        <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+        <div class="divide-y divide-border rounded-md border border-border bg-bg-panel">
           <div
             v-for="member in filteredRoster"
             :key="member.id"
-            class="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 transition-colors hover:bg-bg-sunken/40"
+            class="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5 transition-colors hover:bg-bg-sunken/40"
           >
-            <div class="flex min-w-0 items-start gap-3">
-              <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-text-secondary font-semibold text-sm">
-                {{ member.username.slice(0, 1).toUpperCase() }}
-              </div>
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="break-all font-medium text-text">{{ member.username }}</span>
+            <NuxtLink
+              v-if="member.role === 'student' && canViewTraining"
+              :to="studentTrainingPath(member)"
+              class="group flex min-w-0 flex-1 items-center justify-between gap-3 rounded focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <div class="flex min-w-0 items-center gap-3">
+                <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-text-secondary font-semibold text-sm group-hover:bg-primary-bg group-hover:text-primary transition-colors">
+                  {{ member.username.slice(0, 1).toUpperCase() }}
+                </div>
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <span class="break-all font-medium text-text group-hover:text-primary transition-colors">{{ member.username }}</span>
                   <UBadge color="neutral" variant="subtle" size="sm">{{ member.role === 'student' ? '学生' : member.role }}</UBadge>
                   <UBadge
                     :color="member.effective_active ? 'success' : 'neutral'"
@@ -197,26 +210,36 @@ useSeoMeta({ title: '班级成员' });
                     {{ member.effective_active ? '在班' : '历史/已移出' }}
                   </UBadge>
                 </div>
+              </div>
+              <span class="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-primary sm:text-sm">
+                训练详情
+                <UIcon name="i-lucide-arrow-right" class="size-4 transition-transform group-hover:translate-x-0.5" />
+              </span>
+            </NuxtLink>
 
+            <div v-else class="flex min-w-0 flex-1 items-center gap-3">
+              <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-bg-sunken text-text-secondary font-semibold text-sm">
+                {{ member.username.slice(0, 1).toUpperCase() }}
+              </div>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <span class="break-all font-medium text-text">{{ member.username }}</span>
+                <UBadge color="neutral" variant="subtle" size="sm">{{ member.role === 'student' ? '学生' : member.role }}</UBadge>
+                <UBadge
+                  :color="member.effective_active ? 'success' : 'neutral'"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ member.effective_active ? '在班' : '历史/已移出' }}
+                </UBadge>
               </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2 sm:justify-end sm:shrink-0">
+            <div v-if="writable && member.effective_active" class="flex items-center justify-end sm:shrink-0 sm:border-l sm:border-border sm:pl-3">
               <UButton
-                v-if="member.role === 'student' && room.data.value && (classroomCan(room.data.value.data, 'submissions:read') || classroomCan(room.data.value.data, 'progress:read'))"
-                :to="workspacePath(slug!, `classrooms/${id}/students/${member.user_id}`)"
-                variant="outline"
-                color="neutral"
-                size="sm"
-                icon="i-lucide-activity"
-              >
-                训练详情
-              </UButton>
-              <UButton
-                v-if="writable && member.effective_active"
                 variant="ghost"
-                color="error"
-                size="sm"
+                color="neutral"
+                size="xs"
+                class="text-text-muted hover:bg-red-50 hover:text-error-text"
                 :disabled="saving"
                 @click="remove(member)"
               >
@@ -247,7 +270,7 @@ useSeoMeta({ title: '班级成员' });
       <!-- 班级公开申请链接面板 -->
       <div
         v-if="manage"
-        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg px-5 py-4"
+        class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-md border border-primary/20 bg-primary-bg px-5 py-4"
       >
         <div class="space-y-1">
           <div class="flex items-center gap-2 font-medium text-text">

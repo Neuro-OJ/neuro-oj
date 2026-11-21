@@ -69,7 +69,9 @@ async function page(component: typeof AssignmentPage) {
         AdminPageHeader: true,
         AsyncContent: { template: '<div><slot /></div>' },
         AssignmentMatrix: { name: 'AssignmentMatrix', template: '<div data-testid="matrix" />' },
-        AssignmentConversation: true,
+        AssignmentNotices: true,
+        AssignmentHelpList: true,
+        MarkdownRenderer: true,
         USlideover: true,
         ClientOnly: true,
       },
@@ -104,7 +106,7 @@ describe('教学页面的持久事件刷新', () => {
     expect(view.find('[data-testid="matrix"]').exists()).toBe(false);
     view.unmount();
   });
-  it('学生可查看本人反馈，旧历史参数不恢复已移除的沿革视图', async () => {
+  it('学生可查看全体通知与本人求助，旧历史参数不恢复已移除的沿革视图', async () => {
     route.query = { history: '1' };
     api.classroom.mockResolvedValue({
       data: {
@@ -116,7 +118,8 @@ describe('教学页面的持久事件刷新', () => {
       },
     });
     const view = await page(AssignmentPage);
-    expect(view.find('assignment-conversation-stub').exists()).toBe(true);
+    expect(view.find('assignment-notices-stub').exists()).toBe(true);
+    expect(view.find('assignment-help-list-stub').exists()).toBe(true);
     expect(view.find('assignment-history-stub').exists()).toBe(false);
     expect(view.text()).not.toContain('版本与策略变化依据');
     view.unmount();

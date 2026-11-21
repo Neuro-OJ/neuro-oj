@@ -95,7 +95,7 @@ defineExpose({ runPreview, addAll });
 <template>
   <div
     v-if="!hidden"
-    class="space-y-3 rounded-lg border border-primary/20 bg-primary-bg/40 p-4"
+    class="space-y-3 rounded-md border border-primary/20 bg-primary-bg/40 p-4"
     data-testid="assignment-knowledge-picker"
   >
     <div class="flex flex-wrap items-center justify-between gap-2">

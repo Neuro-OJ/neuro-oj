@@ -11,6 +11,8 @@ import { workspaceProblemPath } from '~/utils/domain/workspace/workspace'
 import type { DomainProblemReference } from '~/utils/domain/problem/domain-problems'
 import { extractApiError } from '~/utils/server/apiError'
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
+import MarkdownEditor from '~/components/shared/MarkdownEditor.vue'
+import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue'
 
 const scope = useCommunityScope().capture()
 const route = useRoute()
@@ -57,7 +59,6 @@ const submittingReply = ref(false)
 const editingPost = ref(false)
 const editTitle = ref("")
 const editContent = ref("")
-const editPreview = ref(false)
 const savingPost = ref(false)
 
 const currentUserId = computed(() => user.value?.id)
@@ -164,7 +165,6 @@ async function removeComment(id: string) {
 function startEditPost() {
   editTitle.value = post.value?.post.title ?? ""
   editContent.value = post.value?.post.content ?? ""
-  editPreview.value = false
   editingPost.value = true
 }
 async function saveEditPost() {
@@ -279,18 +279,13 @@ watch(initialData, (value) => {
 
         <template v-if="editingPost">
           <input v-model="editTitle" class="mb-3 w-full rounded border border-border px-3 py-2" placeholder="标题" />
-          <div class="mb-2 flex items-center justify-end">
-            <UButton color="neutral" variant="outline" size="sm" class="border-border py-1 text-text-secondary hover:bg-primary-bg" type="button"  @click="editPreview = !editPreview">
-              <UIcon name="i-lucide-eye" class="size-3.5" v-if="!editPreview"/>
-              <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
-              {{ editPreview ? "编辑" : "预览" }}
-            </UButton>
-          </div>
-          <textarea v-if="!editPreview" v-model="editContent" class="min-h-40 w-full rounded border border-border px-3 py-2" required />
-          <div v-else class="min-h-40 rounded border border-border px-3 py-2">
-            <MarkdownRenderer v-if="editContent.trim()" :content="editContent" />
-            <p v-else class="text-sm text-text-muted">暂无内容</p>
-          </div>
+          <MarkdownEditor
+            v-model="editContent"
+            default-mode="edit"
+            height="320px"
+            :allow-external-images="config?.external_images_enabled === true"
+            aria-label="编辑帖子正文"
+          />
           <div class="mt-3 flex justify-end gap-2">
             <UButton color="primary" variant="outline" type="button" :disabled="savingPost" @click="editingPost = false">取消</UButton>
             <UButton color="primary" :disabled="savingPost || !editContent.trim()" @click="saveEditPost">{{ savingPost ? '保存中…' : '保存' }}</UButton>
@@ -307,9 +302,16 @@ watch(initialData, (value) => {
     <section v-if="post && post.post.status !== 'deleted'" class="mt-6">
       <h2 class="mb-4 text-xl font-bold">评论</h2>
       <form v-if="canComment" class="mb-5 flex flex-col gap-2" @submit.prevent="sendComment">
-        <textarea v-model="comment" class="min-h-20 w-full rounded border border-border px-3 py-2" :placeholder="`写下你的想法（最长 ${commentMaxLength} 字符）`" />
-        <div class="flex items-center justify-between gap-2">
-          <p class="text-xs text-text-muted">{{ comment.length }} / {{ commentMaxLength }}</p>
+        <MarkdownEditor
+          v-model="comment"
+          compact
+          height="120px"
+          :maxlength="commentMaxLength"
+          :allow-external-images="config?.external_images_enabled === true"
+          aria-label="评论正文"
+          :placeholder="`写下你的想法（最长 ${commentMaxLength} 字符）`"
+        />
+        <div class="flex items-center justify-end">
           <UButton color="primary" type="submit" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><UIcon name="i-lucide-send" class="size-4" />{{ submittingComment ? '发送中…' : '发送' }}</UButton>
         </div>
       </form>
@@ -323,9 +325,10 @@ watch(initialData, (value) => {
             :row="item"
             :can-comment="canComment"
             :can-edit="canEditComment(item)"
-              :can-delete="canDeleteComment(item)"
+            :can-delete="canDeleteComment(item)"
             :can-report="canReportComment(item)"
             :comment-max-length="commentMaxLength"
+            :allow-external-images="config?.external_images_enabled === true"
             @start-reply="startReply(item.comment.id)"
             @save-edit="(c) => saveEditComment(item.comment.id, c)"
             @remove="removeComment(item.comment.id)"
@@ -346,6 +349,7 @@ watch(initialData, (value) => {
               :can-delete="canDeleteComment(reply)"
               :can-report="canReportComment(reply)"
               :comment-max-length="commentMaxLength"
+              :allow-external-images="config?.external_images_enabled === true"
               @save-edit="(c) => saveEditComment(reply.comment.id, c)"
               @remove="removeComment(reply.comment.id)"
               @report="reportComment(reply.comment.id)"

@@ -145,10 +145,10 @@ Deno.test({
         .toBeVisible();
 
       await gotoPage(page, `/d/${slug}/submissions`);
-      const username = page.getByPlaceholder("用户名（留空查全部）");
+      const username = page.getByRole("textbox", { name: "用户名" });
       await expect(username).toHaveValue("e2e_admin");
       await username.fill("");
-      await page.getByRole("button", { name: "筛选", exact: true }).click();
+      await username.press("Enter");
       await page.waitForURL((url) =>
         url.searchParams.has("username") &&
         url.searchParams.get("username") === ""

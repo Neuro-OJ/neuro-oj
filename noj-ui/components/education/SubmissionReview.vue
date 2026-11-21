@@ -2,6 +2,8 @@
 import { extractApiError } from '~/utils/server/apiError';
 import { educationCacheKey } from '~/utils/domain/education/education';
 import type { LineAnnotation } from '~/utils/domain/education/education';
+import MarkdownEditor from '~/components/shared/MarkdownEditor.vue';
+import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
 const props = defineProps<{ slug: string; classroomId: string; submissionId: string; canAnnotate: boolean; readOnlyPeer?: boolean }>();
 const education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
@@ -130,13 +132,21 @@ async function annotate() {
     <article v-for="note in comments" :key="note.id" class="rounded border border-border p-3">
       <p class="mb-2 text-xs text-text-muted">{{ note.author_name }} · {{ note.start_line }}–{{ note.end_line }} 行</p>
       <form v-if="editing?.id === note.id" class="space-y-3" @submit.prevent="update(note)">
-        <UTextarea v-model="editBody" class="w-full" :maxlength="30000" aria-label="修改行批注正文" />
+        <MarkdownEditor
+          v-model="editBody"
+          compact
+          height="110px"
+          :maxlength="30000"
+          aria-label="修改行批注正文"
+        />
         <div class="flex gap-2">
           <UButton type="submit" :loading="saving" :disabled="!editBody.trim()">保存修改</UButton>
           <UButton variant="ghost" :disabled="saving" @click="editing = null">取消</UButton>
         </div>
       </form>
-      <p v-else class="whitespace-pre-wrap text-sm">{{ note.body }}</p>
+      <div v-else class="text-sm [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
+        <MarkdownRenderer :content="note.body" />
+      </div>
       <div v-if="canAnnotate && note.author_id === actor?.id && editing?.id !== note.id" class="mt-2 flex gap-2">
         <UButton size="xs" variant="ghost" :disabled="saving" @click="edit(note)">修改</UButton>
         <UButton size="xs" color="error" variant="ghost" :disabled="saving" @click="update(note, true)">撤回</UButton>
@@ -157,8 +167,14 @@ async function annotate() {
           <UInput v-model="end" type="number" :min="start" :max="currentText.line_count" aria-label="批注结束行" />
         </AdminFormField>
       </div>
-      <UTextarea v-model="body" class="w-full" :maxlength="30000" placeholder="针对这份代码留下反馈"
-        aria-label="行批注正文" />
+      <MarkdownEditor
+        v-model="body"
+        compact
+        height="110px"
+        :maxlength="30000"
+        placeholder="针对这份代码留下反馈"
+        aria-label="行批注正文"
+      />
       <UButton type="submit" :loading="saving" :disabled="!body.trim()">保存行批注</UButton>
     </form>
   </div>

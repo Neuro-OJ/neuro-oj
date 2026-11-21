@@ -4,7 +4,6 @@ import BreadcrumbNav from "~/components/layout/BreadcrumbNav.vue"
 import LegalConsentModal from "~/components/legal/LegalConsentModal.vue";
 import { useBanStatus } from "~/composables/useBanStatus"
 import { collectPendingConsents } from "~/utils/auth/legalConsent"
-import { workspacePath } from "~/utils/domain/workspace/workspace"
 
 const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus()
 
@@ -14,12 +13,12 @@ const pendingConsents = computed(() =>
     user.value ? collectPendingConsents(user.value.legal) : []
 )
 
-const slug = useNavigationDomain();
+const { open: _openPalette, toggle: toggleCommandPalette } = useDomainCommandPalette();
 
 function onGlobalKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        void navigateTo(workspacePath(slug.value, 'search'));
+        toggleCommandPalette();
     }
 }
 
@@ -32,7 +31,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-    <div class="flex flex-col min-h-screen w-full overflow-x-hidden bg-bg-page bg-tech-grid">
+    <div class="flex flex-col min-h-screen w-full overflow-x-hidden bg-bg-page">
         <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
             跳转到主要内容
         </a>
@@ -48,6 +47,7 @@ onUnmounted(() => {
             </main>
         </div>
         <FooterBar />
+        <DomainCommandPalette />
         <LegalConsentModal v-if="pendingConsents.length > 0" :pending="pendingConsents" />
     </div>
 </template>

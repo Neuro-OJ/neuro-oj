@@ -1,4 +1,4 @@
-import { and, count, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
@@ -82,6 +82,7 @@ export async function listAssignmentFeedback(
   id: string,
   actorId: string,
   page = 1,
+  options: { scope?: "all" | "broadcast"; order?: "asc" | "desc" } = {},
 ) {
   const access = await loadInteractionAccess(slug, id, actorId);
   const all = interactionStaff(access);
@@ -89,14 +90,26 @@ export async function listAssignmentFeedback(
   if (!Number.isSafeInteger(page) || page < 1 || page > 100000) {
     throw new BadRequestError("分页格式错误");
   }
+  const scope = options.scope ?? "all";
+  const order = options.order ?? "asc";
+  if (!["all", "broadcast"].includes(scope)) {
+    throw new BadRequestError("反馈范围格式错误");
+  }
+  if (!["asc", "desc"].includes(order)) {
+    throw new BadRequestError("反馈排序格式错误");
+  }
   const db = getDb(),
     where = and(
       eq(assignmentFeedback.assignment_id, id),
       isNull(assignmentFeedback.deleted_at),
-      all ? undefined : or(
-        isNull(assignmentFeedback.target_user_id),
-        eq(assignmentFeedback.target_user_id, actorId),
-      ),
+      scope === "broadcast"
+        ? isNull(assignmentFeedback.target_user_id)
+        : all
+        ? undefined
+        : or(
+          isNull(assignmentFeedback.target_user_id),
+          eq(assignmentFeedback.target_user_id, actorId),
+        ),
     );
   const [total] = await db.select({ count: count() }).from(assignmentFeedback)
     .where(where);
@@ -112,7 +125,11 @@ export async function listAssignmentFeedback(
     .leftJoin(target, eq(target.id, assignmentFeedback.target_user_id)).where(
       where,
     )
-    .orderBy(assignmentFeedback.created_at, assignmentFeedback.id).limit(50)
+    .orderBy(
+      ...(order === "desc"
+        ? [desc(assignmentFeedback.created_at), desc(assignmentFeedback.id)]
+        : [assignmentFeedback.created_at, assignmentFeedback.id]),
+    ).limit(50)
     .offset((page - 1) * 50);
   return {
     page,

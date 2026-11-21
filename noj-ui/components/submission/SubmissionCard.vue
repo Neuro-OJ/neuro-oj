@@ -1,7 +1,7 @@
 <template>
   <NuxtLink
     :to="domainSlug ? workspacePath(domainSlug, `submissions/${submission.public_id || submission.id}`) : publicUrl('submission', submission.public_id || submission.id)"
-    class="relative block px-3 py-2 border border-border/80 rounded-lg bg-bg-panel no-underline transition-all duration-150 ease-out hover:border-primary/50 hover:bg-primary-hover-bg/30 hover:shadow-xs group"
+    class="relative block px-3 py-2.5 border border-border rounded-md bg-bg-panel no-underline transition-colors duration-150 ease-out hover:border-primary/50 hover:bg-primary-bg/40 group"
   >
     <div class="grid grid-cols-[auto_1fr] gap-x-2">
       <!-- 左列：icon + #id（跨两行） -->
@@ -62,16 +62,16 @@
         </template>
         <template v-else-if="submission.queue_position != null">
           <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
-            <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
+            <span class="text-text-muted tabular-nums">{{ formatTime(submission.created_at) }}</span>
             <span
-              class="font-mono tabular-nums text-gray-400">排队中 <span class="font-bold">#{{ submission.queue_position }}</span></span>
+              class="font-mono tabular-nums text-text-muted">排队中 <span class="font-bold">#{{ submission.queue_position }}</span></span>
           </div>
         </template>
         <template v-else>
           <div class="col-span-2 self-center flex items-center justify-between gap-2 text-11px">
-            <span class="text-text-muted">{{ formatTime(submission.created_at) }}</span>
+            <span class="text-text-muted tabular-nums">{{ formatTime(submission.created_at) }}</span>
             <span
-              class="font-mono tabular-nums text-blue-500"><LiveElapsed :start-time="submission.judge_started_at ?? submission.created_at" /></span>
+              class="font-mono tabular-nums text-primary"><LiveElapsed :start-time="submission.judge_started_at ?? submission.created_at" /></span>
           </div>
         </template>
       </div>
@@ -156,8 +156,8 @@ function formatMemoryLimit(mb: number | null | undefined): string {
  */
 function getUsageColor(used: number | null | undefined, max: number | null | undefined): string {
   if (used == null || !max || max <= 0) return 'text-text-muted';
-  if (used >= max) return 'text-red-500';
-  if (used / max >= 0.9) return 'text-yellow-500';
+  if (used >= max) return 'text-error-text';
+  if (used / max >= 0.9) return 'text-warning-text';
   return 'text-text-muted';
 }
 </script>

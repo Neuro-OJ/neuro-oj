@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BreadcrumbItem } from '~/utils/breadcrumb'
+import { resolveWorkspaceWidth } from '~/utils/workspace-layout'
 
 /**
  * 全站面包屑导航（#512）。
@@ -8,22 +8,21 @@ import type { BreadcrumbItem } from '~/utils/breadcrumb'
  *   解析结果为空数组，组件整体不渲染（对现有页面零行为改变）。
  * - 层级来源为集中注册表（`utils/breadcrumb.ts`），不是每页手写，
  *   避免「有的页面有、有的没有」。
- * - 动效与配色遵守 NOJ 暖纸 token：`text-text-muted` → 悬停 `text-primary`。
+ * - 宽度由 `resolveWorkspaceWidth(route.meta)` 或显式 `breadcrumbWidth` 决定，
+ *   保证与主容器左边缘严格对齐。
  */
 
 const items = useBreadcrumbItems()
 const route = useRoute()
 
-/**
- * 面包屑由布局渲染（保证新页面默认就有），但每个内容页的容器宽度并不一致
- * （`max-w-[860px]` / `960px` / `4xl` / `7xl` …）。若不跟随，
- * 面包屑会与页面标题错位。
- *
- * 因此页面用可序列化的 `definePageMeta({ breadcrumbWidth })` 声明容器宽度，
- * 未声明时用既有最普遍的 `960px`。`route.meta` 在 SSR 首帧即可读，
- * 不需要额外状态或中间件。
- */
-const maxWidth = computed(() => (route.meta.breadcrumbWidth as string | undefined) ?? '960px')
+const maxWidth = computed(() => {
+  const explicit = route.meta?.breadcrumbWidth as string | undefined
+  if (explicit) return explicit
+  if (route.meta?.workspaceWidth || route.meta?.problemWorkspace) {
+    return resolveWorkspaceWidth(route.meta).maxWidth
+  }
+  return '1040px'
+})
 
 /** 末层为当前页，不可点击并带 aria-current="page"。 */
 const crumbs = computed(() =>

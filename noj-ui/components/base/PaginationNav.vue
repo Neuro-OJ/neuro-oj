@@ -11,6 +11,10 @@ const emit = defineEmits<{
 function onPageChange(page: number) {
   if (page >= 1 && page <= props.totalPages && page !== props.currentPage) {
     emit('page-change', page)
+    if (typeof window !== 'undefined' && window.scrollY > 120) {
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      window.scrollTo?.({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
+    }
   }
 }
 </script>

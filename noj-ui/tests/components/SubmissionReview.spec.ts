@@ -8,6 +8,8 @@ const actor = ref({ id: 'teacher' });
 const stubs = {
   AsyncContent: { template: '<div><slot /></div>' },
   USelect: { template: '<select />' },
+  UIcon: true,
+  MarkdownRenderer: { props: ['content'], template: '<div class="md">{{ content }}</div>' },
   UAlert: { props: ['title'], template: '<p>{{ title }}</p>' },
   UButton: { props: ['type', 'disabled'], template: '<button :type="type" :disabled="disabled"><slot /></button>' },
   UTextarea: {

@@ -11,16 +11,15 @@ import { type EditResult, insertBlock, insertText, prefixLines, wrapSelection } 
 
 type ViewMode = 'edit' | 'split' | 'preview';
 
-const model = defineModel<string>({ default: '' });
+const rawModel = defineModel<string | undefined>({ default: '' });
+const model = computed({
+  get: () => rawModel.value ?? '',
+  set: (v: string) => {
+    rawModel.value = v;
+  },
+});
 
-const {
-  placeholder = '支持 Markdown 语法与 $LaTeX$ 公式',
-  height = '420px',
-  maxlength,
-  disabled = false,
-  allowExternalImages = false,
-  defaultMode = 'split',
-} = defineProps<{
+const props = defineProps<{
   placeholder?: string;
   /** 编辑/预览区高度（CSS 长度） */
   height?: string;
@@ -28,9 +27,19 @@ const {
   disabled?: boolean;
   allowExternalImages?: boolean;
   defaultMode?: ViewMode;
+  /** 紧凑模式：用于评论、反馈、批注、表单弹窗等嵌入式场景 */
+  compact?: boolean;
+  /** 透传到内部 textarea 的无障碍标签 */
+  ariaLabel?: string;
 }>();
 
-const mode = ref<ViewMode>(defaultMode);
+const placeholder = computed(() => props.placeholder ?? '支持 Markdown 语法与 $LaTeX$ 公式');
+const compact = computed(() => props.compact === true);
+const height = computed(() => props.height ?? (compact.value ? '120px' : '420px'));
+const disabled = computed(() => props.disabled === true);
+const allowExternalImages = computed(() => props.allowExternalImages === true);
+
+const mode = ref<ViewMode>(props.defaultMode ?? (props.compact ? 'edit' : 'split'));
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const previewRef = ref<HTMLElement | null>(null);
 
@@ -57,9 +66,9 @@ onBeforeUnmount(() => clearTimeout(debounceTimer));
 // ─── 编辑操作 ────────────────────────────────────────────────
 function apply(fn: (text: string, start: number, end: number) => EditResult) {
   const el = textareaRef.value;
-  if (!el || disabled) return;
+  if (!el || disabled.value) return;
   const result = fn(model.value, el.selectionStart, el.selectionEnd);
-  if (maxlength && result.text.length > maxlength) return;
+  if (props.maxlength && result.text.length > props.maxlength) return;
   model.value = result.text;
   nextTick(() => {
     el.focus();
@@ -141,6 +150,42 @@ const MODES: Array<{ value: ViewMode; label: string; icon: string }> = [
   { value: 'preview', label: '预览', icon: 'i-lucide-eye' },
 ];
 
+const COMPACT_TOOLS: ToolAction[] = [
+  {
+    icon: 'i-lucide-bold',
+    label: '加粗（Ctrl+B）',
+    run: () => apply((t, s, e) => wrapSelection(t, s, e, '**', '**', '粗体')),
+  },
+  {
+    icon: 'i-lucide-italic',
+    label: '斜体（Ctrl+I）',
+    run: () => apply((t, s, e) => wrapSelection(t, s, e, '*', '*', '斜体')),
+  },
+  {
+    icon: 'i-lucide-link',
+    label: '链接（Ctrl+K）',
+    run: () => apply((t, s, e) => wrapSelection(t, s, e, '[', '](https://)', '链接文字')),
+  },
+  {
+    icon: 'i-lucide-code',
+    label: '行内代码',
+    run: () => apply((t, s, e) => wrapSelection(t, s, e, '`', '`', 'code')),
+  },
+  {
+    icon: 'i-lucide-square-code',
+    label: '代码块',
+    run: () => apply((t, s, e) => insertBlock(t, s, e, '```python\n\n```', 10)),
+  },
+  {
+    icon: 'i-lucide-sigma',
+    label: '公式',
+    run: () => apply((t, s, e) => insertBlock(t, s, e, '$$\n\n$$', 3)),
+  },
+];
+
+const visibleToolGroups = computed(() => (compact.value ? [COMPACT_TOOLS] : TOOLS));
+const visibleModes = computed(() => (compact.value ? MODES.filter((m) => m.value !== 'split') : MODES));
+
 function onKeydown(e: KeyboardEvent) {
   if (e.isComposing) return;
   const mod = e.ctrlKey || e.metaKey;
@@ -148,12 +193,15 @@ function onKeydown(e: KeyboardEvent) {
     const key = e.key.toLowerCase();
     if (key === 'b') {
       e.preventDefault();
+      e.stopPropagation();
       apply((t, s, en) => wrapSelection(t, s, en, '**', '**', '粗体'));
     } else if (key === 'i') {
       e.preventDefault();
+      e.stopPropagation();
       apply((t, s, en) => wrapSelection(t, s, en, '*', '*', '斜体'));
     } else if (key === 'k') {
       e.preventDefault();
+      e.stopPropagation();
       apply((t, s, en) => wrapSelection(t, s, en, '[', '](https://)', '链接文字'));
     }
     return;
@@ -183,35 +231,42 @@ const charCount = computed(() => model.value.length);
 <template>
   <div class="markdown-editor flex flex-col rounded-md border border-border bg-bg-panel overflow-hidden">
     <!-- 工具栏 -->
-    <div class="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-border bg-bg-sunken">
-      <template v-for="(group, gi) in TOOLS" :key="gi">
+    <div
+      class="flex flex-wrap items-center gap-1 border-b border-border bg-bg-sunken"
+      :class="compact ? 'px-2 py-1' : 'px-2 py-1.5'"
+    >
+      <template v-for="(group, gi) in visibleToolGroups" :key="gi">
         <span v-if="gi > 0" class="mx-1 h-4 w-px bg-border" aria-hidden="true" />
         <button
           v-for="tool in group"
           :key="tool.icon"
           type="button"
-          class="inline-flex size-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-panel hover:text-text disabled:opacity-40 disabled:pointer-events-none"
+          class="inline-flex items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-panel hover:text-text disabled:opacity-40 disabled:pointer-events-none"
+          :class="compact ? 'size-6' : 'size-7'"
           :title="tool.label"
           :aria-label="tool.label"
           :disabled="disabled || mode === 'preview'"
           @click="tool.run"
         >
-          <UIcon :name="tool.icon" class="size-4" />
+          <UIcon :name="tool.icon" :class="compact ? 'size-3.5' : 'size-4'" />
         </button>
       </template>
 
       <div class="ml-auto flex items-center rounded border border-border bg-bg-panel p-0.5" role="tablist">
         <button
-          v-for="m in MODES"
+          v-for="m in visibleModes"
           :key="m.value"
           type="button"
           role="tab"
           :aria-selected="mode === m.value"
-          class="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition-colors"
-          :class="mode === m.value ? 'bg-primary text-white' : 'text-text-secondary hover:text-text'"
+          class="inline-flex items-center gap-1 rounded-sm transition-colors"
+          :class="[
+            compact ? 'px-1.5 py-0.5 text-[11px]' : 'px-2 py-1 text-xs',
+            mode === m.value ? 'bg-primary text-white' : 'text-text-secondary hover:text-text',
+          ]"
           @click="mode = m.value"
         >
-          <UIcon :name="m.icon" class="size-3.5" />
+          <UIcon :name="m.icon" :class="compact ? 'size-3' : 'size-3.5'" />
           {{ m.label }}
         </button>
       </div>
@@ -229,9 +284,13 @@ const charCount = computed(() => model.value.length);
         :placeholder="placeholder"
         :maxlength="maxlength"
         :disabled="disabled"
+        :aria-label="ariaLabel"
         spellcheck="false"
-        class="block w-full resize-none bg-transparent px-3 py-3 font-mono text-sm leading-relaxed text-text outline-none disabled:opacity-60"
-        :class="mode === 'split' ? 'border-b border-border md:border-b-0 md:border-r' : ''"
+        class="block w-full bg-transparent font-mono text-sm leading-relaxed text-text outline-none disabled:opacity-60"
+        :class="[
+          compact ? 'px-2.5 py-2' : 'px-3 py-3',
+          mode === 'split' ? 'resize-none border-b border-border md:border-b-0 md:border-r' : 'resize-y',
+        ]"
         :style="{ height }"
         @keydown="onKeydown"
         @scroll="onEditorScroll"
@@ -239,7 +298,8 @@ const charCount = computed(() => model.value.length);
       <div
         v-if="mode !== 'edit'"
         ref="previewRef"
-        class="overflow-y-auto px-4 py-3"
+        class="overflow-y-auto"
+        :class="compact ? 'px-3 py-2 text-sm [&_p:first-child]:mt-0 [&_p:last-child]:mb-0' : 'px-4 py-3'"
         :style="{ height }"
       >
         <MarkdownRenderer
@@ -252,8 +312,11 @@ const charCount = computed(() => model.value.length);
     </div>
 
     <!-- 状态栏 -->
-    <div class="flex items-center justify-between gap-2 px-3 py-1 border-t border-border bg-bg-sunken text-[11px] text-text-muted">
-      <span>Markdown · $行内公式$ · $$块级公式$$</span>
+    <div
+      class="flex items-center justify-between gap-2 border-t border-border bg-bg-sunken text-[11px] text-text-muted"
+      :class="compact ? 'px-2.5 py-0.5' : 'px-3 py-1'"
+    >
+      <span>{{ compact ? 'Markdown · $公式$' : 'Markdown · $行内公式$ · $$块级公式$$' }}</span>
       <span class="tabular-nums">{{ charCount }}<template v-if="maxlength"> / {{ maxlength }}</template> 字符</span>
     </div>
   </div>

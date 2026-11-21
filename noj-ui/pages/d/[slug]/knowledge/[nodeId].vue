@@ -51,6 +51,10 @@ async function load() {
   const id = nodeId.value;
   const currentSlug = slug.value;
   if (!currentSlug) return;
+  if (hidden.value) {
+    loading.value = false;
+    return;
+  }
   loading.value = true;
   failure.value = '';
   notFound.value = false;

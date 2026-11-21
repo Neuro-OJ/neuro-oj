@@ -61,6 +61,7 @@ async function view() {
         ClassroomNavigation: true,
         LibraryPageHeader: true,
         UIcon: true,
+        MarkdownRenderer: { props: ['content'], template: '<div class="md">{{ content }}</div>' },
         UCard: { template: '<section><slot name="header" /><slot /></section>' },
         AdminFormField: { props: ['label'], template: '<div><span>{{ label }}</span><slot /></div>' },
         UAlert: { props: ['title'], template: '<p role="alert">{{ title }}</p>' },

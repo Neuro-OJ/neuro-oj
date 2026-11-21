@@ -54,17 +54,37 @@
   --color-text-secondary: var(--c-text-secondary);
   --color-text-muted: var(--c-text-muted);
   --color-border: var(--c-border);
+  --color-border-subtle: var(--c-border-subtle);
+  --color-border-strong: var(--c-border-strong);
   --color-white: var(--c-white);
   --color-text-on-color: var(--c-text-on-color);
   --color-bg-page: var(--c-bg-page);
   --color-bg-panel: var(--c-bg-panel);
   --color-bg-card: var(--c-bg-card);
+  --color-bg-elevated: var(--c-bg-elevated);
   --color-bg-sunken: var(--c-bg-sunken);
   --color-bg-dark: var(--c-bg-dark);
   --color-bg-dark-2: var(--c-bg-dark-2);
   --color-bg-dark-3: var(--c-bg-dark-3);
   /* 深色背景上的正文色（footer 等），保证 WCAG AA 对比度 */
   --color-text-on-dark: var(--c-text-on-dark);
+
+  /* 评测结果与难度语义色 */
+  --color-verdict-accepted: var(--c-verdict-accepted);
+  --color-verdict-accepted-bg: var(--c-verdict-accepted-bg);
+  --color-verdict-partial: var(--c-verdict-partial);
+  --color-verdict-partial-bg: var(--c-verdict-partial-bg);
+  --color-verdict-wrong: var(--c-verdict-wrong);
+  --color-verdict-wrong-bg: var(--c-verdict-wrong-bg);
+  --color-verdict-limit: var(--c-verdict-limit);
+  --color-verdict-limit-bg: var(--c-verdict-limit-bg);
+  --color-verdict-judging: var(--c-verdict-judging);
+  --color-verdict-judging-bg: var(--c-verdict-judging-bg);
+  --color-verdict-pending: var(--c-verdict-pending);
+  --color-verdict-pending-bg: var(--c-verdict-pending-bg);
+  --color-diff-easy: var(--c-diff-easy);
+  --color-diff-medium: var(--c-diff-medium);
+  --color-diff-hard: var(--c-diff-hard);
 
   /* 状态色（现有 text-success-text 等工具类依赖） */
   --color-success-text: var(--c-success-text);
@@ -74,37 +94,38 @@
   /* 状态基础色 + 300/600 档（Nuxt UI color="success/error" 等需要） */
   --color-success: var(--c-success-text);
   --color-success-300: #6ee7b7;
-  --color-success-600: #059669;
+  --color-success-600: #047857;
   --color-info: var(--c-info-text);
   --color-info-300: #7dd3fc;
-  --color-info-600: #0284c7;
+  --color-info-600: #0369a1;
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
-  --color-warning-600: #d97706;
+  --color-warning-600: #b45309;
   /* 警示横幅底色/描边：保持视觉统一 */
   --color-warning-bg: #fffbeb;
   --color-warning-border: #fde68a;
   --color-error: var(--c-error-text);
   --color-error-300: #fda4af;
-  --color-error-600: #e11d48;
+  --color-error-600: #be123c;
 
-  /* 圆角：近直角 2–6px */
-  --radius: 4px;
-  --radius-sm: 2px;
+  /* 圆角：严格 3 档近直角（4px / 6px / 10px） */
+  --radius: 6px;
+  --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
-  --radius-xl: 14px;
+  --radius-xl: 10px;
 
-  /* 阴影：card / dropdown / modal */
-  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
-  --shadow-dropdown: 0 8px 24px -4px rgba(2, 132, 199, 0.12), 0 2px 6px -1px rgba(15, 23, 42, 0.06);
-  --shadow-modal: 0 20px 48px -8px rgba(15, 23, 42, 0.18);
+  /* 阴影：卡片极轻微、浮层保留明确层次 */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-dropdown: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+  --shadow-modal: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
 
   /* 加载动画：spin 0.8s（对齐现有 animate-spin-slow） */
   --animate-spin-slow: spin 0.8s linear infinite;
 
-  /* 代码字体 */
-  --font-mono: "SF Mono", "Fira Code", "Consolas", monospace;
+  /* 离线系统无衬线 + 等宽字体栈 */
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", "Consolas", "Noto Sans Mono CJK SC", monospace;
 
   /* 自定义字号刻度（对齐项目中使用的任意字号，命名 token 便于统一管理）
    * Tailwind v4 中 --text-<name> 自动生成 text-<name> 工具类 */
@@ -186,11 +207,38 @@
   }
 }
 
-/* ---- 全局清爽天青底与高对比排版 ---- */
+/* ---- 全局去噪工作台底座与浏览器原生表面换肤 ---- */
 @layer base {
+  html {
+    font-family: var(--font-sans);
+    scrollbar-gutter: stable;
+  }
+
   body {
     background-color: var(--c-bg-page);
     color: var(--c-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: var(--c-primary-active-bg);
+    color: var(--c-text);
+  }
+
+  input,
+  textarea {
+    caret-color: var(--c-primary);
+  }
+
+  a {
+    text-underline-offset: 3px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--c-border-strong) transparent;
   }
 
   .editor-dark .bg-tech-grid {
@@ -213,30 +261,30 @@
 /* ---- 将设计 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
 :root,
 .editor-dark {
-  /* Nuxt UI primary 使用品牌天青蓝（Sky 600）：主按钮、选中 Tab、进行中状态 */
+  /* Nuxt UI primary 使用品牌天青蓝（Sky 700）：主按钮、选中 Tab、进行中状态 */
   --ui-primary: var(--c-primary);
   --ui-color-primary-50: #f0f9ff;
   --ui-color-primary-100: #e0f2fe;
   --ui-color-primary-200: #bae6fd;
   --ui-color-primary-300: #7dd3fc;
   --ui-color-primary-400: #38bdf8;
-  --ui-color-primary-500: #0ea5e9;
-  --ui-color-primary-600: #0284c7;
-  --ui-color-primary-700: #0369a1;
-  --ui-color-primary-800: #075985;
-  --ui-color-primary-900: #0c4a6e;
+  --ui-color-primary-500: #0284c7;
+  --ui-color-primary-600: #0369a1;
+  --ui-color-primary-700: #075985;
+  --ui-color-primary-800: #0c4a6e;
+  --ui-color-primary-900: #082f49;
   --ui-color-primary-950: #082f49;
-  /* Nuxt UI success 使用评测信号绿（Emerald 600）：成功/通过状态组件 */
+  /* Nuxt UI success 使用评测信号绿（Emerald 700）：成功/通过状态组件 */
   --ui-color-success-50: #ecfdf5;
   --ui-color-success-100: #d1fae5;
   --ui-color-success-200: #a7f3d0;
   --ui-color-success-300: #6ee7b7;
   --ui-color-success-400: #34d399;
-  --ui-color-success-500: #10b981;
-  --ui-color-success-600: #059669;
-  --ui-color-success-700: #047857;
-  --ui-color-success-800: #065f46;
-  --ui-color-success-900: #064e3b;
+  --ui-color-success-500: #059669;
+  --ui-color-success-600: #047857;
+  --ui-color-success-700: #065f46;
+  --ui-color-success-800: #064e3b;
+  --ui-color-success-900: #022c22;
   --ui-color-success-950: #022c22;
   --ui-radius: var(--radius);
   --ui-bg: var(--c-bg-panel);
@@ -260,6 +308,7 @@
 
 /* ---- prose-neuro 自定义排版主题（原 tailwind.config.ts theme.extend.typography.neuro 移植） ---- */
 .prose-neuro {
+  overflow-wrap: break-word;
   /* 正文与标题跟随应用主题色（亮色深字 / 暗色浅字），避免暗色模式下侧栏白底浅字 */
   --tw-prose-body: var(--c-text);
   --tw-prose-headings: var(--c-text);
@@ -280,14 +329,19 @@
 }
 
 .prose-neuro code:not(pre code) {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: baseline;
+  line-height: 1.35;
   background: var(--c-bg-sunken);
   border: 1px solid var(--c-border);
-  padding: 2px 6px;
+  padding: 1px 6px;
   border-radius: 4px;
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--font-mono);
   font-size: 0.88em;
   color: var(--c-primary);
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .prose-neuro strong {
@@ -416,4 +470,68 @@
  * 下拉展开层」。须用 !important 压过内联样式（radix/reka 惯例层级）。 */
 [data-reka-popper-content-wrapper] {
   z-index: 50 !important;
+}
+
+/* ---- 统一微动效与 Vue Transition（受 prefers-reduced-motion 全局保护） ---- */
+@keyframes panelEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dropOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.drop-enter-active {
+  animation: dropIn 0.18s ease-out both;
+}
+.drop-leave-active {
+  animation: dropOut 0.15s ease-in both;
+}
+
+.icon-enter-active,
+.icon-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.icon-enter-from {
+  opacity: 0;
+  transform: scale(0.9);
+}
+.icon-leave-to {
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.panel-reveal-enter-active,
+.panel-reveal-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.panel-reveal-enter-from,
+.panel-reveal-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }

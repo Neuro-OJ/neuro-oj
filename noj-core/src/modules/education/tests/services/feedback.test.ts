@@ -84,6 +84,34 @@ Deno.test("作业反馈：整体及个人范围、目标名单和跨域校验，
     (await listAssignmentFeedback(f.school.slug, f.task.id, f.teacher)).total,
     3,
   );
+  const broadcastOnly = await listAssignmentFeedback(
+    f.school.slug,
+    f.task.id,
+    f.teacher,
+    1,
+    { scope: "broadcast", order: "desc" },
+  );
+  assertEquals(broadcastOnly.total, 1);
+  assertEquals(broadcastOnly.data.map((row) => row.id), [common.id]);
+  const commonSecond = await createAssignmentFeedback(
+    f.school.slug,
+    f.task.id,
+    f.teacher,
+    "common-2",
+    { body: "最新全体通知" },
+  );
+  const broadcastDesc = await listAssignmentFeedback(
+    f.school.slug,
+    f.task.id,
+    f.student,
+    1,
+    { scope: "broadcast", order: "desc" },
+  );
+  assertEquals(broadcastDesc.total, 2);
+  assertEquals(broadcastDesc.data.map((row) => row.id), [
+    commonSecond.id,
+    common.id,
+  ]);
   const named = await getAssignmentFeedback(
     f.school.slug,
     f.task.id,
