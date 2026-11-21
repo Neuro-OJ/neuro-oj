@@ -524,8 +524,7 @@
     "docPrefixes": [
       "dev-docs/",
       "noj-docs/",
-      ".agents/",
-      "openspec/"
+      ".agents/"
     ],
     "docSuffixes": [
       ".md"

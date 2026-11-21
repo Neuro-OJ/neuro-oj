@@ -82,4 +82,4 @@ Status: implemented
   - 独立 QA 套件通过设置
     API、设置浏览器、七步域治理及域内容隔离场景。截图来自当前构建，主题仅声明全站亮色与编辑器局部暗色。
   - 详细范围和证据见
-    [集成验收记录](../../../../dev-docs/superpowers/reports/2026-10-16-critique-integration-acceptance.md)。
+    [集成验收记录](../../../../dev-docs/archive/superpowers/reports/2026-10-16-critique-integration-acceptance.md)。

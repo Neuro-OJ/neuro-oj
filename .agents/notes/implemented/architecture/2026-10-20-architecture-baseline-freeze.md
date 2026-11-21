@@ -49,4 +49,4 @@ P0 只新增上述基线文档与本 Note，不修改生产代码与既有文档
   `ManagedTask`）、Gateway ready 探针只 ping Redis 且停止句柄被丢弃（P1/P5）、
   `0007_fk_cascade.sql` 不在 `_journal.json` 的存量例外（P2/P8）。
 - 文档未加入工程规范 README 常青索引（P0 约束不修改既有文档），引用入口为方案 §7 跟踪
-  清单与本 Note；文档链接遵循 [CONTRIBUTING](../../../../CONTRIBUTING.md) 相对链接约定。
+  清单与本 Note；文档链接遵循 [CONTRIBUTING](../../../../.github/CONTRIBUTING.md) 相对链接约定。

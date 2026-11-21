@@ -26,7 +26,7 @@ Caused by:
 
 **用官方 registry 重新生成 `noj-tests/deno.lock`**，而不是手工删除 `tarball` 字段。
 
-理由：AGENTS.md §8.1 与 CONTRIBUTING.md 明文「**禁止手动修改 `deno.lock`**」。
+理由：AGENTS.md §8.1 与 `.github/CONTRIBUTING.md` 明文「**禁止手动修改 `deno.lock`**」。
 手工删字段虽然能让 CI 变绿，但（a）违反红线，（b）会留下手工格式痕迹
 （如 `os` 数组被展开成多行，`deno fmt` 与新生成都不会这样排），
 （c）不解决「配置镜像的机器重建时又写回镜像地址」的根因。
@@ -44,7 +44,7 @@ Caused by:
 ## Alternatives considered
 
 - **手工删除 6 个 `tarball` 字段**：初版做法。这能修好 CI，但违反
-  AGENTS.md §8.1/CONTRIBUTING.md 的明文红线，且留下格式漂移痕迹。
+  AGENTS.md §8.1/`.github/CONTRIBUTING.md` 的明文红线，且留下格式漂移痕迹。
   经评审指出后改为重新生成。
 - **把 `tarball` 改写成官方 registry 地址**：同样是手工编辑生成文件，同样违规。
 - **保持浮动版本、不修锁文件**：失败与锁文件内容直接相关，不修不会自愈。

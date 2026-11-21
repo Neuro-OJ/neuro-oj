@@ -80,7 +80,7 @@ wasmtime 15、wasmtime-wasi 5、zip 3），`osv-scanner` 在 5 个 deno.lock 上
   osv-scanner 目前只告警，**新引入的 Rust / deno 依赖漏洞仍不会被硬拦截** （npm
   / cargo 的增量由 dependency-review 覆盖，deno.lock 增量暂无硬门禁）。
 - 收紧路径：先升级 wasmtime / zip / rustls / quinn-proto 与 noj-ui 的 vite /
-  vitest / undici 等依赖清存量，再把两个 job 改为硬失败并删除 CONTRIBUTING.md
+  vitest / undici 等依赖清存量，再把两个 job 改为硬失败并删除 `.github/CONTRIBUTING.md`
   的告警态说明；deno.lock 的 PR 增量拦截需要额外做 base↔head 结果比对。
 - 转换器是 deno 覆盖的唯一入口：deno.lock 格式升级或 osv-scalibr 改变
   package-lock 解析行为时，`scripts/security/deno-lock-to-package-lock_test.ts`

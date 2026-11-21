@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-逐题选择模型的设计（`dev-docs/superpowers/specs/2026-10-12-llm-model-aliases-design.md`）要求评测代码用「别名」调用，gateway 转发前换成真实模型名。本 PR 是实施拆分的第 1 步，必须先于 core 发布。
+逐题选择模型的设计（`dev-docs/archive/superpowers/specs/2026-10-12-llm-model-aliases-design.md`）要求评测代码用「别名」调用，gateway 转发前换成真实模型名。本 PR 是实施拆分的第 1 步，必须先于 core 发布。
 
 ## Decision
 

@@ -19,7 +19,7 @@ Playwright 真实操作浏览器，覆盖 API E2E 无法触达的页面交互：
 # 前置：完整评测栈已启动（scripts/e2e/setup.sh），noj-ui 已构建并监听 :3000
 cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 deno run -A .output/server/index.mjs
 cd noj-tests
-deno run -A npm:playwright install chromium   # 首次安装浏览器
+deno run -A npm:playwright@1.62.1 install chromium   # 首次安装浏览器
 NOJ_RUN_BROWSER_E2E=1 deno task test:browser
 ```
 
