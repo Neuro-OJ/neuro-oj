@@ -8,7 +8,6 @@
 
 import {
   apiGet,
-  apiPatch,
   apiPost,
   e2eTest,
   getAdminToken,
@@ -246,13 +245,15 @@ e2eTest(
       );
     }
 
-    // ended 竞赛：无法注册，先建 running 窗口竞赛注册，再由 admin 改为已结束
+    // ended 竞赛：无法注册，先建短窗口的 running 竞赛注册，再等它自然结束
+    // （域入口开赛后不能修改受理窗口）。
+    const endedAskEnd = Date.now() + 5_000;
     const endedAskCreate = await apiPost(
       "/api/v1/domains/main/contests",
       {
         title: `E2E 赛后提问竞赛 ${testSuffix}`,
         start_time: new Date(now - 60 * 60 * 1000).toISOString(),
-        end_time: new Date(now + 60 * 60 * 1000).toISOString(),
+        end_time: new Date(endedAskEnd).toISOString(),
         type: "kaggle",
         config: {},
         affect_global_ranking: false,
@@ -279,23 +280,9 @@ e2eTest(
         }`,
       );
     }
-    const endedAskCurrent = await apiGet(
-      `/api/v1/domains/main/contests/${endedAskContestId}`,
-      adminToken,
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, endedAskEnd - Date.now()) + 500)
     );
-    const endedAskRevision =
-      (endedAskCurrent.body as { data: { revision: number } }).data.revision;
-    const endContest = await apiPatch(
-      `/api/v1/domains/main/contests/${endedAskContestId}`,
-      { end_time: new Date(now - 1000).toISOString() },
-      adminToken,
-      { "If-Match": String(endedAskRevision) },
-    );
-    if (endContest.status !== 200) {
-      throw new Error(
-        `结束竞赛失败: ${endContest.status} ${JSON.stringify(endContest.body)}`,
-      );
-    }
     const endedAsk = await apiPost(
       `/api/v1/domains/main/contests/${endedAskContestId}/clarifications`,
       { content: "赛后提问" },
