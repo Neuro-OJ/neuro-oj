@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-新增根目录 `CONTRIBUTING.md` 和 `SECURITY.md`，在 `.github/ISSUE_TEMPLATE/` 中提供缺陷、功能建议模板及安全漏洞入口配置，并从 README 和开发指南互相导览。贡献指南复用现有 `AGENTS.md` 与 `dev-docs/engineering/development.md` 的规则；安全文档使用 GitHub 私下漏洞报告入口，不公布未经确认的个人联系人。版本支持以最新正式 Release、`main` 和维护者明确指定的 `dev` 为边界，避免承诺未维护的旧版本和快照。
+新增 `.github/CONTRIBUTING.md` 和 `.github/SECURITY.md`，在 `.github/ISSUE_TEMPLATE/` 中提供缺陷、功能建议模板及安全漏洞入口配置，并从 README 和开发指南互相导览。贡献指南复用现有 `AGENTS.md` 与 `dev-docs/engineering/development.md` 的规则；安全文档使用 GitHub 私下漏洞报告入口，不公布未经确认的个人联系人。版本支持以最新正式 Release、`main` 和维护者明确指定的 `dev` 为边界，避免承诺未维护的旧版本和快照。
 
 ## Alternatives considered
 

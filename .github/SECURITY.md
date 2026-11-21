@@ -42,6 +42,6 @@ Reporting。若你看不到该入口，请不要在公开 Issue
 升级到最新正式 Release
 后仍能复现的问题，请在报告中注明原始版本和复现版本，便于维护者判断影响范围。
 
-相关入口：[README](./README.md) · [贡献指南](./CONTRIBUTING.md) ·
-[系统安全模型](./noj-docs/docs/system/security.md) ·
+相关入口：[README](../README.md) · [贡献指南](./CONTRIBUTING.md) ·
+[系统安全模型](../noj-docs/docs/system/security.md) ·
 [安全漏洞私下报告](https://github.com/Neuro-OJ/neuro-oj/security/advisories/new)

@@ -1,11 +1,11 @@
 # 参与贡献
 
-感谢你为 Neuro OJ（NOJ）贡献代码、文档、题目或问题反馈。NOJ 是独立社区项目；贡献前请先阅读 [README](./README.md) 和 [项目开发约定](./AGENTS.md)。
+感谢你为 Neuro OJ（NOJ）贡献代码、文档、题目或问题反馈。NOJ 是独立社区项目；贡献前请先阅读 [README](../README.md) 和 [项目开发约定](../AGENTS.md)。
 
 ## 从哪里开始
 
 1. 先搜索已有 Issue 和 Pull Request，避免重复工作。
-2. 缺陷请使用 [缺陷报告模板](./.github/ISSUE_TEMPLATE/bug_report.md)，功能建议请使用 [功能建议模板](./.github/ISSUE_TEMPLATE/feature_request.md)。
+2. 缺陷请使用 [缺陷报告模板](./ISSUE_TEMPLATE/bug_report.md)，功能建议请使用 [功能建议模板](./ISSUE_TEMPLATE/feature_request.md)。
 3. 涉及安全漏洞时，不要创建公开 Issue，先阅读 [安全漏洞报告流程](./SECURITY.md)。
 4. 进入模块目录前，阅读对应的 `AGENTS.md` 或 `CLAUDE.md`，并遵守其中更具体的约定。
 
@@ -44,7 +44,7 @@ cd noj-judge && cargo run
 cd noj-llm-gateway && deno task dev
 ```
 
-`noj-llm-gateway` 为可选模块，从源码运行前先执行 `docker compose stop llm-gateway` 以释放 8001 端口；`noj-judge` 需要 Docker 访问权限。`noj-cli` 只面向生产部署与运维（开发部署入口已随双模态一起移除），从源码运行它的方式见 [`noj-cli/README.md`](./noj-cli/README.md)；本地开发流程见 [`dev-docs/engineering/development.md`](./dev-docs/engineering/development.md)。
+`noj-llm-gateway` 为可选模块，从源码运行前先执行 `docker compose stop llm-gateway` 以释放 8001 端口；`noj-judge` 需要 Docker 访问权限。`noj-cli` 只面向生产部署与运维（开发部署入口已随双模态一起移除），从源码运行它的方式见 [`noj-cli/README.md`](../noj-cli/README.md)；本地开发流程见 [`dev-docs/engineering/development.md`](../dev-docs/engineering/development.md)。
 
 ## 测试与检查
 
@@ -75,7 +75,7 @@ deno run -A scripts/verify-agent-note-format.ts
 
 ### 安全门禁
 
-[`.github/workflows/security.yml`](./.github/workflows/security.yml) 在 PR、`main` push 与每周定时任务上执行四类检查：
+[`.github/workflows/security.yml`](./workflows/security.yml) 在 PR、`main` push 与每周定时任务上执行四类检查：
 
 | Job | 覆盖范围 | 触发时机 |
 | --- | --- | --- |
@@ -179,10 +179,10 @@ jj sign -r @
 ## 文档与决策记录
 
 - 根目录 `AGENTS.md` 只维护规则和链接；模块细节放在对应模块文档中。
-- 工程规范集中在 [`dev-docs/engineering/`](./dev-docs/engineering/README.md)。
+- 工程规范集中在 [`dev-docs/engineering/`](../dev-docs/engineering/README.md)。
 - Markdown 相对链接必须指向仓库内存在的文件和标题。
 - 改变流程、工具、测试策略或跨文件契约的非平凡变更，应记录决策、备选方案和后果。
 
 如果不确定改动边界，先开 Issue 讨论；小而明确的修复可以直接提交 Pull Request。
 
-相关入口：[README](./README.md) · [安全漏洞报告](./SECURITY.md) · [开发指南](./dev-docs/engineering/development.md) · [Pull Request 模板](./.github/pull_request_template.md)
+相关入口：[README](../README.md) · [安全漏洞报告](./SECURITY.md) · [开发指南](../dev-docs/engineering/development.md) · [Pull Request 模板](./pull_request_template.md)

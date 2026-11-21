@@ -30,7 +30,7 @@
 - 代码事实一律附 `路径:行号`。行号以 `fbc40624` 已提交树为准；测量时工作副本若有
   他批改动，相关文件用 `git show fbc40624:<path>` 核对。
 - 计数均为命令输出，复现命令写在各节。与方案描述不一致时以本文实测为准，并注明差集。
-- 文档链接遵循 [CONTRIBUTING](../../CONTRIBUTING.md) §文档与决策记录：
+- 文档链接遵循 [CONTRIBUTING](../../.github/CONTRIBUTING.md) §文档与决策记录：
   "Markdown 相对链接必须指向仓库内存在的文件和标题"。
 
 ### 1.3 本轮未覆盖（重要）
@@ -424,7 +424,7 @@ for (const f of readdirSync(dir)) if (f.endsWith(".ts") && f !== "index.ts" && f
 
 ### 7.4 测试入口命令（基线，本轮未执行）
 
-来源：[测试体系](testing.md)、[CONTRIBUTING](../../CONTRIBUTING.md) 与各模块 `deno.json`。
+来源：[测试体系](testing.md)、[CONTRIBUTING](../../.github/CONTRIBUTING.md) 与各模块 `deno.json`。
 项目规则：Deno 测试必须通过 `deno task`，禁止手拼 `deno test`。
 
 | 模块 | 命令 | 说明 |

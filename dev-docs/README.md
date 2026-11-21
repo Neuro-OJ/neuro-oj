@@ -10,6 +10,7 @@
 | [`agents/`](agents/)                     | AI 指令的下沉细节：模块地图、流程、测试矩阵、规范   | 活文档            |
 | [`engineering/`](engineering/README.md)  | 工程规范：架构、边界、安全、可观测性、WASM、测试    | 活文档，见其 README |
 | [`design/`](design/)                     | 设计 token 与 UI 视觉契约                           | 活文档，代码与 CI 引用 |
+| [`product/`](product/)                   | 进行中的产品设计与路线图：`DESIGN.md` / `PRODUCT.md` / `ROADMAP.md` | 活文档            |
 | [`audit/`](audit/)                       | 时点审计，按日期建目录                              | 只读快照          |
 | [`reviews/`](reviews/)                   | 时点评审与验证记录                                  | 只读快照          |
 | [`acceptance/`](acceptance/)             | 时点验收记录（含 PR body 存档）                     | 只读快照          |

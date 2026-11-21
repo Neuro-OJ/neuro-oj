@@ -4,7 +4,7 @@
 
 已确认方向是恢复域升级前 main 提交 `cc05af79` 的 NOJ 界面，保留当前版本的域、
 评测、教学及权限能力。此文记录既有视觉世界；颜色和圆角的单一事实来源仍为
-[品牌规范](dev-docs/design/noj-design-tokens.md)。
+[品牌规范](../design/noj-design-tokens.md)。
 
 ## 公共语言
 

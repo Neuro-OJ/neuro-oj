@@ -28,7 +28,7 @@
   `--ref v0.11.0`。
 - **从 0.10.x 升级**：最低源版本为 `v0.10.6`（更早版本先在 0.10.x 链升级到
   `v0.10.6`）。按
-  [从 v0.10.6 逻辑升级至 v0.11](noj-docs/docs/operators/upgrade-v010-to-v011.md)
+  [从 v0.10.6 逻辑升级至 v0.11](../noj-docs/docs/operators/upgrade-v010-to-v011.md)
   使用 `noj db upgrade-v010` 从只读源库迁移到全新初始化的空 v0.11
   目标库；旧库保持 不变，可直接作为回滚兜底。
 - **私有题与非公开比赛需显式处置**：升级预检遇到已发布的私有题、非公开 / 邀请 /
@@ -304,7 +304,7 @@
   不可变版本」发布，提交绑定提交时版本， 评测写入 `evaluation_attempts`
   并按有效版本策略（`any` / `exact(X)`）物化有效成绩。 这是 core / judge /
   gateway / UI / IDE / CLI 的**协调升级，不支持新旧评测协议混跑**，
-  升级前请参阅[题目版本管理文档](noj-docs/docs/features/problem-versioning.md)与升级、备份恢复说明。
+  升级前请参阅[题目版本管理文档](../noj-docs/docs/features/problem-versioning.md)与升级、备份恢复说明。
 - **LLM 模型别名升级顺序**：先升级 gateway（PR #630），再升级 core（PR
   #631），最后升级 UI（PR #632）。
 - 升级需使用新版 `docker-compose.prod.yml` 与 `.env.prod.example`（新增
@@ -820,7 +820,7 @@
 
 - `AGENTS.md` §5.2 改写为**两段式开发流程**，并标明已删除的命令与脚本。
 - `noj-cli/README.md`、`noj-docs` 的生产部署与运维文档按现状重写。
-- `ROADMAP.md` 校准：移除未实现的多语言承诺；补上已实现项的代码证据与端点。
+- `dev-docs/product/ROADMAP.md` 校准：移除未实现的多语言承诺；补上已实现项的代码证据与端点。
 - 新增 CHANGELOG（本文件）。
 
 ---

@@ -15,7 +15,7 @@
 #
 # 存量告警策略（首次落地）：cargo-audit 与 osv-scanner 以「发现漏洞 = 告警、
 # 工具或解析失败 = 失败」运行，不让既有存量把 main / 现有 PR 变红；收紧计划
-# 见 CONTRIBUTING.md「安全门禁」。
+# 见 .github/CONTRIBUTING.md「安全门禁」。
 # =============================================================================
 
 name: Security
@@ -180,12 +180,12 @@ jobs:
             echo "- 已知漏洞：${count}"
             echo "- 其它告警（unmaintained / yanked 等）：${warnings}"
             echo ""
-            echo "存量漏洞暂不阻塞合并，收紧计划见 CONTRIBUTING.md「安全门禁」。"
+            echo "存量漏洞暂不阻塞合并，收紧计划见 .github/CONTRIBUTING.md「安全门禁」。"
           } >> "$GITHUB_STEP_SUMMARY"
           jq -r '.vulnerabilities.list[]? | "\(.advisory.id)  \(.package.name)@\(.package.version)"' \
             "$RUNNER_TEMP/cargo-audit.json" | sort -u || true
           if [ "$count" -gt 0 ]; then
-            echo "::warning::cargo audit 发现 ${count} 个存量漏洞（不阻塞合并，见 CONTRIBUTING.md「安全门禁」）"
+            echo "::warning::cargo audit 发现 ${count} 个存量漏洞（不阻塞合并，见 .github/CONTRIBUTING.md「安全门禁」）"
           fi
 
   # ===========================================================================
@@ -257,12 +257,12 @@ jobs:
             echo "- 受影响包：${packages}"
             echo "- 已知漏洞：${vulns}"
             echo ""
-            echo "存量漏洞暂不阻塞合并，收紧计划见 CONTRIBUTING.md「安全门禁」。"
+            echo "存量漏洞暂不阻塞合并，收紧计划见 .github/CONTRIBUTING.md「安全门禁」。"
           } >> "$GITHUB_STEP_SUMMARY"
           jq -r '.results[]?.packages[]? | "\(.package.name)@\(.package.version)  \([.vulnerabilities[]?.id] | join(","))"' \
             .security/osv/results.json | sort -u || true
           if [ "$vulns" -gt 0 ]; then
-            echo "::warning::osv-scanner 发现 ${vulns} 个存量漏洞（不阻塞合并，见 CONTRIBUTING.md「安全门禁」）"
+            echo "::warning::osv-scanner 发现 ${vulns} 个存量漏洞（不阻塞合并，见 .github/CONTRIBUTING.md「安全门禁」）"
           fi
 
   # ===========================================================================

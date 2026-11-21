@@ -11,7 +11,7 @@ Issue #658
   / `noj-tests` 的 `deno.json`，`noj-ui` / `noj-lmcc-extension` 的
   `package.json`，`noj-judge` 的 `Cargo.toml`）。实测 `noj-tests` 停在
   `0.9.5`，其余 6 个是 `0.10.5`，没有任何门禁发现。
-- `SECURITY.md` 的支持版本表仍写 `v0.9.x`（当前正式版 `v0.9.5`），而最新正式
+- `.github/SECURITY.md` 的支持版本表仍写 `v0.9.x`（当前正式版 `v0.9.5`），而最新正式
   Release 已是 `v0.10.6`。安全报告的适用范围因此误导报告者。
 - `README.md`、`noj-cli/README.md`、`noj-docs/docs/operators/{judge-workers,production-deploy}.md`
   的安装/下载示例仍指向 `v0.10.4-rc.1`（一处为
@@ -33,7 +33,7 @@ Issue #658
 - 门禁登记进 `scripts/gate-list.ts` 的 `REPO_GATES`（`check-ci.ts` 与
   `check-all.ts` 都从该清单派生），自测
   `scripts/check-version-consistency_test.ts` 登记进 `GATE_SELF_TESTS`。
-- `SECURITY.md` 支持版本表改为 `v0.10.x`（当前正式版 `v0.10.6`），保留「以
+- `.github/SECURITY.md` 支持版本表改为 `v0.10.x`（当前正式版 `v0.10.6`），保留「以
   GitHub Releases 最新正式版本为准」。
 - 文档里明确写了旧 tag 的安装/下载示例改为 `v0.10.6`；`VERSION=x.y.z`
   这类占位符保持占位，不硬编码具体版本。
@@ -57,6 +57,6 @@ Issue #658
   直接红灯，并指出是哪几个文件、各自是什么值。
 - 发版流程多一步显式决策：要么 7
   个模块一起升版本，要么都不动——门禁不会替人决定升到哪个值。
-- 文档中的具体版本示例仍会随发版过期，本门禁**不覆盖**文档；这类漂移仍需人工在发版时检查（`SECURITY.md`
+- 文档中的具体版本示例仍会随发版过期，本门禁**不覆盖**文档；这类漂移仍需人工在发版时检查（`.github/SECURITY.md`
   的支持版本表同理）。
 - `noj-tests` 版本号变更不影响其 `exports: {}` 与 E2E 任务，无运行时行为变化。
