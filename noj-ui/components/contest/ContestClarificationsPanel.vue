@@ -188,7 +188,7 @@ onMounted(() => void load())
     <p v-else-if="user && contest.status === 'running' && contest.is_registered === false" class="rounded-md border border-border bg-bg-page px-4 py-3 text-xs text-text-muted">报名参赛后可在竞赛进行期间提问。</p>
     <p v-else-if="contest.status !== 'running'" class="rounded-md border border-border bg-bg-page px-4 py-3 text-xs text-text-muted">竞赛非进行期间不可提问，可查看公开答疑。</p>
 
-    <p v-if="loadError" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-error-text">{{ loadError }}</p>
+    <p v-if="loadError" class="rounded-md border border-error-text/20 bg-error-text/5 px-4 py-3 text-sm text-error-text">{{ loadError }}</p>
     <div v-else-if="loading" class="py-12 text-center text-sm text-text-muted">答疑加载中...</div>
     <div v-else-if="clarifications.length === 0" class="rounded-md border border-dashed border-border py-12 text-center text-sm text-text-muted">暂无答疑，等待第一条提问。</div>
 
@@ -211,7 +211,7 @@ onMounted(() => void load())
             <div class="min-w-0 flex-1">
               <div class="mb-1 flex flex-wrap items-center gap-2 text-xs">
                 <UserIdentity :user="reply.sender" size="sm" />
-                <span class="rounded px-1.5 py-0.5" :class="reply.is_public ? 'bg-green-50 text-success-text' : 'bg-amber-50 text-warning-text'">
+                <span class="rounded px-1.5 py-0.5" :class="reply.is_public ? 'bg-signal/10 text-success-text' : 'bg-warning-bg text-warning-text'">
                   <UIcon :name="reply.is_public ? 'i-lucide-globe' : 'i-lucide-lock'" class="size-3" />
                   {{ reply.is_public ? '公开' : isOwnQuestion(clarification) ? '仅你可见' : '私密' }}
                 </span>

@@ -53,7 +53,7 @@ function formatNumber(n?: number): string {
 <template>
   <div class="max-w-[860px] mx-auto px-4 py-8 sm:px-6 sm:py-12 flex flex-col gap-8">
     <!-- Hero -->
-    <section class="relative overflow-hidden rounded-md border border-border/80 bg-gradient-to-br from-white via-primary-50/30 to-sky-100/40 shadow-card">
+    <section class="relative overflow-hidden rounded-md border border-border/80 bg-gradient-to-br from-white via-primary-50/30 to-primary-100/40 shadow-card">
       <div class="absolute -right-24 -top-24 size-72 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
       <div class="absolute -left-24 -bottom-24 size-72 rounded-full bg-signal/10 blur-3xl pointer-events-none" />
       <div class="relative p-8 sm:p-10 lg:p-12 flex flex-col gap-6 text-text">
@@ -86,8 +86,8 @@ function formatNumber(n?: number): string {
             GitHub
           </a>
         </div>
-        <div class="flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-xs text-amber-900">
-          <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-px text-amber-600" />
+        <div class="flex items-start gap-2 rounded-md bg-warning-text/10 border border-warning-text/20 px-4 py-3 text-xs text-warning-text">
+          <UIcon name="i-lucide-info" class="size-4 shrink-0 mt-px text-warning-text" />
           <span>Neuro OJ 与 CCF 及 LMCC 无任何官方关系，为独立社区项目。</span>
         </div>
       </div>
@@ -113,7 +113,7 @@ function formatNumber(n?: number): string {
             {{ formatNumber(item.value) }}
           </span>
         </template>
-        <div v-else class="w-16 h-7 rounded-md bg-gray-100 animate-pulse" role="status" aria-label="统计加载中" />
+        <div v-else class="w-16 h-7 rounded-md bg-bg-sunken animate-pulse" role="status" aria-label="统计加载中" />
         <span class="text-xs text-text-muted">{{ item.label }}</span>
       </div>
     </section>
@@ -241,7 +241,7 @@ function formatNumber(n?: number): string {
             :href="repoUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-gray-50 px-4 py-2 text-sm font-medium text-text no-underline hover:bg-primary-bg hover:text-primary hover:border-primary/30 transition-colors shrink-0"
+            class="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-bg-page px-4 py-2 text-sm font-medium text-text no-underline hover:bg-primary-bg hover:text-primary hover:border-primary/30 transition-colors shrink-0"
           >
             <UIcon name="i-lucide-star" class="size-4 text-primary" />
             Neuro-OJ/neuro-oj
@@ -257,13 +257,13 @@ function formatNumber(n?: number): string {
             :href="`https://github.com/${c.login}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-3 px-3 py-2 bg-gray-50 border border-border rounded-md no-underline hover:bg-primary-bg hover:border-primary/30 transition-colors"
+            class="inline-flex items-center gap-3 px-3 py-2 bg-bg-page border border-border rounded-md no-underline hover:bg-primary-bg hover:border-primary/30 transition-colors"
           >
             <img
               v-if="!brokenAvatars.has(c.login)"
               :src="c.avatar_url"
               :alt="`${c.login} 的头像`"
-              class="w-8 h-8 rounded-full bg-gray-200 shrink-0"
+              class="w-8 h-8 rounded-full bg-bg-sunken shrink-0"
               loading="lazy"
               referrerpolicy="no-referrer"
               @error="onAvatarError($event, c)"
@@ -278,7 +278,7 @@ function formatNumber(n?: number): string {
           </a>
         </div>
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2" role="status" aria-label="贡献者加载中">
-          <div v-for="i in 6" :key="i" class="h-[52px] rounded-md bg-gray-100 animate-pulse" />
+          <div v-for="i in 6" :key="i" class="h-[52px] rounded-md bg-bg-sunken animate-pulse" />
         </div>
       </div>
     </section>

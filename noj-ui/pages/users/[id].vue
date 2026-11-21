@@ -178,8 +178,8 @@ const isOwnProfile = computed(
 
 // 结果状态
 const resultBadgeColors: Record<string, string> = {
-  finished: "bg-green-100 text-green-700",
-  error: "bg-red-100 text-red-800",
+  finished: "bg-signal/10 text-signal-deep",
+  error: "bg-error-text/10 text-error-text",
 }
 
 function formatDate(iso: string): string {
@@ -202,7 +202,7 @@ function formatDate(iso: string): string {
       @retry="refresh"
     >
       <template #error>
-        <span class="flex items-center justify-center size-11 rounded-full bg-red-100 text-red-800 text-xl font-bold">!</span>
+        <span class="flex items-center justify-center size-11 rounded-full bg-error-text/10 text-error-text text-xl font-bold">!</span>
         <p>用户不存在</p>
       </template>
 
@@ -242,7 +242,7 @@ function formatDate(iso: string): string {
         <div class="bg-white border border-border noj-panel px-5 py-4 flex flex-col gap-1">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">通过 / 提交</span>
           <p class="flex items-baseline gap-1.5">
-            <span class="text-3xl font-bold text-green-600">{{ profile.stats.accepted }}</span>
+            <span class="text-3xl font-bold text-success-text">{{ profile.stats.accepted }}</span>
             <span class="text-lg font-semibold text-text-muted">/ {{ profile.stats.total_submissions }}</span>
           </p>
         </div>
@@ -252,9 +252,9 @@ function formatDate(iso: string): string {
           <span class="text-2xl font-bold text-text">
             {{ (profile.stats.acceptance_rate * 100).toFixed(1) }}%
           </span>
-          <div class="mt-1 h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+          <div class="mt-1 h-1.5 w-full rounded-full bg-bg-sunken overflow-hidden">
             <div
-              class="h-full rounded-full bg-blue-500 transition-[width] duration-500"
+              class="h-full rounded-full bg-primary transition-[width] duration-500"
               :style="{ width: `${Math.min(100, Math.max(0, profile.stats.acceptance_rate * 100))}%` }"
             ></div>
           </div>
@@ -360,7 +360,7 @@ function formatDate(iso: string): string {
       <div v-if="profile.solved_problems.length" class="bg-white border border-border noj-panel overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
-            <UIcon name="i-lucide-check-circle" class="text-green-600 size-4.5" />
+            <UIcon name="i-lucide-check-circle" class="text-success-text size-4.5" />
             已通过题目
           </h2>
         </div>
@@ -480,7 +480,7 @@ function formatDate(iso: string): string {
               <span
                 v-if="sub.result_status"
                 class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                :class="resultBadgeColors[sub.result_status] || 'bg-gray-100 text-gray-700'"
+                :class="resultBadgeColors[sub.result_status] || 'bg-bg-sunken text-text-secondary'"
               >
                 {{ sub.result_status }}
               </span>

@@ -52,15 +52,15 @@ useSeoMeta({ title: '域排行榜' });
               <td class="px-4 py-3 text-center tabular-nums font-mono font-bold">
                 <span
                   v-if="row.rank === 1"
-                  class="inline-flex size-6 items-center justify-center rounded-full bg-amber-400/20 text-amber-600 text-xs"
+                  class="inline-flex size-6 items-center justify-center rounded-full bg-rank-gold/20 text-text-secondary text-xs"
                 >1</span>
                 <span
                   v-else-if="row.rank === 2"
-                  class="inline-flex size-6 items-center justify-center rounded-full bg-slate-400/20 text-slate-600 text-xs"
+                  class="inline-flex size-6 items-center justify-center rounded-full bg-rank-silver/20 text-text-secondary text-xs"
                 >2</span>
                 <span
                   v-else-if="row.rank === 3"
-                  class="inline-flex size-6 items-center justify-center rounded-full bg-amber-700/20 text-amber-700 text-xs"
+                  class="inline-flex size-6 items-center justify-center rounded-full bg-rank-bronze/20 text-text-secondary text-xs"
                 >3</span>
                 <span v-else class="text-text-muted text-xs">{{ row.rank }}</span>
               </td>

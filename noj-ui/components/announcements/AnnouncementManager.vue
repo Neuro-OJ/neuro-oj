@@ -185,7 +185,7 @@ async function handleDelete() {
             <UIcon name="i-lucide-pencil" class="size-3.5" />
           </UButton>
           <UButton color="neutral" variant="outline"
-            class="flex w-9 h-9 border-border text-text-secondary hover:bg-red-50 hover:text-error-text hover:border-error-text/30"
+            class="flex w-9 h-9 border-border text-text-secondary hover:bg-error-text/5 hover:text-error-text hover:border-error-text/30"
             title="删除" aria-label="删除" @click="confirmDelete(row as unknown as AdminAnnouncement)">
             <UIcon name="i-lucide-trash-2" class="size-3.5" />
           </UButton>

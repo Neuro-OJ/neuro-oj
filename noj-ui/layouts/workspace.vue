@@ -50,7 +50,7 @@ const contentStatus = computed(() => {
         </template>
         <template #error="{ error: errorMsg }">
           <div v-if="isForbidden" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-            <span class="flex items-center justify-center size-11 rounded bg-amber-500/10 text-amber-500 text-xl font-bold">
+            <span class="flex items-center justify-center size-11 rounded bg-warning-text/10 text-warning-text text-xl font-bold">
               <UIcon name="i-lucide-shield-alert" class="size-[22px]" />
             </span>
             <p class="font-medium text-text">没有访问此空间的权限</p>

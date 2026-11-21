@@ -8,21 +8,21 @@ defineProps<{ rank: number }>()
     v-if="rank === 1"
     class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-gold"
   >
-    <UIcon name="i-lucide-crown" class="size-3.5 text-amber-500 shrink-0" />
+    <UIcon name="i-lucide-crown" class="size-3.5 text-rank-gold shrink-0" />
     #1
   </span>
   <span
     v-else-if="rank === 2"
     class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-silver"
   >
-    <UIcon name="i-lucide-medal" class="size-3.5 text-slate-400 shrink-0" />
+    <UIcon name="i-lucide-medal" class="size-3.5 text-rank-silver shrink-0" />
     #2
   </span>
   <span
     v-else-if="rank === 3"
     class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tabular-nums rank-badge-bronze"
   >
-    <UIcon name="i-lucide-medal" class="size-3.5 text-orange-600 shrink-0" />
+    <UIcon name="i-lucide-medal" class="size-3.5 text-rank-bronze shrink-0" />
     #3
   </span>
   <span

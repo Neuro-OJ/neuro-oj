@@ -29,7 +29,7 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.oldPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.oldPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.oldPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.oldPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
@@ -58,7 +58,7 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.newPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.newPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.newPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.newPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
@@ -86,7 +86,7 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 

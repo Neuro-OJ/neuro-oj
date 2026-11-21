@@ -49,7 +49,7 @@ onMounted(() => {
 </script>
 <template>
   <header ref="headerRef" class="fixed inset-x-0 top-0 z-[100] border-b border-border bg-white/95 backdrop-blur-sm">
-    <div v-if="user?.must_change_password" class="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-700">
+    <div v-if="user?.must_change_password" class="border-b border-error-text/20 bg-error-text/5 px-4 py-2 text-center text-sm text-error-text">
       请先修改临时密码，再使用完整功能。
     </div>
     <div class="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:px-6">

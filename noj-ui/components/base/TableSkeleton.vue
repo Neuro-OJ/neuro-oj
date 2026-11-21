@@ -14,7 +14,7 @@ withDefaults(
 <template>
   <div class="bg-white border border-border noj-panel overflow-hidden" aria-hidden="true">
     <!-- 表头骨架 -->
-    <div class="flex items-center gap-6 border-b border-border bg-gray-50 px-4 py-3">
+    <div class="flex items-center gap-6 border-b border-border bg-bg-page px-4 py-3">
       <USkeleton v-for="(c, i) in columns" :key="i" class="h-3" :class="c" />
     </div>
     <!-- 数据行骨架 -->

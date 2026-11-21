@@ -7,10 +7,10 @@
             <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
             <div
                 v-if="registerRestricted"
-                class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-md text-13px text-amber-800"
+                class="mb-5 p-3 bg-warning-bg border border-warning-border rounded-md text-13px text-warning-text"
             >
                 <div class="flex items-start gap-2">
-                    <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 mt-0.5 text-amber-600" />
+                    <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 mt-0.5 text-warning-text" />
                     <span>{{ registerRestricted }}</span>
                 </div>
             </div>

@@ -82,7 +82,7 @@ function onLeave() {
                 ? 'bg-signal'
                 : cell.isToday
                   ? 'border border-signal'
-                  : 'bg-gray-200'"
+                  : 'bg-bg-sunken'"
               :tabindex="0"
               :aria-label="`${cell.checked ? '已签到' : '未签到'} ${formatDateFull(cell.date)}`"
               @mouseenter="onHover($event, cell)"
@@ -98,7 +98,7 @@ function onLeave() {
       <!-- tooltip -->
       <div
         v-if="hover.cell"
-        class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-gray-900 px-2 py-1 text-[10px] text-white"
+        class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[calc(100%+8px)] whitespace-nowrap rounded-md bg-bg-dark px-2 py-1 text-[10px] text-white"
         :style="{ left: hover.x + 'px', top: hover.y + 'px' }"
       >
         {{ hover.cell.checked ? '已签到' : '未签到' }} · {{ formatDateFull(hover.cell.date) }}

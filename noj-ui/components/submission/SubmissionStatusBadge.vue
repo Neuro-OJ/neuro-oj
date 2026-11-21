@@ -9,11 +9,11 @@
     >{{ label }}</span>
     <span
         v-else-if="queue_position != null"
-        class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium w-fit justify-self-end bg-gray-400/10 text-gray-400"
+        class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium w-fit justify-self-end bg-text-muted/10 text-text-muted"
     >等待评测</span>
     <span
         v-else
-        class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium w-fit justify-self-end bg-green-500/10 text-green-500"
+        class="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded font-medium w-fit justify-self-end bg-signal/10 text-signal"
     >评测中</span>
 </template>
 

@@ -67,8 +67,8 @@ function statusClass(status: string) {
   if (status === 'RUNNING') return 'bg-primary-bg text-primary'
   if (status === 'PENDING' || status === 'IGN') return 'bg-bg-page text-text-muted'
   return isSubmissionCasePassed(status)
-    ? 'bg-green-50 text-success-text'
-    : 'bg-red-50 text-error-text'
+    ? 'bg-signal/10 text-success-text'
+    : 'bg-error-text/5 text-error-text'
 }
 
 function statusIcon(status: string) {

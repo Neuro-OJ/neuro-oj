@@ -93,7 +93,7 @@ function formatDateTime(value?: string | null): string {
         <header class="flex items-start gap-3 border-b border-border pb-4">
           <span
             class="mt-0.5 flex size-9 flex-shrink-0 items-center justify-center rounded-full"
-            :class="item.notification.type === 'moderation' || item.notification.type === 'ban' ? 'bg-red-50 text-red-600' : 'bg-primary-bg text-primary'"
+            :class="item.notification.type === 'moderation' || item.notification.type === 'ban' ? 'bg-error-text/5 text-error-text' : 'bg-primary-bg text-primary'"
           >
             <UIcon :name="notificationTypeIcon(item.notification.type)" class="size-4" />
           </span>

@@ -31,12 +31,12 @@ function handleLogout() {
 <template>
   <div
     v-if="type === 'ip'"
-    class="fixed top-16 left-0 right-0 z-[999] bg-amber-50 border-b border-amber-200 px-4 py-3 shadow-sm"
+    class="fixed top-16 left-0 right-0 z-[999] bg-warning-bg border-b border-warning-border px-4 py-3 shadow-sm"
   >
     <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
-      <div class="flex items-center gap-2 text-amber-800 text-sm">
+      <div class="flex items-center gap-2 text-warning-text text-sm">
         <span class="font-semibold flex items-center gap-1"><UIcon name="i-lucide-triangle-alert" class="size-4" />IP 限制访问</span>
-        <span class="text-amber-600">·</span>
+        <span class="text-warning-text">·</span>
         <span v-if="ipInfo">
           您的 IP（{{ ipInfo.matched_cidr }}）已被限制访问。
           {{ ipInfo.reason ? `原因：${ipInfo.reason}。` : "" }}
@@ -49,12 +49,12 @@ function handleLogout() {
 
   <div
     v-if="type === 'user'"
-    class="fixed top-16 left-0 right-0 z-[999] bg-red-50 border-b border-red-200 px-4 py-3 shadow-sm"
+    class="fixed top-16 left-0 right-0 z-[999] bg-error-text/5 border-b border-error-text/20 px-4 py-3 shadow-sm"
   >
     <div class="max-w-4xl mx-auto flex items-center justify-between gap-4">
-      <div class="flex items-center gap-2 text-red-800 text-sm">
+      <div class="flex items-center gap-2 text-error-text text-sm">
         <span class="font-semibold flex items-center gap-1"><UIcon name="i-lucide-ban" class="size-4" />账号被封禁</span>
-        <span class="text-red-600">·</span>
+        <span class="text-error-text">·</span>
         <span v-if="userInfo">
           您的账号已被{{ userInfo.until ? `封禁至 ${formatExpiry(userInfo.until)}` : "永久封禁" }}。
           {{ userInfo.reason ? `原因：${userInfo.reason}。` : "" }}
@@ -63,7 +63,7 @@ function handleLogout() {
         <span v-else>您的账号已被封禁。请联系管理员。</span>
       </div>
       <button
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-700 bg-red-100 border border-red-200 rounded-md hover:bg-red-200 transition-colors shrink-0"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-error-text bg-error-text/10 border border-error-text/20 rounded-md hover:bg-error-text/20 transition-colors shrink-0"
         @click="handleLogout"
       >
         <UIcon name="i-lucide-log-out" class="size-3.5" />

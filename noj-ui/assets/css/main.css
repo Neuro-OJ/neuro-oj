@@ -88,6 +88,20 @@
   --color-error-300: #fda4af;
   --color-error-600: #e11d48;
 
+  /* 名次金属色：榜单金/银/铜。**只用于名次标识**（RankBadge 图标、
+   * 前三名行微染、领奖台底环），不得当作状态色或装饰色。
+   * 值取原调色板的实际十六进制：金 #f59e0b、银 #94a3b8、铜取领奖台原值
+   * #b45309（RankBadge 铜牌图标由 #ea580c 变为 #b45309，略深）。
+   * 不用 warning-text / text-muted 代替：名次是约定，不是状态。 */
+  --color-rank-gold: #f59e0b;
+  --color-rank-silver: #94a3b8;
+  --color-rank-bronze: #b45309;
+
+  /* 自测提交标识：**只用于提交类型标记**（自测编号 + 自测角标）。
+   * 一概念一色，避免与错误色、交互蓝混淆。 */
+  --color-selftest: #7e22ce;
+  --color-selftest-bg: #f3e8ff;
+
   /* 圆角：近直角 2–6px，只允许 2 / 4 / 6。
    * lg/xl/2xl/3xl 是**别名**，不得删除：Tailwind v4 删掉它们不会禁用类名，
    * 只会回落到 Nuxt UI 的默认档（8 / 12 / 16 / 24px），Nuxt UI 内部仍在用，

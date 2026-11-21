@@ -464,8 +464,8 @@ onMounted(() => {
           <p class="mt-1 text-xs text-text-muted">当前关联题目：{{ problemQuery || '未选择' }}（可手动输入题目 ID）</p>
         </div>
         <USelect v-if="activeType === 'discussion'" v-model="boardId" :items="boards.map((b) => ({ label: b.name, value: b.id }))" class="mb-3 w-full" :placeholder="boards.length ? '选择板块' : '暂无可用板块'" />
-        <p v-if="boardError" class="mb-3 text-xs text-red-600">{{ boardError }}</p>
-        <p v-if="config?.under_review" class="mb-3 rounded border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+        <p v-if="boardError" class="mb-3 text-xs text-error-text">{{ boardError }}</p>
+        <p v-if="config?.under_review" class="mb-3 rounded border border-warning-border bg-warning-bg px-3 py-2 text-xs text-warning-text">
           新账号内容需经审核后公开：提交后仅你与审核员可见，审核通过会出现在列表中。
         </p>
         <template v-if="!previewMode">
@@ -495,9 +495,9 @@ onMounted(() => {
         <article v-for="item in posts" :key="item.post.id" class="noj-panel border border-border bg-white p-5 shadow-card">
           <div class="mb-2 flex flex-wrap items-center gap-2">
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[item.post.type] }}</span>
-            <span v-if="item.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
-            <span v-if="item.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
-            <span v-if="item.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
+            <span v-if="item.post.status === 'pending'" class="rounded bg-warning-bg px-2 py-0.5 text-xs text-warning-text">审核中</span>
+            <span v-if="item.post.status === 'hidden'" class="rounded bg-error-text/5 px-2 py-0.5 text-xs text-error-text">已隐藏</span>
+            <span v-if="item.post.is_locked" class="inline-flex items-center gap-1 rounded bg-bg-sunken px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
           </div>
           <NuxtLink :to="scope.href(`posts/${item.post.public_id || item.post.id}`)" class="block no-underline">
             <h2 v-if="item.post.title" class="text-lg font-semibold text-text hover:text-primary">{{ item.post.title }}</h2>
@@ -506,7 +506,7 @@ onMounted(() => {
           <div class="mt-4 flex items-center gap-4 text-xs text-text-secondary">
             <UserIdentity :user="item.author" size="sm" />
             <NuxtTime :datetime="item.post.created_at" relative locale="zh-CN" />
-            <span v-if="isCommunityEdited(item.post.created_at, item.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
+            <span v-if="isCommunityEdited(item.post.created_at, item.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-bg-sunken px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
             <span aria-label="评论数" class="inline-flex items-center"><UIcon name="i-lucide-message-square" class="mr-1 size-3.5" />{{ item.comments }}</span>
             <UButton color="neutral" variant="ghost" size="xs" class="ml-auto" v-if="canReport && user?.id !== item.post.author_id" type="button" @click="reportPost(item)"><UIcon name="i-lucide-flag" class="size-3.5" />举报</UButton>
           </div>

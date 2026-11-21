@@ -14,14 +14,14 @@
             </span><AnimatedCounter :value="stats.total" class="font-bold text-text" />
         </span>
         <span class="text-text-muted">=</span>
-        <span class="flex items-center gap-0.5 font-semibold text-green-600">
+        <span class="flex items-center gap-0.5 font-semibold text-success-text">
             <UIcon name="i-lucide-check-circle-2" class="shrink-0 size-[11px] size-4" />
-            正确<AnimatedCounter :value="stats.full_score" class="font-bold text-green-600" />
+            正确<AnimatedCounter :value="stats.full_score" class="font-bold text-success-text" />
         </span>
         <span class="text-text-muted">+</span>
-        <span class="flex items-center gap-0.5 font-semibold text-red-500">
+        <span class="flex items-center gap-0.5 font-semibold text-error-text">
             <UIcon name="i-lucide-x-circle" class="shrink-0 size-[11px] size-4" />
-            错误<AnimatedCounter :value="stats.not_full_score" class="font-bold text-red-500" />
+            错误<AnimatedCounter :value="stats.not_full_score" class="font-bold text-error-text" />
         </span>
     </div>
 </template>

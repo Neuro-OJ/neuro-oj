@@ -28,5 +28,5 @@ const elapsed = computed(() => {
 </script>
 
 <template>
-  <span class="font-mono tabular-nums text-blue-500">{{ elapsed }}</span>
+  <span class="font-mono tabular-nums text-primary">{{ elapsed }}</span>
 </template>

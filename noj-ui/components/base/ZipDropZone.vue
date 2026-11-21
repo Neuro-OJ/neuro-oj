@@ -71,7 +71,7 @@ function onDrop(e: DragEvent) {
         isDragOver
           ? 'border-signal bg-primary-bg cursor-pointer'
           : inactive
-            ? 'border-border bg-gray-50 cursor-not-allowed'
+            ? 'border-border bg-bg-page cursor-not-allowed'
             : 'border-border cursor-pointer hover:border-primary hover:bg-primary-bg',
       ]"
       @dragover="onDragOver"
@@ -100,7 +100,7 @@ function onDrop(e: DragEvent) {
         @change="onFileSelect"
       />
     </div>
-    <p v-if="localError" class="flex items-center gap-1.5 text-xs text-red-600">
+    <p v-if="localError" class="flex items-center gap-1.5 text-xs text-error-text">
       <UIcon name="i-lucide-alert-circle" class="size-3" />
       {{ localError }}
     </p>

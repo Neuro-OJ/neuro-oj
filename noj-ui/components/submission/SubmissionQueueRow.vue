@@ -92,13 +92,13 @@ const problemDisplay = computed(() => {
           v-if="item.kind !== 'self_test'"
           :to="item.domain_slug ? `/d/${item.domain_slug}/submissions/${fullId}` : publicUrl('submission', fullId)"
           :title="`完整提交编号: ${fullId}`"
-          class="text-blue-700 no-underline font-mono whitespace-nowrap min-w-[70px] hover:underline"
+          class="text-primary no-underline font-mono whitespace-nowrap min-w-[70px] hover:underline"
         >
           #{{ shortId(fullId) }}
         </NuxtLink>
         <span
           v-else
-          class="inline-flex items-center gap-1 font-mono whitespace-nowrap min-w-[70px] text-purple-700"
+          class="inline-flex items-center gap-1 font-mono whitespace-nowrap min-w-[70px] text-selftest"
           :title="`完整自测号: ${fullId}`"
         >
           <UIcon name="i-lucide-flask-conical" class="size-3.5" />
@@ -119,12 +119,12 @@ const problemDisplay = computed(() => {
       <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-text" :title="problemDisplay">{{ problemDisplay }}</span>
       <UBadge v-if="item.resource_pool" color="neutral" variant="outline" size="sm">{{ item.resource_pool }}</UBadge>
       <UBadge v-if="item.waiting_reason" color="warning" variant="subtle" size="sm">{{ waitingLabels[item.waiting_reason] }}</UBadge>
-      <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">自测</span>
+      <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-selftest-bg text-selftest">自测</span>
       <span class="text-text-secondary min-w-[70px] text-center text-xs">{{ getLanguageLabel(item.language) }}</span>
       <span class="text-text-secondary min-w-[60px]">{{ item.submitted_by }}</span>
       <span class="text-text-muted text-xs min-w-[100px]">{{ formatDateTime(item.submitted_at) }}</span>
-      <span v-if="showElapsed" class="inline-flex items-center gap-[3px] text-blue-700 text-xs min-w-[70px]"><UIcon name="i-lucide-clock" class="size-3.5" /> {{ elapsed() }}</span>
-      <span v-if="showScore" :class="['font-semibold min-w-[60px] text-right', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-red-600' : '']">
+      <span v-if="showElapsed" class="inline-flex items-center gap-[3px] text-primary text-xs min-w-[70px]"><UIcon name="i-lucide-clock" class="size-3.5" /> {{ elapsed() }}</span>
+      <span v-if="showScore" :class="['font-semibold min-w-[60px] text-right', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-error-text' : '']">
         {{ formatScore(item.score) }} 分
       </span>
     </div>
@@ -138,13 +138,13 @@ const problemDisplay = computed(() => {
             v-if="item.kind !== 'self_test'"
             :to="item.domain_slug ? `/d/${item.domain_slug}/submissions/${fullId}` : publicUrl('submission', fullId)"
             :title="`完整提交编号: ${fullId}`"
-            class="text-blue-700 no-underline font-mono text-xs whitespace-nowrap hover:underline font-semibold"
+            class="text-primary no-underline font-mono text-xs whitespace-nowrap hover:underline font-semibold"
           >
             #{{ shortId(fullId) }}
           </NuxtLink>
           <span
             v-else
-            class="inline-flex items-center gap-1 font-mono text-xs whitespace-nowrap text-purple-700 font-semibold"
+            class="inline-flex items-center gap-1 font-mono text-xs whitespace-nowrap text-selftest font-semibold"
             :title="`完整自测号: ${fullId}`"
           >
             <UIcon name="i-lucide-flask-conical" class="size-3.5" />
@@ -161,14 +161,14 @@ const problemDisplay = computed(() => {
             @click.stop="copyId(fullId)"
           />
           <UBadge v-if="item.domain_slug" color="neutral" variant="subtle" size="xs">@{{ item.domain_slug }}</UBadge>
-          <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-purple-100 text-purple-700">自测</span>
+          <span v-if="item.kind === 'self_test'" class="inline-flex items-center px-1.5 py-0.2 rounded-full text-[10px] font-semibold bg-selftest-bg text-selftest">自测</span>
         </div>
 
         <div class="shrink-0 flex items-center gap-1.5 text-xs">
-          <span v-if="showElapsed" class="inline-flex items-center gap-[3px] text-blue-700 font-medium">
+          <span v-if="showElapsed" class="inline-flex items-center gap-[3px] text-primary font-medium">
             <UIcon name="i-lucide-clock" class="size-3" /> {{ elapsed() }}
           </span>
-          <span v-if="showScore" :class="['font-semibold', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-red-600' : 'text-text']">
+          <span v-if="showScore" :class="['font-semibold', item.status === 'error' || (item.score !== null && item.score === 0) ? 'text-error-text' : 'text-text']">
             {{ formatScore(item.score) }} 分
           </span>
           <UBadge v-if="item.waiting_reason" color="warning" variant="subtle" size="xs">{{ waitingLabels[item.waiting_reason] }}</UBadge>

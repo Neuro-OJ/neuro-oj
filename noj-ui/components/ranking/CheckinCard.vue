@@ -10,7 +10,7 @@
                     <button
                         class="inline-flex items-center px-4 py-2 rounded-md text-sm font-semibold transition-colors duration-[600ms] cursor-pointer"
                         :class="checkedIn
-                            ? (fadeWhite ? 'bg-white text-green-700 border border-white' : 'bg-green-50 text-green-700 border border-green-200')
+                            ? (fadeWhite ? 'bg-white text-signal-deep border border-white' : 'bg-signal/10 text-signal-deep border border-signal/20')
                             : 'bg-signal text-on-signal border border-signal hover:bg-signal/80 hover:border-signal/80'"
                         :disabled="checkedIn"
                         @click="$emit('checkin')"
@@ -35,13 +35,13 @@
                     </span>
                     <div class="overflow-hidden transition-[max-height,opacity] duration-500 mt-2" :class="showStreak ? 'max-h-7 opacity-100' : 'max-h-0 opacity-0'">
                         <span class="inline-flex items-center gap-1 text-xs text-text-secondary bg-white/90 px-2.5 py-1 rounded-full border border-border shadow-xs tabular-nums">
-                            <UIcon name="i-lucide-flame" class="size-3.5 text-amber-500" />
+                            <UIcon name="i-lucide-flame" class="size-3.5 text-warning-text" />
                             已连续签到 <strong class="text-primary font-semibold">{{ streakCount }}</strong> 天
                         </span>
                     </div>
                 </div>
                 <p v-if="!checkedIn && streakCount > 0" class="inline-flex items-center gap-1 text-xs text-text-secondary mt-3 tabular-nums">
-                    <UIcon name="i-lucide-flame" class="size-3.5 text-amber-500" />
+                    <UIcon name="i-lucide-flame" class="size-3.5 text-warning-text" />
                     已连续签到 {{ streakCount }} 天
                 </p>
                 <p class="text-xs text-text-muted mt-2">按 UTC 日期统计 · UTC 0 点刷新</p>

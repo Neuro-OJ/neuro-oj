@@ -7,7 +7,7 @@
 
             <form @submit.prevent="handleSubmit">
                 <div class="relative mb-7">
-                    <label for="password" class="block text-sm font-semibold text-text mb-1">新密码 <span class="text-red-600">*</span></label>
+                    <label for="password" class="block text-sm font-semibold text-text mb-1">新密码 <span class="text-error-text">*</span></label>
                     <div class="relative flex items-center">
                         <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
                         <input
@@ -30,12 +30,12 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 
                 <div class="relative mb-7">
-                    <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码 <span class="text-red-600">*</span></label>
+                    <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码 <span class="text-error-text">*</span></label>
                     <div class="relative flex items-center">
                         <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
                         <input
@@ -58,7 +58,7 @@
                         </button>
                     </div>
                     <Transition name="drop">
-                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-red-700"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
+                        <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
                 </div>
 

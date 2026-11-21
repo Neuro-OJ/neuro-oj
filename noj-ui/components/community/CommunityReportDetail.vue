@@ -58,9 +58,9 @@ const statusLabel: Record<string, string> = {
   dismissed: "已驳回",
 }
 const statusClass: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-800",
-  resolved: "bg-green-50 text-green-700",
-  dismissed: "bg-gray-100 text-text-secondary",
+  pending: "bg-warning-bg text-warning-text",
+  resolved: "bg-signal/10 text-signal-deep",
+  dismissed: "bg-bg-sunken text-text-secondary",
 }
 
 function targetHref(): string {

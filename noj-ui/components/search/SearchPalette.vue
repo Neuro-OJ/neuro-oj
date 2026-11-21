@@ -26,7 +26,7 @@
               autocomplete="off"
               spellcheck="false"
             />
-            <kbd class="hidden sm:inline-block px-2 py-1 text-xs bg-gray-100 border border-border rounded">ESC</kbd>
+            <kbd class="hidden sm:inline-block px-2 py-1 text-xs bg-bg-sunken border border-border rounded">ESC</kbd>
           </div>
 
           <div v-if="state.loading" class="px-4 py-8 text-center text-text-muted text-sm">
@@ -66,7 +66,7 @@
             </template>
           </div>
 
-          <div class="flex items-center justify-between px-4 h-10 border-t border-border bg-gray-50 text-xs text-text-muted">
+          <div class="flex items-center justify-between px-4 h-10 border-t border-border bg-bg-page text-xs text-text-muted">
             <div class="flex items-center gap-3">
               <span><kbd class="px-1.5 py-0.5 bg-white border border-border rounded">↑↓</kbd> 导航</span>
               <span><kbd class="px-1.5 py-0.5 bg-white border border-border rounded">↵</kbd> 选择</span>

@@ -391,7 +391,7 @@ function getModeOptions(key: keyof WorkspaceLimits) {
           {{ fieldErrors[field.key] }}
         </p>
 
-        <p v-if="model[field.key] === 0" class="text-xs text-amber-600">
+        <p v-if="model[field.key] === 0" class="text-xs text-warning-text">
           0 表示禁止对应新增或调用，但保留历史数据与已有配置。
         </p>
       </div>

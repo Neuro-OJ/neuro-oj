@@ -5,7 +5,7 @@
     role="option"
     :aria-selected="selected"
     class="flex items-center gap-3 px-4 py-3 transition-colors rounded-md cursor-pointer"
-    :class="{ 'bg-signal/20': selected, 'hover:bg-gray-50': !selected, 'contest-protected': item.metadata.contest_protected === true }"
+    :class="{ 'bg-signal/20': selected, 'hover:bg-bg-page': !selected, 'contest-protected': item.metadata.contest_protected === true }"
   >
     <div
       class="flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center text-sm font-mono font-semibold"
@@ -24,7 +24,7 @@
     <div class="flex-1 min-w-0">
       <div class="text-sm font-medium text-text truncate">
         <template v-for="(seg, i) in highlightedSegments" :key="i">
-          <mark v-if="seg.highlight" class="bg-yellow-200 text-inherit">{{ seg.text }}</mark>
+          <mark v-if="seg.highlight" class="bg-warning-text/20 text-inherit">{{ seg.text }}</mark>
           <span v-else>{{ seg.text }}</span>
         </template>
       </div>

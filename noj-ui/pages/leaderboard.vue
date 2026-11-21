@@ -115,11 +115,11 @@ function setCheckinMonth(month: string) {
                 isLoggedIn && currentUser?.id === row.user_id
                   ? 'bg-signal/5 hover:bg-signal/10 ring-1 ring-inset ring-signal/30'
                   : row.rank === 1
-                  ? 'bg-amber-500/[0.03] hover:bg-amber-500/[0.06]'
+                  ? 'bg-rank-gold/[0.03] hover:bg-rank-gold/[0.06]'
                   : row.rank === 2
-                  ? 'bg-slate-500/[0.02] hover:bg-slate-500/[0.05]'
+                  ? 'bg-rank-silver/[0.02] hover:bg-rank-silver/[0.05]'
                   : row.rank === 3
-                  ? 'bg-orange-500/[0.02] hover:bg-orange-500/[0.05]'
+                  ? 'bg-rank-bronze/[0.02] hover:bg-rank-bronze/[0.05]'
                   : 'hover:bg-bg-sunken/40',
               ]"
             >

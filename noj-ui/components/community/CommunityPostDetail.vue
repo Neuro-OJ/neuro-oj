@@ -264,15 +264,15 @@ watch(initialData, (value) => {
             <UserIdentity :user="post.author" size="sm" />
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[post.post.type] }}</span>
             <NuxtLink v-if="post.post.type === 'solution' && post.problem_reference" :to="workspaceProblemPath(scope.slug!, post.problem_reference.display_ref)" class="inline-flex items-center gap-1 text-xs text-primary hover:underline">{{ post.problem_reference.display_ref }} · {{ post.problem_title ?? '关联题目' }}<UIcon name="i-lucide-arrow-right" class="size-3.5" /></NuxtLink>
-            <span v-if="post.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>
-            <span v-if="post.post.status === 'hidden'" class="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">已隐藏</span>
-            <span v-if="post.post.is_locked" class="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
+            <span v-if="post.post.status === 'pending'" class="rounded bg-warning-bg px-2 py-0.5 text-xs text-warning-text">审核中</span>
+            <span v-if="post.post.status === 'hidden'" class="rounded bg-error-text/5 px-2 py-0.5 text-xs text-error-text">已隐藏</span>
+            <span v-if="post.post.is_locked" class="inline-flex items-center gap-1 rounded bg-bg-sunken px-2 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-lock" class="size-[10px]" />已锁定</span>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <p class="text-xs text-text-secondary"><NuxtTime :datetime="post.post.created_at" locale="zh-CN" year="numeric" month="short" day="numeric" hour="2-digit" minute="2-digit" /></p>
-            <span v-if="isCommunityEdited(post.post.created_at, post.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
+            <span v-if="isCommunityEdited(post.post.created_at, post.post.updated_at)" class="inline-flex items-center gap-1 rounded bg-bg-sunken px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
             <UButton color="primary" variant="outline" class="text-xs" v-if="canEditPost"  type="button" @click="startEditPost"><UIcon name="i-lucide-pencil" class="size-3.5" />编辑</UButton>
-            <UButton color="primary" variant="outline" class="text-xs text-red-600" v-if="canDeletePost"  type="button" @click="deletePost"><UIcon name="i-lucide-trash-2" class="size-3.5" />删除</UButton>
+            <UButton color="primary" variant="outline" class="text-xs text-error-text" v-if="canDeletePost"  type="button" @click="deletePost"><UIcon name="i-lucide-trash-2" class="size-3.5" />删除</UButton>
             <UButton color="neutral" variant="outline" class="text-xs" v-if="canReport && !isAuthor" type="button" @click="reportPost"><UIcon name="i-lucide-flag" class="size-3.5" />举报</UButton>
           </div>
         </div>

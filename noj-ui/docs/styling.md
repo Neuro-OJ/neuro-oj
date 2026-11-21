@@ -35,6 +35,12 @@
 | `border` / `bg-page` / `bg-panel` / `bg-sunken` / `white`                | `--c-border` / `--c-bg-page` / `--c-bg-panel` / `--c-bg-sunken` / `--c-white` |
 | `bg-dark` / `bg-dark-2` / `bg-dark-3`                                    | `--c-bg-dark*`                                                                |
 | `success-text` / `info-text` / `warning-text` / `error-text`             | `--c-*-text`                                                                  |
+| `rank-gold` / `rank-silver` / `rank-bronze`                              | `main.css @theme`：名次专用，只随 `rank === 1/2/3` 出现                       |
+| `selftest` / `selftest-bg`                                               | `main.css @theme`：自测提交类型专用                                           |
+
+- 搜索高亮（`SearchResultItem` 的 `<mark>`）用 `bg-warning-text/20` 而不是
+  `bg-warning-bg`：高亮的用途是「被看见」，`#fffbeb` 当底几乎不可见；这是
+  `warning-text` 的透明底用法，不算误用。
 | `font-mono`                                                              | SF Mono / Fira Code / Consolas                                                |
 | `animate-spin-slow`                                                      | spin 0.8s                                                                     |
 | `shadow-card` / `shadow-dropdown` / `shadow-modal`                       | 预定义阴影                                                                    |
