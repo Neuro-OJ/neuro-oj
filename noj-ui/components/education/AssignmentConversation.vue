@@ -208,7 +208,7 @@ async function refreshThreads() {
           class="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded bg-primary-bg px-3 py-2 text-sm">
           <UIcon name="i-lucide-user-round" class="size-4 text-primary" aria-hidden="true" />
           <span>反馈给 <strong class="font-medium">{{ targetUserName ?? targetUserId }}</strong></span>
-          <button type="button" class="text-primary-dark hover:underline" @click="emit('clear-target')">改为全班</button>
+          <UButton type="button" variant="link" color="primary" size="xs" class="p-0 text-primary-dark" @click="emit('clear-target')">改为全班</UButton>
         </div>
 
         <UAlert v-if="focusedFeedback.error.value" class="mb-3" color="error"
@@ -282,8 +282,8 @@ async function refreshThreads() {
           :title="extractApiError(help.error.value).message" />
         <div v-if="help.data.value?.data.data.length" class="divide-y divide-border">
           <div v-for="request in help.data.value.data.data" :key="request.id" class="py-3 last:pb-0">
-            <button type="button"
-              class="flex w-full items-start justify-between gap-3 text-left transition-colors hover:text-primary"
+            <UButton type="button" block variant="ghost" color="neutral"
+              class="flex w-full items-start justify-between gap-3 p-0 text-left font-normal hover:bg-transparent hover:text-primary"
               :title="request.body" :aria-expanded="isExpanded(request.id)"
               :aria-controls="`help-detail-${request.id}`"
               @click="toggleHelp(request.id)">
@@ -293,7 +293,7 @@ async function refreshThreads() {
               </span>
               <UIcon :name="isExpanded(request.id) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
                 class="mt-0.5 size-4 shrink-0 text-text-muted" aria-hidden="true" />
-            </button>
+            </UButton>
             <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
               <template v-if="!isStudent && helpItemPath(request.item_id)">
                 <NuxtLink :to="helpItemPath(request.item_id)!" title="打开题目页"

@@ -7,6 +7,8 @@ const api = { assignmentItemSubmissions: vi.fn(), submissionAttempts: vi.fn() };
 const stubs = {
   AsyncContent: { template: '<div><slot /></div>' },
   UAlert: { props: ['title'], template: '<p>{{ title }}</p>' },
+  // 提交行已换成 UButton；stub 还原成 button，保持“点行加载沿革”的行为断言。
+  UButton: { template: '<button><slot /></button>' },
   PaginationNav: true,
   SubmissionReview: {
     props: ['submissionId', 'canAnnotate'],

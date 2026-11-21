@@ -67,6 +67,27 @@ Status: implemented
   `**/d/[slug]/problems/new.vue`（域内新建题目页）、`**/edit.vue`。
   `**/messages/**` 随 v0.11 私信功能下线删除。
 
+## 已知例外
+
+S1 的 `raw-control` 在 2026-11-21 的"原生控件换 Nuxt UI 组件"一刀后为 **1**，
+不是 0。唯一保留项是 `noj-ui/components/shared/MarkdownEditor.vue` 的编辑区
+`<textarea>`，理由与"随手写的表单控件"完全不同：
+
+- 工具栏与 Ctrl/⌘+B/I/K 直接读写 `selectionStart` / `selectionEnd` 并调用
+  `setSelectionRange`；分屏滚动同步读取 `scrollTop` / `scrollHeight` /
+  `clientHeight`；
+- 它是 grid 子项，高度由 `:style="{ height }"` 直接量测，分屏分隔边框也画在
+  textarea 自身；换成 `UTextarea` 会多一层 wrapper，ref 需改读 `.textareaRef`，
+  高度、边框与测试替身都要重写。
+
+这是**结构性改写**，不是控件替换；按"不要静默留例外"的原则，代码里在 textarea
+上方留了注释，基线也显式锁在 1。改变它的条件：将来需要富文本能力时，整体换成
+专用编辑器组件（并重新评估选择区、滚动同步与量测契约），而不是继续往这个原生
+textarea 上叠功能。
+
+同次收口后的基线（`--write-baseline` 生成）：S1 `radius`/`palette`/`motion`/
+`entrance`/`dark` 均为 0、`raw-control` 1、`type` 68。
+
 ## Alternatives considered
 
 - **只拦增长（`>`）**：实现更省事，但把"已清理的数量"变成永久额度，

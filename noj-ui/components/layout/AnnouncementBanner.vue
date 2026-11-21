@@ -38,13 +38,16 @@ usePolling({ intervalMs: 60000, immediate: false, fetcher: () => refresh() });
       :to="`/d/${slug}/announcements/${banner.public_id || banner.id}`"
       class="shrink-0 text-primary no-underline hover:underline"
     >点击查看详情</NuxtLink>
-    <button
+    <UButton
       type="button"
-      class="shrink-0 rounded p-1 text-text-muted hover:bg-black/5 hover:text-text"
+      icon="i-lucide-x"
+      square
+      size="xs"
+      variant="ghost"
+      color="neutral"
+      class="shrink-0 text-text-muted"
       aria-label="关闭公告横幅"
       @click="handleDismiss"
-    >
-      <UIcon name="i-lucide-x" class="size-4" />
-    </button>
+    />
   </div>
 </template>

@@ -392,14 +392,14 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                   <div class="flex flex-wrap items-center gap-2">
                     <div role="group" aria-label="统计范围"
                       class="inline-flex rounded border border-border bg-bg-sunken p-0.5">
-                      <button type="button" :aria-pressed="scope === 'on_time'"
-                        class="min-h-8 rounded-sm px-3 text-sm transition-colors"
-                        :class="scope === 'on_time' ? 'bg-bg-panel font-medium text-text shadow-card' : 'text-text-secondary hover:text-text'"
-                        @click="scope = 'on_time'">按时成绩</button>
-                      <button type="button" :aria-pressed="scope === 'current'"
-                        class="min-h-8 rounded-sm px-3 text-sm transition-colors"
-                        :class="scope === 'current' ? 'bg-bg-panel font-medium text-text shadow-card' : 'text-text-secondary hover:text-text'"
-                        @click="scope = 'current'">当前补做</button>
+                      <UButton type="button" variant="ghost" color="neutral" :aria-pressed="scope === 'on_time'"
+                        class="min-h-8 rounded-sm px-3 text-sm font-normal transition-colors hover:bg-transparent"
+                        :class="scope === 'on_time' ? 'bg-bg-panel font-medium text-text shadow-card hover:bg-bg-panel' : 'text-text-secondary hover:text-text'"
+                        @click="scope = 'on_time'">按时成绩</UButton>
+                      <UButton type="button" variant="ghost" color="neutral" :aria-pressed="scope === 'current'"
+                        class="min-h-8 rounded-sm px-3 text-sm font-normal transition-colors hover:bg-transparent"
+                        :class="scope === 'current' ? 'bg-bg-panel font-medium text-text shadow-card hover:bg-bg-panel' : 'text-text-secondary hover:text-text'"
+                        @click="scope = 'current'">当前补做</UButton>
                     </div>
                     <UTooltip
                       text="按时成绩只统计截止前受理、且符合发布版本策略的提交；当前补做跟随最新有效成绩，用于课后补练。">
@@ -433,7 +433,7 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                     </p>
                     <p v-if="activeFilterCount" class="flex items-center gap-2 text-xs text-text-muted">
                       已筛选 {{ activeFilterCount }} 项
-                      <button type="button" class="text-primary-dark hover:underline" @click="resetFilters">清除筛选</button>
+                      <UButton type="button" variant="link" color="primary" size="xs" class="p-0 text-primary-dark" @click="resetFilters">清除筛选</UButton>
                     </p>
                   </div>
                   <div v-show="filtersOpen" id="assignment-filters"
@@ -502,14 +502,14 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                   <div class="flex flex-wrap items-center gap-2">
                     <div role="group" aria-label="统计范围"
                       class="inline-flex rounded border border-border bg-bg-sunken p-0.5">
-                      <button type="button" :aria-pressed="scope === 'on_time'"
-                        class="min-h-8 rounded-sm px-3 text-sm transition-colors"
-                        :class="scope === 'on_time' ? 'bg-bg-panel font-medium text-text shadow-card' : 'text-text-secondary hover:text-text'"
-                        @click="scope = 'on_time'">按时成绩</button>
-                      <button type="button" :aria-pressed="scope === 'current'"
-                        class="min-h-8 rounded-sm px-3 text-sm transition-colors"
-                        :class="scope === 'current' ? 'bg-bg-panel font-medium text-text shadow-card' : 'text-text-secondary hover:text-text'"
-                        @click="scope = 'current'">当前补做</button>
+                      <UButton type="button" variant="ghost" color="neutral" :aria-pressed="scope === 'on_time'"
+                        class="min-h-8 rounded-sm px-3 text-sm font-normal transition-colors hover:bg-transparent"
+                        :class="scope === 'on_time' ? 'bg-bg-panel font-medium text-text shadow-card hover:bg-bg-panel' : 'text-text-secondary hover:text-text'"
+                        @click="scope = 'on_time'">按时成绩</UButton>
+                      <UButton type="button" variant="ghost" color="neutral" :aria-pressed="scope === 'current'"
+                        class="min-h-8 rounded-sm px-3 text-sm font-normal transition-colors hover:bg-transparent"
+                        :class="scope === 'current' ? 'bg-bg-panel font-medium text-text shadow-card hover:bg-bg-panel' : 'text-text-secondary hover:text-text'"
+                        @click="scope = 'current'">当前补做</UButton>
                     </div>
                     <UButton variant="ghost" color="neutral" size="sm" icon="i-lucide-refresh-cw"
                       :loading="progress.status.value === 'pending'" aria-label="刷新进度"

@@ -278,7 +278,7 @@ watch(initialData, (value) => {
         </div>
 
         <template v-if="editingPost">
-          <input v-model="editTitle" class="mb-3 w-full rounded border border-border px-3 py-2" placeholder="标题" />
+          <UInput v-model="editTitle" class="mb-3 w-full" placeholder="标题" />
           <div class="mb-2 flex items-center justify-end">
             <UButton color="neutral" variant="outline" size="sm" class="border-border py-1 text-text-secondary hover:bg-primary-bg" type="button"  @click="editPreview = !editPreview">
               <UIcon name="i-lucide-eye" class="size-3.5" v-if="!editPreview"/>
@@ -286,7 +286,7 @@ watch(initialData, (value) => {
               {{ editPreview ? "编辑" : "预览" }}
             </UButton>
           </div>
-          <textarea v-if="!editPreview" v-model="editContent" class="min-h-40 w-full rounded border border-border px-3 py-2" required />
+          <UTextarea v-if="!editPreview" v-model="editContent" :rows="6" class="w-full" required />
           <div v-else class="min-h-40 rounded border border-border px-3 py-2">
             <MarkdownRenderer v-if="editContent.trim()" :content="editContent" />
             <p v-else class="text-sm text-text-muted">暂无内容</p>
@@ -307,7 +307,7 @@ watch(initialData, (value) => {
     <section v-if="post && post.post.status !== 'deleted'" class="mt-6">
       <h2 class="mb-4 text-xl font-bold">评论</h2>
       <form v-if="canComment" class="mb-5 flex flex-col gap-2" @submit.prevent="sendComment">
-        <textarea v-model="comment" class="min-h-20 w-full rounded border border-border px-3 py-2" :placeholder="`写下你的想法（最长 ${commentMaxLength} 字符）`" />
+        <UTextarea v-model="comment" :rows="3" class="w-full" :placeholder="`写下你的想法（最长 ${commentMaxLength} 字符）`" />
         <div class="flex items-center justify-between gap-2">
           <p class="text-xs text-text-muted">{{ comment.length }} / {{ commentMaxLength }}</p>
           <UButton color="primary" type="submit" :disabled="submittingComment || !comment.trim() || comment.length > commentMaxLength"><UIcon name="i-lucide-send" class="size-4" />{{ submittingComment ? '发送中…' : '发送' }}</UButton>
@@ -333,7 +333,7 @@ watch(initialData, (value) => {
           >
             <template v-if="replyingTo === item.comment.id">
               <form class="mt-3 flex gap-2" @submit.prevent="sendReply(item.comment.id)">
-                <input v-model="replyContent" class="flex-1 rounded border border-border px-3 py-2" placeholder="回复这条评论">
+                <UInput v-model="replyContent" class="flex-1" placeholder="回复这条评论" />
                 <UButton color="primary" class="text-sm" type="submit" :disabled="submittingReply || !replyContent.trim()"><UIcon name="i-lucide-send" class="size-3.5" />{{ submittingReply ? '发送中…' : '回复' }}</UButton>
               </form>
             </template>

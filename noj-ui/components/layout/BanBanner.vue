@@ -62,13 +62,17 @@ function handleLogout() {
         </span>
         <span v-else>您的账号已被封禁。请联系管理员。</span>
       </div>
-      <button
-        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-error-text bg-error-text/10 border border-error-text/20 rounded-md hover:bg-error-text/20 transition-colors shrink-0"
+      <UButton
+        type="button"
+        color="error"
+        variant="soft"
+        size="xs"
+        icon="i-lucide-log-out"
+        class="shrink-0 gap-1.5 font-semibold"
         @click="handleLogout"
       >
-        <UIcon name="i-lucide-log-out" class="size-3.5" />
         登出
-      </button>
+      </UButton>
     </div>
   </div>
 </template>

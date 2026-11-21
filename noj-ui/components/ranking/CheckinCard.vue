@@ -7,8 +7,11 @@
                     <p class="text-sm text-text-muted mt-1">{{ username }}</p>
                 </div>
                 <template v-if="!showText">
-                    <button
-                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-semibold transition-colors duration-[600ms] cursor-pointer"
+                    <UButton
+                        type="button"
+                        variant="ghost"
+                        color="neutral"
+                        class="inline-flex items-center px-4 py-2 rounded-md text-sm font-semibold transition-colors duration-[600ms] cursor-pointer disabled:opacity-100 hover:bg-transparent"
                         :class="checkedIn
                             ? (fadeWhite ? 'bg-white text-signal-deep border border-white' : 'bg-signal/10 text-signal-deep border border-signal/20')
                             : 'bg-signal text-on-signal border border-signal hover:bg-signal/80 hover:border-signal/80'"
@@ -26,7 +29,7 @@
                                 <span class="inline-block overflow-hidden align-top transition-[width,opacity] duration-[600ms]" :class="checkedIn ? 'opacity-100' : 'opacity-0 w-0'">已签到</span>
                             </span>
                         </span>
-                    </button>
+                    </UButton>
                 </template>
                 <div v-else class="inline-flex flex-col items-center border border-transparent">
                     <span class="inline-flex items-center gap-1.5 text-signal font-semibold py-1.5 px-3.5 rounded-full bg-signal/10 border border-signal/20 text-sm">

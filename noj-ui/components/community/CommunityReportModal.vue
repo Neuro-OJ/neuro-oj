@@ -49,9 +49,10 @@ watch(open, (v) => {
         </label>
         <label class="block">
           <span class="mb-1 block text-xs text-text-secondary">举报理由（必填）</span>
-          <textarea
+          <UTextarea
             v-model="reason"
-            class="min-h-20 w-full rounded border border-border px-3 py-2 text-sm"
+            :rows="3"
+            class="w-full"
             placeholder="请填写违规说明（最多 500 字）"
             maxlength="500"
           />

@@ -36,6 +36,23 @@ const questionProblemId = ref('')
 const asking = ref(false)
 const questionError = ref('')
 
+// 原生 select 用空串表示「全局提问」；Nuxt UI 的 USelect（Reka）禁止空串 value，
+// 因此用哨兵值做 v-model 适配，提交仍读 questionProblemId（空串 → undefined）。
+const GLOBAL_PROBLEM = 'global'
+const problemOptions = computed(() => [
+  { label: '全局提问', value: GLOBAL_PROBLEM },
+  ...props.problems.map((problem) => ({
+    label: `${problem.label}. ${problem.title}`,
+    value: problem.problem_id,
+  })),
+])
+const selectedProblem = computed({
+  get: () => questionProblemId.value || GLOBAL_PROBLEM,
+  set: (value: string) => {
+    questionProblemId.value = value === GLOBAL_PROBLEM ? '' : value
+  },
+})
+
 // ── 回复表单（每个提问独立草稿，切换提问不丢失）─────────────
 const replyDrafts = ref<Record<string, { content: string; isPublic: boolean }>>({})
 const replyingTo = ref<string | null>(null)
@@ -167,15 +184,12 @@ onMounted(() => void load())
     <!-- 提问表单：仅竞赛进行期间且已参赛用户可见 -->
     <form v-if="canAsk" class="rounded-md border border-border bg-bg-page p-4" @submit.prevent="submitQuestion">
       <div class="mb-3 grid gap-3 sm:grid-cols-[220px_1fr]">
-        <select v-model="questionProblemId" class="rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary">
-          <option value="">全局提问</option>
-          <option v-for="problem in problems" :key="problem.problem_id" :value="problem.problem_id">{{ problem.label }}. {{ problem.title }}</option>
-        </select>
-        <textarea
+        <USelect v-model="selectedProblem" :items="problemOptions" aria-label="提问关联题目" class="w-full" />
+        <UTextarea
           v-model="questionContent"
-          rows="3"
+          :rows="3"
           maxlength="5000"
-          class="w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          class="w-full"
           placeholder="描述你的疑问（可挂到具体题目，或选择全局提问）"
         />
       </div>
@@ -225,17 +239,17 @@ onMounted(() => void load())
         <!-- 主办方回复表单 -->
         <div v-if="isManager" class="border-t border-border px-5 py-4">
           <template v-if="replyingTo === clarification.id">
-            <textarea
+            <UTextarea
               v-model="draftFor(clarification.id).content"
-              rows="3"
+              :rows="3"
               maxlength="5000"
-              class="mb-2 w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+              class="mb-2 w-full"
               placeholder="输入回复内容"
             />
             <div class="flex flex-wrap items-center gap-3">
               <div class="flex items-center gap-1 rounded-md border border-border bg-bg-page p-1 text-xs">
-                <button type="button" class="rounded-md px-2.5 py-1.5" :class="draftFor(clarification.id).isPublic ? 'bg-white text-success-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = true"><UIcon name="i-lucide-globe" class="mr-1 size-3" />公开</button>
-                <button type="button" class="rounded-md px-2.5 py-1.5" :class="!draftFor(clarification.id).isPublic ? 'bg-white text-warning-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = false"><UIcon name="i-lucide-lock" class="mr-1 size-3" />私密</button>
+                <UButton type="button" variant="ghost" color="neutral" size="xs" class="rounded-md px-2.5 py-1.5" :class="draftFor(clarification.id).isPublic ? 'bg-white text-success-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = true"><UIcon name="i-lucide-globe" class="mr-1 size-3" />公开</UButton>
+                <UButton type="button" variant="ghost" color="neutral" size="xs" class="rounded-md px-2.5 py-1.5" :class="!draftFor(clarification.id).isPublic ? 'bg-white text-warning-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = false"><UIcon name="i-lucide-lock" class="mr-1 size-3" />私密</UButton>
               </div>
               <UButton type="button" size="sm" color="primary" :disabled="replying" @click="submitReply(clarification.id)">{{ replying ? '提交中...' : '提交回复' }}</UButton>
               <UButton type="button" size="sm" variant="ghost" @click="replyingTo = null; replyError = ''">取消</UButton>

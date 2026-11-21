@@ -186,34 +186,40 @@ const charCount = computed(() => model.value.length);
     <div class="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-border bg-bg-sunken">
       <template v-for="(group, gi) in TOOLS" :key="gi">
         <span v-if="gi > 0" class="mx-1 h-4 w-px bg-border" aria-hidden="true" />
-        <button
+        <UButton
           v-for="tool in group"
           :key="tool.icon"
           type="button"
-          class="inline-flex size-7 items-center justify-center rounded text-text-secondary transition-colors hover:bg-bg-panel hover:text-text disabled:opacity-40 disabled:pointer-events-none"
+          square
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          :icon="tool.icon"
+          class="size-7 rounded text-text-secondary hover:bg-bg-panel hover:text-text disabled:pointer-events-none disabled:opacity-40"
           :title="tool.label"
           :aria-label="tool.label"
           :disabled="disabled || mode === 'preview'"
           @click="tool.run"
-        >
-          <UIcon :name="tool.icon" class="size-4" />
-        </button>
+        />
       </template>
 
       <div class="ml-auto flex items-center rounded border border-border bg-bg-panel p-0.5" role="tablist">
-        <button
+        <UButton
           v-for="m in MODES"
           :key="m.value"
           type="button"
           role="tab"
+          size="xs"
           :aria-selected="mode === m.value"
-          class="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs transition-colors"
-          :class="mode === m.value ? 'bg-primary text-white' : 'text-text-secondary hover:text-text'"
+          :color="mode === m.value ? 'primary' : 'neutral'"
+          :variant="mode === m.value ? 'solid' : 'ghost'"
+          class="inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs"
+          :class="mode === m.value ? '' : 'text-text-secondary hover:bg-transparent hover:text-text'"
           @click="mode = m.value"
         >
           <UIcon :name="m.icon" class="size-3.5" />
           {{ m.label }}
-        </button>
+        </UButton>
       </div>
     </div>
 
@@ -222,6 +228,9 @@ const charCount = computed(() => model.value.length);
       class="grid min-h-0"
       :class="mode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'"
     >
+      <!-- 有意保留原生 textarea：工具栏与 Ctrl+B/I/K 依赖 selectionStart/End + setSelectionRange，
+           分屏滚动同步读取 scrollHeight/clientHeight/scrollTop，且它是 grid 子项、高度由 style 直接量测。
+           换成 UTextarea 会多一层 wrapper 并改变这些契约；要替换请整体换成专用编辑器组件。 -->
       <textarea
         v-show="mode !== 'preview'"
         ref="textareaRef"

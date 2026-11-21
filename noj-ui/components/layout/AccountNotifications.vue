@@ -59,8 +59,9 @@ useSeoMeta({ title: '通知' });
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data?.data.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无通知" @retry="reload()">
       <div class="flex flex-col gap-3">
-        <button v-for="item in data?.data" :key="item.notification.id" type="button" :disabled="!!opening"
-          class="flex w-full items-start gap-3 rounded-md border border-border bg-bg-panel p-4 text-left transition-colors hover:border-primary hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary"
+        <UButton v-for="item in data?.data" :key="item.notification.id" type="button" block variant="ghost" color="neutral"
+          :disabled="!!opening"
+          class="flex w-full items-start justify-start gap-3 rounded-md border border-border bg-bg-panel p-4 text-left text-base font-normal hover:border-primary hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary"
           :class="!item.notification.read_at && 'border-primary/40'" @click="open(item)">
           <UIcon :name="notificationTypeIcon(item.notification.type)" class="mt-1 size-5 shrink-0 text-primary" />
           <span class="min-w-0 flex-1">
@@ -69,7 +70,7 @@ useSeoMeta({ title: '通知' });
             <span class="mt-1 block text-xs text-text-muted">{{ item.domain?.name ?? '账号通知' }} · {{ new Date(item.notification.created_at).toLocaleString() }}</span>
           </span>
           <UIcon name="i-lucide-chevron-right" class="mt-1 size-4 text-text-muted" />
-        </button>
+        </UButton>
       </div>
     </AsyncContent>
     <nav class="flex items-center justify-between gap-3" aria-label="通知分页">

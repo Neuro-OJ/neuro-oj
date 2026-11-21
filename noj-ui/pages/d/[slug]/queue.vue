@@ -115,20 +115,20 @@ useSeoMeta({ title: '评测队列' });
       <template #actions>
         <!-- 分段范围切换：当前域 vs 实例 -->
         <div class="inline-flex rounded border border-border bg-bg-sunken p-0.5">
-          <button type="button"
+          <UButton type="button" variant="ghost" color="neutral"
             :aria-pressed="scope === 'domain'"
-            class="rounded px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="scope === 'domain' ? 'bg-bg-panel text-primary shadow-xs font-semibold' : 'text-text-secondary hover:text-text'"
+            class="rounded px-3 py-1.5 text-xs font-medium transition-colors hover:bg-transparent"
+            :class="scope === 'domain' ? 'bg-bg-panel text-primary shadow-xs font-semibold hover:bg-bg-panel' : 'text-text-secondary hover:text-text'"
             @click="scope = 'domain'">
             当前域
-          </button>
-          <button type="button"
+          </UButton>
+          <UButton type="button" variant="ghost" color="neutral"
             :aria-pressed="scope === 'instance'"
-            class="rounded px-3 py-1.5 text-xs font-medium transition-colors"
-            :class="scope === 'instance' ? 'bg-bg-panel text-primary shadow-xs font-semibold' : 'text-text-secondary hover:text-text'"
+            class="rounded px-3 py-1.5 text-xs font-medium transition-colors hover:bg-transparent"
+            :class="scope === 'instance' ? 'bg-bg-panel text-primary shadow-xs font-semibold hover:bg-bg-panel' : 'text-text-secondary hover:text-text'"
             @click="scope = 'instance'">
             实例
-          </button>
+          </UButton>
         </div>
         <UButton color="neutral" variant="ghost" icon="i-lucide-refresh-cw" aria-label="刷新队列"
           :loading="refreshing" @click="fetchQueue(false)" />

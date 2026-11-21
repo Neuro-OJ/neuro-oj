@@ -84,8 +84,9 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
         empty-text="暂无获授权的同域提交" @retry="records.refresh()">
         <div
           class="divide-y divide-border noj-panel border border-border bg-bg-panel">
-          <button v-for="row in records.data.value?.data.data" :key="`${row.kind}:${row.id}`"
-            class="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2"
+          <UButton v-for="row in records.data.value?.data.data" :key="`${row.kind}:${row.id}`"
+            type="button" block variant="ghost" color="neutral"
+            class="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left font-normal hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2"
             @click="select(row)">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-3">
@@ -95,7 +96,7 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
               <p class="mt-1 text-xs tabular-nums text-text-muted">{{ new Date(row.created_at).toLocaleString() }}{{ row.contest_id ? ' · 比赛提交' : '' }}</p>
             </div>
             <span class="flex items-center gap-2 text-sm tabular-nums">{{ teachingSubmissionResult(row) }}<UIcon name="i-lucide-chevron-right" class="size-4 text-text-muted" /></span>
-          </button>
+          </UButton>
         </div>
         <PaginationNav :current-page="page" :total-pages="Math.ceil((records.data.value?.data.total ?? 0) / 50)"
           @page-change="page = $event" />

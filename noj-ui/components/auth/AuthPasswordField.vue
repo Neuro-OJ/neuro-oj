@@ -39,15 +39,18 @@ const visible = ref(false)
         <UIcon name="i-lucide-lock" class="size-4" />
       </template>
       <template #trailing>
-        <button
+        <UButton
           type="button"
           tabindex="-1"
-          class="flex cursor-pointer items-center text-text-muted hover:text-text-secondary"
+          square
+          size="xs"
+          variant="ghost"
+          color="neutral"
+          :icon="visible ? 'i-lucide-eye' : 'i-lucide-eye-off'"
+          class="text-text-muted hover:text-text-secondary"
           :aria-label="visible ? '隐藏密码' : '显示密码'"
           @click="visible = !visible"
-        >
-          <UIcon :name="visible ? 'i-lucide-eye' : 'i-lucide-eye-off'" class="size-4" />
-        </button>
+        />
       </template>
     </UInput>
   </UFormField>

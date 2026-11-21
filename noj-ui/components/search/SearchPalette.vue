@@ -16,13 +16,15 @@
         >
           <div class="flex items-center gap-3 px-4 h-14 border-b border-border">
             <UIcon name="i-lucide-search" class="w-5 h-5 text-text-muted size-4" />
-            <input
+            <UInput
               ref="inputRef"
               v-model="query"
               type="text"
               :aria-label="t('nav.search')"
               :placeholder="t('nav.searchFull')"
-              class="flex-1 h-full bg-transparent outline-none text-base text-text placeholder:text-text-muted"
+              variant="none"
+              class="flex-1"
+              :ui="{ base: 'h-full bg-transparent px-0 text-base text-text placeholder:text-text-muted' }"
               autocomplete="off"
               spellcheck="false"
             />
@@ -94,7 +96,7 @@ const { t } = useI18n();
 const { state, close, search } = useSearch();
 const query = ref("");
 const selectedIndex = ref(0);
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputRef = ref<{ inputRef?: HTMLInputElement | null } | null>(null);
 const panelRef = ref<HTMLElement | null>(null);
 let lastFocused: HTMLElement | null = null;
 
@@ -131,7 +133,7 @@ watch(
         void search(query.value, { mode: "palette" });
       }
       await nextTick();
-      inputRef.value?.focus();
+      inputRef.value?.inputRef?.focus();
     } else if (lastFocused) {
       lastFocused.focus();
       lastFocused = null;

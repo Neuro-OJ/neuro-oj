@@ -77,15 +77,18 @@ const acceptanceText = computed(() => {
     <div v-if="problemTags.length || algorithmTags.length || problem.has_hidden_algorithm_tags" class="mt-4 border-t border-border pt-3">
       <h3 class="mb-2 text-xs font-semibold text-text-secondary">标签</h3>
       <div class="flex flex-wrap gap-1.5">
-        <button
+        <UButton
           v-for="t in problemTags"
           :key="t.id"
           type="button"
-          class="inline-flex cursor-pointer items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+          size="xs"
+          variant="ghost"
+          color="primary"
+          class="cursor-pointer rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium hover:bg-primary/10"
           @click="router.push({ path: problemsTo, query: { tag: t.id } })"
         >
           {{ t.name }}
-        </button>
+        </UButton>
         <span
           v-for="t in algorithmTags"
           :key="t.id"

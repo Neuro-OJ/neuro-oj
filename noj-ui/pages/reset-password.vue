@@ -8,27 +8,25 @@
             <form @submit.prevent="handleSubmit">
                 <div class="relative mb-7">
                     <label for="password" class="block text-sm font-semibold text-text mb-1">新密码 <span class="text-error-text">*</span></label>
-                    <div class="relative flex items-center">
-                        <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
-                        <input
-                            id="password"
-                            v-model="form.password"
-                            :type="showPassword ? 'text' : 'password'"
-                            placeholder="至少 8 位，需包含大小写字母和数字"
-                            autocomplete="new-password"
-                            :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                            @focus="fieldErrors.password = ''"
-                        />
-                        <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showPassword = !showPassword" tabindex="-1">
-                            <span class="flex items-center justify-center w-[18px] h-[18px]">
-                                <Transition name="icon" mode="out-in">
-                                    <UIcon name="i-lucide-eye-off" class="size-4.5" v-if="!showPassword"  key="off"/>
-                                    <UIcon name="i-lucide-eye" class="size-4.5" v-else  key="on"/>
-                                </Transition>
-                            </span>
-                        </button>
-                    </div>
+                    <UInput
+                        id="password"
+                        v-model="form.password"
+                        :type="showPassword ? 'text' : 'password'"
+                        icon="i-lucide-lock"
+                        placeholder="至少 8 位，需包含大小写字母和数字"
+                        autocomplete="new-password"
+                        :disabled="loading"
+                        class="w-full"
+                        @focus="fieldErrors.password = ''"
+                    >
+                        <template #trailing>
+                            <UButton type="button" square size="xs" variant="ghost" color="neutral" tabindex="-1"
+                                class="text-text-muted hover:text-text-secondary"
+                                :icon="showPassword ? 'i-lucide-eye' : 'i-lucide-eye-off'"
+                                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                                @click="showPassword = !showPassword" />
+                        </template>
+                    </UInput>
                     <Transition name="drop">
                         <div v-if="fieldErrors.password" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.password }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>
@@ -36,27 +34,25 @@
 
                 <div class="relative mb-7">
                     <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码 <span class="text-error-text">*</span></label>
-                    <div class="relative flex items-center">
-                        <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
-                        <input
-                            id="confirmPassword"
-                            v-model="form.confirmPassword"
-                            :type="showConfirmPassword ? 'text' : 'password'"
-                            placeholder="再次输入新密码"
-                            autocomplete="new-password"
-                            :disabled="loading"
-                            class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                            @focus="fieldErrors.confirmPassword = ''"
-                        />
-                        <button type="button" class="absolute right-3 bg-transparent border-0 text-text-muted cursor-pointer p-0 flex items-center hover:text-text-secondary" @click="showConfirmPassword = !showConfirmPassword" tabindex="-1">
-                            <span class="flex items-center justify-center w-[18px] h-[18px]">
-                                <Transition name="icon" mode="out-in">
-                                    <UIcon name="i-lucide-eye-off" class="size-4.5" v-if="!showConfirmPassword"  key="off"/>
-                                    <UIcon name="i-lucide-eye" class="size-4.5" v-else  key="on"/>
-                                </Transition>
-                            </span>
-                        </button>
-                    </div>
+                    <UInput
+                        id="confirmPassword"
+                        v-model="form.confirmPassword"
+                        :type="showConfirmPassword ? 'text' : 'password'"
+                        icon="i-lucide-lock"
+                        placeholder="再次输入新密码"
+                        autocomplete="new-password"
+                        :disabled="loading"
+                        class="w-full"
+                        @focus="fieldErrors.confirmPassword = ''"
+                    >
+                        <template #trailing>
+                            <UButton type="button" square size="xs" variant="ghost" color="neutral" tabindex="-1"
+                                class="text-text-muted hover:text-text-secondary"
+                                :icon="showConfirmPassword ? 'i-lucide-eye' : 'i-lucide-eye-off'"
+                                :aria-label="showConfirmPassword ? '隐藏密码' : '显示密码'"
+                                @click="showConfirmPassword = !showConfirmPassword" />
+                        </template>
+                    </UInput>
                     <Transition name="drop">
                         <div v-if="fieldErrors.confirmPassword" class="absolute top-[calc(100%+4px)] left-0 right-0 flex items-center justify-between gap-1 text-13px text-error-text"><span>{{ fieldErrors.confirmPassword }}</span><UIcon name="i-lucide-x" class="size-3.5" /></div>
                     </Transition>

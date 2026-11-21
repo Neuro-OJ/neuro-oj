@@ -10,7 +10,14 @@ const MarkdownRendererStub = defineComponent({
   setup: (props) => () => h('div', { class: 'md-stub' }, props.content),
 });
 
-const global = { stubs: { UIcon: true, MarkdownRenderer: MarkdownRendererStub } };
+// 工具栏与视图切换已换成 UButton；stub 还原成 button，保留 title/aria-label/disabled 与点击行为。
+const global = {
+  stubs: {
+    UIcon: true,
+    UButton: { template: '<button><slot /></button>' },
+    MarkdownRenderer: MarkdownRendererStub,
+  },
+};
 
 function mountEditor(modelValue: string, extra: Record<string, unknown> = {}) {
   const wrapper = mount(MarkdownEditor, {

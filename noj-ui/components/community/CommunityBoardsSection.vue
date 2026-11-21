@@ -82,9 +82,9 @@ await loadBoards()
     <div class="mt-4 rounded border border-dashed border-border p-3">
       <p class="text-sm font-medium">新建板块</p>
       <div class="mt-2 flex flex-wrap gap-2">
-        <input v-model="newBoard.slug" class="w-32 rounded border border-border px-2 py-1 text-sm" placeholder="slug">
-        <input v-model="newBoard.name" class="w-40 rounded border border-border px-2 py-1 text-sm" placeholder="名称">
-        <input v-model="newBoard.description" class="w-52 flex-1 rounded border border-border px-2 py-1 text-sm" placeholder="描述（可选）">
+        <UInput v-model="newBoard.slug" size="sm" class="w-32" placeholder="slug" />
+        <UInput v-model="newBoard.name" size="sm" class="w-40" placeholder="名称" />
+        <UInput v-model="newBoard.description" size="sm" class="w-52 flex-1" placeholder="描述（可选）" />
         <UButton color="primary" class="text-sm" :disabled="creatingBoard" @click="createBoard">{{ creatingBoard ? '创建中…' : '创建' }}</UButton>
       </div>
     </div>

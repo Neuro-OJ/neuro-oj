@@ -102,9 +102,9 @@ useSeoMeta({ title: '题库' });
             #difficulty-cell="{row}"><ProblemDifficultyBadge v-if="row.original.difficulty" :difficulty="row.original.difficulty" /><span v-else class="text-xs text-text-muted">—</span></template>
           <template #tags-cell="{row}">
             <div class="flex max-w-40 flex-wrap gap-1">
-              <button v-for="label in row.original.tags" :key="label.id" type="button"
-                class="rounded-md border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
-                @click="controls.setFilter('tag',label.id)">{{ label.name }}</button>
+              <UButton v-for="label in row.original.tags" :key="label.id" type="button" variant="ghost" color="primary" size="xs"
+                class="rounded-md border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs hover:bg-primary/10"
+                @click="controls.setFilter('tag',label.id)">{{ label.name }}</UButton>
               <span v-if="row.original.has_hidden_algorithm_tags"
                 class="text-xs text-text-muted">通过后显示算法标签</span>
               <span v-else-if="!row.original.tags?.length" class="text-text-muted">—</span>

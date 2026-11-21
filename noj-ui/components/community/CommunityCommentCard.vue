@@ -56,14 +56,14 @@ async function save() {
         <span v-if="isCommunityEdited(row.comment.created_at, row.comment.updated_at)" class="inline-flex items-center gap-1 rounded bg-bg-sunken px-1.5 py-0.5 text-xs text-text-secondary"><UIcon name="i-lucide-pencil" class="size-[10px]" />已编辑</span>
       </div>
       <div class="flex items-center gap-1">
-        <button v-if="canComment && !row.comment.parent_id" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="emit('start-reply')"><UIcon name="i-lucide-reply" class="size-3" />回复</button>
-        <button v-if="canEdit" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="startEdit"><UIcon name="i-lucide-pencil" class="size-3" />编辑</button>
-        <button v-if="canDelete" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-error-text hover:bg-error-text/5" @click="emit('remove')"><UIcon name="i-lucide-trash-2" class="size-3" />删除</button>
-        <button v-if="canReport" type="button" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="emit('report')"><UIcon name="i-lucide-flag" class="size-3" />举报</button>
+        <UButton v-if="canComment && !row.comment.parent_id" type="button" variant="ghost" color="neutral" size="xs" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="emit('start-reply')"><UIcon name="i-lucide-reply" class="size-3" />回复</UButton>
+        <UButton v-if="canEdit" type="button" variant="ghost" color="neutral" size="xs" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="startEdit"><UIcon name="i-lucide-pencil" class="size-3" />编辑</UButton>
+        <UButton v-if="canDelete" type="button" variant="ghost" color="neutral" size="xs" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-error-text hover:bg-error-text/5 hover:text-error-text" @click="emit('remove')"><UIcon name="i-lucide-trash-2" class="size-3" />删除</UButton>
+        <UButton v-if="canReport" type="button" variant="ghost" color="neutral" size="xs" class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-text-secondary hover:bg-primary-bg hover:text-primary" @click="emit('report')"><UIcon name="i-lucide-flag" class="size-3" />举报</UButton>
       </div>
     </div>
     <template v-if="editing">
-      <textarea v-model="editContent" class="mt-2 min-h-16 w-full rounded border border-border px-3 py-2" />
+      <UTextarea v-model="editContent" :rows="2" class="mt-2 w-full" />
       <div class="mt-2 flex justify-end gap-2">
         <UButton color="primary" variant="outline" class="text-xs" type="button" @click="editing = false">取消</UButton>
         <UButton color="primary" class="text-xs" :disabled="saving || !editContent.trim() || editContent.length > commentMaxLength" @click="save">{{ saving ? '保存中…' : '保存' }}</UButton>

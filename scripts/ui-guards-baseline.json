@@ -8,7 +8,7 @@
       "motion": 0,
       "entrance": 0,
       "dark": 0,
-      "raw-control": 74,
+      "raw-control": 1,
       "type": 68
     },
     "public": {
@@ -17,7 +17,7 @@
       "motion": 0,
       "entrance": 0,
       "dark": 6,
-      "raw-control": 87,
+      "raw-control": 14,
       "type": 80
     },
     "all": {
@@ -26,7 +26,7 @@
       "motion": 5,
       "entrance": 0,
       "dark": 9,
-      "raw-control": 127,
+      "raw-control": 54,
       "type": 131
     }
   }

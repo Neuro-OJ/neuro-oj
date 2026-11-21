@@ -27,15 +27,15 @@ function select(id: string) { emit('select', id); open.value = false; }
     <template #content>
       <div class="w-72 space-y-2 p-3">
         <p class="px-2 text-xs text-text-muted">绿色版本的正式成绩计入当前题库成绩。</p>
-        <p v-if="error" class="px-2 text-sm text-error-text">{{ extractApiError(error).message }} <button type="button" class="underline" @click="refresh()">重试</button></p>
+        <p v-if="error" class="px-2 text-sm text-error-text">{{ extractApiError(error).message }} <UButton type="button" variant="link" color="primary" size="xs" class="p-0 underline" @click="refresh()">重试</UButton></p>
         <p v-else-if="status === 'pending'" class="px-2 text-sm text-text-muted">加载版本…</p>
         <div v-else class="max-h-72 overflow-y-auto" role="listbox" aria-label="作答版本">
-          <button v-for="item in data?.items" :key="item.version_id" type="button" role="option"
-            :aria-selected="item.version_id === selected" class="flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left text-sm hover:bg-bg-sunken"
+          <UButton v-for="item in data?.items" :key="item.version_id" type="button" role="option" block variant="ghost" color="neutral"
+            :aria-selected="item.version_id === selected" class="flex w-full items-center justify-between gap-3 rounded px-2 py-2 text-left font-normal hover:bg-bg-sunken"
             :class="recognized(item.version_id) ? 'text-success-text' : 'text-text-muted'" @click="select(item.version_id)">
             <span>v{{ item.version }}{{ item.version_id === current ? '（当前版本）' : '' }}</span>
             <UIcon v-if="item.version_id === selected" name="i-lucide-check" class="size-4" />
-          </button>
+          </UButton>
         </div>
         <UPagination v-if="data && data.total > data.limit" v-model:page="page" :total="data.total" :items-per-page="data.limit" :sibling-count="0" size="xs" />
       </div>

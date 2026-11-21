@@ -112,11 +112,11 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
               </span>
             </th>
             <td v-for="(item, colIndex) in matrix.items" :key="item.id" class="border-l border-border/70 p-1.5">
-              <button v-if="cellAt(row, item.id)" type="button" :data-row="rowIndex" :data-col="colIndex"
+              <UButton v-if="cellAt(row, item.id)" type="button" :data-row="rowIndex" :data-col="colIndex"
                 :tabindex="cellTabIndex(rowIndex, colIndex)"
                 :aria-label="`${row.username} ${item.reference.display_ref} ${cellView(cellAt(row, item.id))?.aria ?? ''}`"
-                title="查看提交与反馈"
-                class="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-bg-sunken"
+                title="查看提交与反馈" variant="ghost" color="neutral"
+                class="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-sm font-normal hover:bg-bg-sunken"
                 :class="cellView(cellAt(row, item.id))?.cls" @focus="onCellFocus(rowIndex, colIndex)"
                 @keydown="onCellKeydown($event, rowIndex, colIndex)" @click="select(row.user_id, cellAt(row, item.id))">
                 <UIcon v-if="cellView(cellAt(row, item.id))?.spin" name="i-lucide-loader-circle"
@@ -128,7 +128,7 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
                 <span v-if="cellView(cellAt(row, item.id))?.text" class="tabular-nums">{{ cellView(cellAt(row, item.id))!.text }}</span>
                 <span v-if="cellView(cellAt(row, item.id))?.aria === '更新中'" class="sr-only">更新中</span>
                 <span v-if="cellAt(row, item.id)?.late" class="text-11px font-normal text-text-secondary">逾期</span>
-              </button>
+              </UButton>
               <span v-else class="flex min-h-9 items-center justify-center text-text-muted">—</span>
             </td>
           </tr>
@@ -138,8 +138,8 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
 
     <ul class="divide-y divide-border sm:hidden" aria-label="学生成绩摘要">
       <li v-for="row in matrix.rows" :key="row.user_id">
-        <button type="button"
-          class="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-primary-bg/60"
+        <UButton type="button" block variant="ghost" color="neutral"
+          class="flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left font-normal hover:bg-primary-bg/60"
           :aria-expanded="expanded === row.user_id" :aria-controls="`student-results-${row.user_id}`"
           @click="expanded = expanded === row.user_id ? null : row.user_id">
           <span class="min-w-0">
@@ -150,11 +150,11 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
           </span>
           <UIcon :name="expanded === row.user_id ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
             class="size-4 shrink-0 text-text-secondary" />
-        </button>
+        </UButton>
         <div :id="`student-results-${row.user_id}`" v-show="expanded === row.user_id"
           class="border-t border-border bg-bg-sunken/40 px-4">
-          <button v-for="cell in row.cells" :key="cell.item_id" type="button"
-            class="flex w-full items-center justify-between gap-3 border-b border-border py-3 text-left transition-colors last:border-0 hover:bg-bg-panel/70"
+          <UButton v-for="cell in row.cells" :key="cell.item_id" type="button" block variant="ghost" color="neutral"
+            class="flex w-full items-center justify-between gap-3 border-b border-border py-3 text-left font-normal last:border-0 hover:bg-bg-panel/70"
             :aria-label="`${row.username} ${matrix.items.find(item => item.id === cell.item_id)?.reference.display_ref} ${cellView(cell)?.aria ?? ''}`"
             @click="select(row.user_id, cell)">
             <span class="min-w-0 text-sm">
@@ -172,7 +172,7 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
               <span class="tabular-nums">{{ teachingCellLabel(cell) }}</span>
             </span>
             <UIcon name="i-lucide-chevron-right" class="size-4 shrink-0 text-text-muted" aria-hidden="true" />
-          </button>
+          </UButton>
         </div>
       </li>
     </ul>

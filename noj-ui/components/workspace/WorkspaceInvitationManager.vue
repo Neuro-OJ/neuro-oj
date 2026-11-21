@@ -353,35 +353,41 @@ onMounted(() => {
           <!-- 邀请模式选择 -->
           <AdminFormField label="邀请类型" required>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <button
+              <UButton
                 v-if="!existingMembersOnly"
                 type="button"
+                block
+                variant="ghost"
+                color="neutral"
                 :aria-pressed="mode === 'general'"
                 :class="[
-                  'rounded border px-3 py-2 text-left text-xs transition-colors',
+                  'rounded border px-3 py-2 text-left text-xs font-normal transition-colors hover:bg-transparent',
                   mode === 'general'
-                    ? 'border-primary bg-primary-bg/30 font-semibold text-primary'
+                    ? 'border-primary bg-primary-bg/30 font-semibold text-primary hover:bg-primary-bg/30'
                     : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
                 ]"
                 @click="mode = 'general'"
               >
                 <div class="font-medium text-text">通用邀请</div>
                 <div class="mt-0.5 text-text-muted text-[11px]">无需邮箱，可设人数上限</div>
-              </button>
-              <button
+              </UButton>
+              <UButton
                 type="button"
+                block
+                variant="ghost"
+                color="neutral"
                 :aria-pressed="mode === 'email'"
                 :class="[
-                  'rounded border px-3 py-2 text-left text-xs transition-colors',
+                  'rounded border px-3 py-2 text-left text-xs font-normal transition-colors hover:bg-transparent',
                   mode === 'email'
-                    ? 'border-primary bg-primary-bg/30 font-semibold text-primary'
+                    ? 'border-primary bg-primary-bg/30 font-semibold text-primary hover:bg-primary-bg/30'
                     : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
                 ]"
                 @click="mode = 'email'"
               >
                 <div class="font-medium text-text">指定邮箱</div>
                 <div class="mt-0.5 text-text-muted text-[11px]">需匹配受邀邮箱，限 1 人</div>
-              </button>
+              </UButton>
             </div>
           </AdminFormField>
 
@@ -439,58 +445,66 @@ onMounted(() => {
           <!-- 有效期设置 -->
           <AdminFormField label="有效期" required>
             <div class="flex flex-wrap items-center gap-2">
-              <button
+              <UButton
                 type="button"
+                variant="ghost"
+                color="neutral"
                 :aria-pressed="expiryPreset === '1'"
                 :class="[
-                  'rounded px-2.5 py-1 text-xs border transition-colors',
+                  'rounded px-2.5 py-1 text-xs border font-normal transition-colors hover:bg-transparent',
                   expiryPreset === '1'
-                    ? 'border-primary bg-primary text-white font-medium'
+                    ? 'border-primary bg-primary text-white font-medium hover:bg-primary'
                     : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
                 ]"
                 @click="expiryPreset = '1'"
               >
                 1 天
-              </button>
-              <button
+              </UButton>
+              <UButton
                 type="button"
+                variant="ghost"
+                color="neutral"
                 :aria-pressed="expiryPreset === '7'"
                 :class="[
-                  'rounded px-2.5 py-1 text-xs border transition-colors',
+                  'rounded px-2.5 py-1 text-xs border font-normal transition-colors hover:bg-transparent',
                   expiryPreset === '7'
-                    ? 'border-primary bg-primary text-white font-medium'
+                    ? 'border-primary bg-primary text-white font-medium hover:bg-primary'
                     : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
                 ]"
                 @click="expiryPreset = '7'"
               >
                 7 天（默认）
-              </button>
-              <button
+              </UButton>
+              <UButton
                 type="button"
+                variant="ghost"
+                color="neutral"
                 :aria-pressed="expiryPreset === '30'"
                 :class="[
-                  'rounded px-2.5 py-1 text-xs border transition-colors',
+                  'rounded px-2.5 py-1 text-xs border font-normal transition-colors hover:bg-transparent',
                   expiryPreset === '30'
-                    ? 'border-primary bg-primary text-white font-medium'
+                    ? 'border-primary bg-primary text-white font-medium hover:bg-primary'
                     : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
                 ]"
                 @click="expiryPreset = '30'"
               >
                 30 天
-              </button>
-              <button
+              </UButton>
+              <UButton
                 type="button"
+                variant="ghost"
+                color="neutral"
                 :aria-pressed="expiryPreset === 'custom'"
                 :class="[
-                  'rounded px-2.5 py-1 text-xs border transition-colors',
+                  'rounded px-2.5 py-1 text-xs border font-normal transition-colors hover:bg-transparent',
                   expiryPreset === 'custom'
-                    ? 'border-primary bg-primary text-white font-medium'
+                    ? 'border-primary bg-primary text-white font-medium hover:bg-primary'
                     : 'border-border bg-bg-panel text-text-secondary hover:bg-bg-sunken',
                 ]"
                 @click="expiryPreset = 'custom'"
               >
                 自定义日期
-              </button>
+              </UButton>
               <UInput
                 v-if="expiryPreset === 'custom'"
                 v-model="customExpiry"
@@ -638,9 +652,12 @@ onMounted(() => {
               <span class="tabular-nums">
                 到期：{{ new Date(row.expires_at as string).toLocaleString() }}
               </span>
-              <button
+              <UButton
                 type="button"
-                class="text-[11px] text-primary hover:underline flex items-center gap-0.5 cursor-pointer"
+                variant="ghost"
+                color="primary"
+                size="xs"
+                class="flex items-center gap-0.5 p-0 text-[11px] text-primary hover:bg-transparent hover:underline"
                 :aria-expanded="!!expandedCards[row.id as string]"
                 :aria-controls="`invitation-details-${row.id}`"
                 @click="toggleCardDetails(row.id as string)"
@@ -650,7 +667,7 @@ onMounted(() => {
                   :name="expandedCards[row.id as string] ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
                   class="size-3"
                 />
-              </button>
+              </UButton>
             </div>
 
             <!-- 折叠的次要详情 -->

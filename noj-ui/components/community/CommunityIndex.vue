@@ -421,25 +421,27 @@ onMounted(() => {
     <div v-else-if="enabledTypes.length === 0" class="noj-panel border border-border bg-white p-8 text-center text-text-secondary">所有内容模块均已关闭，暂无可用功能。</div>
     <template v-else>
       <div class="mb-6 flex gap-2 overflow-x-auto border-b border-border" role="tablist">
-        <button
+        <UButton
           v-for="t in enabledTypes"
           :key="t"
           type="button"
           role="tab"
+          variant="ghost"
+          color="neutral"
           :aria-selected="activeType === t"
-          class="flex items-center whitespace-nowrap rounded-t-md px-4 py-3 text-sm transition-colors hover:bg-primary-bg"
+          class="flex items-center whitespace-nowrap rounded-t-md rounded-b-none px-4 py-3 text-sm transition-colors hover:bg-primary-bg"
           :class="activeType === t ? 'border-b-2 border-signal font-semibold text-primary' : 'text-text-secondary'"
           @click="changeType(t)"
         >
           <UIcon :name="t === 'discussion' ? 'i-lucide-message-square' : t === 'solution' ? 'i-lucide-lightbulb' : 'i-lucide-pen-line'" class="mr-1 inline-flex size-4" />
           {{ typeLabel[t] }}
           <span v-if="counts && counts[t] > 0" class="ml-1 rounded-full bg-primary-bg px-1.5 py-0.5 text-xs text-primary">{{ counts[t] }}</span>
-        </button>
+        </UButton>
       </div>
 
       <form class="mb-6 flex flex-wrap gap-3 noj-panel border border-border bg-white p-4 shadow-card" @submit.prevent="applySearch">
-        <label class="min-w-52 flex-1"><span class="mb-1 block text-xs text-text-secondary">标题或正文</span><div class="relative"><UIcon name="i-lucide-search" class="absolute left-3 top-2.5 text-text-secondary size-4" /><input v-model="searchKeyword" class="w-full rounded border border-border py-2 pl-9 pr-3 text-sm" placeholder="搜索帖子标题或正文"></div></label>
-        <label class="min-w-44 flex-1"><span class="mb-1 block text-xs text-text-secondary">关联题目 ID</span><input v-model="searchProblemId" class="w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如 1001"></label>
+        <label class="min-w-52 flex-1"><span class="mb-1 block text-xs text-text-secondary">标题或正文</span><UInput v-model="searchKeyword" icon="i-lucide-search" class="w-full" placeholder="搜索帖子标题或正文" /></label>
+        <label class="min-w-44 flex-1"><span class="mb-1 block text-xs text-text-secondary">关联题目 ID</span><UInput v-model="searchProblemId" class="w-full" placeholder="例如 1001" /></label>
         <div class="flex items-end gap-2"><UButton color="primary" type="submit"><UIcon name="i-lucide-search" class="size-4" />搜索</UButton><UButton color="primary" variant="outline" v-if="isFiltering"  type="button" @click="clearSearch">清除</UButton></div>
       </form>
 
@@ -452,9 +454,9 @@ onMounted(() => {
             {{ previewMode ? "编辑" : "预览" }}
           </UButton>
         </div>
-        <input v-model="title" class="mb-3 w-full rounded border border-border px-3 py-2" :placeholder="activeType === 'solution' ? '题解标题' : '讨论标题'" required>
+        <UInput v-model="title" class="mb-3 w-full" :placeholder="activeType === 'solution' ? '题解标题' : '讨论标题'" required />
         <div v-if="activeType === 'solution'" class="relative mb-3">
-          <input v-model="problemQuery" class="w-full rounded border border-border px-3 py-2" placeholder="搜索题目（输入至少 2 个字符）或直接填题目 ID" @focus="searchProblemIdChanged" @input="searchProblems" @blur="delayCloseProblemDropdown">
+          <UInput v-model="problemQuery" class="w-full" placeholder="搜索题目（输入至少 2 个字符）或直接填题目 ID" @focus="searchProblemIdChanged" @input="searchProblems" @blur="delayCloseProblemDropdown" />
           <span v-if="problemQuery" class="absolute right-2 top-2 cursor-pointer text-xs text-text-secondary hover:text-primary" @mousedown.prevent="clearProblemSelection">清除</span>
           <ul v-if="showProblemDropdown" class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-border bg-white shadow-modal">
             <li v-if="problemSearching" class="px-3 py-2 text-xs text-text-secondary">搜索中…</li>
@@ -469,7 +471,7 @@ onMounted(() => {
           新账号内容需经审核后公开：提交后仅你与审核员可见，审核通过会出现在列表中。
         </p>
         <template v-if="!previewMode">
-          <textarea v-model="content" class="min-h-36 w-full rounded border border-border px-3 py-2" :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`" required />
+          <UTextarea v-model="content" :rows="6" class="w-full" :placeholder="`支持 Markdown、代码和公式（最长 ${postMaxLength} 字符）`" required />
         </template>
         <template v-else>
           <div class="min-h-36 rounded border border-border px-3 py-2">

@@ -118,8 +118,8 @@ function toggleSecondary(id: string) {
           <span class="text-xs text-text-muted">{{ modelValue.secondary.length }} / {{ MAX_SECONDARY }}</span>
           <UBadge v-for="id in modelValue.secondary" :key="`s:${id}`" color="neutral" variant="subtle">
             {{ labelOf(id) }}
-            <button type="button" class="ml-1 text-text-muted hover:text-error-text" :aria-label="`移除次要知识点 ${labelOf(id)}`"
-              :disabled="disabled" @click="toggleSecondary(id)">×</button>
+            <UButton type="button" square size="xs" variant="ghost" color="error" class="ml-1"
+              :aria-label="`移除次要知识点 ${labelOf(id)}`" :disabled="disabled" @click="toggleSecondary(id)">×</UButton>
           </UBadge>
         </div>
         <UInput v-model="secondaryQuery" icon="i-lucide-search" placeholder="搜索知识点名称或 ID" size="sm"

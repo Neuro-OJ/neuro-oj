@@ -153,16 +153,19 @@ watch([() => slug.value, () => id.value, () => actor.value?.id, canRead], () => 
           class="border-b border-border last:border-b-0"
           :data-testid="`mastery-area-${area.id}`"
         >
-          <button
+          <UButton
             type="button"
-            class="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-text hover:bg-bg-sunken/40"
+            block
+            variant="ghost"
+            color="neutral"
+            class="flex w-full items-center justify-start gap-2 px-4 py-2.5 text-left text-sm font-semibold text-text hover:bg-bg-sunken/40"
             :aria-expanded="areaOpen(area.id)"
             @click="toggleArea(area.id)"
           >
             <UIcon :name="areaOpen(area.id) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-4 shrink-0 text-text-muted" />
             <span>{{ area.name }}</span>
             <span class="text-xs font-normal text-text-muted tabular-nums">{{ area.nodes.length }} 个知识点</span>
-          </button>
+          </UButton>
 
           <div v-if="areaOpen(area.id)" class="overflow-x-auto overscroll-x-contain">
             <table class="w-full border-collapse text-sm">

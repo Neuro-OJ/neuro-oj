@@ -48,25 +48,31 @@ function copyStatement() {
       <h2 class="text-sm font-semibold text-text">{{ title }}</h2>
       <div class="ml-auto flex flex-wrap items-center gap-2">
         <slot name="toolbar" />
-        <button
+        <UButton
           v-if="copyable"
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-primary/40 hover:bg-transparent hover:text-primary"
           @click="copyStatement"
         >
           <UIcon name="i-lucide-copy" class="size-3.5" />
           复制题面
-        </button>
-        <button
+        </UButton>
+        <UButton
           v-if="collapsible && expanded"
           type="button"
-          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:border-primary/40 hover:text-primary"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          class="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-primary/40 hover:bg-transparent hover:text-primary"
           :aria-expanded="expanded"
           @click="expanded = false"
         >
           <UIcon name="i-lucide-chevron-up" class="size-3.5" />
           收起
-        </button>
+        </UButton>
         <NuxtLink
           v-if="editTo"
           :to="editTo"
@@ -90,15 +96,18 @@ function copyStatement() {
         <MarkdownRenderer v-else :content="content" />
         <slot name="after-content" />
       </template>
-      <button
+      <UButton
         v-if="!$slots.body && collapsible && !expanded"
         type="button"
-        class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+        variant="ghost"
+        color="primary"
+        size="xs"
+        class="mt-2 inline-flex items-center gap-1 p-0 text-xs font-medium hover:bg-transparent hover:underline"
         @click="expanded = true"
       >
         <UIcon name="i-lucide-chevron-down" class="size-3.5" />
         展开完整题面
-      </button>
+      </UButton>
     </div>
   </section>
 </template>
