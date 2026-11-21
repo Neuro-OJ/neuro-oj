@@ -11,12 +11,14 @@ import {
 } from "../../../../../shared/base/errors.ts";
 import {
   assertDomainFeatureEnabled,
-  createDomain,
   loadWorkspace,
   presetConfiguration,
+} from "../../index.ts";
+import {
+  createDomain,
   setMemberRole,
   updateDomain,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 import { loadDomainForJoining } from "../../services/access.ts";
 import type { DomainRole } from "../../../../../shared/workspace/types.ts";
 

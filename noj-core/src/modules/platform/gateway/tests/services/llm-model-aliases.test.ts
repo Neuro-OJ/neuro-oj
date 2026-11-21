@@ -10,10 +10,8 @@ import {
   domainLlmSettings,
   llmModelAliases,
 } from "../../../../../shared/db/schema.ts";
-import {
-  DEFAULT_DOMAIN_ID,
-  ensureDefaultWorkspace,
-} from "../../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../../tests/helpers/workspace-actors.ts";
 import { isValidLlmConfig } from "../../../../problems/index.ts";
 import type { RuntimeConfig } from "../../../../problems/index.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";

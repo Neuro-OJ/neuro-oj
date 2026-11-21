@@ -36,7 +36,7 @@ import {
   updateSetting,
 } from "../../../../platform/system/index.ts";
 import { publishAllProblemsForTest } from "../../../../../../tests/helper.ts";
-import { addDomainMember } from "../../../../access/workspace/index.ts";
+import { addDomainMember } from "../../../../../../tests/helpers/workspace-actors.ts";
 
 const ownerId = "gating-owner";
 const normalProblemId = "gating-normal-problem";

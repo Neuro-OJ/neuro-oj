@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import { UnauthorizedError } from "../../../../shared/base/errors.ts";
 import { optionalAuthMiddleware } from "../../identity/middleware/auth.ts";
-import { getInstanceAccessPolicy } from "../services/instance.ts";
+import { getInstanceAccessPolicy } from "../../../platform/contracts/resource-policy.ts";
 
 /** 私有实例的最外层读门控，登录/验证/法律信息保持可进入。 */
 export const instanceAccessMiddleware: MiddlewareHandler = async (c, next) => {

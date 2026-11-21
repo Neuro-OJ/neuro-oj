@@ -29,7 +29,7 @@ import {
   createDomainInvitation,
   removeDomainMember,
   setMemberRole,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
 
 Deno.test({

@@ -10,7 +10,7 @@ import {
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import adminCommunityRouter from "../../../../http/admin/routes/community.ts";
 import { signToken } from "../../../../access/identity/index.ts";
-import { addDomainMember } from "../../../../access/workspace/index.ts";
+import { addDomainMember } from "../../../../../../tests/helpers/workspace-actors.ts";
 import {
   createBoard,
   createPost,

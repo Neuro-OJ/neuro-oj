@@ -18,12 +18,12 @@ import {
   publishProblemVersion,
   saveProblemDraft,
 } from "../../../problems/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import {
   addDomainMember,
   createDomain,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import { submitObjectivePaper } from "../../index.ts";
 import { backfillExecutionWorkspaces } from "../../index.ts";

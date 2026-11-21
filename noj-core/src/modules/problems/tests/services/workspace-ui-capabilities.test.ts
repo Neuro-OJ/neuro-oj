@@ -17,7 +17,7 @@ import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { getStorageProvider } from "../../../assets/storage/mod.ts";
 import { uploadStorageObjectWithReservation } from "../../../assets/index.ts";
 import { parseDomainDraftBundle } from "../../services/workspace/problem-bundle-edit.ts";

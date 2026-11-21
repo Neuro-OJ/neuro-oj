@@ -9,7 +9,7 @@ import {
   jsonRequest,
 } from "../../../../../tests/helper.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
 
 /**
  * 域出题的草稿/发布契约（补齐无域版本测试删除后的覆盖）。

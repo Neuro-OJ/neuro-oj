@@ -104,7 +104,7 @@
     "src/modules/contests/tests/services/problem-secrecy.test.ts": 601,
     "src/modules/contests/tests/services/search-events.test.ts": 109,
     "src/modules/contests/tests/types/contests.test.ts": 0,
-    "src/modules/education/tests/outbox-migration.pg.test.ts": 947,
+    "src/modules/education/tests/education-tasks.pg.test.ts": 947,
     "src/modules/education/tests/routes/account-notifications.test.ts": 587,
     "src/modules/education/tests/routes/annotations.test.ts": 795,
     "src/modules/education/tests/routes/artifact-download.test.ts": 357,

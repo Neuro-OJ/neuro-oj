@@ -10,7 +10,7 @@ import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   consumeDomainInvitation,
   createDomainInvitation,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   createDomainSubmission,
   getDomainObjectiveSubmissionHistory,

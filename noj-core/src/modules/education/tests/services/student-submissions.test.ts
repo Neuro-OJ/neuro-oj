@@ -7,7 +7,7 @@ import {
   submissions,
   submissionVersionResults,
 } from "../../../../shared/db/schema.ts";
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import { recomputeSubmissionProjection } from "../../../evaluations/index.ts";
 import {
   createAssignment,

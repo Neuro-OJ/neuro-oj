@@ -21,7 +21,7 @@ import {
   joinDomain,
   reviewJoinRequest,
   updateDomain,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
 const sleep = (ms: number) =>

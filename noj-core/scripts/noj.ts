@@ -49,7 +49,7 @@ import {
   importDomainProblemBundle,
   publishDomainProblemVersion,
 } from "../src/modules/problems/index.ts";
-import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../src/modules/access/domains.ts";
 import { reindexAll } from "../src/modules/read-models/search/index.ts";
 import { getBuildInfo } from "./../src/shared/base/build-info.ts";
 import {
@@ -230,7 +230,7 @@ async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
   await ensureRootUser();
   await sealExistingSiteAdminInitialization();
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   await seedDomainLlmDefaults();
   console.log("初始化评测镜像白名单...");
   await seedJudgeImages();
@@ -252,7 +252,7 @@ async function runBootstrapAdmin(
   console.log("检查管理员...");
   await ensureAdminFromEnv();
   await ensureBootstrapAdmin();
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
 }
 
 /** 开发环境一键初始化（含 dev 专用数据：E2E 守卫用户）。 */
@@ -303,7 +303,7 @@ const dbCmd = new Command()
   )
   .action(async () => {
     await ensureRootUser();
-    await ensureDefaultWorkspace();
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
     console.log(JSON.stringify(await backfillDefaultCatalog()));
   })
   .command(

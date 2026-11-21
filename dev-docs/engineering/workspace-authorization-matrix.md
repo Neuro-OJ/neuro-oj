@@ -35,7 +35,7 @@ Domain；浏览器偏好、切换器和本地缓存键不参与授权。读写�
 
 实现依据：[上下文契约](../../noj-core/src/shared/workspace/types.ts)、
 [域访问](../../noj-core/src/modules/access/workspace/services/access.ts)、
-[实例政策](../../noj-core/src/modules/access/workspace/services/instance.ts)、
+[实例政策](../../noj-core/src/modules/platform/contracts/resource-policy.ts)、
 [账号治理](../../noj-core/src/modules/access/identity/index.ts)。
 
 ## 2. Instance 与平台治理

@@ -13,13 +13,13 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../../shared/base/errors.ts";
+import { previewDomainInvitation } from "../../index.ts";
 import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-  previewDomainInvitation,
   revokeDomainInvitation,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 async function account(admin = false) {
   return decodeJwt(await createUserToken(admin ? "admin" : "user")).sub!;

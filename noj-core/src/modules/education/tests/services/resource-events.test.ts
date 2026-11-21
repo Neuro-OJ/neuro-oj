@@ -19,7 +19,7 @@ import {
   setDomainProblemBindingPolicy,
 } from "../../../problems/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import { processEducationBatch } from "../../services/progress-worker.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";

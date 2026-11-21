@@ -26,7 +26,7 @@ import {
   addDomainMember,
   createDomain,
   setMemberRole,
-} from "../../modules/access/workspace/index.ts";
+} from "../../../tests/helpers/workspace-actors.ts";
 import { NotFoundError } from "../../shared/base/errors.ts";
 import { initRedisForTest } from "../../../tests/helper.ts";
 import { resetDbForTest } from "../../../tests/helpers/db.ts";

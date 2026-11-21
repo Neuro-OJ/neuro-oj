@@ -21,7 +21,7 @@ import {
 } from "../../index.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { ensureDefaultWorkspace } from "../../../access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 
 import {

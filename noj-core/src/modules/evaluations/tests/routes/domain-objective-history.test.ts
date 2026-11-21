@@ -21,7 +21,7 @@ import { verifyToken } from "../../../access/identity/index.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import { domainObjectiveRouter } from "../../routes/domain-objective.ts";
 

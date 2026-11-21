@@ -10,7 +10,7 @@ import {
   problemVersions,
   users,
 } from "../../../../shared/db/schema.ts";
-import { createDomain } from "../../../access/workspace/index.ts";
+import { createDomain } from "../../../../../tests/helpers/workspace-actors.ts";
 import { importDomainProblem } from "../../../problems/index.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { createDomainContest, getContestProblems } from "../../index.ts";
