@@ -67,11 +67,13 @@ export function runProdStatus(
   args: string[],
   deps: ProdCliDeps,
 ): Promise<StatusResult> {
+  const d = prodDeps(deps);
   return status({
     dir,
-    runner: prodDeps(deps).runner,
+    runner: d.runner,
     args,
     io: renderIOOf(deps),
+    dockerBin: d.processEnv["NOJ_DEPLOY_DOCKER_BIN"],
   });
 }
 
