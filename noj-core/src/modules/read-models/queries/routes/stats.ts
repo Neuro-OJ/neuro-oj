@@ -3,7 +3,7 @@ import { optionalAuthMiddleware } from "../../../access/identity/middleware/auth
 import { type OptionalAuthEnv } from "../../../../shared/http/hono-env.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspace } from "../../../access/domains.ts";
-import { createSystemActor } from "../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../shared/access/system-actors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import {
     getDomainStats,

@@ -7,7 +7,7 @@ import type {
     ClaimedTask,
     TaskHandler,
     TaskRescheduleResult,
-} from "../runtime/tasks/contracts.ts";
+} from "../../shared/tasks/contracts.ts";
 import { processEducationBackgroundTask } from "../education/index.ts";
 
 export const handleEducationTask: TaskHandler = async (

@@ -11,9 +11,9 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { getDb } from "../../../../shared/db/connection.ts";
-import { backgroundTasks } from "../../../../shared/db/schema.ts";
-import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
+import { getDb } from "../../../src/shared/db/connection.ts";
+import { backgroundTasks } from "../../../src/shared/db/schema.ts";
+import { resetDbForTest } from "../../helpers/db.ts";
 import {
     claimTasks,
     completeTaskTx,
@@ -24,7 +24,7 @@ import {
     renewTaskLease,
     requeueFailedTaskTx,
     rescheduleTaskTx,
-} from "../../tasks/repository.ts";
+} from "../../../src/shared/tasks/repository.ts";
 
 const TYPE = "search.index" as const;
 

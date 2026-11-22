@@ -9,7 +9,7 @@
  * - 「达标」复用 P2 的判定（一次读取有效成绩即得最高分，故
  *   `isPassingScore(max)` 等价于「存在一次达标提交」）。
  * - 增量：有效成绩变更处在事务内投递 `knowledge.mastery`
- *   （`runtime/knowledge-mastery-task.ts`），处理时重算该用户全部相关节点。
+ *   （`evaluations/services/versioning/knowledge-mastery-task.ts`），处理时重算该用户全部相关节点。
  * - 比赛保护结束：题目保护期间其成绩不计；保护结束后由周期任务
  *   （{@link startMasteryProtectionWorker}，1h）对近期结束保护的题目相关用户
  *   重算（[`MASTERY_PROTECTION_LOOKBACK_MS`] 窗口内每轮幂等重算）。
@@ -20,10 +20,12 @@ import { loadDomainProblemProtection } from "../../modules/access/index.ts";
 import { getSetting } from "../../modules/platform/index.ts";
 import {
     type ClaimedTask,
+    type TaskHandler,
+} from "../../shared/tasks/contracts.ts";
+import {
     KNOWLEDGE_MASTERY_TARGET_KIND,
     KNOWLEDGE_MASTERY_TASK_TYPE,
-    type TaskHandler,
-} from "../../modules/runtime/index.ts";
+} from "../../modules/evaluations/index.ts";
 import { logger } from "../../shared/base/logging.ts";
 import { unwrapRows } from "../../shared/base/sql-rows.ts";
 import { getDb } from "../../shared/db/connection.ts";
@@ -477,10 +479,10 @@ export const knowledgeMasteryHandler: TaskHandler = async (
     };
 };
 
-/** 掌握度任务目标类别（与 `runtime/knowledge-mastery-task.ts` 一致）。 */
+/** 掌握度任务目标类别（与 `evaluations/services/versioning/knowledge-mastery-task.ts` 一致）。 */
 export const MASTERY_TARGET_KIND = KNOWLEDGE_MASTERY_TARGET_KIND;
 
-/** 掌握度任务类型（与 `runtime/knowledge-mastery-task.ts` 一致）。 */
+/** 掌握度任务类型（与 `evaluations/services/versioning/knowledge-mastery-task.ts` 一致）。 */
 export const MASTERY_TASK_TYPE = KNOWLEDGE_MASTERY_TASK_TYPE;
 
 /**

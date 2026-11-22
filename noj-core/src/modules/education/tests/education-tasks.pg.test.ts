@@ -24,8 +24,8 @@ import {
     completeTaskTx,
     getTaskById,
     rescheduleTaskTx,
-} from "../../runtime/tasks/repository.ts";
-import { isTaskRescheduleResult } from "../../runtime/tasks/contracts.ts";
+} from "../../../shared/tasks/repository.ts";
+import { isTaskRescheduleResult } from "../../../shared/tasks/contracts.ts";
 
 const db = getDb();
 const now = new Date().toISOString();

@@ -50,7 +50,7 @@ import {
     TAG_SAMPLES_LIMIT_CHARS,
 } from "./tagging.ts";
 import type { TagCompleter, TagCompletionResult } from "./tagging.ts";
-import { isTaskRescheduleResult } from "../../modules/runtime/index.ts";
+import { isTaskRescheduleResult } from "../../shared/tasks/contracts.ts";
 import { setOffpeakNowForTest } from "./offpeak.ts";
 
 await initRedisForTest();
@@ -149,7 +149,7 @@ async function fixture(options: { description?: string } = {}) {
         });
     }
     const { createSystemActor } = await import(
-        "../../modules/runtime/index.ts"
+        "../../shared/access/system-actors.ts"
     );
     const { ensureDefaultWorkspace } = await import(
         "../../modules/access/domains.ts"

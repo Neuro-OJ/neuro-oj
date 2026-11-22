@@ -25,15 +25,13 @@ import {
     queryPlatformUsage,
     recordAudit,
 } from "../../modules/platform/index.ts";
-import {
-    enqueueTaskTx,
-    isTaskRescheduleResult,
-} from "../../modules/runtime/index.ts";
+import { enqueueTaskTx } from "../../shared/tasks/repository.ts";
+import { isTaskRescheduleResult } from "../../shared/tasks/contracts.ts";
 import type {
     ClaimedTask,
     TaskHandler,
     TaskRescheduleResult,
-} from "../../modules/runtime/index.ts";
+} from "../../shared/tasks/contracts.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import type { DbRoot } from "../../shared/db/executor.ts";
 import {

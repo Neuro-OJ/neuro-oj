@@ -9,8 +9,8 @@
  * 旧模块不得 import 功能代码，功能代码也不 import 本模块实现；两处只以字符串
  * 任务类型 `knowledge.mastery` 约定，handler 由 `features/knowledge` 注册。
  */
-import type { DbTx } from "../../shared/db/executor.ts";
-import { enqueueTaskTx } from "./tasks/repository.ts";
+import type { DbTx } from "../../../../shared/db/executor.ts";
+import { enqueueTaskTx } from "../../../../shared/tasks/repository.ts";
 
 /** 掌握度任务类型（`features/knowledge/mastery.ts` 注册同名 handler）。 */
 export const KNOWLEDGE_MASTERY_TASK_TYPE = "knowledge.mastery";

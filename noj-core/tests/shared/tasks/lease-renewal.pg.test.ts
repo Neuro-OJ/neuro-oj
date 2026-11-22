@@ -1,8 +1,11 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { getDb } from "../../../../shared/db/connection.ts";
-import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { TASK_TYPES, type TaskHandlerMap } from "../../tasks/contracts.ts";
+import { getDb } from "../../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../../helpers/db.ts";
+import {
+    TASK_TYPES,
+    type TaskHandlerMap,
+} from "../../../src/shared/tasks/contracts.ts";
 import {
     claimTasks,
     completeTaskTx,
@@ -11,8 +14,8 @@ import {
     getTaskById,
     renewTaskLease,
     rescheduleTaskTx,
-} from "../../tasks/repository.ts";
-import { startTaskWorker } from "../../tasks/worker.ts";
+} from "../../../src/shared/tasks/repository.ts";
+import { startTaskWorker } from "../../../src/shared/tasks/worker.ts";
 
 function deferred() {
     let resolve!: () => void;

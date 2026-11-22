@@ -55,7 +55,7 @@ import { securityHeaders } from "../../shared/http/security-headers.ts";
 import { createMaintenanceMode } from "../../shared/http/maintenance.ts";
 import { getRedis } from "../../shared/mq/connection.ts";
 import type { SseStreamScope } from "../../shared/sse/sse-stream.ts";
-import { registerRuntimeObservability } from "../runtime/index.ts";
+import { registerRuntimeObservability } from "../../shared/tasks/observability.ts";
 import { registerEducationObservability } from "../education/index.ts";
 import type { FeatureDefinition } from "../../shared/feature.ts";
 import { FEATURES } from "../../features.ts";

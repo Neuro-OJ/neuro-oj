@@ -44,7 +44,7 @@ deno task test:bff:ssr     # 真实 Chromium：首屏 / 点击 / 水合
 ```
 
 浏览器类任务首次先装
-Chromium：`deno run -A npm:playwright@1.62.1 install chromium`； `test:theme` 需
+Chromium：`deno run -A npm:playwright@1.65.1 install chromium`； `test:theme` 需
 `E2E_UI_URL=http://127.0.0.1:3000`。改 Vue 页面后另跑
 `deno fmt --unstable-component`。编译与运行方式见 [build.md](docs/build.md)。
 

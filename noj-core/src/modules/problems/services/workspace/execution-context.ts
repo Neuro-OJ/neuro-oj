@@ -10,7 +10,7 @@ import {
     DEFAULT_DOMAIN_SLUG,
 } from "../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspaceOn } from "../../../access/domains.ts";
-import { createSystemActor } from "../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../shared/access/system-actors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
 /** 在准备下载或 LLM 令牌前拒绝用旧入口执行其他域的源题。 */

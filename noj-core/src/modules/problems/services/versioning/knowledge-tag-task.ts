@@ -3,7 +3,7 @@
  *
  * 任务类型与目标约定以**字符串**与 `features/knowledge/tagging.ts` 保持一致：
  * 旧模块不得 import 功能代码（`scripts/check-feature-boundaries.ts`），任务
- * 类型本身就是两者的合同（见 `modules/runtime/tasks/contracts.ts`）。
+ * 类型本身就是两者的合同（见 `shared/tasks/contracts.ts`）。
  *
  * 只在总开关与 AI 打标开关都开启时投递，避免给默认关闭的实例堆积无效任务；
  * 开关在任务执行时会再读一次（关闭期间堆积的任务直接成功返回）。
@@ -15,7 +15,7 @@
  */
 import type { DbTx } from "../../../../shared/db/executor.ts";
 import { getSetting } from "../../../platform/index.ts";
-import { enqueueTaskTx } from "../../../runtime/index.ts";
+import { enqueueTaskTx } from "../../../../shared/tasks/repository.ts";
 
 /** 与 `features/knowledge/tagging.ts` 的 `KNOWLEDGE_TAG_TASK_TYPE` 一致。 */
 const KNOWLEDGE_TAG_TASK_TYPE = "knowledge.tag";

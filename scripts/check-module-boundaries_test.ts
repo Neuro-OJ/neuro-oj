@@ -164,10 +164,10 @@ Deno.test("analyzeSources 覆盖 P3 结构负例：cycle、facade、方向和 HT
     ],
     [
       "src/modules/http/route.ts",
-      `import { createSystemActor } from "../../runtime/system-actors.ts";`,
+      `import { createSystemActor } from "../../shared/access/system-actors.ts";`,
     ],
     [
-      "src/runtime/system-actors.ts",
+      "src/shared/access/system-actors.ts",
       `export const createSystemActor = () => {};`,
     ],
     [

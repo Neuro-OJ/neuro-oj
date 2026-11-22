@@ -9,9 +9,9 @@
  * - 不使用进程内可变状态保存任务事实，全部以数据库为准。
  */
 import { getLogger } from "@logtape/logtape";
-import { getDb } from "../../../shared/db/connection.ts";
-import type { DbRoot } from "../../../shared/db/executor.ts";
-import type { ManagedTask } from "../../../shared/runtime/managed-task.ts";
+import { getDb } from "../db/connection.ts";
+import type { DbRoot } from "../db/executor.ts";
+import type { ManagedTask } from "../runtime/managed-task.ts";
 import {
     type ClaimedTask,
     isTaskRescheduleResult,

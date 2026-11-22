@@ -27,7 +27,7 @@
 | src/modules/evaluations/tests/routes/assignment-origin.test.ts | 6 | 0 | 0 | 7391ms |
 | src/modules/education/tests/services/progress-worker.test.ts | 5 | 0 | 0 | 5744ms |
 | src/modules/evaluations/tests/routes/domain-submission-sse.test.ts | 3 | 0 | 0 | 3903ms |
-| src/modules/runtime/tests/tasks/lease-renewal.pg.test.ts | 4 | 0 | 0 | 3788ms |
+| tests/shared/tasks/lease-renewal.pg.test.ts | 4 | 0 | 0 | 3788ms |
 | src/modules/read-models/search/tests/services/domain-search.test.ts | 6 | 0 | 0 | 3765ms |
 | src/modules/communication/community/tests/services/community-official.test.ts | 5 | 0 | 0 | 3748ms |
 | src/modules/evaluations/tests/services/domain-submission-read.test.ts | 3 | 0 | 0 | 3571ms |

@@ -3,7 +3,7 @@
  *
  * 该文件只由 `worker.pg.test.ts` 作为真实子进程启动；不能作为普通测试直接运行。
  */
-import { claimTasks } from "../../tasks/repository.ts";
+import { claimTasks } from "../../../src/shared/tasks/repository.ts";
 
 const workerId = Deno.env.get("NOJ_CRASH_WORKER_ID") ?? "crash-fixture";
 const tasks = await claimTasks(workerId, 1, 60_000);

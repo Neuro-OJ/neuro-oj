@@ -26,7 +26,7 @@ import {
 } from "../../../../shared/db/schema.ts";
 import type { AttemptSource } from "../../../../shared/versioning/types.ts";
 import { getSetting } from "../../../platform/contracts/cross-module/services_system-settings.ts";
-import { enqueueTaskTx } from "../../../runtime/tasks/repository.ts";
+import { enqueueTaskTx } from "../../../../shared/tasks/repository.ts";
 import { createAttempt } from "./attempts.ts";
 import type { ProjectionSource } from "./projection.ts";
 import { refreshJobStatus } from "./rejudge-jobs.ts";

@@ -22,7 +22,7 @@
     "katex": "^0.19.0",
     "markdown-it": "^14.3.3",
     "monaco-editor": "^0.57.0",
-    "nuxt": "4.6.3",
+    "nuxt": "4.6.4",
     "sanitize-html": "^2.18.1",
     "qrcode": "^1.5.4",
     "tailwindcss": "^4.3.3",
@@ -32,7 +32,7 @@
     "typescript": "^5.0.0",
     "@nuxt/devtools": "^3.4.1",
     "@types/qrcode": "^1.5.5",
-    "rolldown": "1.2.13",
+    "rolldown": "1.2.19",
     "vue-tsc": "^3.1.0",
     "@types/markdown-it": "^14.1.2",
     "@types/sanitize-html": "^2.16.2",
@@ -40,11 +40,11 @@
     "@vue/test-utils": "^2.4.6",
     "happy-dom": "^15.7.4",
     "vitest": "^2.1.0",
-    "vue": "3.5.44",
-    "vue-router": "5.4.0",
-    "playwright": "1.62.1"
+    "vue": "3.5.45",
+    "vue-router": "5.5.1",
+    "playwright": "1.65.1"
   },
   "overrides": {
-    "rolldown": "1.2.13"
+    "rolldown": "1.2.19"
   }
 }

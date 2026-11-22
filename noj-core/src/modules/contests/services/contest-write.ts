@@ -26,7 +26,7 @@ import {
 import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspaceTx } from "../../access/domains.ts";
-import { createSystemActor } from "../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../shared/access/system-actors.ts";
 import { findContestRow } from "./contest-row.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";

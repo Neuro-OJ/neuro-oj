@@ -17,7 +17,7 @@ import {
     _resetSystemSettingsForTest,
 } from "../../src/modules/platform/services/system-settings.ts";
 import { ensureDefaultWorkspace } from "../../src/modules/access/domains.ts";
-import { createSystemActor } from "../../src/modules/runtime/system-actors.ts";
+import { createSystemActor } from "../../src/shared/access/system-actors.ts";
 import { countPhase, measurePhase } from "../../../scripts/lib/test-timing.ts";
 
 /** 测试数据库必须由启动器声明的环境标记。 */

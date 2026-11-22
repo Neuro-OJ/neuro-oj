@@ -140,7 +140,7 @@ export const FEATURES = [
 | `storage-governance`                           | assets/*（存储适配器本身进入 shared）                         |
 
 底座
-`shared/`（即提案中的「kernel」，**保留原目录名不改名**）后续需迁入：`runtime/tasks`、`platform/observability`
+`shared/`（即提案中的「kernel」，**保留原目录名不改名**）后续需迁入（`runtime` 已于 2026-11 迁入 `shared/tasks` 等）：`platform/observability`
 基础设施、 `assets/storage` 适配器、`platform/gateway`
 客户端、系统设置读取、actor/capability 解析。
 

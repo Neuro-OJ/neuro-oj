@@ -1,9 +1,12 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
-import { getDb } from "../../../../shared/db/connection.ts";
-import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
-import { enqueueSearchIndexTaskTx } from "../../../application/search-tasks.ts";
-import { claimTasks, completeTaskTx } from "../../tasks/repository.ts";
+import { getDb } from "../../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../../helpers/db.ts";
+import { enqueueSearchIndexTaskTx } from "../../../src/modules/application/search-tasks.ts";
+import {
+    claimTasks,
+    completeTaskTx,
+} from "../../../src/shared/tasks/repository.ts";
 
 Deno.test("search task[真实 PG]: 后续发布不被已完成或正在执行的旧事件吞掉", async () => {
     await resetDbForTest();

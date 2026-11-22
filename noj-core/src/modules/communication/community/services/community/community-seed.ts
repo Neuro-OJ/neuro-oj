@@ -4,7 +4,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { communityBoards } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspace } from "../../../../access/domains.ts";
-import { createSystemActor } from "../../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../../shared/access/system-actors.ts";
 
 const DEFAULT_BOARDS = [
     {
