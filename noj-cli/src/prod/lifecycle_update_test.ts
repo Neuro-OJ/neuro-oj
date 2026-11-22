@@ -6,7 +6,11 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
 import { join } from "@std/path";
 import { RELEASE_SET_FILE } from "./bootstrap.ts";
-import { update, UPDATE_BACKUP_UNAVAILABLE_HINT } from "./lifecycle.ts";
+import {
+  update,
+  UPDATE_BACKUP_UNAVAILABLE_HINT,
+  upgrade,
+} from "./lifecycle.ts";
 import {
   advanceUpgradeState,
   createUpgradeState,
@@ -24,8 +28,10 @@ import {
   indexOfUpdate,
   makeDrain,
   makeInstalledDir,
+  makeReleaseFetcher,
   makeUpdateRunner,
   NO_COLOR,
+  readyUpdateRelease,
   releaseSetBody,
   SOCKET_PRESENT,
   UpdateEvent,
@@ -501,6 +507,103 @@ Deno.test("update：未接线备份（缺省注入点）→ 明确失败，绝�
     assertStringIncludes(result.error ?? "", UPDATE_BACKUP_UNAVAILABLE_HINT);
     assertEquals(events.filter((e) => e.kind === "run").length, 1);
     assertStringIncludes(events[0]!.detail, "config --quiet");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("update --latest --recover：配置已提交但迁移未完成时不得 no-op", async () => {
+  // 迁移阶段失败后 .env.prod 已是目标版本（from === to），而服务已停、维护
+  // 模式未退出；恢复必须重新跑完迁移与启动，而不是报告“已是最新”。
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.6" });
+  try {
+    const statePath = upgradeStatePath(dir);
+    await Deno.mkdir(join(dir, "backups"), { recursive: true });
+    await writeUpgradeState(
+      statePath,
+      advanceUpgradeState(
+        createUpgradeState({
+          runId: "run-latest-recover",
+          from: "v0.9.5",
+          to: "v0.9.6",
+          releaseSetRelease: "v0.9.6",
+          now: new Date("2026-09-19T00:00:00Z"),
+        }),
+        "failed",
+        { migration_started: true, error: "migrate 迁移失败" },
+        new Date("2026-09-19T00:00:00Z"),
+      ),
+    );
+
+    const events: UpdateEvent[] = [];
+    let migrations = 0;
+    const result = await update({
+      dir,
+      runner: makeUpdateRunner(events),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {
+        NOJ_BACKUP_PASSPHRASE_FILE: join(dir, "backup-passphrase"),
+      },
+      warn: () => {},
+      upgradeStatePath: statePath,
+      latest: true,
+      recover: true,
+      fetcher: makeReleaseFetcher([readyUpdateRelease("v0.9.6")]),
+      syncFiles: (ctx) => {
+        events.push({ kind: "sync", detail: ctx.ref });
+        return Promise.resolve();
+      },
+      backup: () =>
+        Promise.resolve({
+          ok: true,
+          path: join(dir, "backups/snapshot.nojbackup"),
+          error: null,
+        }),
+      migrate: () => {
+        migrations++;
+        return Promise.resolve();
+      },
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    assertEquals(result.noOp, false, "未完成的升级不得被判定为 no-op");
+    assertEquals(result.to, "v0.9.6");
+    assertEquals(migrations, 1, "恢复必须重新执行迁移");
+    assert(
+      indexOfUpdate(events, "run", "up -d --wait") >= 0,
+      "恢复必须启动目标栈",
+    );
+    assertEquals((await readUpgradeState(statePath))?.phase, "completed");
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("upgrade 别名保留 --latest，与 update 行为一致", async () => {
+  const dir = await makeInstalledDir({ NOJ_VERSION: "v0.9.5" });
+  try {
+    const events: UpdateEvent[] = [];
+    const urls: string[] = [];
+    const result = await upgrade({
+      dir,
+      runner: makeUpdateRunner(events),
+      io: captureRenderIO().io,
+      color: NO_COLOR,
+      socketExists: SOCKET_PRESENT,
+      processEnv: {},
+      warn: () => {},
+      latest: true,
+      fetcher: makeReleaseFetcher([readyUpdateRelease("v0.9.5")], urls),
+      now: new Date("2026-09-19T00:00:00Z"),
+    });
+    assertEquals(result.exitCode, 0, result.error ?? "");
+    assertEquals(result.latest, true, "别名不得丢弃 --latest");
+    assertEquals(result.noOp, true, "已是最新时别名同样 no-op");
+    assert(urls.length > 0, "必须查询最新 Release");
+    assertEquals(events.length, 0, "no-op 不得调用 compose");
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

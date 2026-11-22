@@ -19,7 +19,6 @@ export async function runProdUpdate(
   dir: string,
   args: string[],
   deps: ProdCliDeps,
-  upgradeAlias = false,
 ): Promise<UpdateResult> {
   const d = prodDeps(deps);
   const passphraseFile = flagValue(args, "--passphrase-file");
@@ -32,7 +31,8 @@ export async function runProdUpdate(
     runner: d.runner,
     args,
     io: renderIOOf(deps),
-    latest: upgradeAlias ? false : hasFlag(args, "--latest"),
+    // `upgrade` 是别名，必须与 `update` 同样解析 --latest。
+    latest: hasFlag(args, "--latest"),
     repository: d.processEnv["NOJ_UPDATE_REPOSITORY"],
     apiUrl: d.processEnv["NOJ_UPDATE_API_URL"],
     fetcher: deps.fetcher,
