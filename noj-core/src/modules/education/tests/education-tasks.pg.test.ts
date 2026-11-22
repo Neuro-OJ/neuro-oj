@@ -270,6 +270,54 @@ Deno.test("education delayed[真实 PG]: 失去租约不失效，重新领取后
   assertEquals(await domainRevision(f.domainId), before + 1);
 });
 
+/**
+ * 另一连接以 ACCESS EXCLUSIVE 锁住表 `ms` 毫秒，用来让处理过程确定地卡过租期。
+ *
+ * @returns 锁已取得后返回；await 返回值等待锁释放
+ */
+async function holdTableLock(
+  table: "assignment_recipients" | "query_projection_revisions",
+  ms: number,
+): Promise<{ released: Promise<void> }> {
+  let locked!: () => void;
+  const ready = new Promise<void>((resolve) => (locked = resolve));
+  const released = db.transaction(async (tx) => {
+    await tx.execute(sql.raw(`LOCK TABLE ${table} IN ACCESS EXCLUSIVE MODE`));
+    locked();
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+  await ready;
+  return { released };
+}
+
+Deno.test("education delayed[真实 PG]: 租约在失效事务中途到期，接手者不重复失效", async () => {
+  await reset();
+  const f = await seedEducation();
+  await db.transaction((tx) =>
+    recordEducationEvent(tx, {
+      domain_id: f.domainId,
+      assignment_id: f.assignmentId,
+      event_type: "submission.changed",
+    }, { availableAt: "2099-01-01T00:00:00.000Z" })
+  );
+  await db.update(backgroundTasks).set({ available_at: now });
+  const before = await domainRevision(f.domainId);
+
+  const leaseMs = 300;
+  const task = await claimOne(leaseMs);
+  // 标记已在租约内清除后，递增版本被锁卡住直到租约到期。
+  const locker = await holdTableLock("query_projection_revisions", leaseMs * 3);
+  const result = await processEducationTask(task, new AbortController().signal);
+  await locker.released;
+  assertEquals((result as Record<string, unknown>).skipped, "lease_lost");
+  assertEquals(await domainRevision(f.domainId), before + 1);
+
+  const takeover = await claimOne();
+  assertEquals(takeover.id, task.id);
+  await processEducationTask(takeover, new AbortController().signal);
+  assertEquals(await domainRevision(f.domainId), before + 1);
+});
+
 Deno.test("education sync[真实 PG]: 失去租约时不持久化游标也不推送 education:sync", async () => {
   await reset();
   const f = await seedEducation();
@@ -361,16 +409,7 @@ Deno.test("education notice[真实 PG]: 满页处理超过租期时续租不被�
   const leaseMs = 300;
   const task = await claimOne(leaseMs);
   // 另一连接短暂锁住收件人表，让本页处理时间确定地超过租期。
-  let locked!: () => void;
-  const lockReady = new Promise<void>((resolve) => (locked = resolve));
-  const locker = db.transaction(async (tx) => {
-    await tx.execute(
-      sql`LOCK TABLE assignment_recipients IN ACCESS EXCLUSIVE MODE`,
-    );
-    locked();
-    await new Promise((resolve) => setTimeout(resolve, leaseMs * 3));
-  });
-  await lockReady;
+  const locker = await holdTableLock("assignment_recipients", leaseMs * 3);
   let renewing = true, renewals = 0;
   const renewer = (async () => {
     while (renewing) {
@@ -386,7 +425,7 @@ Deno.test("education notice[真实 PG]: 满页处理超过租期时续租不被�
   } finally {
     renewing = false;
     await renewer;
-    await locker;
+    await locker.released;
   }
   assert(renewals >= 3, `处理期间续租应持续成功，实际 ${renewals} 次`);
   const data = (await getTaskById(task.id, db))?.payload.data as Record<
