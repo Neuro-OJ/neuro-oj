@@ -7,6 +7,13 @@
 
 - TypeScript/Deno：`deno fmt` + `deno lint`；Rust：`cargo fmt` +
   `cargo clippy`； Vue：`deno lint` + `deno fmt`（均由 CI 强制）。
+- **缩进统一 2 空格**：TS / Vue / JSON / YAML / Markdown 列表都用 2 格；Rust 由
+  `cargo fmt` 保证 4 格。各模块 `deno.json` 的 `fmt.indentWidth` 已固定为 2（`noj-ui`
+  未显式写，取 Deno 默认 2），**不要再改成 4**。2026-11 曾尝试全仓改 4 格（2,100
+  个文件），因与并行开发持续冲突而被回滚（#776 合入后 #784 撤回）。
+- **不要为了「统一缩进」对全仓跑 `deno fmt`**：它同时会改引号、分号与 import
+  顺序，当前约 700 个文件与之不符，一次性重排会产生夹带大量无关改动的 diff。要
+  启用格式化门禁应单独立项，并决定是否接受这批风格差异。
 - 中文注释 + 英文标识符。
 - Deno 错误用 `AppError` 继承体系；Rust 用 `anyhow::Result`。
 - 日志生产环境自动脱敏，不得直接输出敏感字段。
