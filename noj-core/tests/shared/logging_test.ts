@@ -1,9 +1,9 @@
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import {
-  logger,
-  type LogRecord,
-  resetLogSink,
-  setLogSink,
+    logger,
+    type LogRecord,
+    resetLogSink,
+    setLogSink,
 } from "./../../src/shared/base/logging.ts";
 import type { EnvReader } from "./../../src/shared/base/log-config.ts";
 import { runWithRequestContext } from "./../../src/shared/observability/context.ts";
@@ -20,149 +20,158 @@ import { runWithRequestContext } from "./../../src/shared/observability/context.
  * 状态"才是真正的修复。
  */
 function withCapture(
-  vars: Record<string, string | undefined> = {},
+    vars: Record<string, string | undefined> = {},
 ): { records: LogRecord[]; restore: () => void; env: EnvReader } {
-  const records: LogRecord[] = [];
-  const env: EnvReader = (k) => vars[k];
-  setLogSink((r) => records.push(r), env);
-  return {
-    records,
-    env,
-    restore: () => resetLogSink(),
-  };
+    const records: LogRecord[] = [];
+    const env: EnvReader = (k) => vars[k];
+    setLogSink((r) => records.push(r), env);
+    return {
+        records,
+        env,
+        restore: () => resetLogSink(),
+    };
 }
 
 Deno.test({
-  name: "logging: logger 输出结构化记录（msg + fields）",
-  fn: () => {
-    const { records, restore } = withCapture({ LOG_LEVEL: "debug" });
-    try {
-      logger.info("测试消息", { foo: "bar", n: 42 });
-      assertEquals(records.length, 1);
-      assertEquals(records[0].level, "info");
-      assertEquals(records[0].msg, "测试消息");
-      assertEquals(records[0].fields.foo, "bar");
-      assertEquals(records[0].fields.n, 42);
-      assertExists(records[0].ts);
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: logger 输出结构化记录（msg + fields）",
+    fn: () => {
+        const { records, restore } = withCapture({ LOG_LEVEL: "debug" });
+        try {
+            logger.info("测试消息", { foo: "bar", n: 42 });
+            assertEquals(records.length, 1);
+            assertEquals(records[0].level, "info");
+            assertEquals(records[0].msg, "测试消息");
+            assertEquals(records[0].fields.foo, "bar");
+            assertEquals(records[0].fields.n, 42);
+            assertExists(records[0].ts);
+        } finally {
+            restore();
+        }
+    },
 });
 
 Deno.test({
-  name: "logging: LOG_LEVEL 过滤低于阈值的日志",
-  fn: () => {
-    const { records, restore } = withCapture({ LOG_LEVEL: "warn" });
-    try {
-      logger.debug("debug 应被抑制");
-      logger.info("info 应被抑制");
-      logger.warn("warn 应输出");
-      logger.error("error 应输出");
-      assertEquals(records.length, 2);
-      assertEquals(records[0].level, "warn");
-      assertEquals(records[1].level, "error");
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: LOG_LEVEL 过滤低于阈值的日志",
+    fn: () => {
+        const { records, restore } = withCapture({ LOG_LEVEL: "warn" });
+        try {
+            logger.debug("debug 应被抑制");
+            logger.info("info 应被抑制");
+            logger.warn("warn 应输出");
+            logger.error("error 应输出");
+            assertEquals(records.length, 2);
+            assertEquals(records[0].level, "warn");
+            assertEquals(records[1].level, "error");
+        } finally {
+            restore();
+        }
+    },
 });
 
 Deno.test({
-  name: "logging: 生产环境未配置 LOG_LEVEL 时默认 warn",
-  fn: () => {
-    const { records, restore } = withCapture({
-      NOJ_ENV: "production",
-      LOG_LEVEL: undefined,
-    });
-    try {
-      logger.info("info 应被抑制");
-      logger.warn("warn 应输出");
-      assertEquals(records.length, 1);
-      assertEquals(records[0].level, "warn");
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: 生产环境未配置 LOG_LEVEL 时默认 warn",
+    fn: () => {
+        const { records, restore } = withCapture({
+            NOJ_ENV: "production",
+            LOG_LEVEL: undefined,
+        });
+        try {
+            logger.info("info 应被抑制");
+            logger.warn("warn 应输出");
+            assertEquals(records.length, 1);
+            assertEquals(records[0].level, "warn");
+        } finally {
+            restore();
+        }
+    },
 });
 
 Deno.test({
-  name: "logging: 生产环境保留 submission_id / score，抹除 code",
-  fn: () => {
-    const { records, restore } = withCapture({
-      NOJ_ENV: "production",
-      LOG_LEVEL: "debug",
-    });
-    try {
-      logger.info("提交", {
-        submission_id: "550e8400-e29b-41d4-a716-446655440000",
-        score: 9500,
-        code: "print(1)",
-        status: "finished",
-      });
-      const f = records[0].fields;
-      assertEquals(f.submission_id, "550e8400-e29b-41d4-a716-446655440000");
-      assertEquals(f.score, 9500);
-      assertEquals(f.code, "[redacted]");
-      assertEquals(f.status, "finished"); // 非敏感字段保留
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: 生产环境保留 submission_id / score，抹除 code",
+    fn: () => {
+        const { records, restore } = withCapture({
+            NOJ_ENV: "production",
+            LOG_LEVEL: "debug",
+        });
+        try {
+            logger.info("提交", {
+                submission_id: "550e8400-e29b-41d4-a716-446655440000",
+                score: 9500,
+                code: "print(1)",
+                status: "finished",
+            });
+            const f = records[0].fields;
+            assertEquals(
+                f.submission_id,
+                "550e8400-e29b-41d4-a716-446655440000",
+            );
+            assertEquals(f.score, 9500);
+            assertEquals(f.code, "[redacted]");
+            assertEquals(f.status, "finished"); // 非敏感字段保留
+        } finally {
+            restore();
+        }
+    },
 });
 
 Deno.test({
-  name: "logging: 开发环境不脱敏（完整字段便于调试）",
-  fn: () => {
-    const { records, restore } = withCapture({
-      NOJ_ENV: "development",
-      LOG_LEVEL: "debug",
-    });
-    try {
-      logger.info("提交", {
-        submission_id: "550e8400-e29b-41d4-a716-446655440000",
-        score: 9500,
-      });
-      const f = records[0].fields;
-      assertEquals(f.submission_id, "550e8400-e29b-41d4-a716-446655440000");
-      assertEquals(f.score, 9500);
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: 开发环境不脱敏（完整字段便于调试）",
+    fn: () => {
+        const { records, restore } = withCapture({
+            NOJ_ENV: "development",
+            LOG_LEVEL: "debug",
+        });
+        try {
+            logger.info("提交", {
+                submission_id: "550e8400-e29b-41d4-a716-446655440000",
+                score: 9500,
+            });
+            const f = records[0].fields;
+            assertEquals(
+                f.submission_id,
+                "550e8400-e29b-41d4-a716-446655440000",
+            );
+            assertEquals(f.score, 9500);
+        } finally {
+            restore();
+        }
+    },
 });
 
 Deno.test({
-  name: "logging: runWithRequestContext 自动注入 request_id",
-  fn: () => {
-    const { records, restore } = withCapture({ LOG_LEVEL: "debug" });
-    try {
-      logger.info("请求外");
-      runWithRequestContext("req-123", () => {
-        logger.info("请求内");
-      });
-      assertEquals(records[0].request_id, undefined);
-      assertEquals(records[1].request_id, "req-123");
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: runWithRequestContext 自动注入 request_id",
+    fn: () => {
+        const { records, restore } = withCapture({ LOG_LEVEL: "debug" });
+        try {
+            logger.info("请求外");
+            runWithRequestContext("req-123", () => {
+                logger.info("请求内");
+            });
+            assertEquals(records[0].request_id, undefined);
+            assertEquals(records[1].request_id, "req-123");
+        } finally {
+            restore();
+        }
+    },
 });
 
 Deno.test({
-  name: "logging: Error 字段被序列化为 {name, message}",
-  fn: () => {
-    const { records, restore } = withCapture({
-      NOJ_ENV: "production",
-      LOG_LEVEL: "debug",
-    });
-    try {
-      logger.error("出错了", { err: new Error("boom") });
-      const err = records[0].fields.err as { name: string; message: string };
-      assertEquals(err.name, "Error");
-      assertEquals(err.message, "boom");
-    } finally {
-      restore();
-    }
-  },
+    name: "logging: Error 字段被序列化为 {name, message}",
+    fn: () => {
+        const { records, restore } = withCapture({
+            NOJ_ENV: "production",
+            LOG_LEVEL: "debug",
+        });
+        try {
+            logger.error("出错了", { err: new Error("boom") });
+            const err = records[0].fields.err as {
+                name: string;
+                message: string;
+            };
+            assertEquals(err.name, "Error");
+            assertEquals(err.message, "boom");
+        } finally {
+            restore();
+        }
+    },
 });

@@ -1,12 +1,12 @@
 import {
-  boolean,
-  check,
-  index,
-  integer,
-  pgTable,
-  text,
-  unique,
-  uniqueIndex,
+    boolean,
+    check,
+    index,
+    integer,
+    pgTable,
+    text,
+    unique,
+    uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { tsvector } from "./common.ts";
@@ -17,65 +17,65 @@ import type { PlatformRole } from "../../access/roles.ts";
  * 存储注册用户的基本信息和角色权限。
  */
 export const users = pgTable(
-  "users",
-  {
-    id: text("id").primaryKey(),
-    username: text("username").notNull(),
-    email: text("email").notNull().unique(),
-    /** 本地注册邮箱是否已完成验证；历史账户迁移时默认为 true。 */
-    email_verified: boolean("email_verified").notNull().default(true),
-    /** 当前验证链接的 SHA-256 哈希；不保存明文令牌。 */
-    email_verify_token: text("email_verify_token"),
-    /** 当前验证链接的过期时间（ISO 8601）。 */
-    email_verify_expires_at: text("email_verify_expires_at"),
-    /** 本地密码 bcrypt 哈希；OAuth 新用户在补设密码前为 NULL */
-    password_hash: text("password_hash"),
-    /** 凭据变更时原子递增，用于撤销该用户此前签发的全部会话。 */
-    session_version: integer("session_version").notNull().default(0),
-    /**
-     * 平台角色：单值，只有 user / admin。
-     *
-     * 这是平台管理能力的唯一持久化事实；JWT 中的 role 仅供客户端展示，
-     * 任何业务授权都必须重新读取本列。
-     */
-    role: text("role").$type<PlatformRole>().notNull().default("user"),
-    /** 个人简介（Markdown 格式） */
-    bio: text("bio").notNull().default(""),
-    /**
-     * 是否必须在下一次登录后修改密码（issue #75）。
-     * - 引导管理员 / ADMIN_EMAIL+ADMIN_PASS 创建的初始账号设为 true
-     * - 历史用户保持 false，向前兼容
-     * - authMiddleware 在 token 携带 true 且请求不在白名单内时返回 403
-     */
-    must_change_password: boolean("must_change_password").notNull().default(
-      false,
-    ),
-    /** 用户头像存储 URL（`noj-storage://` 格式），NULL = 未设置 */
-    avatar_url: text("avatar_url"),
-    /** TOTP secret 加密后的密文（AES-256-GCM），NULL = 未设置 */
-    tfa_secret_encrypted: text("tfa_secret_encrypted"),
-    /** 是否已启用 TFA 二次验证 */
-    tfa_enabled: boolean("tfa_enabled").notNull().default(false),
-    /** 软删除时间；非 NULL 用户不得再登录，公开内容显示为已注销用户。 */
-    deleted_at: text("deleted_at"),
-    created_at: text("created_at").notNull(),
-    updated_at: text("updated_at").notNull(),
-    /** tsvector 列，GENERATED 自动维护 */
-    searchVector: tsvector("search_vector"),
-  },
-  (table) => ({
-    activeUsernameUnique: uniqueIndex("users_active_username_unique")
-      .on(table.username)
-      .where(sql`${table.deleted_at} IS NULL`),
-    searchVectorIdx: index("idx_users_search_vector").using(
-      "gin",
-      table.searchVector,
-    ),
-    roleCheck: check(
-      "users_role_check",
-      sql`${table.role} IN ('user', 'admin')`,
-    ),
-  }),
+    "users",
+    {
+        id: text("id").primaryKey(),
+        username: text("username").notNull(),
+        email: text("email").notNull().unique(),
+        /** 本地注册邮箱是否已完成验证；历史账户迁移时默认为 true。 */
+        email_verified: boolean("email_verified").notNull().default(true),
+        /** 当前验证链接的 SHA-256 哈希；不保存明文令牌。 */
+        email_verify_token: text("email_verify_token"),
+        /** 当前验证链接的过期时间（ISO 8601）。 */
+        email_verify_expires_at: text("email_verify_expires_at"),
+        /** 本地密码 bcrypt 哈希；OAuth 新用户在补设密码前为 NULL */
+        password_hash: text("password_hash"),
+        /** 凭据变更时原子递增，用于撤销该用户此前签发的全部会话。 */
+        session_version: integer("session_version").notNull().default(0),
+        /**
+         * 平台角色：单值，只有 user / admin。
+         *
+         * 这是平台管理能力的唯一持久化事实；JWT 中的 role 仅供客户端展示，
+         * 任何业务授权都必须重新读取本列。
+         */
+        role: text("role").$type<PlatformRole>().notNull().default("user"),
+        /** 个人简介（Markdown 格式） */
+        bio: text("bio").notNull().default(""),
+        /**
+         * 是否必须在下一次登录后修改密码（issue #75）。
+         * - 引导管理员 / ADMIN_EMAIL+ADMIN_PASS 创建的初始账号设为 true
+         * - 历史用户保持 false，向前兼容
+         * - authMiddleware 在 token 携带 true 且请求不在白名单内时返回 403
+         */
+        must_change_password: boolean("must_change_password").notNull().default(
+            false,
+        ),
+        /** 用户头像存储 URL（`noj-storage://` 格式），NULL = 未设置 */
+        avatar_url: text("avatar_url"),
+        /** TOTP secret 加密后的密文（AES-256-GCM），NULL = 未设置 */
+        tfa_secret_encrypted: text("tfa_secret_encrypted"),
+        /** 是否已启用 TFA 二次验证 */
+        tfa_enabled: boolean("tfa_enabled").notNull().default(false),
+        /** 软删除时间；非 NULL 用户不得再登录，公开内容显示为已注销用户。 */
+        deleted_at: text("deleted_at"),
+        created_at: text("created_at").notNull(),
+        updated_at: text("updated_at").notNull(),
+        /** tsvector 列，GENERATED 自动维护 */
+        searchVector: tsvector("search_vector"),
+    },
+    (table) => ({
+        activeUsernameUnique: uniqueIndex("users_active_username_unique")
+            .on(table.username)
+            .where(sql`${table.deleted_at} IS NULL`),
+        searchVectorIdx: index("idx_users_search_vector").using(
+            "gin",
+            table.searchVector,
+        ),
+        roleCheck: check(
+            "users_role_check",
+            sql`${table.role} IN ('user', 'admin')`,
+        ),
+    }),
 );
 
 /**
@@ -83,25 +83,27 @@ export const users = pgTable(
  * provider + provider_user_id 是外部身份的稳定唯一键，不保存 access/refresh token。
  */
 export const oauthAccounts = pgTable(
-  "oauth_accounts",
-  {
-    id: text("id").primaryKey(),
-    provider: text("provider").notNull(),
-    provider_user_id: text("provider_user_id").notNull(),
-    user_id: text("user_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
+    "oauth_accounts",
+    {
+        id: text("id").primaryKey(),
+        provider: text("provider").notNull(),
+        provider_user_id: text("provider_user_id").notNull(),
+        user_id: text("user_id").notNull().references(() => users.id, {
+            onDelete: "cascade",
+        }),
+        provider_username: text("provider_username"),
+        provider_email: text("provider_email"),
+        email_verified: boolean("email_verified").notNull().default(false),
+        created_at: text("created_at").notNull(),
+        updated_at: text("updated_at").notNull(),
+    },
+    (table) => ({
+        providerIdentityUnique: unique(
+            "oauth_accounts_provider_identity_unique",
+        )
+            .on(table.provider, table.provider_user_id),
+        userIdx: index("idx_oauth_accounts_user_id").on(table.user_id),
     }),
-    provider_username: text("provider_username"),
-    provider_email: text("provider_email"),
-    email_verified: boolean("email_verified").notNull().default(false),
-    created_at: text("created_at").notNull(),
-    updated_at: text("updated_at").notNull(),
-  },
-  (table) => ({
-    providerIdentityUnique: unique("oauth_accounts_provider_identity_unique")
-      .on(table.provider, table.provider_user_id),
-    userIdx: index("idx_oauth_accounts_user_id").on(table.user_id),
-  }),
 );
 
 /**
@@ -119,22 +121,22 @@ export const oauthAccounts = pgTable(
  * 关联签到记录一并删除，避免未来用户删除功能被 FK 阻止。
  */
 export const checkIns = pgTable(
-  "check_ins",
-  {
-    id: text("id").primaryKey(),
-    user_id: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    checkin_date: text("checkin_date").notNull(),
-    streak: integer("streak").notNull().default(1),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    userDateUnique: unique("check_ins_user_date_unique").on(
-      table.user_id,
-      table.checkin_date,
-    ),
-  }),
+    "check_ins",
+    {
+        id: text("id").primaryKey(),
+        user_id: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        checkin_date: text("checkin_date").notNull(),
+        streak: integer("streak").notNull().default(1),
+        created_at: text("created_at").notNull(),
+    },
+    (table) => ({
+        userDateUnique: unique("check_ins_user_date_unique").on(
+            table.user_id,
+            table.checkin_date,
+        ),
+    }),
 );
 
 /**
@@ -144,26 +146,26 @@ export const checkIns = pgTable(
  * used_at NULL = 未使用，原子消耗用单 SQL UPDATE 实现。
  */
 export const passwordResetTokens = pgTable(
-  "password_reset_tokens",
-  {
-    id: text("id").primaryKey(),
-    user_id: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** 令牌 SHA-256 hex 哈希（不存明文明文 token） */
-    token_hash: text("token_hash").notNull().unique(),
-    /** ISO 8601，过期时间，now + 15 分钟 */
-    expires_at: text("expires_at").notNull(),
-    /** ISO 8601，使用时间。NULL = 未使用 */
-    used_at: text("used_at"),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    user_idx: index("idx_password_reset_tokens_user_id").on(table.user_id),
-    expires_idx: index("idx_password_reset_tokens_expires_at").on(
-      table.expires_at,
-    ),
-  }),
+    "password_reset_tokens",
+    {
+        id: text("id").primaryKey(),
+        user_id: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        /** 令牌 SHA-256 hex 哈希（不存明文明文 token） */
+        token_hash: text("token_hash").notNull().unique(),
+        /** ISO 8601，过期时间，now + 15 分钟 */
+        expires_at: text("expires_at").notNull(),
+        /** ISO 8601，使用时间。NULL = 未使用 */
+        used_at: text("used_at"),
+        created_at: text("created_at").notNull(),
+    },
+    (table) => ({
+        user_idx: index("idx_password_reset_tokens_user_id").on(table.user_id),
+        expires_idx: index("idx_password_reset_tokens_expires_at").on(
+            table.expires_at,
+        ),
+    }),
 );
 
 /**
@@ -172,21 +174,21 @@ export const passwordResetTokens = pgTable(
  * used_at NULL = 未使用，原子消费用单 SQL UPDATE 实现。
  */
 export const tfaRecoveryCodes = pgTable(
-  "tfa_recovery_codes",
-  {
-    id: text("id").primaryKey(),
-    user_id: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** 恢复码 SHA-256 hex 哈希 */
-    code_hash: text("code_hash").notNull(),
-    /** ISO 8601，使用时间。NULL = 未使用 */
-    used_at: text("used_at"),
-    created_at: text("created_at").notNull(),
-  },
-  (table) => ({
-    user_idx: index("idx_tfa_recovery_codes_user_id").on(table.user_id),
-  }),
+    "tfa_recovery_codes",
+    {
+        id: text("id").primaryKey(),
+        user_id: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        /** 恢复码 SHA-256 hex 哈希 */
+        code_hash: text("code_hash").notNull(),
+        /** ISO 8601，使用时间。NULL = 未使用 */
+        used_at: text("used_at"),
+        created_at: text("created_at").notNull(),
+    },
+    (table) => ({
+        user_idx: index("idx_tfa_recovery_codes_user_id").on(table.user_id),
+    }),
 );
 
 /**
@@ -204,36 +206,36 @@ export const tfaRecoveryCodes = pgTable(
  * 支持审计追溯：banned_by/unbanned_by 记录操作人。
  */
 export const userBans = pgTable(
-  "user_bans",
-  {
-    id: text("id").primaryKey(),
-    user_id: text("user_id").notNull().references(() => users.id, {
-      onDelete: "cascade",
+    "user_bans",
+    {
+        id: text("id").primaryKey(),
+        user_id: text("user_id").notNull().references(() => users.id, {
+            onDelete: "cascade",
+        }),
+        reason: text("reason").notNull().default(""),
+        /** 封禁范围：platform=限制使用平台（登录/评测/一切写操作）；social=仅限制社区发布 */
+        scope: text("scope").notNull().default("platform"),
+        /** ISO 8601；NULL = 永久封禁 */
+        banned_until: text("banned_until"),
+        banned_at: text("banned_at").notNull(),
+        banned_by: text("banned_by").references(() => users.id, {
+            onDelete: "set null",
+        }),
+        updated_at: text("updated_at").notNull(),
+        /** 解封时间；NULL = 当前活跃封禁 */
+        unbanned_at: text("unbanned_at"),
+        unbanned_by: text("unbanned_by").references(() => users.id, {
+            onDelete: "set null",
+        }),
+    },
+    (table) => ({
+        scopeCheck: check(
+            "user_bans_scope_check",
+            sql`${table.scope} IN ('platform', 'social')`,
+        ),
+        userIdx: index("idx_user_bans_user").on(table.user_id),
+        activeIdx: index("idx_user_bans_active").on(table.user_id).where(
+            sql`unbanned_at IS NULL`,
+        ),
     }),
-    reason: text("reason").notNull().default(""),
-    /** 封禁范围：platform=限制使用平台（登录/评测/一切写操作）；social=仅限制社区发布 */
-    scope: text("scope").notNull().default("platform"),
-    /** ISO 8601；NULL = 永久封禁 */
-    banned_until: text("banned_until"),
-    banned_at: text("banned_at").notNull(),
-    banned_by: text("banned_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
-    updated_at: text("updated_at").notNull(),
-    /** 解封时间；NULL = 当前活跃封禁 */
-    unbanned_at: text("unbanned_at"),
-    unbanned_by: text("unbanned_by").references(() => users.id, {
-      onDelete: "set null",
-    }),
-  },
-  (table) => ({
-    scopeCheck: check(
-      "user_bans_scope_check",
-      sql`${table.scope} IN ('platform', 'social')`,
-    ),
-    userIdx: index("idx_user_bans_user").on(table.user_id),
-    activeIdx: index("idx_user_bans_active").on(table.user_id).where(
-      sql`unbanned_at IS NULL`,
-    ),
-  }),
 );

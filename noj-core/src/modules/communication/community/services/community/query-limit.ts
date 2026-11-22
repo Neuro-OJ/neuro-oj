@@ -14,16 +14,16 @@
  * 回退到默认值。
  */
 export function parseQueryLimit(
-  raw: string | undefined,
-  options: { default: number; min?: number; max?: number },
+    raw: string | undefined,
+    options: { default: number; min?: number; max?: number },
 ): number {
-  const min = options.min ?? 1;
-  const max = options.max ?? 100;
-  const fallback = Math.min(Math.max(options.default, min), max);
-  if (raw === undefined || raw.trim() === "") return fallback;
-  const parsed = Number(raw);
-  // 拒绝 NaN / ±Infinity / 小数 / 越界：回退默认值（与 parsePagination 的
-  // "per_page 非正整数则 400"不同，这里保持既有宽松语义，仅去掉 NaN 穿透）。
-  if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return fallback;
-  return Math.min(Math.max(parsed, min), max);
+    const min = options.min ?? 1;
+    const max = options.max ?? 100;
+    const fallback = Math.min(Math.max(options.default, min), max);
+    if (raw === undefined || raw.trim() === "") return fallback;
+    const parsed = Number(raw);
+    // 拒绝 NaN / ±Infinity / 小数 / 越界：回退默认值（与 parsePagination 的
+    // "per_page 非正整数则 400"不同，这里保持既有宽松语义，仅去掉 NaN 穿透）。
+    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) return fallback;
+    return Math.min(Math.max(parsed, min), max);
 }

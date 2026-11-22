@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
-  communitySanctions,
-  userBans,
+    communitySanctions,
+    userBans,
 } from "../../../../../shared/db/schema.ts";
 import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import { nowIso } from "../../../../../shared/base/dates.ts";
@@ -9,9 +9,9 @@ import { getSetting } from "../../../../platform/contracts/cross-module/services
 import { assertContentWriteAccount } from "../../../../access/contracts/cross-module/identity_services_security_account-access.ts";
 import type { CommunityConfig } from "../../types/community.ts";
 import {
-  communityDb,
-  communityDomainWhere,
-  type CommunityScope,
+    communityDb,
+    communityDomainWhere,
+    type CommunityScope,
 } from "./community-scope.ts";
 
 /**
@@ -20,7 +20,7 @@ import {
  * @returns 设置值是否为 true。
  */
 function settingBoolean(key: string): boolean {
-  return getSetting(key)?.value === true;
+    return getSetting(key)?.value === true;
 }
 
 /**
@@ -29,8 +29,8 @@ function settingBoolean(key: string): boolean {
  * @returns 数值设置；非有限数值时返回 0。
  */
 function settingNumber(key: string): number {
-  const value = Number(getSetting(key)?.value);
-  return Number.isFinite(value) ? value : 0;
+    const value = Number(getSetting(key)?.value);
+    return Number.isFinite(value) ? value : 0;
 }
 
 /**
@@ -38,24 +38,24 @@ function settingNumber(key: string): number {
  * @returns 社区配置对象（各功能开关与长度/间隔等数值限制）。
  */
 export function getCommunityConfig(): CommunityConfig {
-  return {
-    enabled: settingBoolean("community_enabled"),
-    guest_read_enabled: settingBoolean("community_guest_read_enabled"),
-    read_only: settingBoolean("community_read_only"),
-    solutions_enabled: settingBoolean("community_solutions_enabled"),
-    discussions_enabled: settingBoolean("community_discussions_enabled"),
-    comments_enabled: settingBoolean("community_comments_enabled"),
-    external_images_enabled: settingBoolean(
-      "community_external_images_enabled",
-    ),
-    solution_requires_accepted: settingBoolean(
-      "community_solution_requires_accepted",
-    ),
-    new_user_review_hours: settingNumber("community_new_user_review_hours"),
-    post_max_length: settingNumber("community_post_max_length"),
-    comment_max_length: settingNumber("community_comment_max_length"),
-    post_interval_seconds: settingNumber("community_post_interval_seconds"),
-  };
+    return {
+        enabled: settingBoolean("community_enabled"),
+        guest_read_enabled: settingBoolean("community_guest_read_enabled"),
+        read_only: settingBoolean("community_read_only"),
+        solutions_enabled: settingBoolean("community_solutions_enabled"),
+        discussions_enabled: settingBoolean("community_discussions_enabled"),
+        comments_enabled: settingBoolean("community_comments_enabled"),
+        external_images_enabled: settingBoolean(
+            "community_external_images_enabled",
+        ),
+        solution_requires_accepted: settingBoolean(
+            "community_solution_requires_accepted",
+        ),
+        new_user_review_hours: settingNumber("community_new_user_review_hours"),
+        post_max_length: settingNumber("community_post_max_length"),
+        comment_max_length: settingNumber("community_comment_max_length"),
+        post_interval_seconds: settingNumber("community_post_interval_seconds"),
+    };
 }
 
 /**
@@ -64,10 +64,10 @@ export function getCommunityConfig(): CommunityConfig {
  * @throws {ForbiddenError} 社区或指定功能关闭时抛出（FEATURE_DISABLED）。
  */
 export function assertCommunityEnabled(feature?: keyof CommunityConfig): void {
-  const config = getCommunityConfig();
-  if (!config.enabled || (feature && config[feature] === false)) {
-    throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
-  }
+    const config = getCommunityConfig();
+    if (!config.enabled || (feature && config[feature] === false)) {
+        throw new ForbiddenError("该社区功能已关闭", "FEATURE_DISABLED");
+    }
 }
 
 /**
@@ -78,52 +78,52 @@ export function assertCommunityEnabled(feature?: keyof CommunityConfig): void {
  * @throws {ForbiddenError} 只读模式、被封禁或被社区禁言时抛出。
  */
 export async function assertCommunityWritable(
-  userId: string,
-  isModerator: boolean,
-  opts: { allowSocialBan?: boolean; scope?: CommunityScope } = {},
+    userId: string,
+    isModerator: boolean,
+    opts: { allowSocialBan?: boolean; scope?: CommunityScope } = {},
 ): Promise<void> {
-  const config = getCommunityConfig();
-  if (config.read_only && !isModerator) {
-    throw new ForbiddenError("社区当前为只读模式", "COMMUNITY_READ_ONLY");
-  }
-  // 账号政策（审计 F2）：邮箱未验证的账号不得产出用户内容。判定放在
-  // 托管员短路之前，与旧中间件按路径拦截的口径一致；这里是**唯一闸口**，
-  // 旧 `/community` 与 `/domains/:slug/community/*` 都经过它。
-  await assertContentWriteAccount(userId, communityDb(opts.scope));
-  if (isModerator) return;
-  const db = communityDb(opts.scope);
-  // 平台封禁或社交封禁都限制社区发布（social 不限制登录/评测，仅在此处拦截社区写操作）
-  const banRows = await db.select({
-    reason: userBans.reason,
-    scope: userBans.scope,
-    banned_until: userBans.banned_until,
-  }).from(userBans).where(and(
-    eq(userBans.user_id, userId),
-    isNull(userBans.unbanned_at),
-  )).orderBy(desc(userBans.banned_at)).limit(1);
-  const ban = banRows[0];
-  if (ban && (!ban.banned_until || ban.banned_until > nowIso())) {
-    // 社交封禁只限制发布；删除/管理自己的内容仍应允许
-    if (ban.scope === "social" && opts.allowSocialBan) {
-      // 放行
-    } else {
-      throw new ForbiddenError(
-        ban.scope === "social" ? "你已被限制社区发布" : "账号已被封禁",
-        "USER_BANNED",
-        { reason: ban.reason, until: ban.banned_until },
-      );
+    const config = getCommunityConfig();
+    if (config.read_only && !isModerator) {
+        throw new ForbiddenError("社区当前为只读模式", "COMMUNITY_READ_ONLY");
     }
-  }
-  const rows = await db.select().from(communitySanctions).where(and(
-    eq(communitySanctions.user_id, userId),
-    communityDomainWhere(communitySanctions.domain_id, opts.scope),
-    isNull(communitySanctions.revoked_at),
-  )).orderBy(desc(communitySanctions.created_at)).limit(1);
-  const sanction = rows[0];
-  if (sanction && (!sanction.expires_at || sanction.expires_at > nowIso())) {
-    throw new ForbiddenError("你已被限制社区互动", "COMMUNITY_SANCTIONED", {
-      reason: sanction.reason,
-      until: sanction.expires_at,
-    });
-  }
+    // 账号政策（审计 F2）：邮箱未验证的账号不得产出用户内容。判定放在
+    // 托管员短路之前，与旧中间件按路径拦截的口径一致；这里是**唯一闸口**，
+    // 旧 `/community` 与 `/domains/:slug/community/*` 都经过它。
+    await assertContentWriteAccount(userId, communityDb(opts.scope));
+    if (isModerator) return;
+    const db = communityDb(opts.scope);
+    // 平台封禁或社交封禁都限制社区发布（social 不限制登录/评测，仅在此处拦截社区写操作）
+    const banRows = await db.select({
+        reason: userBans.reason,
+        scope: userBans.scope,
+        banned_until: userBans.banned_until,
+    }).from(userBans).where(and(
+        eq(userBans.user_id, userId),
+        isNull(userBans.unbanned_at),
+    )).orderBy(desc(userBans.banned_at)).limit(1);
+    const ban = banRows[0];
+    if (ban && (!ban.banned_until || ban.banned_until > nowIso())) {
+        // 社交封禁只限制发布；删除/管理自己的内容仍应允许
+        if (ban.scope === "social" && opts.allowSocialBan) {
+            // 放行
+        } else {
+            throw new ForbiddenError(
+                ban.scope === "social" ? "你已被限制社区发布" : "账号已被封禁",
+                "USER_BANNED",
+                { reason: ban.reason, until: ban.banned_until },
+            );
+        }
+    }
+    const rows = await db.select().from(communitySanctions).where(and(
+        eq(communitySanctions.user_id, userId),
+        communityDomainWhere(communitySanctions.domain_id, opts.scope),
+        isNull(communitySanctions.revoked_at),
+    )).orderBy(desc(communitySanctions.created_at)).limit(1);
+    const sanction = rows[0];
+    if (sanction && (!sanction.expires_at || sanction.expires_at > nowIso())) {
+        throw new ForbiddenError("你已被限制社区互动", "COMMUNITY_SANCTIONED", {
+            reason: sanction.reason,
+            until: sanction.expires_at,
+        });
+    }
 }

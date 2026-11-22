@@ -19,38 +19,38 @@ return 1
 
 /** 资源授权后、首次执行前调用；operationKey 为服务器提交/尝试/任务条目 ID。 */
 export async function consumeDomainSubmissionQuota(
-  domainId: string,
-  actorId: string,
-  operationKey: string,
-  executor?: Executor,
+    domainId: string,
+    actorId: string,
+    operationKey: string,
+    executor?: Executor,
 ): Promise<void> {
-  const { effective } = await getDomainEffectiveLimits(domainId, executor);
-  if (effective.submissions_per_minute === null) return;
-  let allowed: number;
-  try {
-    const redis = getRedis();
-    if (redis.status !== "ready") {
-      throw new Error("Redis 尚未就绪");
+    const { effective } = await getDomainEffectiveLimits(domainId, executor);
+    if (effective.submissions_per_minute === null) return;
+    let allowed: number;
+    try {
+        const redis = getRedis();
+        if (redis.status !== "ready") {
+            throw new Error("Redis 尚未就绪");
+        }
+        allowed = await redis.eval(
+            DOMAIN_SUBMISSION_QUOTA_SCRIPT,
+            2,
+            `noj:domain:{${domainId}}:submission-minute`,
+            `noj:domain:{${domainId}}:submission-operation:${actorId}:${operationKey}`,
+            effective.submissions_per_minute,
+        );
+    } catch {
+        throw new AppError(
+            "域提交限额服务暂时不可用",
+            503,
+            "DOMAIN_SUBMISSION_QUOTA_UNAVAILABLE",
+        );
     }
-    allowed = await redis.eval(
-      DOMAIN_SUBMISSION_QUOTA_SCRIPT,
-      2,
-      `noj:domain:{${domainId}}:submission-minute`,
-      `noj:domain:{${domainId}}:submission-operation:${actorId}:${operationKey}`,
-      effective.submissions_per_minute,
-    );
-  } catch {
-    throw new AppError(
-      "域提交限额服务暂时不可用",
-      503,
-      "DOMAIN_SUBMISSION_QUOTA_UNAVAILABLE",
-    );
-  }
-  if (allowed !== 1) {
-    throw new AppError(
-      "域提交频率已达上限，请稍后再试",
-      429,
-      "DOMAIN_SUBMISSION_QUOTA_EXCEEDED",
-    );
-  }
+    if (allowed !== 1) {
+        throw new AppError(
+            "域提交频率已达上限，请稍后再试",
+            429,
+            "DOMAIN_SUBMISSION_QUOTA_EXCEEDED",
+        );
+    }
 }

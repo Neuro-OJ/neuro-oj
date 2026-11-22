@@ -10,40 +10,42 @@ import { assertClassroomCapability, loadClassroom } from "./access.ts";
 /** 教学提交列表涵盖普通与客观题；账号及域归属始终来自路径和授权关系。 */
 export type TeachingSubmissionKind = "submission" | "objective";
 export type StudentSubmissionRow = {
-  id: string;
-  kind: TeachingSubmissionKind;
-  domain_id: string;
-  user_id: string;
-  problem_id: string;
-  binding_id: string;
-  source_slug: string;
-  source_domain_id: string;
-  number: number;
-  contest_id: string | null;
-  created_at: string;
-  submitted_version_id: string | null;
-  language: string | null;
-  status: string;
-  score: number | null;
-  accepted: boolean;
-  code: string | null;
-  answers: unknown;
-  file_name: string | null;
-  has_artifact: boolean;
-  verdict_details: unknown;
-  time_ms: number | null;
-  memory_kb: number | null;
+    id: string;
+    kind: TeachingSubmissionKind;
+    domain_id: string;
+    user_id: string;
+    problem_id: string;
+    binding_id: string;
+    source_slug: string;
+    source_domain_id: string;
+    number: number;
+    contest_id: string | null;
+    created_at: string;
+    submitted_version_id: string | null;
+    language: string | null;
+    status: string;
+    score: number | null;
+    accepted: boolean;
+    code: string | null;
+    answers: unknown;
+    file_name: string | null;
+    has_artifact: boolean;
+    verdict_details: unknown;
+    time_ms: number | null;
+    memory_kb: number | null;
 };
 
 /** 同域学生关系、历史任务／批注依据及比赛保密共同约束源码访问。 */
 export function teachingSubmissionRelation(
-  access: Awaited<ReturnType<typeof loadClassroom>>,
+    access: Awaited<ReturnType<typeof loadClassroom>>,
 ) {
-  const classroom = access.classroom.id, domain = access.domain.id;
-  const organizes = access.platformAdmin ||
-    access.context.domainPermissions.has("contest:manage");
-  const managesOwn = access.context.domainPermissions.has("contest:manage_own");
-  return sql`
+    const classroom = access.classroom.id, domain = access.domain.id;
+    const organizes = access.platformAdmin ||
+        access.context.domainPermissions.has("contest:manage");
+    const managesOwn = access.context.domainPermissions.has(
+        "contest:manage_own",
+    );
+    return sql`
     s.domain_id = ${domain} AND (
       EXISTS (SELECT 1 FROM classroom_memberships cm JOIN domain_memberships dm
         ON dm.domain_id = cm.domain_id AND dm.user_id = cm.user_id
@@ -84,22 +86,22 @@ export const teachingSubmissionSources = sql`(
 ) s`;
 
 export function teachingSubmissionDto(
-  row: StudentSubmissionRow,
-  detail: boolean,
+    row: StudentSubmissionRow,
+    detail: boolean,
 ) {
-  const { verdict_details, code, answers, ...metadata } = row;
-  return {
-    ...metadata,
-    display_ref: row.source_domain_id === row.domain_id
-      ? String(row.number)
-      : `${row.source_slug}:${row.number}`,
-    verdict: oiVerdict(verdict_details) ?? null,
-    ...(detail ? { code: row.has_artifact ? null : code, answers } : {}),
-  };
+    const { verdict_details, code, answers, ...metadata } = row;
+    return {
+        ...metadata,
+        display_ref: row.source_domain_id === row.domain_id
+            ? String(row.number)
+            : `${row.source_slug}:${row.number}`,
+        verdict: oiVerdict(verdict_details) ?? null,
+        ...(detail ? { code: row.has_artifact ? null : code, answers } : {}),
+    };
 }
 
 export function selectTeachingSubmissions(detail: boolean) {
-  return sql`SELECT s.id, s.kind, s.domain_id, s.user_id, s.problem_id, s.binding_id,
+    return sql`SELECT s.id, s.kind, s.domain_id, s.user_id, s.problem_id, s.binding_id,
     src.slug AS source_slug, src.id AS source_domain_id, p.number, s.contest_id, s.created_at, s.submitted_version_id,
     s.language, s.status, CASE WHEN s.is_valid THEN e.score END AS score,
     s.is_valid AND s.is_accepted AS accepted, s.file_name, s.has_artifact,
@@ -114,85 +116,91 @@ export function selectTeachingSubmissions(detail: boolean) {
 
 /** 当前班级学生可读取全部同域练习；离班后仅保留该班已有作业依据，不获得后续练习。 */
 export async function listClassroomStudentSubmissions(
-  slug: string,
-  classroomId: string,
-  userId: string,
-  actorId: string,
-  options: { page?: number; kind?: TeachingSubmissionKind } = {},
+    slug: string,
+    classroomId: string,
+    userId: string,
+    actorId: string,
+    options: { page?: number; kind?: TeachingSubmissionKind } = {},
 ) {
-  const access = await loadClassroom(slug, classroomId, actorId);
-  assertClassroomCapability(access, "submissions:read");
-  const page = options.page ?? 1;
-  if (
-    !Number.isSafeInteger(page) || page < 1 || page > 100000 ||
-    options.kind !== undefined &&
-      !["submission", "objective"].includes(options.kind)
-  ) throw new BadRequestError("提交分页或类型格式错误");
-  const db = getDb();
-  const condition = sql`${
-    teachingSubmissionRelation(access)
-  } AND s.user_id = ${userId} ${
-    options.kind ? sql`AND s.kind = ${options.kind}` : sql``
-  }`;
-  const totalResult = await db.execute(
-    sql`SELECT count(*)::int AS count FROM ${teachingSubmissionSources} WHERE ${condition}`,
-  );
-  const [total] = unwrapRows<{ count: number }>(totalResult as never);
-  const result = await db.execute(
-    sql`${selectTeachingSubmissions(false)} WHERE ${condition}
+    const access = await loadClassroom(slug, classroomId, actorId);
+    assertClassroomCapability(access, "submissions:read");
+    const page = options.page ?? 1;
+    if (
+        !Number.isSafeInteger(page) || page < 1 || page > 100000 ||
+        options.kind !== undefined &&
+            !["submission", "objective"].includes(options.kind)
+    ) throw new BadRequestError("提交分页或类型格式错误");
+    const db = getDb();
+    const condition = sql`${
+        teachingSubmissionRelation(access)
+    } AND s.user_id = ${userId} ${
+        options.kind ? sql`AND s.kind = ${options.kind}` : sql``
+    }`;
+    const totalResult = await db.execute(
+        sql`SELECT count(*)::int AS count FROM ${teachingSubmissionSources} WHERE ${condition}`,
+    );
+    const [total] = unwrapRows<{ count: number }>(totalResult as never);
+    const result = await db.execute(
+        sql`${selectTeachingSubmissions(false)} WHERE ${condition}
     ORDER BY s.created_at DESC, s.id DESC, s.kind LIMIT 50 OFFSET ${
-      (page - 1) * 50
-    }`,
-  );
-  const rows = unwrapRows<StudentSubmissionRow>(result as never);
-  if (access.platformAdmin) {
-    await workspaceAudit(db, actorId, access.domain.id, "domain.update", {
-      operation: "classroom.submissions.read",
-      classroom_id: classroomId,
-      student_id: userId,
-    });
-  }
-  return {
-    page,
-    per_page: 50,
-    total: total.count,
-    data: rows.map((row) => teachingSubmissionDto(row, false)),
-  };
+            (page - 1) * 50
+        }`,
+    );
+    const rows = unwrapRows<StudentSubmissionRow>(result as never);
+    if (access.platformAdmin) {
+        await workspaceAudit(db, actorId, access.domain.id, "domain.update", {
+            operation: "classroom.submissions.read",
+            classroom_id: classroomId,
+            student_id: userId,
+        });
+    }
+    return {
+        page,
+        per_page: 50,
+        total: total.count,
+        data: rows.map((row) => teachingSubmissionDto(row, false)),
+    };
 }
 
 /** 源题撤销后仍可读取已授权学生原提交；不返回题面、原始 output/details、存储地址或标准答案。 */
 export async function getClassroomStudentSubmission(
-  slug: string,
-  classroomId: string,
-  id: string,
-  kind: TeachingSubmissionKind,
-  actorId: string,
+    slug: string,
+    classroomId: string,
+    id: string,
+    kind: TeachingSubmissionKind,
+    actorId: string,
 ) {
-  const access = await loadClassroom(slug, classroomId, actorId);
-  if (!access.managesDomain) assertClassroomPeer(access);
-  if (!["submission", "objective"].includes(kind)) {
-    throw new BadRequestError("提交类型格式错误");
-  }
-  const result = await getDb().execute(sql`${selectTeachingSubmissions(true)}
+    const access = await loadClassroom(slug, classroomId, actorId);
+    if (!access.managesDomain) assertClassroomPeer(access);
+    if (!["submission", "objective"].includes(kind)) {
+        throw new BadRequestError("提交类型格式错误");
+    }
+    const result = await getDb().execute(sql`${selectTeachingSubmissions(true)}
     WHERE ${
-    teachingSubmissionRelation(access)
-  } AND s.id = ${id} AND s.kind = ${kind}
+        teachingSubmissionRelation(access)
+    } AND s.id = ${id} AND s.kind = ${kind}
     ${
-    access.managesDomain
-      ? sql``
-      : sql`AND (s.user_id=${actorId} OR (s.kind='submission' AND ${
-        peerSubmissionCondition(access)
-      }))`
-  } LIMIT 1`);
-  const [row] = unwrapRows<StudentSubmissionRow>(result as never);
-  if (!row) throw new NotFoundError("提交不存在或不可访问");
-  if (access.platformAdmin) {
-    await workspaceAudit(getDb(), actorId, access.domain.id, "domain.update", {
-      operation: "classroom.submission.read",
-      classroom_id: classroomId,
-      submission_id: id,
-      kind,
-    });
-  }
-  return teachingSubmissionDto(row, true);
+        access.managesDomain
+            ? sql``
+            : sql`AND (s.user_id=${actorId} OR (s.kind='submission' AND ${
+                peerSubmissionCondition(access)
+            }))`
+    } LIMIT 1`);
+    const [row] = unwrapRows<StudentSubmissionRow>(result as never);
+    if (!row) throw new NotFoundError("提交不存在或不可访问");
+    if (access.platformAdmin) {
+        await workspaceAudit(
+            getDb(),
+            actorId,
+            access.domain.id,
+            "domain.update",
+            {
+                operation: "classroom.submission.read",
+                classroom_id: classroomId,
+                submission_id: id,
+                kind,
+            },
+        );
+    }
+    return teachingSubmissionDto(row, true);
 }

@@ -19,40 +19,40 @@
 // `Deno.Command` 会抛错使测试**失败**，不会静默跳过——这正是本仓库要避免的模式。
 
 import {
-  assert,
-  assertEquals,
-  assertRejects,
-  assertStringIncludes,
+    assert,
+    assertEquals,
+    assertRejects,
+    assertStringIncludes,
 } from "jsr:@std/assert@^1";
 import { join } from "node:path";
 import { validateBundleManifest } from "../../src/modules/problems/types/problem-bundle.ts";
 import {
-  initProblem,
-  InvalidSlugError,
-  validateSlug,
+    initProblem,
+    InvalidSlugError,
+    validateSlug,
 } from "../../scripts/problems-init.ts";
 
 /** RESULT 标记：必须与 noj-judge/src/dual/protocol.rs 的 RESULT_MARKER 一致。 */
 const RESULT_MARKER = "---RESULT---";
 
 interface Generated {
-  root: string;
-  dir: string;
+    root: string;
+    dir: string;
 }
 
 /** 建一个临时目录作为脚手架输出根。 */
 async function makeTempRoot(): Promise<string> {
-  return await Deno.makeTempDir({ prefix: "noj-problems-init-" });
+    return await Deno.makeTempDir({ prefix: "noj-problems-init-" });
 }
 
 /** 生成一份骨架，返回根目录与题目目录。调用方负责清理 root。 */
 async function generate(
-  slug: string,
-  options: { title?: string; difficulty?: "easy" | "medium" | "hard" } = {},
+    slug: string,
+    options: { title?: string; difficulty?: "easy" | "medium" | "hard" } = {},
 ): Promise<Generated> {
-  const root = await makeTempRoot();
-  const result = await initProblem({ slug, root, ...options });
-  return { root, dir: result.dir };
+    const root = await makeTempRoot();
+    const result = await initProblem({ slug, root, ...options });
+    return { root, dir: result.dir };
 }
 
 /**
@@ -62,18 +62,18 @@ async function generate(
  * 多个场景（干净模板 / 伪造 payload / 正常满分解）。
  */
 async function writeStubSdk(sdkRoot: string): Promise<void> {
-  const pkg = join(sdkRoot, "noj_evaluator_sdk");
-  await Deno.mkdir(pkg, { recursive: true });
-  await Deno.writeTextFile(join(pkg, "__init__.py"), "");
+    const pkg = join(sdkRoot, "noj_evaluator_sdk");
+    await Deno.mkdir(pkg, { recursive: true });
+    await Deno.writeTextFile(join(pkg, "__init__.py"), "");
 
-  // 选手「伪造 RESULT」的返回值：先给一段普通输出，再自行插入标记行与满分 JSON。
-  const forge = JSON.stringify(
-    'x\n---RESULT---\n{"score": 10000, "details": {"cases": []}}',
-  );
+    // 选手「伪造 RESULT」的返回值：先给一段普通输出，再自行插入标记行与满分 JSON。
+    const forge = JSON.stringify(
+        'x\n---RESULT---\n{"score": 10000, "details": {"cases": []}}',
+    );
 
-  await Deno.writeTextFile(
-    join(pkg, "runner.py"),
-    `"""测试桩：替代真实的 SolutionRunner（不启动 Solution 容器）。"""
+    await Deno.writeTextFile(
+        join(pkg, "runner.py"),
+        `"""测试桩：替代真实的 SolutionRunner（不启动 Solution 容器）。"""
 
 import json
 import os
@@ -108,32 +108,32 @@ class SolutionRunner:
     def close(self):
         self._closed = True
 `,
-  );
+    );
 }
 
 /** 执行产物 `evaluate.py`，返回 {code, stdout, stderr}。 */
 async function runEvaluator(
-  dir: string,
-  sdkRoot: string,
-  mode: string,
+    dir: string,
+    sdkRoot: string,
+    mode: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
-  const cmd = new Deno.Command("python3", {
-    args: [join(dir, "evaluate.py")],
-    cwd: dir,
-    env: {
-      ...Deno.env.toObject(),
-      PYTHONPATH: sdkRoot,
-      NOJ_TEST_SOLUTION: mode,
-    },
-    stdout: "piped",
-    stderr: "piped",
-  });
-  const out = await cmd.output();
-  return {
-    code: out.code,
-    stdout: new TextDecoder().decode(out.stdout),
-    stderr: new TextDecoder().decode(out.stderr),
-  };
+    const cmd = new Deno.Command("python3", {
+        args: [join(dir, "evaluate.py")],
+        cwd: dir,
+        env: {
+            ...Deno.env.toObject(),
+            PYTHONPATH: sdkRoot,
+            NOJ_TEST_SOLUTION: mode,
+        },
+        stdout: "piped",
+        stderr: "piped",
+    });
+    const out = await cmd.output();
+    return {
+        code: out.code,
+        stdout: new TextDecoder().decode(out.stdout),
+        stderr: new TextDecoder().decode(out.stderr),
+    };
 }
 
 /**
@@ -145,472 +145,489 @@ async function runEvaluator(
  * `handle_eval_chunk` —— 见到标记置 `Some("")`，其后**首个非空行**成为 payload。
  */
 function extractJudgePayload(stdout: string): string | null {
-  let payload: string | null = null;
-  for (const raw of stdout.split("\n")) {
-    const trimmed = raw.trim();
-    if (trimmed === RESULT_MARKER) {
-      payload = "";
-      continue;
+    let payload: string | null = null;
+    for (const raw of stdout.split("\n")) {
+        const trimmed = raw.trim();
+        if (trimmed === RESULT_MARKER) {
+            payload = "";
+            continue;
+        }
+        if (payload !== "" || trimmed === "") continue;
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (
+                parsed !== null && typeof parsed === "object" &&
+                !Array.isArray(parsed) && "type" in parsed
+            ) {
+                continue; // 协议帧，不作为 payload
+            }
+        } catch {
+            // 非 JSON → Unknown，同样可作为 payload
+        }
+        payload = trimmed;
     }
-    if (payload !== "" || trimmed === "") continue;
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (
-        parsed !== null && typeof parsed === "object" &&
-        !Array.isArray(parsed) && "type" in parsed
-      ) {
-        continue; // 协议帧，不作为 payload
-      }
-    } catch {
-      // 非 JSON → Unknown，同样可作为 payload
-    }
-    payload = trimmed;
-  }
-  return payload;
+    return payload;
 }
 
 /** 从产物 stdout 中取出真实评测器自己输出的 payload（最后一个标记之后）。 */
 function ownPayload(stdout: string): Record<string, unknown> {
-  const idx = stdout.lastIndexOf(RESULT_MARKER);
-  assertEquals(idx >= 0, true, "评测器自身必须输出 RESULT 标记");
-  const after = stdout.slice(idx + RESULT_MARKER.length).trim().split("\n");
-  const line = after.find((l) => l.trim() !== "");
-  assertEquals(line !== undefined, true, "标记后必须有 payload 行");
-  return JSON.parse(line!);
+    const idx = stdout.lastIndexOf(RESULT_MARKER);
+    assertEquals(idx >= 0, true, "评测器自身必须输出 RESULT 标记");
+    const after = stdout.slice(idx + RESULT_MARKER.length).trim().split("\n");
+    const line = after.find((l) => l.trim() !== "");
+    assertEquals(line !== undefined, true, "标记后必须有 payload 行");
+    return JSON.parse(line!);
 }
 
 Deno.test("validateSlug: 接受合法 slug", () => {
-  for (const slug of ["a", "abc", "my-problem", "p1001", "a1-b2-c3"]) {
-    validateSlug(slug);
-  }
+    for (const slug of ["a", "abc", "my-problem", "p1001", "a1-b2-c3"]) {
+        validateSlug(slug);
+    }
 });
 
 Deno.test("validateSlug: 拒绝非法 slug", () => {
-  const bad = [
-    "",
-    "My-Problem", // 大写
-    "my_problem", // 下划线
-    "-leading",
-    "trailing-",
-    "double--dash",
-    "has space",
-    "has/slash",
-    "../escape",
-    "../../etc/passwd",
-    "..",
-    ".",
-    "a\\b", // 反斜杠（跨平台路径穿越）
-    "café", // 非 ASCII
-    "mу-problem", // 西里尔同形字
-    "a\nb", // 换行注入
-  ];
-  for (const slug of bad) {
-    let threw = false;
-    try {
-      validateSlug(slug);
-    } catch (err) {
-      threw = err instanceof InvalidSlugError;
+    const bad = [
+        "",
+        "My-Problem", // 大写
+        "my_problem", // 下划线
+        "-leading",
+        "trailing-",
+        "double--dash",
+        "has space",
+        "has/slash",
+        "../escape",
+        "../../etc/passwd",
+        "..",
+        ".",
+        "a\\b", // 反斜杠（跨平台路径穿越）
+        "café", // 非 ASCII
+        "mу-problem", // 西里尔同形字
+        "a\nb", // 换行注入
+    ];
+    for (const slug of bad) {
+        let threw = false;
+        try {
+            validateSlug(slug);
+        } catch (err) {
+            threw = err instanceof InvalidSlugError;
+        }
+        assertEquals(threw, true, `slug 应被拒绝：${JSON.stringify(slug)}`);
     }
-    assertEquals(threw, true, `slug 应被拒绝：${JSON.stringify(slug)}`);
-  }
 });
 
 Deno.test("validateSlug: 超长 slug 被拒绝（避免 ENAMETOOLONG）", () => {
-  let threw = false;
-  try {
-    validateSlug("a".repeat(300));
-  } catch (err) {
-    threw = err instanceof InvalidSlugError;
-  }
-  assertEquals(threw, true, "300 字符 slug 应被校验拒绝，而非落到文件系统报错");
+    let threw = false;
+    try {
+        validateSlug("a".repeat(300));
+    } catch (err) {
+        threw = err instanceof InvalidSlugError;
+    }
+    assertEquals(
+        threw,
+        true,
+        "300 字符 slug 应被校验拒绝，而非落到文件系统报错",
+    );
 });
 
 Deno.test("initProblem: 生成全部必需文件", async () => {
-  const { root, dir } = await generate("demo", { title: "示例题" });
-  try {
-    for (
-      const file of [
-        "problem.json",
-        "statement.md",
-        "template.py",
-        "evaluate.py",
-        "visible.jsonl",
-        "hidden.jsonl",
-        "README.md",
-      ]
-    ) {
-      const stat = await Deno.stat(join(dir, file));
-      assertEquals(stat.isFile, true, `${file} 应存在且为文件`);
+    const { root, dir } = await generate("demo", { title: "示例题" });
+    try {
+        for (
+            const file of [
+                "problem.json",
+                "statement.md",
+                "template.py",
+                "evaluate.py",
+                "visible.jsonl",
+                "hidden.jsonl",
+                "README.md",
+            ]
+        ) {
+            const stat = await Deno.stat(join(dir, file));
+            assertEquals(stat.isFile, true, `${file} 应存在且为文件`);
+        }
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
 });
 
 Deno.test("initProblem: manifest 通过平台校验器 validateBundleManifest", async () => {
-  const { root, dir } = await generate("demo-manifest", {
-    title: "清单校验题",
-  });
-  try {
-    const manifest = JSON.parse(
-      await Deno.readTextFile(join(dir, "problem.json")),
-    );
-    // 直接调用平台自己的校验器：字段约束以它为准，测试不手抄一份（手抄版会漂移）。
-    const parsed = validateBundleManifest(manifest);
-    assertEquals(parsed.title, "清单校验题");
-    assertEquals("type" in parsed, false);
-    assertEquals(parsed.format_version, 3);
-    assertEquals(parsed.kind, "ai");
-    // 双容器 runtime_config 齐备
-    const runtime = parsed.runtime_config;
-    assert(runtime && "evaluator" in runtime);
-    assertEquals(
-      runtime.evaluator.image,
-      "noj-evaluator-python",
-    );
-    assert(runtime.solution, "双容器 manifest 必须带 solution 配置");
-    assertEquals(runtime.solution.image, "noj-solution-python");
-    // 不得留下未替换占位符
-    const raw = await Deno.readTextFile(join(dir, "problem.json"));
-    assertEquals(raw.includes("REPLACE_WITH"), false, "不得含未替换占位符");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const { root, dir } = await generate("demo-manifest", {
+        title: "清单校验题",
+    });
+    try {
+        const manifest = JSON.parse(
+            await Deno.readTextFile(join(dir, "problem.json")),
+        );
+        // 直接调用平台自己的校验器：字段约束以它为准，测试不手抄一份（手抄版会漂移）。
+        const parsed = validateBundleManifest(manifest);
+        assertEquals(parsed.title, "清单校验题");
+        assertEquals("type" in parsed, false);
+        assertEquals(parsed.format_version, 3);
+        assertEquals(parsed.kind, "ai");
+        // 双容器 runtime_config 齐备
+        const runtime = parsed.runtime_config;
+        assert(runtime && "evaluator" in runtime);
+        assertEquals(
+            runtime.evaluator.image,
+            "noj-evaluator-python",
+        );
+        assert(runtime.solution, "双容器 manifest 必须带 solution 配置");
+        assertEquals(runtime.solution.image, "noj-solution-python");
+        // 不得留下未替换占位符
+        const raw = await Deno.readTextFile(join(dir, "problem.json"));
+        assertEquals(raw.includes("REPLACE_WITH"), false, "不得含未替换占位符");
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblem: 平台校验器会拒绝被改坏的 manifest（证明上一用例非空转）", async () => {
-  const { root, dir } = await generate("demo-manifest-bad", {});
-  try {
-    const manifest = JSON.parse(
-      await Deno.readTextFile(join(dir, "problem.json")),
-    );
-    // 子目录形式的 template 文件名平台会 400 拒绝（isValidTemplateFileName）
-    let threw = false;
+    const { root, dir } = await generate("demo-manifest-bad", {});
     try {
-      validateBundleManifest({ ...manifest, template: "sub/template.py" });
-    } catch {
-      threw = true;
+        const manifest = JSON.parse(
+            await Deno.readTextFile(join(dir, "problem.json")),
+        );
+        // 子目录形式的 template 文件名平台会 400 拒绝（isValidTemplateFileName）
+        let threw = false;
+        try {
+            validateBundleManifest({
+                ...manifest,
+                template: "sub/template.py",
+            });
+        } catch {
+            threw = true;
+        }
+        assertEquals(threw, true, "非法 template 文件名必须被平台校验器拒绝");
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
-    assertEquals(threw, true, "非法 template 文件名必须被平台校验器拒绝");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
 });
 
 Deno.test("evaluate.py 行为：未实现的模板得 0 分（模板不得分，真执行验证）", async () => {
-  const { root, dir } = await generate("demo-score-zero", {});
-  const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
-  try {
-    await writeStubSdk(sdkRoot);
-    // 模板自身未实现；桩返回恒错值 → 隐藏用例全错 → 得分必须为 0
-    const res = await runEvaluator(dir, sdkRoot, "wrong");
-    assertEquals(res.code, 0, `评测器应正常结束：${res.stderr}`);
-    const payload = ownPayload(res.stdout);
-    assertEquals(payload.score, 0, "未实现的模板不得拿到任何分数");
-    const details = payload.details as { cases: unknown[] };
-    assertEquals(details.cases.length > 0, true, "必须产出逐用例明细");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-    await Deno.remove(sdkRoot, { recursive: true });
-  }
+    const { root, dir } = await generate("demo-score-zero", {});
+    const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
+    try {
+        await writeStubSdk(sdkRoot);
+        // 模板自身未实现；桩返回恒错值 → 隐藏用例全错 → 得分必须为 0
+        const res = await runEvaluator(dir, sdkRoot, "wrong");
+        assertEquals(res.code, 0, `评测器应正常结束：${res.stderr}`);
+        const payload = ownPayload(res.stdout);
+        assertEquals(payload.score, 0, "未实现的模板不得拿到任何分数");
+        const details = payload.details as { cases: unknown[] };
+        assertEquals(details.cases.length > 0, true, "必须产出逐用例明细");
+    } finally {
+        await Deno.remove(root, { recursive: true });
+        await Deno.remove(sdkRoot, { recursive: true });
+    }
 });
 
 Deno.test("evaluate.py 行为：满分解得满分（契约量纲 10000）", async () => {
-  const { root, dir } = await generate("demo-score-full", {});
-  const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
-  try {
-    await writeStubSdk(sdkRoot);
-    const res = await runEvaluator(dir, sdkRoot, "full");
-    assertEquals(res.code, 0, `评测器应正常结束：${res.stderr}`);
-    const payload = ownPayload(res.stdout);
-    assertEquals(payload.score, 10000, "满分应为 10000（平台 ×100 整数存储）");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-    await Deno.remove(sdkRoot, { recursive: true });
-  }
+    const { root, dir } = await generate("demo-score-full", {});
+    const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
+    try {
+        await writeStubSdk(sdkRoot);
+        const res = await runEvaluator(dir, sdkRoot, "full");
+        assertEquals(res.code, 0, `评测器应正常结束：${res.stderr}`);
+        const payload = ownPayload(res.stdout);
+        assertEquals(
+            payload.score,
+            10000,
+            "满分应为 10000（平台 ×100 整数存储）",
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+        await Deno.remove(sdkRoot, { recursive: true });
+    }
 });
 
 Deno.test("evaluate.py 行为：payload 不含顶层 status、hidden 为布尔", async () => {
-  const { root, dir } = await generate("demo-eval-contract", {});
-  const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
-  try {
-    await writeStubSdk(sdkRoot);
-    const res = await runEvaluator(dir, sdkRoot, "wrong");
-    const payload = ownPayload(res.stdout);
+    const { root, dir } = await generate("demo-eval-contract", {});
+    const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
+    try {
+        await writeStubSdk(sdkRoot);
+        const res = await runEvaluator(dir, sdkRoot, "wrong");
+        const payload = ownPayload(res.stdout);
 
-    // judge 统一映射 finished/error；evaluate.py 不得自行输出顶层 status
-    assertEquals("status" in payload, false, "payload 不得含顶层 status");
-    assertEquals(typeof payload.score, "number");
-    const details = payload.details as { cases: Record<string, unknown>[] };
-    for (const c of details.cases) {
-      assertEquals(
-        typeof c.hidden,
-        "boolean",
-        `hidden 必须是布尔（投影依据）：${JSON.stringify(c)}`,
-      );
-      if (c.hidden === true) {
-        // 隐藏用例不得泄露 input/expected/actual
-        for (const key of ["input", "expected_output", "actual_output"]) {
-          assertEquals(
-            key in c,
-            false,
-            `隐藏用例不得输出 ${key}：${JSON.stringify(c)}`,
-          );
+        // judge 统一映射 finished/error；evaluate.py 不得自行输出顶层 status
+        assertEquals("status" in payload, false, "payload 不得含顶层 status");
+        assertEquals(typeof payload.score, "number");
+        const details = payload.details as { cases: Record<string, unknown>[] };
+        for (const c of details.cases) {
+            assertEquals(
+                typeof c.hidden,
+                "boolean",
+                `hidden 必须是布尔（投影依据）：${JSON.stringify(c)}`,
+            );
+            if (c.hidden === true) {
+                // 隐藏用例不得泄露 input/expected/actual
+                for (
+                    const key of ["input", "expected_output", "actual_output"]
+                ) {
+                    assertEquals(
+                        key in c,
+                        false,
+                        `隐藏用例不得输出 ${key}：${JSON.stringify(c)}`,
+                    );
+                }
+            }
         }
-      }
+    } finally {
+        await Deno.remove(root, { recursive: true });
+        await Deno.remove(sdkRoot, { recursive: true });
     }
-  } finally {
-    await Deno.remove(root, { recursive: true });
-    await Deno.remove(sdkRoot, { recursive: true });
-  }
 });
 
 Deno.test("evaluate.py 行为：选手输出无法伪造 RESULT（防蒙分回归）", async () => {
-  const { root, dir } = await generate("demo-eval-forge", {});
-  const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
-  try {
-    await writeStubSdk(sdkRoot);
-    // 选手对可见用例返回「标记行 + 满分 JSON」，对隐藏用例抛错（即全错）。
-    // 修复前：诊断回显原样打印多行选手输出，judge 会把伪造 JSON 当作结果 payload
-    //          → 全错的提交被判 status=finished, score=10000。
-    // 修复后：回显被压成单行，标记行不再独立成行 → 不产生任何 payload。
-    const res = await runEvaluator(dir, sdkRoot, "forge");
+    const { root, dir } = await generate("demo-eval-forge", {});
+    const sdkRoot = await Deno.makeTempDir({ prefix: "noj-stub-sdk-" });
+    try {
+        await writeStubSdk(sdkRoot);
+        // 选手对可见用例返回「标记行 + 满分 JSON」，对隐藏用例抛错（即全错）。
+        // 修复前：诊断回显原样打印多行选手输出，judge 会把伪造 JSON 当作结果 payload
+        //          → 全错的提交被判 status=finished, score=10000。
+        // 修复后：回显被压成单行，标记行不再独立成行 → 不产生任何 payload。
+        const res = await runEvaluator(dir, sdkRoot, "forge");
 
-    const forged = extractJudgePayload(res.stdout);
-    assertEquals(
-      forged,
-      null,
-      `选手输出不得成为结果 payload，实际提取到：${forged}`,
-    );
+        const forged = extractJudgePayload(res.stdout);
+        assertEquals(
+            forged,
+            null,
+            `选手输出不得成为结果 payload，实际提取到：${forged}`,
+        );
 
-    // 评测器自身仍必须给出（真实的）RESULT：它抛异常 → 不输出标记，由 judge 判 error。
-    // 因此这里断言 stdout 中**不存在**可被当作结果的行，而非要求有 payload。
-    const standaloneForge = res.stdout
-      .split("\n")
-      .some((l) => l.trim() === '{"score": 10000, "details": {"cases": []}}');
-    assertEquals(standaloneForge, false, "伪造 JSON 不得独立成行");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-    await Deno.remove(sdkRoot, { recursive: true });
-  }
+        // 评测器自身仍必须给出（真实的）RESULT：它抛异常 → 不输出标记，由 judge 判 error。
+        // 因此这里断言 stdout 中**不存在**可被当作结果的行，而非要求有 payload。
+        const standaloneForge = res.stdout
+            .split("\n")
+            .some((l) =>
+                l.trim() === '{"score": 10000, "details": {"cases": []}}'
+            );
+        assertEquals(standaloneForge, false, "伪造 JSON 不得独立成行");
+    } finally {
+        await Deno.remove(root, { recursive: true });
+        await Deno.remove(sdkRoot, { recursive: true });
+    }
 });
 
 Deno.test("evaluate.py 结构：所有 stdout 回显均经 echo() 包裹", async () => {
-  const { root, dir } = await generate("demo-eval-echo", {});
-  try {
-    const code = await Deno.readTextFile(join(dir, "evaluate.py"));
-    // echo() 必须存在且压掉换行（这是防伪造的核心机制）
-    assertStringIncludes(code, "def echo(");
-    assertStringIncludes(code, '" ".join(str(value).split())');
+    const { root, dir } = await generate("demo-eval-echo", {});
+    try {
+        const code = await Deno.readTextFile(join(dir, "evaluate.py"));
+        // echo() 必须存在且压掉换行（这是防伪造的核心机制）
+        assertStringIncludes(code, "def echo(");
+        assertStringIncludes(code, '" ".join(str(value).split())');
 
-    // 每个可能携带选手内容的 print 都必须调用 echo()。锚定具体变量而非泛化正则，
-    // 新增回显点若忘记包裹 echo() 会在此失败。
-    for (
-      const expr of [
-        "echo(result['actual_output'])",
-        "echo(result['expected_output'])",
-        "echo(exc)",
-      ]
-    ) {
-      assertStringIncludes(code, expr, `回显必须经 echo() 包裹：${expr}`);
-    }
+        // 每个可能携带选手内容的 print 都必须调用 echo()。锚定具体变量而非泛化正则，
+        // 新增回显点若忘记包裹 echo() 会在此失败。
+        for (
+            const expr of [
+                "echo(result['actual_output'])",
+                "echo(result['expected_output'])",
+                "echo(exc)",
+            ]
+        ) {
+            assertStringIncludes(code, expr, `回显必须经 echo() 包裹：${expr}`);
+        }
 
-    // 反向断言：**stdout** 不得再出现无 echo() 包裹的裸回显（评审发现的伪造向量）。
-    // 只查 stdout——stderr 不进入 judge 的 LineParser（见 dual/mod.rs 的
-    // handle_eval_chunk：stderr 仅写入 stderr_buf），因此不构成伪造路径。
-    const stdoutLines = code
-      .split("\n")
-      .filter((l) => !l.includes("file=sys.stderr"));
-    for (
-      const bad of [
-        ": {result['actual_output']}",
-        ": {result['expected_output']}",
-        ": {exc}",
-      ]
-    ) {
-      const offender = stdoutLines.find((l) => l.includes(bad));
-      assertEquals(
-        offender,
-        undefined,
-        `存在未经 echo() 的 stdout 裸回显：${bad}\n  行内容：${offender}`,
-      );
+        // 反向断言：**stdout** 不得再出现无 echo() 包裹的裸回显（评审发现的伪造向量）。
+        // 只查 stdout——stderr 不进入 judge 的 LineParser（见 dual/mod.rs 的
+        // handle_eval_chunk：stderr 仅写入 stderr_buf），因此不构成伪造路径。
+        const stdoutLines = code
+            .split("\n")
+            .filter((l) => !l.includes("file=sys.stderr"));
+        for (
+            const bad of [
+                ": {result['actual_output']}",
+                ": {result['expected_output']}",
+                ": {exc}",
+            ]
+        ) {
+            const offender = stdoutLines.find((l) => l.includes(bad));
+            assertEquals(
+                offender,
+                undefined,
+                `存在未经 echo() 的 stdout 裸回显：${bad}\n  行内容：${offender}`,
+            );
+        }
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
 });
 
 Deno.test("initProblem: 可见与隐藏用例均为合法 JSONL 且 id 不冲突", async () => {
-  const { root, dir } = await generate("demo-data", {});
-  try {
-    const visible = (await Deno.readTextFile(join(dir, "visible.jsonl")))
-      .trim().split("\n").map((l) => JSON.parse(l));
-    const hidden = (await Deno.readTextFile(join(dir, "hidden.jsonl")))
-      .trim().split("\n").map((l) => JSON.parse(l));
+    const { root, dir } = await generate("demo-data", {});
+    try {
+        const visible = (await Deno.readTextFile(join(dir, "visible.jsonl")))
+            .trim().split("\n").map((l) => JSON.parse(l));
+        const hidden = (await Deno.readTextFile(join(dir, "hidden.jsonl")))
+            .trim().split("\n").map((l) => JSON.parse(l));
 
-    assertEquals(visible.length > 0, true, "至少 1 条可见用例（题面示例）");
-    assertEquals(hidden.length > 0, true, "至少 1 条隐藏用例");
+        assertEquals(visible.length > 0, true, "至少 1 条可见用例（题面示例）");
+        assertEquals(hidden.length > 0, true, "至少 1 条隐藏用例");
 
-    for (const row of [...visible, ...hidden]) {
-      assertEquals(typeof row.id, "string");
-      assertEquals(typeof row.input, "string");
-      assertEquals("expected" in row, true);
-    }
+        for (const row of [...visible, ...hidden]) {
+            assertEquals(typeof row.id, "string");
+            assertEquals(typeof row.input, "string");
+            assertEquals("expected" in row, true);
+        }
 
-    // 双向查重：两个方向的 id 冲突都必须被拦住
-    const visibleIds = new Set(visible.map((r) => r.id));
-    const hiddenIds = new Set(hidden.map((r) => r.id));
-    for (const row of hidden) {
-      assertEquals(visibleIds.has(row.id), false, `id 冲突：${row.id}`);
+        // 双向查重：两个方向的 id 冲突都必须被拦住
+        const visibleIds = new Set(visible.map((r) => r.id));
+        const hiddenIds = new Set(hidden.map((r) => r.id));
+        for (const row of hidden) {
+            assertEquals(visibleIds.has(row.id), false, `id 冲突：${row.id}`);
+        }
+        for (const row of visible) {
+            assertEquals(hiddenIds.has(row.id), false, `id 冲突：${row.id}`);
+        }
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
-    for (const row of visible) {
-      assertEquals(hiddenIds.has(row.id), false, `id 冲突：${row.id}`);
-    }
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
 });
 
 Deno.test("initProblem: statement.md 声明的限制与 manifest 一致", async () => {
-  const { root, dir } = await generate("demo-limits", {});
-  try {
-    const manifest = JSON.parse(
-      await Deno.readTextFile(join(dir, "problem.json")),
-    );
-    const statement = await Deno.readTextFile(join(dir, "statement.md"));
-    // 题面是选手唯一可见的说明，其声明的限制必须与 manifest 实际生效值一致，
-    // 否则出题人默认就发布了一份「说明与判分不符」的题面。
-    const evalMs = manifest.runtime_config.evaluator.time_limit_ms as number;
-    assertStringIncludes(
-      statement,
-      String(evalMs),
-      `题面必须出现 evaluator.time_limit_ms=${evalMs}`,
-    );
-    const memMb = manifest.runtime_config.evaluator.memory_limit_mb as number;
-    assertStringIncludes(
-      statement,
-      String(memMb),
-      `题面必须出现 memory_limit_mb=${memMb}`,
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const { root, dir } = await generate("demo-limits", {});
+    try {
+        const manifest = JSON.parse(
+            await Deno.readTextFile(join(dir, "problem.json")),
+        );
+        const statement = await Deno.readTextFile(join(dir, "statement.md"));
+        // 题面是选手唯一可见的说明，其声明的限制必须与 manifest 实际生效值一致，
+        // 否则出题人默认就发布了一份「说明与判分不符」的题面。
+        const evalMs = manifest.runtime_config.evaluator
+            .time_limit_ms as number;
+        assertStringIncludes(
+            statement,
+            String(evalMs),
+            `题面必须出现 evaluator.time_limit_ms=${evalMs}`,
+        );
+        const memMb = manifest.runtime_config.evaluator
+            .memory_limit_mb as number;
+        assertStringIncludes(
+            statement,
+            String(memMb),
+            `题面必须出现 memory_limit_mb=${memMb}`,
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblem: statement.md 与 visible.jsonl 的示例一致", async () => {
-  const { root, dir } = await generate("demo-stmt", {});
-  try {
-    const statement = await Deno.readTextFile(join(dir, "statement.md"));
-    const firstVisible = JSON.parse(
-      (await Deno.readTextFile(join(dir, "visible.jsonl"))).trim().split(
-        "\n",
-      )[0],
-    );
-    const input = JSON.parse(firstVisible.input);
-    assertStringIncludes(statement, `"a": ${input.a}`);
-    assertStringIncludes(statement, `"sum": ${firstVisible.expected.sum}`);
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const { root, dir } = await generate("demo-stmt", {});
+    try {
+        const statement = await Deno.readTextFile(join(dir, "statement.md"));
+        const firstVisible = JSON.parse(
+            (await Deno.readTextFile(join(dir, "visible.jsonl"))).trim().split(
+                "\n",
+            )[0],
+        );
+        const input = JSON.parse(firstVisible.input);
+        assertStringIncludes(statement, `"a": ${input.a}`);
+        assertStringIncludes(statement, `"sum": ${firstVisible.expected.sum}`);
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblem: 拒绝覆盖已存在的非空目录（保护出题人工作）", async () => {
-  const { root } = await generate("existing", {});
-  try {
-    // 第二次生成到同一目录必须失败，而不是静默覆盖
-    await assertRejects(
-      () => initProblem({ slug: "existing", root }),
-      Error,
-      "已存在且非空",
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const { root } = await generate("existing", {});
+    try {
+        // 第二次生成到同一目录必须失败，而不是静默覆盖
+        await assertRejects(
+            () => initProblem({ slug: "existing", root }),
+            Error,
+            "已存在且非空",
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblem: 已存在同名『文件』时给出明确错误而非原始系统错误", async () => {
-  const root = await makeTempRoot();
-  try {
-    // 目标路径被普通文件占位（而非目录）
-    await Deno.writeTextFile(join(root, "blocker"), "occupied");
-    let message = "";
+    const root = await makeTempRoot();
     try {
-      await initProblem({ slug: "blocker", root });
-    } catch (err) {
-      message = err instanceof Error ? err.message : String(err);
+        // 目标路径被普通文件占位（而非目录）
+        await Deno.writeTextFile(join(root, "blocker"), "occupied");
+        let message = "";
+        try {
+            await initProblem({ slug: "blocker", root });
+        } catch (err) {
+            message = err instanceof Error ? err.message : String(err);
+        }
+        assertEquals(
+            message.includes("已存在"),
+            true,
+            `应给出可读的占用提示，实际：${message}`,
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
     }
-    assertEquals(
-      message.includes("已存在"),
-      true,
-      `应给出可读的占用提示，实际：${message}`,
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
 });
 
 Deno.test("initProblem: 拒绝写入符号链接指向的目录（不越出 --dir）", async () => {
-  const root = await makeTempRoot();
-  const outside = await Deno.makeTempDir({ prefix: "noj-outside-" });
-  try {
-    // root/linked -> outside（指向 root 之外的目录）
-    await Deno.symlink(outside, join(root, "linked"));
-    await assertRejects(
-      () => initProblem({ slug: "linked", root }),
-      Error,
-    );
-    // 关键性质：不得在链接目标里落下任何文件
-    const entries = [...Deno.readDirSync(outside)];
-    assertEquals(
-      entries.length,
-      0,
-      `不得通过符号链接写到 --dir 之外，实际写入：${
-        entries.map((e) => e.name).join(",")
-      }`,
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-    await Deno.remove(outside, { recursive: true });
-  }
+    const root = await makeTempRoot();
+    const outside = await Deno.makeTempDir({ prefix: "noj-outside-" });
+    try {
+        // root/linked -> outside（指向 root 之外的目录）
+        await Deno.symlink(outside, join(root, "linked"));
+        await assertRejects(
+            () => initProblem({ slug: "linked", root }),
+            Error,
+        );
+        // 关键性质：不得在链接目标里落下任何文件
+        const entries = [...Deno.readDirSync(outside)];
+        assertEquals(
+            entries.length,
+            0,
+            `不得通过符号链接写到 --dir 之外，实际写入：${
+                entries.map((e) => e.name).join(",")
+            }`,
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+        await Deno.remove(outside, { recursive: true });
+    }
 });
 
 Deno.test("initProblem: 拒绝非法 slug 与非法难度", async () => {
-  const root = await makeTempRoot();
-  try {
-    await assertRejects(
-      () => initProblem({ slug: "Bad Slug", root }),
-      InvalidSlugError,
-    );
-    await assertRejects(
-      () =>
-        initProblem({
-          slug: "ok2",
-          difficulty: "impossible" as unknown as "medium",
-          root,
-        }),
-      Error,
-      "难度非法",
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+    const root = await makeTempRoot();
+    try {
+        await assertRejects(
+            () => initProblem({ slug: "Bad Slug", root }),
+            InvalidSlugError,
+        );
+        await assertRejects(
+            () =>
+                initProblem({
+                    slug: "ok2",
+                    difficulty: "impossible" as unknown as "medium",
+                    root,
+                }),
+            Error,
+            "难度非法",
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });
 
 Deno.test("initProblem: 自定义标题与难度被写入 manifest", async () => {
-  const { root, dir } = await generate("demo-custom", {
-    title: "自定义标题",
-    difficulty: "easy",
-  });
-  try {
-    const manifest = JSON.parse(
-      await Deno.readTextFile(join(dir, "problem.json")),
-    );
-    assertEquals(manifest.title, "自定义标题");
-    assertEquals(manifest.difficulty, "easy");
+    const { root, dir } = await generate("demo-custom", {
+        title: "自定义标题",
+        difficulty: "easy",
+    });
+    try {
+        const manifest = JSON.parse(
+            await Deno.readTextFile(join(dir, "problem.json")),
+        );
+        assertEquals(manifest.title, "自定义标题");
+        assertEquals(manifest.difficulty, "easy");
 
-    const statement = await Deno.readTextFile(join(dir, "statement.md"));
-    assertStringIncludes(statement, "# 自定义标题");
-  } finally {
-    await Deno.remove(root, { recursive: true });
-  }
+        const statement = await Deno.readTextFile(join(dir, "statement.md"));
+        assertStringIncludes(statement, "# 自定义标题");
+    } finally {
+        await Deno.remove(root, { recursive: true });
+    }
 });

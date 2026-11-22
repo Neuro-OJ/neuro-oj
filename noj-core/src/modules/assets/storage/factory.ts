@@ -17,9 +17,9 @@ let instance: StorageProvider | null = null;
 
 /** 解析与工厂一致的 provider 类型（DB runtime 设置优先于 env 兜底）。 */
 export function getStorageProviderKind(): "local" | "s3" {
-  return String(getSetting("storage_provider")?.value ?? "local") === "s3"
-    ? "s3"
-    : "local";
+    return String(getSetting("storage_provider")?.value ?? "local") === "s3"
+        ? "s3"
+        : "local";
 }
 
 /**
@@ -29,59 +29,66 @@ export function getStorageProviderKind(): "local" | "s3" {
  * 参考项目中已有的 email-provider 模式。
  */
 export async function getStorageProvider(): Promise<StorageProvider> {
-  if (instance) return instance;
+    if (instance) return instance;
 
-  const provider = getStorageProviderKind();
+    const provider = getStorageProviderKind();
 
-  switch (provider) {
-    case "s3": {
-      const { S3StorageProvider } = await import("./s3.ts");
-      const endpoint = String(getSetting("s3_endpoint")?.value ?? "");
-      const region = String(getSetting("s3_region")?.value ?? "us-east-1");
-      const accessKeyId = String(getSetting("s3_access_key")?.value ?? "");
-      const secretAccessKey = String(getSetting("s3_secret_key")?.value ?? "");
-      const bucket = String(
-        getSetting("s3_bucket")?.value ?? "noj-support-packages",
-      );
-      const forcePathStyle = getSetting("s3_force_path_style")?.value === true;
+    switch (provider) {
+        case "s3": {
+            const { S3StorageProvider } = await import("./s3.ts");
+            const endpoint = String(getSetting("s3_endpoint")?.value ?? "");
+            const region = String(
+                getSetting("s3_region")?.value ?? "us-east-1",
+            );
+            const accessKeyId = String(
+                getSetting("s3_access_key")?.value ?? "",
+            );
+            const secretAccessKey = String(
+                getSetting("s3_secret_key")?.value ?? "",
+            );
+            const bucket = String(
+                getSetting("s3_bucket")?.value ?? "noj-support-packages",
+            );
+            const forcePathStyle =
+                getSetting("s3_force_path_style")?.value === true;
 
-      if (!endpoint) {
-        throw new Error(
-          "storage_provider=s3 但未配置 S3 端点（s3_endpoint），请通过系统设置或环境变量配置",
-        );
-      }
-      if (!accessKeyId || !secretAccessKey) {
-        throw new Error(
-          "storage_provider=s3 但未配置访问密钥（s3_access_key / s3_secret_key），请通过系统设置或环境变量配置",
-        );
-      }
+            if (!endpoint) {
+                throw new Error(
+                    "storage_provider=s3 但未配置 S3 端点（s3_endpoint），请通过系统设置或环境变量配置",
+                );
+            }
+            if (!accessKeyId || !secretAccessKey) {
+                throw new Error(
+                    "storage_provider=s3 但未配置访问密钥（s3_access_key / s3_secret_key），请通过系统设置或环境变量配置",
+                );
+            }
 
-      instance = new S3StorageProvider({
-        endpoint,
-        region,
-        accessKeyId,
-        secretAccessKey,
-        bucket,
-        forcePathStyle,
-      });
-      break;
+            instance = new S3StorageProvider({
+                endpoint,
+                region,
+                accessKeyId,
+                secretAccessKey,
+                bucket,
+                forcePathStyle,
+            });
+            break;
+        }
+        case "local":
+        default: {
+            const { LocalStorageProvider } = await import("./local.ts");
+            instance = new LocalStorageProvider();
+            break;
+        }
     }
-    case "local":
-    default: {
-      const { LocalStorageProvider } = await import("./local.ts");
-      instance = new LocalStorageProvider();
-      break;
-    }
-  }
 
-  return instance;
+    return instance;
 }
 
 /**
  * 重置单例（测试用）
  */
 export function resetStorageProvider(): void {
-  instance = null;
+    instance = null;
 }
 
 /**
@@ -91,5 +98,5 @@ export function resetStorageProvider(): void {
  * 验证存储路径行为；测试结束后应 resetStorageProvider() 恢复默认。
  */
 export function setStorageProviderForTest(provider: StorageProvider): void {
-  instance = provider;
+    instance = provider;
 }

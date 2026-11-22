@@ -8,17 +8,17 @@
  */
 
 import {
-  apiGet,
-  apiPost,
-  BASE_URL,
-  domainProblemPath,
-  e2eTest,
-  getAdminToken,
-  getAnswerVersionId,
-  getProblemReference,
-  isE2E,
-  publishProblemVersion,
-  waitForServer,
+    apiGet,
+    apiPost,
+    BASE_URL,
+    domainProblemPath,
+    e2eTest,
+    getAdminToken,
+    getAnswerVersionId,
+    getProblemReference,
+    isE2E,
+    publishProblemVersion,
+    waitForServer,
 } from "../helper.ts";
 
 let adminToken = "";
@@ -28,45 +28,45 @@ let brokenStorageKey = "";
 const testSuffix = Date.now().toString(36);
 
 const MANIFEST = JSON.stringify({
-  format_version: 2,
-  title: `E2E 存储故障测试 ${testSuffix}`,
-  difficulty: "easy",
-  number: 91000 + (Date.now() % 9000),
-  runtime_config: {
-    evaluator: {
-      image: "noj-evaluator-python",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
+    format_version: 2,
+    title: `E2E 存储故障测试 ${testSuffix}`,
+    difficulty: "easy",
+    number: 91000 + (Date.now() % 9000),
+    runtime_config: {
+        evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+        },
+        solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 5000,
+            memory_limit_mb: 512,
+        },
     },
-    solution: {
-      image: "noj-solution-python",
-      call_timeout_ms: 5000,
-      memory_limit_mb: 512,
-    },
-  },
 });
 
 /**
  * 构造统一题目包 zip（临时目录 + 系统 zip 命令）。
  */
 async function makeBundleZip(): Promise<Uint8Array> {
-  const dir = await Deno.makeTempDir();
-  const enc = new TextEncoder();
-  try {
-    await Deno.writeFile(
-      `${dir}/problem.json`,
-      enc.encode(MANIFEST),
-    );
-    await Deno.writeFile(
-      `${dir}/statement.md`,
-      enc.encode(
-        `# E2E 存储故障测试\n\n## 样例输入 1\n\n\`\`\`\n1 2\n\`\`\`\n\n## 样例输出 1\n\n\`\`\`\n3\n\`\`\`\n`,
-      ),
-    );
-    await Deno.writeFile(
-      `${dir}/evaluate.py`,
-      enc.encode(
-        `import json
+    const dir = await Deno.makeTempDir();
+    const enc = new TextEncoder();
+    try {
+        await Deno.writeFile(
+            `${dir}/problem.json`,
+            enc.encode(MANIFEST),
+        );
+        await Deno.writeFile(
+            `${dir}/statement.md`,
+            enc.encode(
+                `# E2E 存储故障测试\n\n## 样例输入 1\n\n\`\`\`\n1 2\n\`\`\`\n\n## 样例输出 1\n\n\`\`\`\n3\n\`\`\`\n`,
+            ),
+        );
+        await Deno.writeFile(
+            `${dir}/evaluate.py`,
+            enc.encode(
+                `import json
 from noj_evaluator_sdk.runner import SolutionRunner
 
 runner = SolutionRunner()
@@ -81,221 +81,239 @@ finally:
 print("---RESULT---")
 print(json.dumps(result))
 `,
-      ),
-    );
-    await Deno.writeFile(
-      `${dir}/visible.jsonl`,
-      enc.encode('{"input": "1 2", "output": "3"}\n'),
-    );
+            ),
+        );
+        await Deno.writeFile(
+            `${dir}/visible.jsonl`,
+            enc.encode('{"input": "1 2", "output": "3"}\n'),
+        );
 
-    const zipPath = `${dir}/bundle.zip`;
-    const cmd = new Deno.Command("zip", {
-      args: ["-r", zipPath, "."],
-      cwd: dir,
-    });
-    const out = await cmd.output();
-    if (out.code !== 0) {
-      throw new Error("zip 打包失败");
+        const zipPath = `${dir}/bundle.zip`;
+        const cmd = new Deno.Command("zip", {
+            args: ["-r", zipPath, "."],
+            cwd: dir,
+        });
+        const out = await cmd.output();
+        if (out.code !== 0) {
+            throw new Error("zip 打包失败");
+        }
+        return await Deno.readFile(zipPath);
+    } finally {
+        await Deno.remove(dir, { recursive: true });
     }
-    return await Deno.readFile(zipPath);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
 }
 
 e2eTest("[e2e/storage-failure] Setup", async () => {
-  if (!isE2E) return;
-  await waitForServer();
-  adminToken = await getAdminToken();
+    if (!isE2E) return;
+    await waitForServer();
+    adminToken = await getAdminToken();
 });
 
 e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
-  if (!isE2E) return;
-  const res = await apiPost(
-    "/api/v1/domains/main/problems",
-    {
-      title: "存储故障无包测试",
-      description: "无支持包",
-      difficulty: "easy",
-      runtime_config: {
-        evaluator: {
-          image: "noj-evaluator-python",
-          command: "python3 /workspace/evaluate.py",
-          time_limit_ms: 5000,
-          memory_limit_mb: 512,
+    if (!isE2E) return;
+    const res = await apiPost(
+        "/api/v1/domains/main/problems",
+        {
+            title: "存储故障无包测试",
+            description: "无支持包",
+            difficulty: "easy",
+            runtime_config: {
+                evaluator: {
+                    image: "noj-evaluator-python",
+                    command: "python3 /workspace/evaluate.py",
+                    time_limit_ms: 5000,
+                    memory_limit_mb: 512,
+                },
+                solution: {
+                    image: "noj-solution-python",
+                    call_timeout_ms: 2000,
+                    memory_limit_mb: 512,
+                },
+            },
         },
-        solution: {
-          image: "noj-solution-python",
-          call_timeout_ms: 2000,
-          memory_limit_mb: 512,
-        },
-      },
-    },
-    adminToken,
-  );
-  if (res.status !== 201) {
-    throw new Error(
-      "创建题目失败: " + res.status + " " + JSON.stringify(res.body),
+        adminToken,
     );
-  }
-  const pid = (res.body as { problem_id: string }).problem_id;
-  const download = await apiGet(
-    `/api/v1/problems/${pid}/support-package`,
-    adminToken,
-  );
-  if (download.status !== 404) {
-    throw new Error("无支持包应返回 404, 实际 " + download.status);
-  }
+    if (res.status !== 201) {
+        throw new Error(
+            "创建题目失败: " + res.status + " " + JSON.stringify(res.body),
+        );
+    }
+    const pid = (res.body as { problem_id: string }).problem_id;
+    const download = await apiGet(
+        `/api/v1/problems/${pid}/support-package`,
+        adminToken,
+    );
+    if (download.status !== 404) {
+        throw new Error("无支持包应返回 404, 实际 " + download.status);
+    }
 });
 
 e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () => {
-  if (!isE2E) return;
-  // 通过 import-bundle 创建带支持包的题目（当前唯一服务端写入 storage URL 的入口）
-  const zip = await makeBundleZip();
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob(
-      [zip.buffer.slice(
-        zip.byteOffset,
-        zip.byteOffset + zip.byteLength,
-      ) as ArrayBuffer],
-      { type: "application/zip" },
-    ),
-    "storage-failure-bundle.zip",
-  );
-
-  const res = await fetch(
-    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${adminToken}` },
-      body: formData,
-    },
-  );
-  if (res.status !== 200 && res.status !== 201) {
-    throw new Error("导入失败: " + res.status + " " + await res.text());
-  }
-  const body = (await res.json()) as {
-    data: { problem_id: string; support_package_storage_url: string | null };
-  };
-  brokenProblemId = body.data.problem_id;
-  // 导入响应的题目投影尚未发布，包事实先在草稿对象登记；发布后才读取投影。
-  await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
-  const published = await apiGet(
-    `/api/v1/problems/${brokenProblemId}`,
-    adminToken,
-  );
-  if (published.status !== 200) {
-    throw new Error(`读取已发布题目失败 ${JSON.stringify(published)}`);
-  }
-  const storageUrl =
-    (published.body as { data: { support_package_storage_url: string | null } })
-      .data.support_package_storage_url;
-  const provider = Deno.env.get("STORAGE_PROVIDER") ?? "local";
-  if (!storageUrl || !storageUrl.startsWith(`noj-storage://${provider}/`)) {
-    throw new Error(`期望 ${provider} 存储 URL, 实际 ${storageUrl}`);
-  }
-  brokenStorageKey = decodeURIComponent(new URL(storageUrl).pathname.slice(1));
-
-  async function execute(container: string, args: string[]) {
-    return await new Deno.Command("docker", {
-      args: ["exec", container, ...args],
-      stdout: "piped",
-      stderr: "piped",
-    }).output();
-  }
-  if (provider === "s3") {
-    const container = Deno.env.get("E2E_MINIO_CONTAINER") ?? "noj-e2e-minio";
-    const alias = await execute(container, [
-      "mc",
-      "alias",
-      "set",
-      "storage-failure",
-      "http://localhost:9000",
-      Deno.env.get("MINIO_ROOT_USER") ?? "minioadmin",
-      Deno.env.get("MINIO_ROOT_PASSWORD") ?? "minioadmin",
-    ]);
-    if (!alias.success) throw new Error("无法配置存储故障夹具的 MinIO 连接");
-    const object = `storage-failure/${
-      Deno.env.get("S3_BUCKET") ?? "noj-support-packages"
-    }/${brokenStorageKey}`;
-    const before = await execute(container, ["mc", "stat", object]);
-    if (!before.success) throw new Error("故障注入前 S3 支持包对象必须存在");
-    const removed = await execute(container, ["mc", "rm", object]);
-    if (!removed.success) throw new Error("删除故障夹具的 S3 支持包失败");
-    const after = await execute(container, ["mc", "stat", object]);
-    if (after.success) throw new Error("故障注入后 S3 支持包对象仍然存在");
-  } else {
-    const removed = await execute(
-      Deno.env.get("E2E_CORE_CONTAINER") ?? "noj-e2e-core",
-      ["rm", "-f", `/app/data/storage/${brokenStorageKey}.zip`],
+    if (!isE2E) return;
+    // 通过 import-bundle 创建带支持包的题目（当前唯一服务端写入 storage URL 的入口）
+    const zip = await makeBundleZip();
+    const formData = new FormData();
+    formData.append(
+        "file",
+        new Blob(
+            [zip.buffer.slice(
+                zip.byteOffset,
+                zip.byteOffset + zip.byteLength,
+            ) as ArrayBuffer],
+            { type: "application/zip" },
+        ),
+        "storage-failure-bundle.zip",
     );
-    if (!removed.success) throw new Error("删除故障夹具的 local 支持包失败");
-  }
 
-  const download = await apiGet(
-    `/api/v1/problems/${brokenProblemId}/support-package`,
-    adminToken,
-  );
-  if (download.status < 500 || download.status >= 600) {
-    throw new Error("存储文件缺失应返回 5xx, 实际 " + download.status);
-  }
+    const res = await fetch(
+        `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+        {
+            method: "POST",
+            headers: { Authorization: `Bearer ${adminToken}` },
+            body: formData,
+        },
+    );
+    if (res.status !== 200 && res.status !== 201) {
+        throw new Error("导入失败: " + res.status + " " + await res.text());
+    }
+    const body = (await res.json()) as {
+        data: {
+            problem_id: string;
+            support_package_storage_url: string | null;
+        };
+    };
+    brokenProblemId = body.data.problem_id;
+    // 导入响应的题目投影尚未发布，包事实先在草稿对象登记；发布后才读取投影。
+    await publishProblemVersion(adminToken, brokenProblemId, "E2E 存储故障 V1");
+    const published = await apiGet(
+        `/api/v1/problems/${brokenProblemId}`,
+        adminToken,
+    );
+    if (published.status !== 200) {
+        throw new Error(`读取已发布题目失败 ${JSON.stringify(published)}`);
+    }
+    const storageUrl = (published.body as {
+        data: { support_package_storage_url: string | null };
+    })
+        .data.support_package_storage_url;
+    const provider = Deno.env.get("STORAGE_PROVIDER") ?? "local";
+    if (!storageUrl || !storageUrl.startsWith(`noj-storage://${provider}/`)) {
+        throw new Error(`期望 ${provider} 存储 URL, 实际 ${storageUrl}`);
+    }
+    brokenStorageKey = decodeURIComponent(
+        new URL(storageUrl).pathname.slice(1),
+    );
+
+    async function execute(container: string, args: string[]) {
+        return await new Deno.Command("docker", {
+            args: ["exec", container, ...args],
+            stdout: "piped",
+            stderr: "piped",
+        }).output();
+    }
+    if (provider === "s3") {
+        const container = Deno.env.get("E2E_MINIO_CONTAINER") ??
+            "noj-e2e-minio";
+        const alias = await execute(container, [
+            "mc",
+            "alias",
+            "set",
+            "storage-failure",
+            "http://localhost:9000",
+            Deno.env.get("MINIO_ROOT_USER") ?? "minioadmin",
+            Deno.env.get("MINIO_ROOT_PASSWORD") ?? "minioadmin",
+        ]);
+        if (!alias.success) {
+            throw new Error("无法配置存储故障夹具的 MinIO 连接");
+        }
+        const object = `storage-failure/${
+            Deno.env.get("S3_BUCKET") ?? "noj-support-packages"
+        }/${brokenStorageKey}`;
+        const before = await execute(container, ["mc", "stat", object]);
+        if (!before.success) {
+            throw new Error("故障注入前 S3 支持包对象必须存在");
+        }
+        const removed = await execute(container, ["mc", "rm", object]);
+        if (!removed.success) throw new Error("删除故障夹具的 S3 支持包失败");
+        const after = await execute(container, ["mc", "stat", object]);
+        if (after.success) throw new Error("故障注入后 S3 支持包对象仍然存在");
+    } else {
+        const removed = await execute(
+            Deno.env.get("E2E_CORE_CONTAINER") ?? "noj-e2e-core",
+            ["rm", "-f", `/app/data/storage/${brokenStorageKey}.zip`],
+        );
+        if (!removed.success) {
+            throw new Error("删除故障夹具的 local 支持包失败");
+        }
+    }
+
+    const download = await apiGet(
+        `/api/v1/problems/${brokenProblemId}/support-package`,
+        adminToken,
+    );
+    if (download.status < 500 || download.status >= 600) {
+        throw new Error("存储文件缺失应返回 5xx, 实际 " + download.status);
+    }
 });
 
 e2eTest(
-  "[e2e/storage-failure] 支持包缺失在预检阶段拒绝提交且不创建记录",
-  async () => {
-    if (!isE2E) return;
-    // 按版本执行需要目标支持包存在，预检失败不能落库后再等待 Judge。
-    // 使用管理该导入题目的相同 admin 身份提交，
-    // 普通用户会被 resolveProblemAccess 判为无权访问（403）。
-    if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
-    const listPath = `/api/v1/submissions?problem_id=${brokenProblemId}`;
-    const before = await apiGet(listPath, adminToken);
-    if (
-      before.status !== 200 ||
-      (before.body as { pagination: { total: number } }).pagination.total !== 0
-    ) {
-      throw new Error("故障夹具的提交基线应为空");
-    }
-    const versionId = await getAnswerVersionId(adminToken, brokenProblemId);
-    const rejected = await apiPost("/api/v1/domains/main/submissions", {
-      problem_ref: await getProblemReference(brokenProblemId, adminToken),
-      version_id: versionId,
-      language: "python3",
-      code: "print(1)",
-    }, adminToken);
-    if (
-      rejected.status !== 409 ||
-      (rejected.body as { code: string }).code !== "SUPPORT_PACKAGE_MISSING"
-    ) {
-      throw new Error(`缺失支持包应在预检拒绝: ${JSON.stringify(rejected)}`);
-    }
-    const after = await apiGet(listPath, adminToken);
-    if (
-      after.status !== 200 ||
-      (after.body as { pagination: { total: number } }).pagination.total !== 0
-    ) {
-      throw new Error("支持包预检失败不应创建提交记录");
-    }
-  },
+    "[e2e/storage-failure] 支持包缺失在预检阶段拒绝提交且不创建记录",
+    async () => {
+        if (!isE2E) return;
+        // 按版本执行需要目标支持包存在，预检失败不能落库后再等待 Judge。
+        // 使用管理该导入题目的相同 admin 身份提交，
+        // 普通用户会被 resolveProblemAccess 判为无权访问（403）。
+        if (!brokenProblemId) throw new Error("缺少 brokenProblemId");
+        const listPath = `/api/v1/submissions?problem_id=${brokenProblemId}`;
+        const before = await apiGet(listPath, adminToken);
+        if (
+            before.status !== 200 ||
+            (before.body as { pagination: { total: number } }).pagination
+                    .total !== 0
+        ) {
+            throw new Error("故障夹具的提交基线应为空");
+        }
+        const versionId = await getAnswerVersionId(adminToken, brokenProblemId);
+        const rejected = await apiPost("/api/v1/domains/main/submissions", {
+            problem_ref: await getProblemReference(brokenProblemId, adminToken),
+            version_id: versionId,
+            language: "python3",
+            code: "print(1)",
+        }, adminToken);
+        if (
+            rejected.status !== 409 ||
+            (rejected.body as { code: string }).code !==
+                "SUPPORT_PACKAGE_MISSING"
+        ) {
+            throw new Error(
+                `缺失支持包应在预检拒绝: ${JSON.stringify(rejected)}`,
+            );
+        }
+        const after = await apiGet(listPath, adminToken);
+        if (
+            after.status !== 200 ||
+            (after.body as { pagination: { total: number } }).pagination
+                    .total !== 0
+        ) {
+            throw new Error("支持包预检失败不应创建提交记录");
+        }
+    },
 );
 
 e2eTest(
-  "[e2e/storage-failure] 已发布版本受删除保护，不级联清除历史依据",
-  async () => {
-    if (!isE2E || !brokenProblemId) return;
-    const del = await fetch(
-      `${BASE_URL}${await domainProblemPath(brokenProblemId)}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${adminToken}` },
-      },
-    );
-    await del.arrayBuffer();
-    if (del.status !== 409) {
-      throw new Error("已发布题目物理删除应返回409，实际 " + del.status);
-    }
-  },
+    "[e2e/storage-failure] 已发布版本受删除保护，不级联清除历史依据",
+    async () => {
+        if (!isE2E || !brokenProblemId) return;
+        const del = await fetch(
+            `${BASE_URL}${await domainProblemPath(brokenProblemId)}`,
+            {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${adminToken}` },
+            },
+        );
+        await del.arrayBuffer();
+        if (del.status !== 409) {
+            throw new Error("已发布题目物理删除应返回409，实际 " + del.status);
+        }
+    },
 );

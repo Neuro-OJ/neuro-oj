@@ -18,14 +18,14 @@ import { getDb } from "../../shared/db/connection.ts";
 import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
 import { backgroundTasks } from "../../shared/db/schema.ts";
 import {
-  type ManagedTask,
-  startPeriodicTask,
+    type ManagedTask,
+    startPeriodicTask,
 } from "../../shared/runtime/managed-task.ts";
 import type { SearchEntityType } from "../../shared/search-events.ts";
 import {
-  type EnqueueTaskInput,
-  type EnqueueTaskResult,
-  type TaskTargetKind,
+    type EnqueueTaskInput,
+    type EnqueueTaskResult,
+    type TaskTargetKind,
 } from "../../shared/tasks/contracts.ts";
 import { enqueueTaskTx } from "../../shared/tasks/repository.ts";
 
@@ -33,13 +33,13 @@ const logger = getLogger(["noj", "application", "search-tasks"]);
 
 /** 搜索实体类型 → 任务目标种类。 */
 const TARGET_KIND_BY_ENTITY: Record<SearchEntityType, TaskTargetKind> = {
-  problem: "problem",
-  user: "domain",
-  community_post: "problem",
-  community_comment: "problem",
-  contest: "problem",
-  submission: "submission",
-  announcement: "domain",
+    problem: "problem",
+    user: "domain",
+    community_post: "problem",
+    community_comment: "problem",
+    contest: "problem",
+    submission: "submission",
+    announcement: "domain",
 };
 
 /** 索引动作；同一业务事件的重复登记合并，不同事件分别持久化。 */
@@ -52,21 +52,21 @@ export type SearchIndexTaskAction = "upsert" | "delete";
  * succeeded 或 leased 任务吞掉。handler 仍从最新事实构建索引。
  */
 export async function enqueueSearchIndexTaskTx(
-  tx: DbTx,
-  entityType: SearchEntityType,
-  entityId: string,
-  action: SearchIndexTaskAction,
-  eventId: string,
+    tx: DbTx,
+    entityType: SearchEntityType,
+    entityId: string,
+    action: SearchIndexTaskAction,
+    eventId: string,
 ): Promise<EnqueueTaskResult> {
-  if (!eventId.trim()) throw new TypeError("搜索任务需要不可变事件标识");
-  const input: EnqueueTaskInput = {
-    taskType: "search.index",
-    targetKind: TARGET_KIND_BY_ENTITY[entityType],
-    targetId: entityId,
-    dedupeKey: `${entityType}:${action}:${eventId}`,
-    payload: { entity_type: entityType, entity_id: entityId, action },
-  };
-  return await enqueueTaskTx(tx, input);
+    if (!eventId.trim()) throw new TypeError("搜索任务需要不可变事件标识");
+    const input: EnqueueTaskInput = {
+        taskType: "search.index",
+        targetKind: TARGET_KIND_BY_ENTITY[entityType],
+        targetId: entityId,
+        dedupeKey: `${entityType}:${action}:${eventId}`,
+        payload: { entity_type: entityType, entity_id: entityId, action },
+    };
+    return await enqueueTaskTx(tx, input);
 }
 
 /**
@@ -87,29 +87,29 @@ export async function enqueueSearchIndexTaskTx(
  * @param db 执行连接：根连接，或调用方正在进行的业务事务
  */
 export async function enqueueSearchIndexTask(
-  entityType: SearchEntityType,
-  entityId: string,
-  action: SearchIndexTaskAction,
-  db: DbRoot | DbTx = getDb(),
+    entityType: SearchEntityType,
+    entityId: string,
+    action: SearchIndexTaskAction,
+    db: DbRoot | DbTx = getDb(),
 ): Promise<void> {
-  try {
-    await db.transaction((tx) =>
-      enqueueSearchIndexTaskTx(
-        tx,
-        entityType,
-        entityId,
-        action,
-        crypto.randomUUID(),
-      )
-    );
-  } catch (err) {
-    logger.error("登记搜索索引任务失败，索引可能落后", {
-      entity_type: entityType,
-      entity_id: entityId,
-      action,
-      err,
-    });
-  }
+    try {
+        await db.transaction((tx) =>
+            enqueueSearchIndexTaskTx(
+                tx,
+                entityType,
+                entityId,
+                action,
+                crypto.randomUUID(),
+            )
+        );
+    } catch (err) {
+        logger.error("登记搜索索引任务失败，索引可能落后", {
+            entity_type: entityType,
+            entity_id: entityId,
+            action,
+            err,
+        });
+    }
 }
 
 /** 已成功的搜索索引任务保留天数。 */
@@ -128,17 +128,17 @@ const SEARCH_TASK_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
  * @returns 删除行数
  */
 export async function cleanupSucceededSearchTasks(
-  retentionDays = SEARCH_TASK_RETENTION_DAYS,
-  db: DbRoot = getDb(),
+    retentionDays = SEARCH_TASK_RETENTION_DAYS,
+    db: DbRoot = getDb(),
 ): Promise<number> {
-  const cutoff = new Date(Date.now() - retentionDays * 86400 * 1000)
-    .toISOString();
-  const rows = await db.delete(backgroundTasks).where(and(
-    eq(backgroundTasks.task_type, "search.index"),
-    eq(backgroundTasks.status, "succeeded"),
-    lt(backgroundTasks.finished_at, cutoff),
-  )).returning({ id: backgroundTasks.id });
-  return rows.length;
+    const cutoff = new Date(Date.now() - retentionDays * 86400 * 1000)
+        .toISOString();
+    const rows = await db.delete(backgroundTasks).where(and(
+        eq(backgroundTasks.task_type, "search.index"),
+        eq(backgroundTasks.status, "succeeded"),
+        lt(backgroundTasks.finished_at, cutoff),
+    )).returning({ id: backgroundTasks.id });
+    return rows.length;
 }
 
 /**
@@ -147,19 +147,19 @@ export async function cleanupSucceededSearchTasks(
  * @returns 可停止、可等待的后台任务句柄
  */
 export function startSearchTaskRetentionTask(): ManagedTask {
-  return startPeriodicTask({
-    name: "search-task-retention",
-    intervalMs: SEARCH_TASK_RETENTION_INTERVAL_MS,
-    runImmediately: true,
-    run: async () => {
-      const removed = await cleanupSucceededSearchTasks();
-      if (removed > 0) {
-        logger.info("搜索索引任务保留清理完成", {
-          removed,
-          retention_days: SEARCH_TASK_RETENTION_DAYS,
-        });
-      }
-    },
-    onError: (err) => logger.error("搜索索引任务保留清理失败", { err }),
-  });
+    return startPeriodicTask({
+        name: "search-task-retention",
+        intervalMs: SEARCH_TASK_RETENTION_INTERVAL_MS,
+        runImmediately: true,
+        run: async () => {
+            const removed = await cleanupSucceededSearchTasks();
+            if (removed > 0) {
+                logger.info("搜索索引任务保留清理完成", {
+                    removed,
+                    retention_days: SEARCH_TASK_RETENTION_DAYS,
+                });
+            }
+        },
+        onError: (err) => logger.error("搜索索引任务保留清理失败", { err }),
+    });
 }

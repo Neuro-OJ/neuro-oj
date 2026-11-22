@@ -17,151 +17,151 @@ const ADMIN_ID = crypto.randomUUID();
 const TEST_TS = Date.now();
 
 async function freshSetup() {
-  await resetDbForTest();
-  await initRedisForTest();
-  _resetBanlistForTest();
-  _resetBanCacheForTest();
-  const db = getDb();
-  await db.delete(ipBans);
-  await db.delete(users).where(eq(users.id, ADMIN_ID));
-  const now = new Date().toISOString();
-  await db.insert(users).values({
-    id: ADMIN_ID,
-    username: `test-admin-${TEST_TS}`,
-    email: `test-admin-${TEST_TS}@noj.local`,
-    password_hash: "x",
-    // 平台角色单值写入用户行；权限判定实时读取 users.role。
-    role: "admin",
-    created_at: now,
-    updated_at: now,
-  });
+    await resetDbForTest();
+    await initRedisForTest();
+    _resetBanlistForTest();
+    _resetBanCacheForTest();
+    const db = getDb();
+    await db.delete(ipBans);
+    await db.delete(users).where(eq(users.id, ADMIN_ID));
+    const now = new Date().toISOString();
+    await db.insert(users).values({
+        id: ADMIN_ID,
+        username: `test-admin-${TEST_TS}`,
+        email: `test-admin-${TEST_TS}@noj.local`,
+        password_hash: "x",
+        // 平台角色单值写入用户行；权限判定实时读取 users.role。
+        role: "admin",
+        created_at: now,
+        updated_at: now,
+    });
 }
 
 Deno.test({
-  name: "admin-blacklist route: GET /blacklist 无 token 返回 401",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const { createApp } = await import("../../../../../app.ts");
-    const app = createApp();
-    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist");
-    assertEquals(res.status, 401);
-  },
+    name: "admin-blacklist route: GET /blacklist 无 token 返回 401",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await freshSetup();
+        const { createApp } = await import("../../../../../app.ts");
+        const app = createApp();
+        const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist");
+        assertEquals(res.status, 401);
+    },
 });
 
 Deno.test({
-  name: "admin-blacklist route: POST /blacklist 合法 IP 写入",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const { createApp } = await import("../../../../../app.ts");
-    const app = createApp();
-    const token = await signToken({ sub: ADMIN_ID, role: "admin" });
-    const db = getDb();
-    await db.delete(auditLogs);
-    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
-      method: "POST",
-      body: { ip_or_cidr: "1.2.3.4", reason: "spam" },
-      token,
-    });
-    assertEquals(res.status, 201);
-    const body = await res.json();
-    assertEquals(body.data.ip_or_cidr, "1.2.3.4");
+    name: "admin-blacklist route: POST /blacklist 合法 IP 写入",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await freshSetup();
+        const { createApp } = await import("../../../../../app.ts");
+        const app = createApp();
+        const token = await signToken({ sub: ADMIN_ID, role: "admin" });
+        const db = getDb();
+        await db.delete(auditLogs);
+        const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
+            method: "POST",
+            body: { ip_or_cidr: "1.2.3.4", reason: "spam" },
+            token,
+        });
+        assertEquals(res.status, 201);
+        const body = await res.json();
+        assertEquals(body.data.ip_or_cidr, "1.2.3.4");
 
-    // 审计唯一性：service 层已写 ip_ban.create，路由层不得重复写
-    const auditRows = await db.select().from(auditLogs).where(
-      eq(auditLogs.action, "ip_ban.create"),
-    );
-    assertEquals(auditRows.length, 1, "ip_ban.create 应仅有一条审计记录");
-    assertEquals(auditRows[0].target_type, "ip_bans");
-    assertEquals(auditRows[0].target_id, body.data.id);
-    assertEquals(
-      (auditRows[0].detail as Record<string, unknown>).ip_or_cidr,
-      "1.2.3.4",
-    );
-  },
+        // 审计唯一性：service 层已写 ip_ban.create，路由层不得重复写
+        const auditRows = await db.select().from(auditLogs).where(
+            eq(auditLogs.action, "ip_ban.create"),
+        );
+        assertEquals(auditRows.length, 1, "ip_ban.create 应仅有一条审计记录");
+        assertEquals(auditRows[0].target_type, "ip_bans");
+        assertEquals(auditRows[0].target_id, body.data.id);
+        assertEquals(
+            (auditRows[0].detail as Record<string, unknown>).ip_or_cidr,
+            "1.2.3.4",
+        );
+    },
 });
 
 Deno.test({
-  name: "admin-blacklist route: POST /blacklist 0.0.0.0/0 返 400",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const { createApp } = await import("../../../../../app.ts");
-    const app = createApp();
-    const token = await signToken({ sub: ADMIN_ID, role: "admin" });
-    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
-      method: "POST",
-      body: { ip_or_cidr: "0.0.0.0/0" },
-      token,
-    });
-    assertEquals(res.status, 400);
-  },
+    name: "admin-blacklist route: POST /blacklist 0.0.0.0/0 返 400",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await freshSetup();
+        const { createApp } = await import("../../../../../app.ts");
+        const app = createApp();
+        const token = await signToken({ sub: ADMIN_ID, role: "admin" });
+        const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
+            method: "POST",
+            body: { ip_or_cidr: "0.0.0.0/0" },
+            token,
+        });
+        assertEquals(res.status, 400);
+    },
 });
 
 Deno.test({
-  name: "admin-blacklist route: POST /blacklist 非 admin 返 403",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const { createApp } = await import("../../../../../app.ts");
-    const app = createApp();
-    const now = new Date().toISOString();
-    await getDb().insert(users).values({
-      id: "u1",
-      username: `blacklist-user-${TEST_TS}`,
-      email: `blacklist-user-${TEST_TS}@noj.local`,
-      password_hash: "x",
-      created_at: now,
-      updated_at: now,
-    });
-    const token = await signToken({ sub: "u1", role: "user" });
-    const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
-      method: "POST",
-      body: { ip_or_cidr: "1.2.3.4" },
-      token,
-    });
-    assertEquals(res.status, 403);
-  },
+    name: "admin-blacklist route: POST /blacklist 非 admin 返 403",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await freshSetup();
+        const { createApp } = await import("../../../../../app.ts");
+        const app = createApp();
+        const now = new Date().toISOString();
+        await getDb().insert(users).values({
+            id: "u1",
+            username: `blacklist-user-${TEST_TS}`,
+            email: `blacklist-user-${TEST_TS}@noj.local`,
+            password_hash: "x",
+            created_at: now,
+            updated_at: now,
+        });
+        const token = await signToken({ sub: "u1", role: "user" });
+        const res = await jsonRequest(app, "/api/v1/admin/identity/blacklist", {
+            method: "POST",
+            body: { ip_or_cidr: "1.2.3.4" },
+            token,
+        });
+        assertEquals(res.status, 403);
+    },
 });
 
 Deno.test({
-  name: "admin-blacklist route: DELETE /blacklist/:id 返 204",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await freshSetup();
-    const { createApp } = await import("../../../../../app.ts");
-    const { addIpBan } = await import("../../index.ts");
-    const ban = await addIpBan({ ip_or_cidr: "1.2.3.4" }, ADMIN_ID);
-    const app = createApp();
-    const token = await signToken({ sub: ADMIN_ID, role: "admin" });
-    const db = getDb();
-    await db.delete(auditLogs);
-    const res = await jsonRequest(
-      app,
-      `/api/v1/admin/identity/blacklist/${ban.id}`,
-      {
-        method: "DELETE",
-        token,
-      },
-    );
-    assertEquals(res.status, 204);
+    name: "admin-blacklist route: DELETE /blacklist/:id 返 204",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await freshSetup();
+        const { createApp } = await import("../../../../../app.ts");
+        const { addIpBan } = await import("../../index.ts");
+        const ban = await addIpBan({ ip_or_cidr: "1.2.3.4" }, ADMIN_ID);
+        const app = createApp();
+        const token = await signToken({ sub: ADMIN_ID, role: "admin" });
+        const db = getDb();
+        await db.delete(auditLogs);
+        const res = await jsonRequest(
+            app,
+            `/api/v1/admin/identity/blacklist/${ban.id}`,
+            {
+                method: "DELETE",
+                token,
+            },
+        );
+        assertEquals(res.status, 204);
 
-    // 审计唯一性：service 层已写 ip_ban.delete，路由层不得重复写
-    const auditRows = await db.select().from(auditLogs).where(
-      eq(auditLogs.action, "ip_ban.delete"),
-    );
-    assertEquals(auditRows.length, 1, "ip_ban.delete 应仅有一条审计记录");
-    assertEquals(auditRows[0].target_type, "ip_bans");
-    assertEquals(auditRows[0].target_id, ban.id);
-    assertEquals(
-      (auditRows[0].detail as Record<string, unknown>).ip_or_cidr,
-      "1.2.3.4",
-    );
-  },
+        // 审计唯一性：service 层已写 ip_ban.delete，路由层不得重复写
+        const auditRows = await db.select().from(auditLogs).where(
+            eq(auditLogs.action, "ip_ban.delete"),
+        );
+        assertEquals(auditRows.length, 1, "ip_ban.delete 应仅有一条审计记录");
+        assertEquals(auditRows[0].target_type, "ip_bans");
+        assertEquals(auditRows[0].target_id, ban.id);
+        assertEquals(
+            (auditRows[0].detail as Record<string, unknown>).ip_or_cidr,
+            "1.2.3.4",
+        );
+    },
 });

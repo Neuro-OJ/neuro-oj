@@ -1,14 +1,14 @@
 import { Hono } from "hono";
 import type { OptionalAuthEnv } from "../../../../shared/http/hono-env.ts";
 import {
-  authMiddleware,
-  optionalAuthMiddleware,
+    authMiddleware,
+    optionalAuthMiddleware,
 } from "../../../access/identity/middleware/auth.ts";
 import { getCheckinLeaderboard } from "../../../../features/checkin/index.ts";
 import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
 import {
-  buildPaginationMeta,
-  parsePagination,
+    buildPaginationMeta,
+    parsePagination,
 } from "../../../../shared/http/pagination.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspace } from "../../../access/domains.ts";
@@ -17,10 +17,10 @@ import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_
 
 const router = new Hono<OptionalAuthEnv>();
 router.use("*", optionalAuthMiddleware, async (c, next) => {
-  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
-  await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId ?? null);
-  c.header("Cache-Control", "no-store");
-  await next();
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+    await loadWorkspace(DEFAULT_DOMAIN_SLUG, c.var.userId ?? null);
+    c.header("Cache-Control", "no-store");
+    await next();
 });
 
 /**
@@ -29,20 +29,20 @@ router.use("*", optionalAuthMiddleware, async (c, next) => {
  * 公开访问，无需认证。
  */
 router.get("/", async (c) => {
-  // PR-6 评审修订：使用 parsePagination helper 替换 9 行样板
-  const { page, perPage } = parsePagination(c, {
-    defaultPerPage: 50,
-    maxPerPage: 100,
-    pageField: "page",
-    perPageField: "limit",
-  });
-  // rankings service 仍用 page + limit 参数（不是 offset）
-  const { data, total } = await getGlobalRankings({ page, limit: perPage });
+    // PR-6 评审修订：使用 parsePagination helper 替换 9 行样板
+    const { page, perPage } = parsePagination(c, {
+        defaultPerPage: 50,
+        maxPerPage: 100,
+        pageField: "page",
+        perPageField: "limit",
+    });
+    // rankings service 仍用 page + limit 参数（不是 offset）
+    const { data, total } = await getGlobalRankings({ page, limit: perPage });
 
-  return c.json({
-    data,
-    pagination: buildPaginationMeta(page, perPage, total),
-  });
+    return c.json({
+        data,
+        pagination: buildPaginationMeta(page, perPage, total),
+    });
 });
 
 /**
@@ -51,9 +51,9 @@ router.get("/", async (c) => {
  * 需登录。未上榜（无通过记录）返回 null。
  */
 router.get("/me", authMiddleware, async (c) => {
-  const userId = c.var.userId as string;
-  const row = await getMyRanking(userId);
-  return c.json({ data: row });
+    const userId = c.var.userId as string;
+    const row = await getMyRanking(userId);
+    return c.json({ data: row });
 });
 
 /**
@@ -62,22 +62,22 @@ router.get("/me", authMiddleware, async (c) => {
  * 公开只读；登录时响应额外包含 user_rank。
  */
 router.get("/checkin", optionalAuthMiddleware, async (c) => {
-  const { page, perPage } = parsePagination(c, {
-    defaultPerPage: 20,
-    maxPerPage: 100,
-    perPageField: "per_page",
-  });
-  const result = await getCheckinLeaderboard(
-    c.req.query("month") ?? undefined,
-    page,
-    perPage,
-    c.var.userId,
-  );
-  return c.json({
-    data: result.data,
-    pagination: buildPaginationMeta(page, perPage, result.total),
-    user_rank: result.user_rank,
-  });
+    const { page, perPage } = parsePagination(c, {
+        defaultPerPage: 20,
+        maxPerPage: 100,
+        perPageField: "per_page",
+    });
+    const result = await getCheckinLeaderboard(
+        c.req.query("month") ?? undefined,
+        page,
+        perPage,
+        c.var.userId,
+    );
+    return c.json({
+        data: result.data,
+        pagination: buildPaginationMeta(page, perPage, result.total),
+        user_rank: result.user_rank,
+    });
 });
 
 export default router;

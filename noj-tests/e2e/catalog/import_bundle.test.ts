@@ -8,19 +8,19 @@
  */
 
 import {
-  apiDelete,
-  apiGet,
-  domainProblemPath,
-  e2eTest,
-  getAdminToken,
-  isE2E,
-  measureBundleBuild,
-  pollSubmission,
-  publishProblemVersion,
-  requireJudgeCanary,
-  setProblemState,
-  submitCode,
-  waitForServer,
+    apiDelete,
+    apiGet,
+    domainProblemPath,
+    e2eTest,
+    getAdminToken,
+    isE2E,
+    measureBundleBuild,
+    pollSubmission,
+    publishProblemVersion,
+    requireJudgeCanary,
+    setProblemState,
+    submitCode,
+    waitForServer,
 } from "../helper.ts";
 
 const testSuffix = Date.now().toString(36);
@@ -52,209 +52,211 @@ print(json.dumps(result))
 `;
 
 const MANIFEST = JSON.stringify({
-  format_version: 2,
-  title: `E2E 导入测试 ${testSuffix}`,
-  difficulty: "easy",
-  // 数字题号在默认域匹配已有题；更新时仍必须提供草稿 revision。
-  number: 90000 + (Date.now() % 9000),
-  runtime_config: {
-    evaluator: {
-      image: "noj-evaluator-python",
-      time_limit_ms: 5000,
-      memory_limit_mb: 512,
+    format_version: 2,
+    title: `E2E 导入测试 ${testSuffix}`,
+    difficulty: "easy",
+    // 数字题号在默认域匹配已有题；更新时仍必须提供草稿 revision。
+    number: 90000 + (Date.now() % 9000),
+    runtime_config: {
+        evaluator: {
+            image: "noj-evaluator-python",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+        },
+        solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 5000,
+            memory_limit_mb: 512,
+        },
     },
-    solution: {
-      image: "noj-solution-python",
-      call_timeout_ms: 5000,
-      memory_limit_mb: 512,
-    },
-  },
 });
 
 /**
  * 构造统一题目包 zip（临时目录 + 系统 zip 命令）。
  */
 async function makeBundleZip(): Promise<Uint8Array> {
-  const dir = await Deno.makeTempDir();
-  const enc = new TextEncoder();
-  try {
-    await Deno.writeFile(
-      `${dir}/problem.json`,
-      enc.encode(MANIFEST),
-    );
-    await Deno.writeFile(
-      `${dir}/statement.md`,
-      enc.encode(
-        `# E2E 导入测试\n\n## 样例输入 1\n\`\`\`\n1 2\n\`\`\`\n\n## 样例输出 1\n\`\`\`\n3\n\`\`\`\n`,
-      ),
-    );
-    await Deno.writeFile(`${dir}/evaluate.py`, enc.encode(EVALUATOR_PY));
-    await Deno.writeFile(
-      `${dir}/visible.jsonl`,
-      enc.encode('{"input": "1 2", "output": "3"}\n'),
-    );
+    const dir = await Deno.makeTempDir();
+    const enc = new TextEncoder();
+    try {
+        await Deno.writeFile(
+            `${dir}/problem.json`,
+            enc.encode(MANIFEST),
+        );
+        await Deno.writeFile(
+            `${dir}/statement.md`,
+            enc.encode(
+                `# E2E 导入测试\n\n## 样例输入 1\n\`\`\`\n1 2\n\`\`\`\n\n## 样例输出 1\n\`\`\`\n3\n\`\`\`\n`,
+            ),
+        );
+        await Deno.writeFile(`${dir}/evaluate.py`, enc.encode(EVALUATOR_PY));
+        await Deno.writeFile(
+            `${dir}/visible.jsonl`,
+            enc.encode('{"input": "1 2", "output": "3"}\n'),
+        );
 
-    const zipPath = `${dir}/bundle.zip`;
-    const cmd = new Deno.Command("zip", {
-      args: ["-r", zipPath, "."],
-      cwd: dir,
-    });
-    const out = await cmd.output();
-    if (out.code !== 0) {
-      throw new Error("zip 打包失败");
+        const zipPath = `${dir}/bundle.zip`;
+        const cmd = new Deno.Command("zip", {
+            args: ["-r", zipPath, "."],
+            cwd: dir,
+        });
+        const out = await cmd.output();
+        if (out.code !== 0) {
+            throw new Error("zip 打包失败");
+        }
+        return await Deno.readFile(zipPath);
+    } finally {
+        await Deno.remove(dir, { recursive: true });
     }
-    return await Deno.readFile(zipPath);
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
 }
 
 e2eTest("[e2e/import-bundle] Setup: 管理员登录 + 构造统一包", async () => {
-  if (!isE2E) return;
-  await waitForServer();
-  adminToken = await getAdminToken();
-  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
-  await requireJudgeCanary();
-  // 构造 zip 提前验证可打包
-  const zip = await measureBundleBuild(() => makeBundleZip());
-  if (zip.length === 0) throw new Error("统一包构造失败");
+    if (!isE2E) return;
+    await waitForServer();
+    adminToken = await getAdminToken();
+    // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+    await requireJudgeCanary();
+    // 构造 zip 提前验证可打包
+    const zip = await measureBundleBuild(() => makeBundleZip());
+    if (zip.length === 0) throw new Error("统一包构造失败");
 });
 
 e2eTest("[e2e/import-bundle] admin 上传统一包创建题目", async () => {
-  if (!isE2E) return;
-  const zip = await measureBundleBuild(() => makeBundleZip());
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob(
-      [zip.buffer.slice(
-        zip.byteOffset,
-        zip.byteOffset + zip.byteLength,
-      ) as ArrayBuffer],
-      { type: "application/zip" },
-    ),
-    "e2e-bundle.zip",
-  );
-
-  const res = await fetch(
-    `${await import("../helper.ts").then((m) =>
-      m.BASE_URL
-    )}/api/v1/domains/main/problems/import-bundle`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${adminToken}` },
-      body: formData,
-    },
-  );
-  if (res.status !== 200 && res.status !== 201) {
-    throw new Error(
-      `导入失败: ${res.status} ${await res.text()}`,
+    if (!isE2E) return;
+    const zip = await measureBundleBuild(() => makeBundleZip());
+    const formData = new FormData();
+    formData.append(
+        "file",
+        new Blob(
+            [zip.buffer.slice(
+                zip.byteOffset,
+                zip.byteOffset + zip.byteLength,
+            ) as ArrayBuffer],
+            { type: "application/zip" },
+        ),
+        "e2e-bundle.zip",
     );
-  }
-  const body = (await res.json()) as {
-    data: {
-      problem_id: string;
-      number: number;
+
+    const res = await fetch(
+        `${await import("../helper.ts").then((m) =>
+            m.BASE_URL
+        )}/api/v1/domains/main/problems/import-bundle`,
+        {
+            method: "POST",
+            headers: { Authorization: `Bearer ${adminToken}` },
+            body: formData,
+        },
+    );
+    if (res.status !== 200 && res.status !== 201) {
+        throw new Error(
+            `导入失败: ${res.status} ${await res.text()}`,
+        );
+    }
+    const body = (await res.json()) as {
+        data: {
+            problem_id: string;
+            number: number;
+        };
     };
-  };
-  problemId = body.data.problem_id;
+    problemId = body.data.problem_id;
 
-  // 域导入返回 problem_id/number，不再回 id/title/type（旧格式 2 的 P/U 分类字段已不存在）
+    // 域导入返回 problem_id/number，不再回 id/title/type（旧格式 2 的 P/U 分类字段已不存在）
 
-  // 导入只写草稿，公开投影尚无支持包；后续真实评测验证包对象可用。
-  const draft = await apiGet(
-    `${await domainProblemPath(problemId)}/draft`,
-    adminToken,
-  );
-  if (draft.status !== 200) throw new Error("导入草稿不可读");
-  const content = (draft.body as {
-    content: { runtime_config: { evaluator: { command: string } } };
-  }).content;
-  if (
-    content.runtime_config.evaluator.command !==
-      "python3 /workspace/evaluate.py"
-  ) {
-    throw new Error("evaluator.command 默认值未注入");
-  }
+    // 导入只写草稿，公开投影尚无支持包；后续真实评测验证包对象可用。
+    const draft = await apiGet(
+        `${await domainProblemPath(problemId)}/draft`,
+        adminToken,
+    );
+    if (draft.status !== 200) throw new Error("导入草稿不可读");
+    const content = (draft.body as {
+        content: { runtime_config: { evaluator: { command: string } } };
+    }).content;
+    if (
+        content.runtime_config.evaluator.command !==
+            "python3 /workspace/evaluate.py"
+    ) {
+        throw new Error("evaluator.command 默认值未注入");
+    }
 });
 
 e2eTest("[e2e/import-bundle] 重复导入幂等（不产生新题）", async () => {
-  if (!isE2E || !problemId) return;
-  const draft = await apiGet(
-    `${await domainProblemPath(problemId)}/draft`,
-    adminToken,
-  );
-  if (draft.status !== 200) throw new Error("读取重复导入基线失败");
-  const revision = (draft.body as { revision: number }).revision;
-  const zip = await makeBundleZip();
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob(
-      [zip.buffer.slice(
-        zip.byteOffset,
-        zip.byteOffset + zip.byteLength,
-      ) as ArrayBuffer],
-      { type: "application/zip" },
-    ),
-    "e2e-bundle.zip",
-  );
-  const { BASE_URL } = await import("../helper.ts");
-  const res = await fetch(
-    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "If-Match": String(revision),
-      },
-      body: formData,
-    },
-  );
-  if (res.status !== 200) {
-    throw new Error(`重复导入失败: ${res.status} ${await res.text()}`);
-  }
-  const body = (await res.json()) as { data: { problem_id: string } };
-  if (body.data.problem_id !== problemId) {
-    throw new Error("重复导入应更新同一题目而非新建");
-  }
+    if (!isE2E || !problemId) return;
+    const draft = await apiGet(
+        `${await domainProblemPath(problemId)}/draft`,
+        adminToken,
+    );
+    if (draft.status !== 200) throw new Error("读取重复导入基线失败");
+    const revision = (draft.body as { revision: number }).revision;
+    const zip = await makeBundleZip();
+    const formData = new FormData();
+    formData.append(
+        "file",
+        new Blob(
+            [zip.buffer.slice(
+                zip.byteOffset,
+                zip.byteOffset + zip.byteLength,
+            ) as ArrayBuffer],
+            { type: "application/zip" },
+        ),
+        "e2e-bundle.zip",
+    );
+    const { BASE_URL } = await import("../helper.ts");
+    const res = await fetch(
+        `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+        {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${adminToken}`,
+                "If-Match": String(revision),
+            },
+            body: formData,
+        },
+    );
+    if (res.status !== 200) {
+        throw new Error(`重复导入失败: ${res.status} ${await res.text()}`);
+    }
+    const body = (await res.json()) as { data: { problem_id: string } };
+    if (body.data.problem_id !== problemId) {
+        throw new Error("重复导入应更新同一题目而非新建");
+    }
 });
 
 e2eTest("[e2e/import-bundle] 提交评测闭环", async () => {
-  if (!isE2E || !problemId) return;
-  // 统一题包导入只写共享草稿（Handbook §6.2），提交前必须显式发布版本
-  await publishProblemVersion(adminToken, problemId, "e2e 导入后发布");
-  const submissionId = await submitCode(
-    adminToken,
-    problemId,
-    `def solve(input_str: str) -> str:
+    if (!isE2E || !problemId) return;
+    // 统一题包导入只写共享草稿（Handbook §6.2），提交前必须显式发布版本
+    await publishProblemVersion(adminToken, problemId, "e2e 导入后发布");
+    const submissionId = await submitCode(
+        adminToken,
+        problemId,
+        `def solve(input_str: str) -> str:
     a, b = map(int, input_str.split())
     return str(a + b)`,
-  );
-  const result = await pollSubmission(adminToken, submissionId);
-  if (result.status !== "finished" || result.score <= 0) {
-    throw new Error(`评测结果异常: ${JSON.stringify(result)}`);
-  }
+    );
+    const result = await pollSubmission(adminToken, submissionId);
+    if (result.status !== "finished" || result.score <= 0) {
+        throw new Error(`评测结果异常: ${JSON.stringify(result)}`);
+    }
 });
 
 e2eTest(
-  "[e2e/import-bundle] 历史引用阻止物理删除，源题在公开域保持可读",
-  async () => {
-    if (!isE2E || !problemId) return;
-    const res = await apiDelete(
-      await domainProblemPath(problemId),
-      adminToken,
-    );
-    if (res.status !== 409) {
-      throw new Error(
-        `已发布且有历史提交的题目必须禁止物理删除: ${res.status}`,
-      );
-    }
-    const withdrawn = await setProblemState(adminToken, problemId, {
-      visibility: "members",
-    });
-    if (withdrawn.status !== 200) throw new Error("更新可见性失败");
-    const check = await apiGet(`/api/v1/problems/${problemId}`);
-    if (check.status !== 200) throw new Error("公开域已发布题目应保持可访问");
-  },
+    "[e2e/import-bundle] 历史引用阻止物理删除，源题在公开域保持可读",
+    async () => {
+        if (!isE2E || !problemId) return;
+        const res = await apiDelete(
+            await domainProblemPath(problemId),
+            adminToken,
+        );
+        if (res.status !== 409) {
+            throw new Error(
+                `已发布且有历史提交的题目必须禁止物理删除: ${res.status}`,
+            );
+        }
+        const withdrawn = await setProblemState(adminToken, problemId, {
+            visibility: "members",
+        });
+        if (withdrawn.status !== 200) throw new Error("更新可见性失败");
+        const check = await apiGet(`/api/v1/problems/${problemId}`);
+        if (check.status !== 200) {
+            throw new Error("公开域已发布题目应保持可访问");
+        }
+    },
 );

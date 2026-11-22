@@ -7,19 +7,19 @@ import { defineFeature } from "../../shared/feature.ts";
 import { domainTrainingsRouter } from "./routes.ts";
 
 export const feature = defineFeature({
-  name: "trainings",
-  router: domainTrainingsRouter,
+    name: "trainings",
+    router: domainTrainingsRouter,
 });
 
 export {
-  listDomainTrainings,
-  lockTrainingExpansion,
-  readDomainTraining,
-  resolveDomainTraining,
+    listDomainTrainings,
+    lockTrainingExpansion,
+    readDomainTraining,
+    resolveDomainTraining,
 } from "./access.ts";
 export {
-  deleteDomainTraining,
-  type DomainTrainingInput,
-  saveDomainTraining,
+    deleteDomainTraining,
+    type DomainTrainingInput,
+    saveDomainTraining,
 } from "./service.ts";
 export { copyDomainTraining } from "./copy.ts";

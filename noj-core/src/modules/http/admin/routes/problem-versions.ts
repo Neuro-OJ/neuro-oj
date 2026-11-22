@@ -5,9 +5,9 @@ import type { EffectiveVersionPolicy } from "../../../../shared/versioning/types
 import { resolveProblemIdOrThrow } from "../../../problems/services/problem-resolve.ts";
 import { resolveContestId } from "../../../contests/services/contests.ts";
 import {
-  setContestProblemEffectiveVersionPolicyCommand,
-  setProblemEffectiveVersionPolicyCommand,
-  upgradeContestProblemPinnedVersionCommand,
+    setContestProblemEffectiveVersionPolicyCommand,
+    setProblemEffectiveVersionPolicyCommand,
+    upgradeContestProblemPinnedVersionCommand,
 } from "../../../application/evaluations.ts";
 
 /**
@@ -27,72 +27,76 @@ const router = new Hono<AuthEnv>();
 
 /** 解析并校验 `EffectiveVersionPolicy`（不接受未经校验的客户端对象）。 */
 function parsePolicy(value: unknown): EffectiveVersionPolicy {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BadRequestError(
-      "policy 必须是对象：{ mode: 'any' } 或 { mode: 'exact', version_id }",
-    );
-  }
-  const record = value as Record<string, unknown>;
-  if (record.mode === "any") return { mode: "any" };
-  if (record.mode === "exact") {
-    const versionId = typeof record.version_id === "string"
-      ? record.version_id.trim()
-      : "";
-    if (!versionId) {
-      throw new BadRequestError("exact 策略必须给出 version_id");
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new BadRequestError(
+            "policy 必须是对象：{ mode: 'any' } 或 { mode: 'exact', version_id }",
+        );
     }
-    return { mode: "exact", version_id: versionId };
-  }
-  throw new BadRequestError("policy.mode 只允许 any 或 exact");
+    const record = value as Record<string, unknown>;
+    if (record.mode === "any") return { mode: "any" };
+    if (record.mode === "exact") {
+        const versionId = typeof record.version_id === "string"
+            ? record.version_id.trim()
+            : "";
+        if (!versionId) {
+            throw new BadRequestError("exact 策略必须给出 version_id");
+        }
+        return { mode: "exact", version_id: versionId };
+    }
+    throw new BadRequestError("policy.mode 只允许 any 或 exact");
 }
 
 /** 解析策略 revision（乐观锁，必填非负整数）。 */
 function parseExpectedRevision(value: unknown): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new BadRequestError("expected_revision 必须为非负整数");
-  }
-  return value;
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+        throw new BadRequestError("expected_revision 必须为非负整数");
+    }
+    return value;
 }
 
 /** 切换题库有效版本策略（`any` / `exact(X)`，不修改最新版指针）。 */
 router.put("/problems/:id/effective-version-policy", async (c) => {
-  const problemId = await resolveProblemIdOrThrow(c.req.param("id") as string);
-  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
-  if (!body || typeof body !== "object") {
-    throw new BadRequestError("请求体必须是 JSON 对象");
-  }
-  const result = await setProblemEffectiveVersionPolicyCommand(
-    c.var.actor,
-    problemId,
-    parsePolicy(body.policy),
-    parseExpectedRevision(body.expected_revision),
-  );
-  return c.json({ data: result });
+    const problemId = await resolveProblemIdOrThrow(
+        c.req.param("id") as string,
+    );
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== "object") {
+        throw new BadRequestError("请求体必须是 JSON 对象");
+    }
+    const result = await setProblemEffectiveVersionPolicyCommand(
+        c.var.actor,
+        problemId,
+        parsePolicy(body.policy),
+        parseExpectedRevision(body.expected_revision),
+    );
+    return c.json({ data: result });
 });
 
 /** 切换「竞赛 × 题目」有效版本策略（`exact(X)` 同时固定作答版本为 X）。 */
 router.put(
-  "/contests/:contestId/problems/:problemId/effective-version-policy",
-  async (c) => {
-    const contestId = await resolveContestId(
-      c.req.param("contestId") as string,
-    );
-    const problemId = await resolveProblemIdOrThrow(
-      c.req.param("problemId") as string,
-    );
-    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
-    if (!body || typeof body !== "object") {
-      throw new BadRequestError("请求体必须是 JSON 对象");
-    }
-    const result = await setContestProblemEffectiveVersionPolicyCommand(
-      c.var.actor,
-      contestId,
-      problemId,
-      parsePolicy(body.policy),
-      parseExpectedRevision(body.expected_revision),
-    );
-    return c.json({ data: result });
-  },
+    "/contests/:contestId/problems/:problemId/effective-version-policy",
+    async (c) => {
+        const contestId = await resolveContestId(
+            c.req.param("contestId") as string,
+        );
+        const problemId = await resolveProblemIdOrThrow(
+            c.req.param("problemId") as string,
+        );
+        const body = await c.req.json<Record<string, unknown>>().catch(() =>
+            null
+        );
+        if (!body || typeof body !== "object") {
+            throw new BadRequestError("请求体必须是 JSON 对象");
+        }
+        const result = await setContestProblemEffectiveVersionPolicyCommand(
+            c.var.actor,
+            contestId,
+            problemId,
+            parsePolicy(body.policy),
+            parseExpectedRevision(body.expected_revision),
+        );
+        return c.json({ data: result });
+    },
 );
 
 /**
@@ -102,33 +106,35 @@ router.put(
  * 给出新策略，服务层返回 409（不静默改动策略）。
  */
 router.put("/contests/:contestId/problems/:problemId/version", async (c) => {
-  const contestId = await resolveContestId(c.req.param("contestId") as string);
-  const problemId = await resolveProblemIdOrThrow(
-    c.req.param("problemId") as string,
-  );
-  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
-  if (!body || typeof body !== "object") {
-    throw new BadRequestError("请求体必须是 JSON 对象");
-  }
-  const versionId = typeof body.version_id === "string"
-    ? body.version_id.trim()
-    : "";
-  if (!versionId) throw new BadRequestError("缺少必填字段：version_id");
-  const result = await upgradeContestProblemPinnedVersionCommand(
-    c.var.actor,
-    contestId,
-    problemId,
-    {
-      versionId,
-      ...(body.policy !== undefined
-        ? { policy: parsePolicy(body.policy) }
-        : {}),
-      expectedRevision: body.expected_revision === undefined
-        ? undefined
-        : parseExpectedRevision(body.expected_revision),
-    },
-  );
-  return c.json({ data: result });
+    const contestId = await resolveContestId(
+        c.req.param("contestId") as string,
+    );
+    const problemId = await resolveProblemIdOrThrow(
+        c.req.param("problemId") as string,
+    );
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== "object") {
+        throw new BadRequestError("请求体必须是 JSON 对象");
+    }
+    const versionId = typeof body.version_id === "string"
+        ? body.version_id.trim()
+        : "";
+    if (!versionId) throw new BadRequestError("缺少必填字段：version_id");
+    const result = await upgradeContestProblemPinnedVersionCommand(
+        c.var.actor,
+        contestId,
+        problemId,
+        {
+            versionId,
+            ...(body.policy !== undefined
+                ? { policy: parsePolicy(body.policy) }
+                : {}),
+            expectedRevision: body.expected_revision === undefined
+                ? undefined
+                : parseExpectedRevision(body.expected_revision),
+        },
+    );
+    return c.json({ data: result });
 });
 
 export default router;

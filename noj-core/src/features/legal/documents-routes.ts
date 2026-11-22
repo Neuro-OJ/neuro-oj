@@ -18,11 +18,11 @@ const router = new Hono();
  * 未发布的文档返回 null。
  */
 router.get("/legal/documents", async (c) => {
-  const data: Record<string, unknown> = {};
-  for (const kind of LEGAL_KINDS) {
-    data[kind] = await getCurrentDocument(kind);
-  }
-  return c.json({ data });
+    const data: Record<string, unknown> = {};
+    for (const kind of LEGAL_KINDS) {
+        data[kind] = await getCurrentDocument(kind);
+    }
+    return c.json({ data });
 });
 
 /**
@@ -30,12 +30,12 @@ router.get("/legal/documents", async (c) => {
  * GET /api/v1/legal/documents/:kind/versions
  */
 router.get("/legal/documents/:kind/versions", async (c) => {
-  const kind = c.req.param("kind");
-  if (!(LEGAL_KINDS as readonly string[]).includes(kind)) {
-    throw new ValidationError(`未知的法律文档类型：${kind}`);
-  }
-  const versions = await listVersions(kind as LegalKind);
-  return c.json({ data: versions });
+    const kind = c.req.param("kind");
+    if (!(LEGAL_KINDS as readonly string[]).includes(kind)) {
+        throw new ValidationError(`未知的法律文档类型：${kind}`);
+    }
+    const versions = await listVersions(kind as LegalKind);
+    return c.json({ data: versions });
 });
 
 export default router;

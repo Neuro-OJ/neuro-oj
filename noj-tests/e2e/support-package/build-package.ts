@@ -18,37 +18,37 @@ const DIST_DIR = `${SUPPORT_DIR}dist`;
 const OUTPUT_ZIP = `${DIST_DIR}/e2e-test-package.zip`;
 
 async function buildPackage() {
-  // 确保 dist 目录存在
-  await Deno.mkdir(DIST_DIR, { recursive: true });
+    // 确保 dist 目录存在
+    await Deno.mkdir(DIST_DIR, { recursive: true });
 
-  // 收集需要打包的文件
-  const files: string[] = [];
-  for await (const entry of Deno.readDir(SUPPORT_DIR)) {
-    if (entry.isFile && entry.name.endsWith(".py")) {
-      files.push(entry.name);
+    // 收集需要打包的文件
+    const files: string[] = [];
+    for await (const entry of Deno.readDir(SUPPORT_DIR)) {
+        if (entry.isFile && entry.name.endsWith(".py")) {
+            files.push(entry.name);
+        }
     }
-  }
 
-  if (files.length === 0) {
-    console.warn("  ⚠ support-package 中没有找到 .py 文件");
-    return;
-  }
+    if (files.length === 0) {
+        console.warn("  ⚠ support-package 中没有找到 .py 文件");
+        return;
+    }
 
-  // 用 zip 命令打包（需要系统安装 zip）
-  const cmd = new Deno.Command("zip", {
-    args: ["-j", OUTPUT_ZIP, ...files.map((f) => `${SUPPORT_DIR}${f}`)],
-    cwd: SUPPORT_DIR,
-  });
+    // 用 zip 命令打包（需要系统安装 zip）
+    const cmd = new Deno.Command("zip", {
+        args: ["-j", OUTPUT_ZIP, ...files.map((f) => `${SUPPORT_DIR}${f}`)],
+        cwd: SUPPORT_DIR,
+    });
 
-  const { success, stderr } = await cmd.output();
-  if (success) {
-    console.log(`  ✓ 支持包已创建: ${OUTPUT_ZIP}`);
-  } else {
-    const err = new TextDecoder().decode(stderr);
-    throw new Error(`打包失败: ${err}`);
-  }
+    const { success, stderr } = await cmd.output();
+    if (success) {
+        console.log(`  ✓ 支持包已创建: ${OUTPUT_ZIP}`);
+    } else {
+        const err = new TextDecoder().decode(stderr);
+        throw new Error(`打包失败: ${err}`);
+    }
 }
 
 if (import.meta.main) {
-  await buildPackage();
+    await buildPackage();
 }

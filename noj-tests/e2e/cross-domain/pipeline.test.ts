@@ -6,147 +6,147 @@
  */
 
 import {
-  CODE_SAMPLES,
-  e2eTest,
-  getProblemIdByNumber,
-  isE2E,
-  pollSubmission,
-  registerUser,
-  requireJudgeCanary,
-  submitCode,
-  TEST_PASSWORD,
-  waitForServer,
+    CODE_SAMPLES,
+    e2eTest,
+    getProblemIdByNumber,
+    isE2E,
+    pollSubmission,
+    registerUser,
+    requireJudgeCanary,
+    submitCode,
+    TEST_PASSWORD,
+    waitForServer,
 } from "../helper.ts";
 
 let token = "";
 let PROBLEM_ID = "";
 
 e2eTest("[e2e/pipeline] Setup", async () => {
-  if (!isE2E) return;
-  await waitForServer();
-  const ts = Date.now().toString(36);
-  token = await registerUser(
-    "pipe_user_" + ts,
-    "pipe_user_" + ts + "@test.com",
-    TEST_PASSWORD,
-  );
-  console.log("  → 用户已注册");
-  // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
-  PROBLEM_ID = await getProblemIdByNumber(1001);
-  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复提交探测任务。
-  await requireJudgeCanary();
+    if (!isE2E) return;
+    await waitForServer();
+    const ts = Date.now().toString(36);
+    token = await registerUser(
+        "pipe_user_" + ts,
+        "pipe_user_" + ts + "@test.com",
+        TEST_PASSWORD,
+    );
+    console.log("  → 用户已注册");
+    // 统一题目包导入后题目 id 为 UUID，动态获取样例题（P1001）
+    PROBLEM_ID = await getProblemIdByNumber(1001);
+    // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复提交探测任务。
+    await requireJudgeCanary();
 });
 
 e2eTest("[e2e/pipeline] 1/8 已评测", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
-  console.log("  → 提交 ID: " + id.slice(0, 8));
-  const result = await pollSubmission(token, id);
-  console.log("  → " + result.status + " (" + result.score + "分)");
-  if (result.status !== "finished" || result.score <= 0) {
-    throw new Error("期望 finished 且分数 >0, 实际 " + result.status);
-  }
+    if (!isE2E) return;
+    const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
+    console.log("  → 提交 ID: " + id.slice(0, 8));
+    const result = await pollSubmission(token, id);
+    console.log("  → " + result.status + " (" + result.score + "分)");
+    if (result.status !== "finished" || result.score <= 0) {
+        throw new Error("期望 finished 且分数 >0, 实际 " + result.status);
+    }
 });
 
 e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.wrongAnswer);
-  const result = await pollSubmission(token, id);
-  if (result.status !== "finished" || result.score >= 10000) {
-    throw new Error("期望 finished 且非满分, 实际 " + result.status);
-  }
+    if (!isE2E) return;
+    const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.wrongAnswer);
+    const result = await pollSubmission(token, id);
+    if (result.status !== "finished" || result.score >= 10000) {
+        throw new Error("期望 finished 且非满分, 实际 " + result.status);
+    }
 });
 
 e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(
-    token,
-    PROBLEM_ID,
-    CODE_SAMPLES.timeLimitExceeded,
-  );
-  const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error") {
-    throw new Error("期望 error（TLE）, 实际 " + result.status);
-  }
+    if (!isE2E) return;
+    const id = await submitCode(
+        token,
+        PROBLEM_ID,
+        CODE_SAMPLES.timeLimitExceeded,
+    );
+    const result = await pollSubmission(token, id, 45, 2000, true);
+    if (result.status !== "error") {
+        throw new Error("期望 error（TLE）, 实际 " + result.status);
+    }
 });
 
 e2eTest("[e2e/pipeline] 4/8 MQ 可靠性", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
-  const result = await pollSubmission(token, id);
-  if (result.status !== "finished") throw new Error("状态非 finished");
-  if (result.score <= 0) throw new Error("分数应 >0");
+    if (!isE2E) return;
+    const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
+    const result = await pollSubmission(token, id);
+    if (result.status !== "finished") throw new Error("状态非 finished");
+    if (result.score <= 0) throw new Error("分数应 >0");
 });
 
 e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
-  if (!isE2E) return;
-  try {
-    const password = Deno.env.get("E2E_REDIS_PASSWORD");
-    const cmd = new Deno.Command("docker", {
-      args: [
-        "exec",
-        Deno.env.get("E2E_REDIS_CONTAINER") ?? "noj-e2e-redis",
-        "redis-cli",
-        ...(password ? ["-a", password] : []),
-        "RPUSH",
-        "noj:judge:results",
-        "{invalid json}",
-      ],
-    });
-    const { success } = await cmd.output();
-    if (!success) {
-      console.log("  ⚠ docker exec 失败，跳过");
-      return;
+    if (!isE2E) return;
+    try {
+        const password = Deno.env.get("E2E_REDIS_PASSWORD");
+        const cmd = new Deno.Command("docker", {
+            args: [
+                "exec",
+                Deno.env.get("E2E_REDIS_CONTAINER") ?? "noj-e2e-redis",
+                "redis-cli",
+                ...(password ? ["-a", password] : []),
+                "RPUSH",
+                "noj:judge:results",
+                "{invalid json}",
+            ],
+        });
+        const { success } = await cmd.output();
+        if (!success) {
+            console.log("  ⚠ docker exec 失败，跳过");
+            return;
+        }
+    } catch {
+        console.log("  ⚠ docker exec 异常，跳过");
+        return;
     }
-  } catch {
-    console.log("  ⚠ docker exec 异常，跳过");
-    return;
-  }
-  const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
-  const result = await pollSubmission(token, id);
-  if (result.status !== "finished") throw new Error("非法消息后提交未完成");
+    const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
+    const result = await pollSubmission(token, id);
+    if (result.status !== "finished") throw new Error("非法消息后提交未完成");
 });
 
 e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(
-    token,
-    PROBLEM_ID,
-    CODE_SAMPLES.memoryLimitExceeded,
-  );
-  const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error") {
-    throw new Error(
-      "期望 error（MLE/RuntimeError/SystemError）, 实际 " + result.status,
+    if (!isE2E) return;
+    const id = await submitCode(
+        token,
+        PROBLEM_ID,
+        CODE_SAMPLES.memoryLimitExceeded,
     );
-  }
-  console.log("  → " + result.status);
+    const result = await pollSubmission(token, id, 45, 2000, true);
+    if (result.status !== "error") {
+        throw new Error(
+            "期望 error（MLE/RuntimeError/SystemError）, 实际 " + result.status,
+        );
+    }
+    console.log("  → " + result.status);
 });
 
 e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(
-    token,
-    PROBLEM_ID,
-    CODE_SAMPLES.runtimeError,
-  );
-  const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error") {
-    throw new Error("期望 error（RuntimeError）, 实际 " + result.status);
-  }
+    if (!isE2E) return;
+    const id = await submitCode(
+        token,
+        PROBLEM_ID,
+        CODE_SAMPLES.runtimeError,
+    );
+    const result = await pollSubmission(token, id, 45, 2000, true);
+    if (result.status !== "error") {
+        throw new Error("期望 error（RuntimeError）, 实际 " + result.status);
+    }
 });
 
 e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
-  if (!isE2E) return;
-  const id = await submitCode(
-    token,
-    PROBLEM_ID,
-    CODE_SAMPLES.syntaxError,
-  );
-  const result = await pollSubmission(token, id, 45, 2000, true);
-  if (result.status !== "error") {
-    throw new Error(
-      "期望 error（CompileError/RuntimeError）, 实际 " + result.status,
+    if (!isE2E) return;
+    const id = await submitCode(
+        token,
+        PROBLEM_ID,
+        CODE_SAMPLES.syntaxError,
     );
-  }
+    const result = await pollSubmission(token, id, 45, 2000, true);
+    if (result.status !== "error") {
+        throw new Error(
+            "期望 error（CompileError/RuntimeError）, 实际 " + result.status,
+        );
+    }
 });

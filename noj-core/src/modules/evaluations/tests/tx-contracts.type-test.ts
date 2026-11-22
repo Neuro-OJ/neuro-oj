@@ -3,7 +3,7 @@ import { applyAttemptResultTx } from "../services/versioning/tx-contracts.ts";
 import type { SystemActor, UserActor } from "../../access/index.ts";
 import type { ApplyAttemptResultInput } from "../services/versioning/result-write.ts";
 import {
-  saveEvaluationResultTx,
+    saveEvaluationResultTx,
 } from "../services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../types/index.ts";
 import { recordSseEventTx } from "../../../shared/sse/sse-event-tx.ts";

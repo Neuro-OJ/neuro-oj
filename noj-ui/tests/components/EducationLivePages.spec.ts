@@ -6,119 +6,119 @@ const api = { assignment: vi.fn(), classroom: vi.fn(), matrix: vi.fn(), progress
 const route = { params: { assignmentId: 'task' }, query: {} as Record<string, string> };
 let events: Array<() => Promise<void>>;
 beforeEach(() => {
-  vi.clearAllMocks();
-  route.query = {};
-  events = [];
-  for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
-  vi.stubGlobal('definePageMeta', vi.fn());
-  vi.stubGlobal('useSeoMeta', vi.fn());
-  vi.stubGlobal('useRoute', () => route);
-  vi.stubGlobal('useState', () => ref({ id: 'teacher' }));
-  vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'teacher' }) }));
-  vi.stubGlobal(
-    'useWorkspace',
-    () => ({
-      slug: ref('school'),
-      domain: ref({ status: 'active', configuration: { features: { classroom: true, assignment: true } } }),
-    }),
-  );
-  vi.stubGlobal('useEducationApi', () => api);
-  vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
-  vi.stubGlobal('usePolling', vi.fn());
-  vi.stubGlobal('useEducationNotifications', (refresh: () => Promise<void>) => {
-    events.push(refresh);
-  });
-  vi.stubGlobal('useAsyncData', async (_key: unknown, handler: () => Promise<unknown>) => {
-    const data = ref<unknown>(null), error = ref<unknown>(null);
-    const refresh = async () => {
-      try {
-        data.value = await handler();
-        error.value = null;
-      } catch (failure) {
-        error.value = failure;
-      }
-    };
-    await refresh();
-    return { data, error, status: ref('success'), refresh };
-  });
-  api.assignment.mockResolvedValue({
-    data: {
-      id: 'task',
-      classroom_id: 'class',
-      title: 'Task',
-      state: 'published',
-      published_at: '2026-10-14T10:00:00Z',
-      deadline_at: null,
-    },
-  });
-  api.classroom.mockResolvedValue({
-    data: { id: 'class', status: 'active', manages_domain: true, membership: { role: 'coach' } },
-  });
-  api.matrix.mockResolvedValue({
-    data: { items: [], rows: [{ user_id: 'student', username: '学生', cells: [] }], total: 1, updating: false },
-  });
-  api.progress.mockResolvedValue({ data: { items: [], cells: [], updating: false } });
-  api.dashboard.mockResolvedValue({ data: { assignments: [], help_requests: [], total: 0, per_page: 50 } });
+    vi.clearAllMocks();
+    route.query = {};
+    events = [];
+    for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);
+    vi.stubGlobal('definePageMeta', vi.fn());
+    vi.stubGlobal('useSeoMeta', vi.fn());
+    vi.stubGlobal('useRoute', () => route);
+    vi.stubGlobal('useState', () => ref({ id: 'teacher' }));
+    vi.stubGlobal('useAuth', () => ({ user: ref({ id: 'teacher' }) }));
+    vi.stubGlobal(
+        'useWorkspace',
+        () => ({
+            slug: ref('school'),
+            domain: ref({ status: 'active', configuration: { features: { classroom: true, assignment: true } } }),
+        }),
+    );
+    vi.stubGlobal('useEducationApi', () => api);
+    vi.stubGlobal('useWorkspaceActionScope', () => () => ({ slug: 'school', isCurrent: () => true }));
+    vi.stubGlobal('usePolling', vi.fn());
+    vi.stubGlobal('useEducationNotifications', (refresh: () => Promise<void>) => {
+        events.push(refresh);
+    });
+    vi.stubGlobal('useAsyncData', async (_key: unknown, handler: () => Promise<unknown>) => {
+        const data = ref<unknown>(null), error = ref<unknown>(null);
+        const refresh = async () => {
+            try {
+                data.value = await handler();
+                error.value = null;
+            } catch (failure) {
+                error.value = failure;
+            }
+        };
+        await refresh();
+        return { data, error, status: ref('success'), refresh };
+    });
+    api.assignment.mockResolvedValue({
+        data: {
+            id: 'task',
+            classroom_id: 'class',
+            title: 'Task',
+            state: 'published',
+            published_at: '2026-10-14T10:00:00Z',
+            deadline_at: null,
+        },
+    });
+    api.classroom.mockResolvedValue({
+        data: { id: 'class', status: 'active', manages_domain: true, membership: { role: 'coach' } },
+    });
+    api.matrix.mockResolvedValue({
+        data: { items: [], rows: [{ user_id: 'student', username: '学生', cells: [] }], total: 1, updating: false },
+    });
+    api.progress.mockResolvedValue({ data: { items: [], cells: [], updating: false } });
+    api.dashboard.mockResolvedValue({ data: { assignments: [], help_requests: [], total: 0, per_page: 50 } });
 });
 async function page(component: typeof AssignmentPage) {
-  const view = mount(defineComponent({ setup: () => () => h(Suspense, null, { default: () => h(component) }) }), {
-    global: {
-      stubs: {
-        UCard: { template: '<div><slot /></div>' },
-        UButton: { template: '<button><slot /></button>' },
-        AdminPageHeader: true,
-        AsyncContent: { template: '<div><slot /></div>' },
-        AssignmentMatrix: { name: 'AssignmentMatrix', template: '<div data-testid="matrix" />' },
-        AssignmentConversation: true,
-        USlideover: true,
-        ClientOnly: true,
-      },
-    },
-  });
-  await flushPromises();
-  return view;
+    const view = mount(defineComponent({ setup: () => () => h(Suspense, null, { default: () => h(component) }) }), {
+        global: {
+            stubs: {
+                UCard: { template: '<div><slot /></div>' },
+                UButton: { template: '<button><slot /></button>' },
+                AdminPageHeader: true,
+                AsyncContent: { template: '<div><slot /></div>' },
+                AssignmentMatrix: { name: 'AssignmentMatrix', template: '<div data-testid="matrix" />' },
+                AssignmentConversation: true,
+                USlideover: true,
+                ClientOnly: true,
+            },
+        },
+    });
+    await flushPromises();
+    return view;
 }
 describe('教学页面的持久事件刷新', () => {
-  it('稳定矩阵收到新事件后重新读取任务、班级和当前域成绩，不依赖旧 updating 标志', async () => {
-    const view = await page(AssignmentPage);
-    api.assignment.mockClear();
-    api.classroom.mockClear();
-    api.matrix.mockClear();
-    await events[0]!();
-    await flushPromises();
-    expect(api.assignment).toHaveBeenCalledWith('school', 'task');
-    expect(api.classroom).toHaveBeenCalledWith('school', 'class');
-    expect(api.matrix).toHaveBeenCalledWith('school', 'task', expect.objectContaining({ scope: 'on_time' }));
-    view.unmount();
-  });
-  it('关系撤销后停止读取教师矩阵，隐藏原教师视图', async () => {
-    const view = await page(AssignmentPage);
-    expect(view.find('[data-testid="matrix"]').exists()).toBe(true);
-    api.matrix.mockClear();
-    api.classroom.mockResolvedValue({
-      data: { id: 'class', status: 'active', manages_domain: false, membership: null },
+    it('稳定矩阵收到新事件后重新读取任务、班级和当前域成绩，不依赖旧 updating 标志', async () => {
+        const view = await page(AssignmentPage);
+        api.assignment.mockClear();
+        api.classroom.mockClear();
+        api.matrix.mockClear();
+        await events[0]!();
+        await flushPromises();
+        expect(api.assignment).toHaveBeenCalledWith('school', 'task');
+        expect(api.classroom).toHaveBeenCalledWith('school', 'class');
+        expect(api.matrix).toHaveBeenCalledWith('school', 'task', expect.objectContaining({ scope: 'on_time' }));
+        view.unmount();
     });
-    await events[0]!();
-    await flushPromises();
-    expect(api.matrix).not.toHaveBeenCalled();
-    expect(view.find('[data-testid="matrix"]').exists()).toBe(false);
-    view.unmount();
-  });
-  it('学生可查看本人反馈，旧历史参数不恢复已移除的沿革视图', async () => {
-    route.query = { history: '1' };
-    api.classroom.mockResolvedValue({
-      data: {
-        id: 'class',
-        status: 'active',
-        manages_domain: false,
-        membership: { role: 'student', status: 'active' },
-        capabilities: ['progress:read'],
-      },
+    it('关系撤销后停止读取教师矩阵，隐藏原教师视图', async () => {
+        const view = await page(AssignmentPage);
+        expect(view.find('[data-testid="matrix"]').exists()).toBe(true);
+        api.matrix.mockClear();
+        api.classroom.mockResolvedValue({
+            data: { id: 'class', status: 'active', manages_domain: false, membership: null },
+        });
+        await events[0]!();
+        await flushPromises();
+        expect(api.matrix).not.toHaveBeenCalled();
+        expect(view.find('[data-testid="matrix"]').exists()).toBe(false);
+        view.unmount();
     });
-    const view = await page(AssignmentPage);
-    expect(view.find('assignment-conversation-stub').exists()).toBe(true);
-    expect(view.find('assignment-history-stub').exists()).toBe(false);
-    expect(view.text()).not.toContain('版本与策略变化依据');
-    view.unmount();
-  });
+    it('学生可查看本人反馈，旧历史参数不恢复已移除的沿革视图', async () => {
+        route.query = { history: '1' };
+        api.classroom.mockResolvedValue({
+            data: {
+                id: 'class',
+                status: 'active',
+                manages_domain: false,
+                membership: { role: 'student', status: 'active' },
+                capabilities: ['progress:read'],
+            },
+        });
+        const view = await page(AssignmentPage);
+        expect(view.find('assignment-conversation-stub').exists()).toBe(true);
+        expect(view.find('assignment-history-stub').exists()).toBe(false);
+        expect(view.text()).not.toContain('版本与策略变化依据');
+        view.unmount();
+    });
 });

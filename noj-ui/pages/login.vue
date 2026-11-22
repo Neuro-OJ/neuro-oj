@@ -1,468 +1,471 @@
 <template>
-  <AuthFormCard
-    v-if="!tfaRequired"
-    :title="t('auth.login')"
-    :error="error"
-    :loading="loading"
-    :submit-label="t('auth.login')"
-    :loading-label="t('auth.loggingIn')"
-    @submit="handleLogin"
-    @clear-error="clearError"
-  >
-    <!-- 注册成功/密码重置成功 banner -->
-    <template #banner-success>
-      <ToastBanner :visible="!!registeredMsg" color="success" icon="i-lucide-check-circle" :message="registeredMsg" @close="registeredMsg = ''" />
-    </template>
-
-    <!-- 被封禁 banner -->
-    <template #banner-info>
-      <ToastBanner :visible="!!bannedMsg" color="error" icon="i-lucide-ban" :message="bannedMsg" @close="bannedMsg = ''" />
-    </template>
-
-    <TextInput
-      id="login"
-      v-model="form.login"
-      :label="t('auth.usernameOrEmail')"
-      :placeholder="t('auth.usernameOrEmailPlaceholder')"
-      autocomplete="username"
-      :disabled="loading"
-      :error="fieldErrors.login"
-      @focus="fieldErrors.login = ''"
+    <AuthFormCard
+        v-if="!tfaRequired"
+        :title="t('auth.login')"
+        :error="error"
+        :loading="loading"
+        :submit-label="t('auth.login')"
+        :loading-label="t('auth.loggingIn')"
+        @submit="handleLogin"
+        @clear-error="clearError"
     >
-      <template #icon>
-        <UIcon name="i-lucide-user" class="size-4.5" />
-      </template>
-    </TextInput>
+        <!-- 注册成功/密码重置成功 banner -->
+        <template #banner-success>
+            <ToastBanner :visible="!!registeredMsg" color="success" icon="i-lucide-check-circle"
+                :message="registeredMsg" @close="registeredMsg = ''" />
+        </template>
 
-    <PasswordField
-      id="password"
-      v-model="form.password"
-      :label="t('auth.password')"
-      :placeholder="t('auth.passwordPlaceholder')"
-      autocomplete="current-password"
-      :disabled="loading"
-      :error="fieldErrors.password"
-      @focus="fieldErrors.password = ''"
-    />
+        <!-- 被封禁 banner -->
+        <template #banner-info>
+            <ToastBanner :visible="!!bannedMsg" color="error" icon="i-lucide-ban" :message="bannedMsg"
+                @close="bannedMsg = ''" />
+        </template>
 
-    <TextInput
-      v-if="tfaRequired"
-      id="code"
-      v-model="form.code"
-      :label="t('auth.twoFactorCode')"
-      :placeholder="t('auth.codePlaceholder')"
-      autocomplete="one-time-code"
-      :disabled="loading"
-      :error="fieldErrors.code"
-      @focus="fieldErrors.code = ''"
-    >
-      <template #icon>
-        <UIcon name="i-lucide-shield-check" class="size-4.5" />
-      </template>
-    </TextInput>
+        <AuthTextInput
+            id="login"
+            v-model="form.login"
+            :label="t('auth.usernameOrEmail')"
+            :placeholder="t('auth.usernameOrEmailPlaceholder')"
+            autocomplete="username"
+            :disabled="loading"
+            :error="fieldErrors.login"
+            @focus="fieldErrors.login = ''"
+        >
+            <template #icon>
+                <UIcon name="i-lucide-user" class="size-4.5" />
+            </template>
+        </AuthTextInput>
 
-    <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
-      <input
-        id="remember"
-        v-model="form.remember"
-        type="checkbox"
-        class="size-4 accent-primary"
-        :disabled="loading"
-      >
-      <span>{{ t('auth.rememberMe') }}</span>
-      <span class="text-xs text-text-muted">{{ t('auth.rememberMeHint') }}</span>
-    </label>
+        <AuthPasswordField
+            id="password"
+            v-model="form.password"
+            :label="t('auth.password')"
+            :placeholder="t('auth.passwordPlaceholder')"
+            autocomplete="current-password"
+            :disabled="loading"
+            :error="fieldErrors.password"
+            @focus="fieldErrors.password = ''"
+        />
 
-    <template #footer>
-      <p class="mb-2">
+        <AuthTextInput
+            v-if="tfaRequired"
+            id="code"
+            v-model="form.code"
+            :label="t('auth.twoFactorCode')"
+            :placeholder="t('auth.codePlaceholder')"
+            autocomplete="one-time-code"
+            :disabled="loading"
+            :error="fieldErrors.code"
+            @focus="fieldErrors.code = ''"
+        >
+            <template #icon>
+                <UIcon name="i-lucide-shield-check" class="size-4.5" />
+            </template>
+        </AuthTextInput>
+
+        <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+            <input
+                id="remember"
+                v-model="form.remember"
+                type="checkbox"
+                class="size-4 accent-primary"
+                :disabled="loading"
+            >
+            <span>{{ t('auth.rememberMe') }}</span>
+            <span class="text-xs text-text-muted">{{ t('auth.rememberMeHint') }}</span>
+        </label>
+
+        <template #footer>
+            <p class="mb-2">
         {{ t('auth.noAccount') }} <NuxtLink to="/register" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.registerNow') }}</NuxtLink>
       </p>
-      <p>
-        <NuxtLink to="/forgot-password" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.forgotPassword') }}</NuxtLink>
-      </p>
-    </template>
-  </AuthFormCard>
+            <p>
+                <NuxtLink to="/forgot-password"
+                    class="text-primary no-underline font-semibold hover:underline">{{ t('auth.forgotPassword') }}</NuxtLink>
+            </p>
+        </template>
+    </AuthFormCard>
 
-  <div v-if="!tfaRequired && oauthProviders.length" class="w-full max-w-[380px] mt-4 flex flex-col gap-2">
-    <div class="flex items-center gap-3 text-xs text-text-muted">
-      <span class="h-px flex-1 bg-border" />
-      <span>{{ t('auth.thirdPartyLogin') }}</span>
-      <span class="h-px flex-1 bg-border" />
-    </div>
-    <UButton
-      v-for="provider in oauthProviders"
-      :key="provider.id"
-      color="neutral"
-      variant="outline"
-      block
-      :disabled="oauthLoading"
-      @click="startOAuth(provider.id)"
-    >
+    <div v-if="!tfaRequired && oauthProviders.length" class="w-full max-w-[380px] mt-4 flex flex-col gap-2">
+        <div class="flex items-center gap-3 text-xs text-text-muted">
+            <span class="h-px flex-1 bg-border" />
+            <span>{{ t('auth.thirdPartyLogin') }}</span>
+            <span class="h-px flex-1 bg-border" />
+        </div>
+        <UButton
+            v-for="provider in oauthProviders"
+            :key="provider.id"
+            color="neutral"
+            variant="outline"
+            block
+            :disabled="oauthLoading"
+            @click="startOAuth(provider.id)"
+        >
       {{ t('auth.loginWith', { name: provider.name }) }}
     </UButton>
-    <!-- 新账号走第三方登录会撞 PIPL 同意硬门槛：给出可自救的指引（2026-09-25 评审）。
-         已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
-    <div
-      v-if="legalConsentRequired"
-      class="rounded border border-warning-text/40 bg-bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
-      data-testid="oauth-legal-consent-notice"
-    >
+        <!-- 新账号走第三方登录会撞 PIPL 同意硬门槛：给出可自救的指引（2026-09-25 评审）。
+             已有账号不受影响，故这里不强制勾选，只提供去注册页同意的入口。 -->
+        <div
+            v-if="legalConsentRequired"
+            class="rounded border border-warning-text/40 bg-bg-sunken px-3 py-2 text-xs text-text-secondary leading-relaxed"
+            data-testid="oauth-legal-consent-notice"
+        >
       {{ t('auth.oauthLegalConsentRequired') }}
       <NuxtLink to="/register" class="text-primary no-underline hover:underline">{{ t('auth.goToRegister') }}</NuxtLink>
     </div>
-  </div>
-
-  <AuthFormCard
-    v-if="tfaRequired"
-    :title="t('auth.twoFactor')"
-    :subtitle="t('auth.account', { account: form.login.trim() })"
-    :error="error"
-    :loading="loading"
-    :submit-label="t('auth.verifyAndLogin')"
-    :loading-label="t('auth.verifying')"
-    @submit="handleLogin"
-    @clear-error="clearError"
-  >
-    <!-- 被封禁 banner -->
-    <template #banner-info>
-      <ToastBanner :visible="!!bannedMsg" color="error" icon="i-lucide-ban" :message="bannedMsg" @close="bannedMsg = ''" />
-    </template>
-
-    <div class="rounded-md bg-page border border-border px-4 py-3">
-      <p v-if="!recoveryMode" class="text-sm text-text-secondary">{{ t('auth.twoFactorHint') }}</p>
-      <p v-else class="text-sm text-text-secondary">{{ t('auth.twoFactorRecoveryHint') }}</p>
     </div>
 
-    <TextInput
-      v-if="!recoveryMode"
-      id="code"
-      v-model="form.code"
-      :label="t('auth.dynamicCode')"
-      :placeholder="t('auth.dynamicCodePlaceholder')"
-      autocomplete="one-time-code"
-      :disabled="loading"
-      :error="fieldErrors.code"
-      @focus="fieldErrors.code = ''"
+    <AuthFormCard
+        v-if="tfaRequired"
+        :title="t('auth.twoFactor')"
+        :subtitle="t('auth.account', { account: form.login.trim() })"
+        :error="error"
+        :loading="loading"
+        :submit-label="t('auth.verifyAndLogin')"
+        :loading-label="t('auth.verifying')"
+        @submit="handleLogin"
+        @clear-error="clearError"
     >
-      <template #icon>
-        <UIcon name="i-lucide-shield-check" class="size-4.5" />
-      </template>
-    </TextInput>
+        <!-- 被封禁 banner -->
+        <template #banner-info>
+            <ToastBanner :visible="!!bannedMsg" color="error" icon="i-lucide-ban" :message="bannedMsg"
+                @close="bannedMsg = ''" />
+        </template>
 
-    <div v-if="!recoveryMode" class="flex justify-center">
-      <UButton
-        type="button"
-        color="neutral"
-        variant="link"
-        :disabled="loading"
-        @click="enterRecoveryMode"
-      >
+        <div class="rounded-md bg-page border border-border px-4 py-3">
+            <p v-if="!recoveryMode" class="text-sm text-text-secondary">{{ t('auth.twoFactorHint') }}</p>
+            <p v-else class="text-sm text-text-secondary">{{ t('auth.twoFactorRecoveryHint') }}</p>
+        </div>
+
+        <AuthTextInput
+            v-if="!recoveryMode"
+            id="code"
+            v-model="form.code"
+            :label="t('auth.dynamicCode')"
+            :placeholder="t('auth.dynamicCodePlaceholder')"
+            autocomplete="one-time-code"
+            :disabled="loading"
+            :error="fieldErrors.code"
+            @focus="fieldErrors.code = ''"
+        >
+            <template #icon>
+                <UIcon name="i-lucide-shield-check" class="size-4.5" />
+            </template>
+        </AuthTextInput>
+
+        <div v-if="!recoveryMode" class="flex justify-center">
+            <UButton
+                type="button"
+                color="neutral"
+                variant="link"
+                :disabled="loading"
+                @click="enterRecoveryMode"
+            >
         {{ t('auth.useRecoveryCode') }}
       </UButton>
-    </div>
+        </div>
 
-    <template v-else>
-      <TextInput
-        id="code"
-        v-model="form.code"
-        :label="t('auth.recoveryCode')"
-        :placeholder="t('auth.recoveryCodePlaceholder')"
-        autocomplete="off"
-        :disabled="loading"
-        :error="fieldErrors.code"
-        @focus="fieldErrors.code = ''"
-      >
-        <template #icon>
-          <UIcon name="i-lucide-key-round" class="size-4.5" />
-        </template>
-      </TextInput>
+        <template v-else>
+            <AuthTextInput
+                id="code"
+                v-model="form.code"
+                :label="t('auth.recoveryCode')"
+                :placeholder="t('auth.recoveryCodePlaceholder')"
+                autocomplete="off"
+                :disabled="loading"
+                :error="fieldErrors.code"
+                @focus="fieldErrors.code = ''"
+            >
+                <template #icon>
+                    <UIcon name="i-lucide-key-round" class="size-4.5" />
+                </template>
+            </AuthTextInput>
 
-      <div class="flex flex-col gap-2">
-        <div class="flex items-center gap-3">
-          <UButton
-            type="button"
-            color="neutral"
-            variant="outline"
-            :disabled="loading"
-            @click="recoveryCodeFileInput?.click()"
-          >
+            <div class="flex flex-col gap-2">
+                <div class="flex items-center gap-3">
+                    <UButton
+                        type="button"
+                        color="neutral"
+                        variant="outline"
+                        :disabled="loading"
+                        @click="recoveryCodeFileInput?.click()"
+                    >
             <UIcon name="i-lucide-file-up" class="size-4" />
             从文件导入恢复码
           </UButton>
-          <input
-            ref="recoveryCodeFileInput"
-            type="file"
-            accept=".txt,text/plain"
-            class="hidden"
-            @change="handleRecoveryCodeFileChange"
-          />
-        </div>
-        <p class="text-xs text-text-muted">
+                    <input
+                        ref="recoveryCodeFileInput"
+                        type="file"
+                        accept=".txt,text/plain"
+                        class="hidden"
+                        @change="handleRecoveryCodeFileChange"
+                    />
+                </div>
+                <p class="text-xs text-text-muted">
           文件只在本地读取，不会上传；请选择一个恢复码后再提交登录。
         </p>
-        <div v-if="recoveryFileCodes.length > 0" class="flex flex-col gap-2">
-          <p class="text-xs text-text-secondary">已读取 {{ recoveryFileCodes.length }} 个恢复码，请选择一个：</p>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-for="code in recoveryFileCodes"
-              :key="code"
-              type="button"
-              color="neutral"
-              variant="outline"
-              size="sm"
-              :class="form.code === code ? 'ring-2 ring-signal' : ''"
-              @click="selectRecoveryCode(code)"
-            >
+                <div v-if="recoveryFileCodes.length > 0" class="flex flex-col gap-2">
+                    <p
+                        class="text-xs text-text-secondary">已读取 {{ recoveryFileCodes.length }} 个恢复码，请选择一个：</p>
+                    <div class="flex flex-wrap gap-2">
+                        <UButton
+                            v-for="code in recoveryFileCodes"
+                            :key="code"
+                            type="button"
+                            color="neutral"
+                            variant="outline"
+                            size="sm"
+                            :class="form.code === code ? 'ring-2 ring-signal' : ''"
+                            @click="selectRecoveryCode(code)"
+                        >
               {{ code }}
             </UButton>
-          </div>
-        </div>
-        <p v-if="recoveryFileError" class="text-sm text-error-text">{{ recoveryFileError }}</p>
-      </div>
+                    </div>
+                </div>
+                <p v-if="recoveryFileError" class="text-sm text-error-text">{{ recoveryFileError }}</p>
+            </div>
 
-      <div class="flex justify-center">
-        <UButton
-          type="button"
-          color="neutral"
-          variant="link"
-          :disabled="loading"
-          @click="useTotpMode"
-        >
+            <div class="flex justify-center">
+                <UButton
+                    type="button"
+                    color="neutral"
+                    variant="link"
+                    :disabled="loading"
+                    @click="useTotpMode"
+                >
             {{ t('auth.useDynamicCode') }}
         </UButton>
-      </div>
-    </template>
+            </div>
+        </template>
 
-    <template #footer>
-      <UButton
-        type="button"
-        color="neutral"
-        variant="link"
-        :disabled="loading"
-        @click="returnToLoginStep"
-      >
+        <template #footer>
+            <UButton
+                type="button"
+                color="neutral"
+                variant="link"
+                :disabled="loading"
+                @click="returnToLoginStep"
+            >
         <UIcon name="i-lucide-arrow-left" class="size-4" />
         返回登录
       </UButton>
-    </template>
-  </AuthFormCard>
+        </template>
+    </AuthFormCard>
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
-import { safeAuthRedirect } from "~/utils/authRedirect"
-import { postLoginDestination } from "~/utils/workspace"
-import {
-  assertRecoveryCodeFileSize,
-  parseRecoveryCodesFile,
-} from "~/utils/recoveryCodes"
+import { extractApiError } from '~/utils/server/apiError';
+import { safeAuthRedirect } from '~/utils/auth/authRedirect';
+import { postLoginDestination } from '~/utils/domain/workspace/workspace';
+import { assertRecoveryCodeFileSize, parseRecoveryCodesFile } from '~/utils/auth/recoveryCodes';
 
-definePageMeta({ layout: "auth" })
+definePageMeta({ layout: 'auth' });
 
-const router = useRouter()
-const auth = useAuth()
-const route = useRoute()
-const workspaces = useWorkspaceApi()
-const { t } = useI18n()
-const { error, setError, clearError } = useFormError()
+const router = useRouter();
+const auth = useAuth();
+const route = useRoute();
+const workspaces = useWorkspaceApi();
+const { t } = useI18n();
+const { error, setError, clearError } = useFormError();
 
-const form = reactive({ login: "", password: "", code: "", remember: false })
-const loading = ref(false)
-const tfaRequired = ref(false)
-const recoveryMode = ref(false)
-const recoveryCodeFileInput = ref<HTMLInputElement | null>(null)
-const recoveryFileCodes = ref<string[]>([])
-const recoveryFileError = ref("")
-const oauthProviders = ref<Array<{ id: string; name: string }>>([])
-const oauthLoading = ref(false)
+const form = reactive({ login: '', password: '', code: '', remember: false });
+const loading = ref(false);
+const tfaRequired = ref(false);
+const recoveryMode = ref(false);
+const recoveryCodeFileInput = ref<HTMLInputElement | null>(null);
+const recoveryFileCodes = ref<string[]>([]);
+const recoveryFileError = ref('');
+const oauthProviders = ref<Array<{ id: string; name: string }>>([]);
+const oauthLoading = ref(false);
 /** 新账号走第三方登录但未同意条款时，展示"去注册页同意"的可行动指引。 */
-const legalConsentRequired = ref(false)
+const legalConsentRequired = ref(false);
 
 onMounted(async () => {
-  if (route.query.oauth_error) {
-    if (route.query.oauth_error === "legal_consent_required") {
-      // 不折叠成"稍后重试"：这是可自救的合规门槛，反复重试永远不会成功。
-      legalConsentRequired.value = true
-    } else if (route.query.oauth_error === "user_banned") {
-      // 与密码登录同口径（常驻封禁横幅）：封禁不是重试能解决的，提示联系管理员；
-      // 原因与期限不经 URL 传递
-      bannedMsg.value = "账号已被封禁，请联系管理员。"
-    } else {
-      setError(route.query.oauth_error === "state_invalid"
-        ? "第三方登录请求已失效，请重新尝试"
-        : "第三方登录失败，请稍后重试")
+    if (route.query.oauth_error) {
+        if (route.query.oauth_error === 'legal_consent_required') {
+            // 不折叠成"稍后重试"：这是可自救的合规门槛，反复重试永远不会成功。
+            legalConsentRequired.value = true;
+        } else if (route.query.oauth_error === 'user_banned') {
+            // 与密码登录同口径（常驻封禁横幅）：封禁不是重试能解决的，提示联系管理员；
+            // 原因与期限不经 URL 传递
+            bannedMsg.value = '账号已被封禁，请联系管理员。';
+        } else {
+            setError(
+                route.query.oauth_error === 'state_invalid'
+                    ? '第三方登录请求已失效，请重新尝试'
+                    : '第三方登录失败，请稍后重试',
+            );
+        }
     }
-  }
-  try {
-    oauthProviders.value = await auth.getOAuthProviders()
-  } catch {
-    oauthProviders.value = []
-  }
-})
+    try {
+        oauthProviders.value = await auth.getOAuthProviders();
+    } catch {
+        oauthProviders.value = [];
+    }
+});
 
 function startOAuth(provider: string) {
-  oauthLoading.value = true
-  window.location.assign(`/api/v1/auth/oauth/${encodeURIComponent(provider)}`)
+    oauthLoading.value = true;
+    window.location.assign(`/api/v1/auth/oauth/${encodeURIComponent(provider)}`);
 }
 
 // 注册成功后的提示
-const registeredMsg = ref("")
-const bannedMsg = ref("")
-if (route.query.registered === "1") {
-  registeredMsg.value = "注册成功，请登录"
-} else if (route.query.reset === "1") {
-  // issue #49：密码重置成功 banner
-  registeredMsg.value = "密码重置成功，请登录"
+const registeredMsg = ref('');
+const bannedMsg = ref('');
+if (route.query.registered === '1') {
+    registeredMsg.value = '注册成功，请登录';
+} else if (route.query.reset === '1') {
+    // issue #49：密码重置成功 banner
+    registeredMsg.value = '密码重置成功，请登录';
 }
 
 const fieldErrors = reactive({
-  login: "",
-  password: "",
-  code: "",
-})
+    login: '',
+    password: '',
+    code: '',
+});
 
 function selectRecoveryCode(code: string) {
-  form.code = code
-  fieldErrors.code = ""
-  recoveryFileError.value = ""
+    form.code = code;
+    fieldErrors.code = '';
+    recoveryFileError.value = '';
 }
 
 function resetTfaStep() {
-  form.code = ""
-  fieldErrors.code = ""
-  recoveryMode.value = false
-  recoveryFileCodes.value = []
-  recoveryFileError.value = ""
-  clearError()
+    form.code = '';
+    fieldErrors.code = '';
+    recoveryMode.value = false;
+    recoveryFileCodes.value = [];
+    recoveryFileError.value = '';
+    clearError();
 }
 
 function enterRecoveryMode() {
-  form.code = ""
-  fieldErrors.code = ""
-  recoveryFileCodes.value = []
-  recoveryFileError.value = ""
-  recoveryMode.value = true
-  clearError()
+    form.code = '';
+    fieldErrors.code = '';
+    recoveryFileCodes.value = [];
+    recoveryFileError.value = '';
+    recoveryMode.value = true;
+    clearError();
 }
 
 function useTotpMode() {
-  form.code = ""
-  fieldErrors.code = ""
-  recoveryFileCodes.value = []
-  recoveryFileError.value = ""
-  recoveryMode.value = false
-  clearError()
+    form.code = '';
+    fieldErrors.code = '';
+    recoveryFileCodes.value = [];
+    recoveryFileError.value = '';
+    recoveryMode.value = false;
+    clearError();
 }
 
 function returnToLoginStep() {
-  resetTfaStep()
-  tfaRequired.value = false
+    resetTfaStep();
+    tfaRequired.value = false;
 }
 
 async function handleRecoveryCodeFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  recoveryFileError.value = ""
-  if (!file) return
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    recoveryFileError.value = '';
+    if (!file) return;
 
-  try {
-    assertRecoveryCodeFileSize(file.size)
-    recoveryFileCodes.value = parseRecoveryCodesFile(await file.text())
-  } catch (err: unknown) {
-    recoveryFileCodes.value = []
-    recoveryFileError.value = err instanceof Error
-      ? err.message
-      : "恢复码文件读取失败，请检查文件内容"
-  } finally {
-    // 清空 input，允许用户再次选择同一个文件。
-    input.value = ""
-  }
+    try {
+        assertRecoveryCodeFileSize(file.size);
+        recoveryFileCodes.value = parseRecoveryCodesFile(await file.text());
+    } catch (err: unknown) {
+        recoveryFileCodes.value = [];
+        recoveryFileError.value = err instanceof Error ? err.message : '恢复码文件读取失败，请检查文件内容';
+    } finally {
+        // 清空 input，允许用户再次选择同一个文件。
+        input.value = '';
+    }
 }
 
 function validate(): boolean {
-  let valid = true
-  fieldErrors.login = ""
-  fieldErrors.password = ""
-  fieldErrors.code = ""
+    let valid = true;
+    fieldErrors.login = '';
+    fieldErrors.password = '';
+    fieldErrors.code = '';
 
-  if (tfaRequired.value) {
-    if (!form.code.trim()) {
-      fieldErrors.code = recoveryMode.value ? "请输入恢复码" : "请输入6位验证码"
-      valid = false
+    if (tfaRequired.value) {
+        if (!form.code.trim()) {
+            fieldErrors.code = recoveryMode.value ? '请输入恢复码' : '请输入6位验证码';
+            valid = false;
+        }
+    } else {
+        if (!form.login.trim()) {
+            fieldErrors.login = '请输入用户名或邮箱';
+            valid = false;
+        }
+
+        if (!form.password) {
+            fieldErrors.password = '请输入密码';
+            valid = false;
+        }
     }
-  } else {
-    if (!form.login.trim()) {
-      fieldErrors.login = "请输入用户名或邮箱"
-      valid = false
+
+    if (tfaRequired.value && !form.code.trim()) {
+        fieldErrors.code = '请输入验证码或恢复码';
+        valid = false;
     }
 
-    if (!form.password) {
-      fieldErrors.password = "请输入密码"
-      valid = false
-    }
-  }
-
-  if (tfaRequired.value && !form.code.trim()) {
-    fieldErrors.code = "请输入验证码或恢复码"
-    valid = false
-  }
-
-  return valid
+    return valid;
 }
 
 async function handleLogin() {
-  if (!validate()) return
+    if (!validate()) return;
 
-  loading.value = true
-  try {
-    const { user: loggedInUser } = await auth.login(
-      form.login.trim(),
-      form.password,
-      tfaRequired.value ? form.code.trim() : undefined,
-      form.remember,
-    )
-    // issue #75：临时引导管理员首次登录必须改密
-    if (loggedInUser?.must_change_password === true) {
-      router.replace("/change-password")
-    } else {
-      let destination = safeAuthRedirect(route.query.redirect, "")
-      if (!destination) {
-        const results = await Promise.allSettled([workspaces.instance(), workspaces.list(true)])
-        const policy = results[0]; const available = results[1]
-        const authenticated = policy.status === "fulfilled" && policy.value.data.access === "authenticated"
-        const defaultSlug = policy.status === "fulfilled" ? policy.value.data.default_domain_slug : null
-        destination = authenticated
-          ? postLoginDestination(available.status === "fulfilled" ? available.value.data : [], defaultSlug)
-          : "/"
-      }
-      router.replace(destination)
+    loading.value = true;
+    try {
+        const { user: loggedInUser } = await auth.login(
+            form.login.trim(),
+            form.password,
+            tfaRequired.value ? form.code.trim() : undefined,
+            form.remember,
+        );
+        // issue #75：临时引导管理员首次登录必须改密
+        if (loggedInUser?.must_change_password === true) {
+            router.replace('/change-password');
+        } else {
+            let destination = safeAuthRedirect(route.query.redirect, '');
+            if (!destination) {
+                const results = await Promise.allSettled([workspaces.instance(), workspaces.list(true)]);
+                const policy = results[0];
+                const available = results[1];
+                const authenticated = policy.status === 'fulfilled' && policy.value.data.access === 'authenticated';
+                const defaultSlug = policy.status === 'fulfilled' ? policy.value.data.default_domain_slug : null;
+                destination = authenticated
+                    ? postLoginDestination(available.status === 'fulfilled' ? available.value.data : [], defaultSlug)
+                    : '/';
+            }
+            router.replace(destination);
+        }
+    } catch (e: any) {
+        // ban-status-endpoint：被封用户直接 inline 显示 banner，不用 URL 跳转
+        if (e.data?.code === 'USER_BANNED') {
+            const reason = e.data.reason || '';
+            const until = e.data.until || '';
+            bannedMsg.value = until
+                ? `账号已被封禁至 ${until}。${reason ? `原因：${reason}。` : ''}请联系管理员。`
+                : `账号已被封禁。${reason ? `原因：${reason}。` : ''}请联系管理员。`;
+            return;
+        }
+        // TFA：密码已通过，提示输入第二步验证码
+        if (e.data?.code === 'TFA_REQUIRED') {
+            resetTfaStep();
+            tfaRequired.value = true;
+            clearError();
+            return;
+        }
+        // TFA 验证码/恢复码错误：不再误报为“用户名和密码错误”
+        if (e.data?.code === 'TFA_INVALID') {
+            fieldErrors.code = '验证码输入错误，请重新输入';
+            clearError();
+            return;
+        }
+        setError(extractApiError(e).message);
+    } finally {
+        loading.value = false;
     }
-  } catch (e: any) {
-    // ban-status-endpoint：被封用户直接 inline 显示 banner，不用 URL 跳转
-    if (e.data?.code === "USER_BANNED") {
-      const reason = e.data.reason || "";
-      const until = e.data.until || "";
-      bannedMsg.value = until
-        ? `账号已被封禁至 ${until}。${reason ? `原因：${reason}。` : ""}请联系管理员。`
-        : `账号已被封禁。${reason ? `原因：${reason}。` : ""}请联系管理员。`;
-      return;
-    }
-    // TFA：密码已通过，提示输入第二步验证码
-    if (e.data?.code === "TFA_REQUIRED") {
-      resetTfaStep()
-      tfaRequired.value = true
-      clearError()
-      return;
-    }
-    // TFA 验证码/恢复码错误：不再误报为“用户名和密码错误”
-    if (e.data?.code === "TFA_INVALID") {
-      fieldErrors.code = "验证码输入错误，请重新输入"
-      clearError()
-      return;
-    }
-    setError(extractApiError(e).message)
-  } finally {
-    loading.value = false
-  }
 }
 </script>

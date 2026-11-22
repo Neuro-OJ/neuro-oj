@@ -8,19 +8,19 @@
  *   因此并行度受资源上限约束。
  */
 import {
-  DEFAULT_JOB_COUNT,
-  DEFAULT_SHARD_COUNT,
-  MAX_JOB_COUNT,
-  MAX_SHARD_COUNT,
+    DEFAULT_JOB_COUNT,
+    DEFAULT_SHARD_COUNT,
+    MAX_JOB_COUNT,
+    MAX_SHARD_COUNT,
 } from "./test-parallel-shards.ts";
 
 function parsePositiveInteger(raw: string | undefined, option: string): number {
-  if (raw === undefined) throw new Error(`${option} 缺少数值`);
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1) {
-    throw new Error(`${option} 必须为 ≥1 的整数，实际 "${raw}"`);
-  }
-  return value;
+    if (raw === undefined) throw new Error(`${option} 缺少数值`);
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 1) {
+        throw new Error(`${option} 必须为 ≥1 的整数，实际 "${raw}"`);
+    }
+    return value;
 }
 
 /**
@@ -31,20 +31,20 @@ function parsePositiveInteger(raw: string | undefined, option: string): number {
  * @param defaultShards - 未给出参数时的默认分片数
  */
 export function parseShardArgs(
-  args: string[],
-  maxShards = MAX_SHARD_COUNT,
-  defaultShards = DEFAULT_SHARD_COUNT,
+    args: string[],
+    maxShards = MAX_SHARD_COUNT,
+    defaultShards = DEFAULT_SHARD_COUNT,
 ): number {
-  const idx = args.indexOf("--shards");
-  if (idx === -1) return defaultShards;
-  const count = parsePositiveInteger(args[idx + 1], "--shards");
-  if (count > maxShards) {
-    throw new Error(
-      `--shards ${count} 超过上限 ${maxShards}；` +
-        `继续放大只会增加模板克隆与容器创建成本，请改用 --shards ${maxShards}`,
-    );
-  }
-  return count;
+    const idx = args.indexOf("--shards");
+    if (idx === -1) return defaultShards;
+    const count = parsePositiveInteger(args[idx + 1], "--shards");
+    if (count > maxShards) {
+        throw new Error(
+            `--shards ${count} 超过上限 ${maxShards}；` +
+                `继续放大只会增加模板克隆与容器创建成本，请改用 --shards ${maxShards}`,
+        );
+    }
+    return count;
 }
 
 /**
@@ -55,18 +55,18 @@ export function parseShardArgs(
  * @param defaultJobs - 未给出参数时的默认并行度
  */
 export function parseJobArgs(
-  args: string[],
-  maxJobs = MAX_JOB_COUNT,
-  defaultJobs = DEFAULT_JOB_COUNT,
+    args: string[],
+    maxJobs = MAX_JOB_COUNT,
+    defaultJobs = DEFAULT_JOB_COUNT,
 ): number {
-  const idx = args.indexOf("--jobs");
-  if (idx === -1) return defaultJobs;
-  const count = parsePositiveInteger(args[idx + 1], "--jobs");
-  if (count > maxJobs) {
-    throw new Error(
-      `--jobs ${count} 超过上限 ${maxJobs}；` +
-        "每个 child 都占用独立数据库与 Redis 容器，不能无限放大",
-    );
-  }
-  return count;
+    const idx = args.indexOf("--jobs");
+    if (idx === -1) return defaultJobs;
+    const count = parsePositiveInteger(args[idx + 1], "--jobs");
+    if (count > maxJobs) {
+        throw new Error(
+            `--jobs ${count} 超过上限 ${maxJobs}；` +
+                "每个 child 都占用独立数据库与 Redis 容器，不能无限放大",
+        );
+    }
+    return count;
 }

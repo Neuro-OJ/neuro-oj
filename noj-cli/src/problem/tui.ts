@@ -44,29 +44,29 @@ import { SLUG_PATTERN } from "./init.ts";
 
 /** TUI 收集到的答案。 */
 export interface ProblemInitAnswers {
-  slug: string;
-  title?: string;
-  difficulty: string;
+    slug: string;
+    title?: string;
+    difficulty: string;
 }
 
 /** 引导是否需要提问（需要哪些字段已有值）。 */
 export interface InitPromptPlan {
-  askSlug: boolean;
-  askTitle: boolean;
-  askDifficulty: boolean;
+    askSlug: boolean;
+    askTitle: boolean;
+    askDifficulty: boolean;
 }
 
 /** 计算待提问项：已由旗标给出的不再询问。 */
 export function planInitPrompts(partial: {
-  slug?: string;
-  title?: string;
-  difficulty?: string;
+    slug?: string;
+    title?: string;
+    difficulty?: string;
 }): InitPromptPlan {
-  return {
-    askSlug: !partial.slug,
-    askTitle: !partial.title,
-    askDifficulty: !partial.difficulty,
-  };
+    return {
+        askSlug: !partial.slug,
+        askTitle: !partial.title,
+        askDifficulty: !partial.difficulty,
+    };
 }
 
 /**
@@ -99,17 +99,17 @@ export const BACK_WORDS: readonly string[] = ["back", ":b"];
  * 且它与"回车接受默认"的交互冲突。
  */
 export function isBackWord(raw: string): boolean {
-  const value = raw.trim().toLowerCase();
-  if (value === "") return false;
-  return BACK_WORDS.includes(value);
+    const value = raw.trim().toLowerCase();
+    if (value === "") return false;
+    return BACK_WORDS.includes(value);
 }
 
 /** 字段 → 对应的命令行旗标（供 {@link eofHint} 给出可直接照抄的命令）。 */
 const FIELD_FLAGS: Readonly<Record<string, string>> = {
-  slug: "--slug <slug>",
-  title: "--title <title>",
-  difficulty: "--difficulty easy|medium|hard",
-  "确认": "--yes",
+    slug: "--slug <slug>",
+    title: "--title <title>",
+    difficulty: "--difficulty easy|medium|hard",
+    "确认": "--yes",
 };
 
 /**
@@ -120,14 +120,14 @@ const FIELD_FLAGS: Readonly<Record<string, string>> = {
  * 格式问题，而真正的原因是终端输入已经结束。
  */
 export function eofHint(field: string): string {
-  const flag = FIELD_FLAGS[field] ?? `--${field}`;
-  return (
-    `引导在「${field}」处中止：输入已结束（EOF）或连续 ${MAX_ATTEMPTS_PER_FIELD} ` +
-    `次未给出有效值。\n` +
-    `  自动化环境请使用显式旗标（无需 TTY）：\n` +
-    `    noj-cli problem init --slug <slug> ${flag} --no-interactive\n` +
-    `  交互环境请确认终端支持输入（或检查是否误按了 Ctrl-D）。`
-  );
+    const flag = FIELD_FLAGS[field] ?? `--${field}`;
+    return (
+        `引导在「${field}」处中止：输入已结束（EOF）或连续 ${MAX_ATTEMPTS_PER_FIELD} ` +
+        `次未给出有效值。\n` +
+        `  自动化环境请使用显式旗标（无需 TTY）：\n` +
+        `    noj-cli problem init --slug <slug> ${flag} --no-interactive\n` +
+        `  交互环境请确认终端支持输入（或检查是否误按了 Ctrl-D）。`
+    );
 }
 
 /** 引导的三步（顺序即提问顺序，也是回退的依据）。 */
@@ -135,21 +135,21 @@ type Field = "slug" | "title" | "difficulty";
 
 /** 一个待提问步骤。 */
 interface Step {
-  field: Field;
-  /** 该字段的提示文案（含进度前缀）。 */
-  prompt: string;
+    field: Field;
+    /** 该字段的提示文案（含进度前缀）。 */
+    prompt: string;
 }
 
 /** 构造待提问步骤（含进度编号；总数即步骤数）。 */
 export function buildSteps(plan: InitPromptPlan): Step[] {
-  const fields: { field: Field; label: string }[] = [];
-  if (plan.askSlug) fields.push({ field: "slug", label: "题目 slug" });
-  if (plan.askTitle) fields.push({ field: "title", label: "题目标题" });
-  if (plan.askDifficulty) fields.push({ field: "difficulty", label: "难度" });
-  return fields.map((f, i) => ({
-    field: f.field,
-    prompt: `[${i + 1}/${fields.length}] ${f.label}`,
-  }));
+    const fields: { field: Field; label: string }[] = [];
+    if (plan.askSlug) fields.push({ field: "slug", label: "题目 slug" });
+    if (plan.askTitle) fields.push({ field: "title", label: "题目标题" });
+    if (plan.askDifficulty) fields.push({ field: "difficulty", label: "难度" });
+    return fields.map((f, i) => ({
+        field: f.field,
+        prompt: `[${i + 1}/${fields.length}] ${f.label}`,
+    }));
 }
 
 /**
@@ -161,104 +161,107 @@ export function buildSteps(plan: InitPromptPlan): Step[] {
  * @throws 输入结束/连续无效（见 {@link eofHint}）或用户取消（`已取消`）
  */
 export async function guideProblemInit(
-  io: PromptIO,
-  partial: {
-    slug?: string;
-    title?: string;
-    difficulty?: string;
-  },
+    io: PromptIO,
+    partial: {
+        slug?: string;
+        title?: string;
+        difficulty?: string;
+    },
 ): Promise<ProblemInitAnswers> {
-  const plan = planInitPrompts(partial);
-  const steps = buildSteps(plan);
+    const plan = planInitPrompts(partial);
+    const steps = buildSteps(plan);
 
-  // 已确定的值（来自旗标或前几步的答案）。
-  const answers: ProblemInitAnswers = {
-    slug: partial.slug ?? "",
-    title: partial.title,
-    difficulty: partial.difficulty ?? "",
-  };
+    // 已确定的值（来自旗标或前几步的答案）。
+    const answers: ProblemInitAnswers = {
+        slug: partial.slug ?? "",
+        title: partial.title,
+        difficulty: partial.difficulty ?? "",
+    };
 
-  // 回退需要重新提问，故用可回退的游标而非 for-of。
-  let index = 0;
-  // 全局步数上限：挡住"无限回退"这种另一种挂死。
-  const maxSteps = Math.max(1, steps.length) * (MAX_ATTEMPTS_PER_FIELD + 1) * 4;
-  let stepsTaken = 0;
+    // 回退需要重新提问，故用可回退的游标而非 for-of。
+    let index = 0;
+    // 全局步数上限：挡住"无限回退"这种另一种挂死。
+    const maxSteps = Math.max(1, steps.length) * (MAX_ATTEMPTS_PER_FIELD + 1) *
+        4;
+    let stepsTaken = 0;
 
-  while (index < steps.length) {
-    if (++stepsTaken > maxSteps) {
-      throw new Error(eofHint(steps[Math.min(index, steps.length - 1)]!.field));
-    }
-    const step = steps[index]!;
-    // 每个字段独立计数：回退回来时重新给机会，但同样有上界。
-    let attempts = 0;
-    let advanced = false;
-
-    while (!advanced) {
-      if (++attempts > MAX_ATTEMPTS_PER_FIELD) {
-        throw new Error(eofHint(step.field));
-      }
-      const outcome = await askField(io, step, answers);
-      if (outcome.kind === "back") {
-        if (index === 0) {
-          // 第一步无处可退：给提示后重问（不消耗"无效输入"额度之外的语义）
-          io.write("已经是第一步，无法回退。\n");
-          attempts--;
-          continue;
+    while (index < steps.length) {
+        if (++stepsTaken > maxSteps) {
+            throw new Error(
+                eofHint(steps[Math.min(index, steps.length - 1)]!.field),
+            );
         }
-        index--;
-        advanced = true;
-        break;
-      }
-      if (outcome.kind === "invalid") {
-        io.write(outcome.hint + "\n");
-        continue;
-      }
-      // 成功：写回答案
-      applyAnswer(answers, step.field, outcome.value);
-      index++;
-      advanced = true;
+        const step = steps[index]!;
+        // 每个字段独立计数：回退回来时重新给机会，但同样有上界。
+        let attempts = 0;
+        let advanced = false;
+
+        while (!advanced) {
+            if (++attempts > MAX_ATTEMPTS_PER_FIELD) {
+                throw new Error(eofHint(step.field));
+            }
+            const outcome = await askField(io, step, answers);
+            if (outcome.kind === "back") {
+                if (index === 0) {
+                    // 第一步无处可退：给提示后重问（不消耗"无效输入"额度之外的语义）
+                    io.write("已经是第一步，无法回退。\n");
+                    attempts--;
+                    continue;
+                }
+                index--;
+                advanced = true;
+                break;
+            }
+            if (outcome.kind === "invalid") {
+                io.write(outcome.hint + "\n");
+                continue;
+            }
+            // 成功：写回答案
+            applyAnswer(answers, step.field, outcome.value);
+            index++;
+            advanced = true;
+        }
     }
-  }
 
-  if (!answers.slug) {
-    // 理论上不可达（slug 要么由旗标给出，要么在循环里被设值）；留作不变式断言。
-    throw new Error(eofHint("slug"));
-  }
+    if (!answers.slug) {
+        // 理论上不可达（slug 要么由旗标给出，要么在循环里被设值）；留作不变式断言。
+        throw new Error(eofHint("slug"));
+    }
 
-  // 最后确认一次（确认环节的 EOF 也走同一上限）。
-  const ok = await confirmWithLimit(
-    io,
-    `确认生成：${answers.slug}（${answers.difficulty}）`,
-  );
-  if (!ok) throw new Error("已取消");
+    // 最后确认一次（确认环节的 EOF 也走同一上限）。
+    const ok = await confirmWithLimit(
+        io,
+        `确认生成：${answers.slug}（${answers.difficulty}）`,
+    );
+    if (!ok) throw new Error("已取消");
 
-  return answers;
+    return answers;
 }
 
 /** 把答案写回结果对象。 */
 function applyAnswer(
-  answers: ProblemInitAnswers,
-  field: Field,
-  value: string,
+    answers: ProblemInitAnswers,
+    field: Field,
+    value: string,
 ): void {
-  switch (field) {
-    case "slug":
-      answers.slug = value;
-      break;
-    case "title":
-      answers.title = value;
-      break;
-    case "difficulty":
-      answers.difficulty = value;
-      break;
-  }
+    switch (field) {
+        case "slug":
+            answers.slug = value;
+            break;
+        case "title":
+            answers.title = value;
+            break;
+        case "difficulty":
+            answers.difficulty = value;
+            break;
+    }
 }
 
 /** 单字段提问的结果。 */
 type FieldOutcome =
-  | { kind: "ok"; value: string }
-  | { kind: "invalid"; hint: string }
-  | { kind: "back" };
+    | { kind: "ok"; value: string }
+    | { kind: "invalid"; hint: string }
+    | { kind: "back" };
 
 /**
  * 问一个字段并校验（纯逻辑 + 一次 IO）。
@@ -272,64 +275,69 @@ type FieldOutcome =
  * 歧义时优先"输入即数据"，回退只认不会与数据冲突的 `:b`。
  */
 async function askField(
-  io: PromptIO,
-  step: Step,
-  answers: ProblemInitAnswers,
+    io: PromptIO,
+    step: Step,
+    answers: ProblemInitAnswers,
 ): Promise<FieldOutcome> {
-  switch (step.field) {
-    case "slug": {
-      const raw = (await input(io, step.prompt)).trim();
-      // 歧义字段：只认 `:b`（`back` 是合法 slug）
-      if (raw === ":b") return { kind: "back" };
-      if (raw === "") {
-        return {
-          kind: "invalid",
-          hint:
-            "slug 不能为空：要求 3-64 位小写字母/数字/连字符，首尾非连字符。",
-        };
-      }
-      if (!SLUG_PATTERN.test(raw)) {
-        return {
-          kind: "invalid",
-          hint: "slug 非法：要求 3-64 位小写字母/数字/连字符，首尾非连字符。",
-        };
-      }
-      return { kind: "ok", value: raw };
+    switch (step.field) {
+        case "slug": {
+            const raw = (await input(io, step.prompt)).trim();
+            // 歧义字段：只认 `:b`（`back` 是合法 slug）
+            if (raw === ":b") return { kind: "back" };
+            if (raw === "") {
+                return {
+                    kind: "invalid",
+                    hint:
+                        "slug 不能为空：要求 3-64 位小写字母/数字/连字符，首尾非连字符。",
+                };
+            }
+            if (!SLUG_PATTERN.test(raw)) {
+                return {
+                    kind: "invalid",
+                    hint:
+                        "slug 非法：要求 3-64 位小写字母/数字/连字符，首尾非连字符。",
+                };
+            }
+            return { kind: "ok", value: raw };
+        }
+        case "title": {
+            // **必须自己读一行再判回退**，不能用 `input(io, prompt, def)` 的返回值判：
+            // `input` 会把空输入替换成默认值，而当默认值（= slug）恰好是 `back` 时，
+            // 一次普通的"回车"就会被误判成回退（实测踩到：`problem init back` 在标题处
+            // 回车即回退，然后一路空输入直至上限报错）。
+            //
+            // 因此：读原始行 → 判回退 → 空串才落到默认值。
+            const raw = await io.readLine(`${step.prompt} [${answers.slug}]: `);
+            if (isBackWord(raw)) return { kind: "back" };
+            const value = raw === "" ? answers.slug : raw;
+            return { kind: "ok", value };
+        }
+        case "difficulty": {
+            const idx = await select(io, step.prompt, [
+                "medium（中等，默认）",
+                "easy（简单）",
+                "hard（困难）",
+            ], { backWords: BACK_WORDS, defaultIndex: 0 });
+            if (idx === -1) return { kind: "back" };
+            return {
+                kind: "ok",
+                value: ["medium", "easy", "hard"][idx] ?? "medium",
+            };
+        }
     }
-    case "title": {
-      // **必须自己读一行再判回退**，不能用 `input(io, prompt, def)` 的返回值判：
-      // `input` 会把空输入替换成默认值，而当默认值（= slug）恰好是 `back` 时，
-      // 一次普通的"回车"就会被误判成回退（实测踩到：`problem init back` 在标题处
-      // 回车即回退，然后一路空输入直至上限报错）。
-      //
-      // 因此：读原始行 → 判回退 → 空串才落到默认值。
-      const raw = await io.readLine(`${step.prompt} [${answers.slug}]: `);
-      if (isBackWord(raw)) return { kind: "back" };
-      const value = raw === "" ? answers.slug : raw;
-      return { kind: "ok", value };
-    }
-    case "difficulty": {
-      const idx = await select(io, step.prompt, [
-        "medium（中等，默认）",
-        "easy（简单）",
-        "hard（困难）",
-      ], { backWords: BACK_WORDS, defaultIndex: 0 });
-      if (idx === -1) return { kind: "back" };
-      return { kind: "ok", value: ["medium", "easy", "hard"][idx] ?? "medium" };
-    }
-  }
 }
 
 /** 确认（带 EOF 上限；`confirm` 自身会无限重问）。 */
 async function confirmWithLimit(
-  io: PromptIO,
-  question: string,
+    io: PromptIO,
+    question: string,
 ): Promise<boolean> {
-  for (let i = 0; i <= MAX_ATTEMPTS_PER_FIELD; i++) {
-    const raw = (await io.readLine(`${question} (Y/n): `)).trim().toLowerCase();
-    if (raw === "" || raw === "y" || raw === "yes") return true;
-    if (raw === "n" || raw === "no") return false;
-    io.write("请输入 y 或 n。\n");
-  }
-  throw new Error(eofHint("确认"));
+    for (let i = 0; i <= MAX_ATTEMPTS_PER_FIELD; i++) {
+        const raw = (await io.readLine(`${question} (Y/n): `)).trim()
+            .toLowerCase();
+        if (raw === "" || raw === "y" || raw === "yes") return true;
+        if (raw === "n" || raw === "no") return false;
+        io.write("请输入 y 或 n。\n");
+    }
+    throw new Error(eofHint("确认"));
 }

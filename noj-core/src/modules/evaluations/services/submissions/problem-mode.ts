@@ -18,8 +18,8 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { problems } from "../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
-  type JudgeSubmissionMode,
-  toJudgeSubmissionMode,
+    type JudgeSubmissionMode,
+    toJudgeSubmissionMode,
 } from "../../types/index.ts";
 
 /**
@@ -30,16 +30,16 @@ import {
  * @throws {NotFoundError} 题目不存在
  */
 export async function resolveProblemSubmissionMode(
-  problemId: string,
+    problemId: string,
 ): Promise<JudgeSubmissionMode> {
-  const db = getDb();
-  const [row] = await db
-    .select({ submission_mode: problems.submission_mode })
-    .from(problems)
-    .where(eq(problems.id, problemId))
-    .limit(1);
-  if (!row) {
-    throw new NotFoundError("题目不存在");
-  }
-  return toJudgeSubmissionMode(row.submission_mode);
+    const db = getDb();
+    const [row] = await db
+        .select({ submission_mode: problems.submission_mode })
+        .from(problems)
+        .where(eq(problems.id, problemId))
+        .limit(1);
+    if (!row) {
+        throw new NotFoundError("题目不存在");
+    }
+    return toJudgeSubmissionMode(row.submission_mode);
 }

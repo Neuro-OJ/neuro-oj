@@ -8,14 +8,14 @@ import { defineConfig } from "npm:drizzle-kit@0.31.10";
 
 const databaseUrl = Deno.env.get("DATABASE_URL");
 if (!databaseUrl) {
-  throw new Error("环境变量 DATABASE_URL 未设置");
+    throw new Error("环境变量 DATABASE_URL 未设置");
 }
 
 export default defineConfig({
-  schema: "./src/db/schema.ts",
-  out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: databaseUrl,
-  },
+    schema: "./src/db/schema.ts",
+    out: "./drizzle",
+    dialect: "postgresql",
+    dbCredentials: {
+        url: databaseUrl,
+    },
 });

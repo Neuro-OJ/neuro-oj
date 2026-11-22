@@ -4,29 +4,29 @@
  * 使用，业务模块应从 `modules/assets/index.ts` 取窄合同。
  */
 export {
-  getStorageProvider,
-  getStorageProviderKind,
-  resetStorageProvider,
-  setStorageProviderForTest,
+    getStorageProvider,
+    getStorageProviderKind,
+    resetStorageProvider,
+    setStorageProviderForTest,
 } from "./factory.ts";
 export { LocalStorageProvider } from "./local.ts";
 export { S3StorageProvider } from "./s3.ts";
 export { deliverStoredArtifact } from "./artifact-delivery.ts";
 export {
-  buildBase64DownloadUrl,
-  buildLocalDownloadUrl,
-  buildS3DownloadUrl,
-  buildStorageUrl,
-  isDownloadUrl,
-  isStorageUrl,
-  parseDownloadUrl,
-  parseStorageUrl,
-  sha256Hex,
+    buildBase64DownloadUrl,
+    buildLocalDownloadUrl,
+    buildS3DownloadUrl,
+    buildStorageUrl,
+    isDownloadUrl,
+    isStorageUrl,
+    parseDownloadUrl,
+    parseStorageUrl,
+    sha256Hex,
 } from "./types.ts";
 export type {
-  ParsedDownloadUrl,
-  ParsedStorageUrl,
-  StorageObjectInfo,
-  StorageObjectStat,
-  StorageProvider,
+    ParsedDownloadUrl,
+    ParsedStorageUrl,
+    StorageObjectInfo,
+    StorageObjectStat,
+    StorageProvider,
 } from "./types.ts";

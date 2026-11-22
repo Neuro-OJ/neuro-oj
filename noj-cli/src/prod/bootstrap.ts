@@ -30,22 +30,22 @@ import { sha256Hex } from "../util/hash.ts";
 
 /** Release 资产与它在安装目录里的文件名（顺序即下载顺序）。 */
 export interface ReleaseFile {
-  /** Release 侧资产名（`.sha256` 校验文件以此为基名；**不得以 `.` 开头**）。 */
-  asset: string;
-  /** 写入安装目录时的文件名。 */
-  target: string;
+    /** Release 侧资产名（`.sha256` 校验文件以此为基名；**不得以 `.` 开头**）。 */
+    asset: string;
+    /** 写入安装目录时的文件名。 */
+    target: string;
 }
 
 /** bootstrap 需要的 Release 资产（不含 .sha256；顺序即下载顺序）。 */
 export const RELEASE_FILES: readonly ReleaseFile[] = [
-  { asset: "docker-compose.prod.yml", target: "docker-compose.prod.yml" },
-  { asset: "env.prod.example", target: ".env.prod.example" },
+    { asset: "docker-compose.prod.yml", target: "docker-compose.prod.yml" },
+    { asset: "env.prod.example", target: ".env.prod.example" },
 ];
 
 /** 发布集合同的 Release 侧资产与安装目录目标名（均不以点号开头）。 */
 export const RELEASE_SET_FILE: ReleaseFile = {
-  asset: "release-set.json",
-  target: "release-set.json",
+    asset: "release-set.json",
+    target: "release-set.json",
 };
 
 /** 资产下载器：返回对应 URL 的响应；默认注入全局 fetch。 */
@@ -53,20 +53,20 @@ export type Fetcher = (url: string) => Promise<Response>;
 
 /** downloadReleaseFiles 参数。 */
 export interface DownloadReleaseFilesOptions {
-  /** 仓库主页地址，如 `https://github.com/Neuro-OJ/neuro-oj`。 */
-  repository: string;
-  /** Release ref（tag 或分支名）。 */
-  ref: string;
-  /** 目标安装目录。 */
-  targetDir: string;
-  /**
-   * 是否覆盖已存在文件。默认 false（拒绝）——用户会在安装目录里维护 .env.prod
-   * 与手工调整过的 compose；.env.prod.example 只是模板，覆盖它收益很低。
-   * 需要显式覆盖（如升级 compose 到新版本）时由调用方传 overwrite: true。
-   */
-  overwrite?: boolean;
-  /** 资产下载器注入点；缺省为全局 fetch。 */
-  fetcher?: Fetcher;
+    /** 仓库主页地址，如 `https://github.com/Neuro-OJ/neuro-oj`。 */
+    repository: string;
+    /** Release ref（tag 或分支名）。 */
+    ref: string;
+    /** 目标安装目录。 */
+    targetDir: string;
+    /**
+     * 是否覆盖已存在文件。默认 false（拒绝）——用户会在安装目录里维护 .env.prod
+     * 与手工调整过的 compose；.env.prod.example 只是模板，覆盖它收益很低。
+     * 需要显式覆盖（如升级 compose 到新版本）时由调用方传 overwrite: true。
+     */
+    overwrite?: boolean;
+    /** 资产下载器注入点；缺省为全局 fetch。 */
+    fetcher?: Fetcher;
 }
 
 /** Release ref 的逐字符白名单（字母 / 数字 / `.` `_` `/` `-`），语义见 validateRef。 */
@@ -76,26 +76,26 @@ const SHA256_RE = /^[a-fA-F0-9]{64}$/;
 
 /** 校验并归一化仓库地址：必须 HTTPS，且不含空白 / @ / ? / #。 */
 export function validateRepository(repository: string): string {
-  if (!repository.startsWith("https://")) {
-    throw new Error(`仓库地址必须使用 HTTPS：${repository}`);
-  }
-  if (/[\s@?#]/.test(repository)) {
-    throw new Error(`仓库地址包含不支持的字符：${repository}`);
-  }
-  // 去掉尾部 `/` 与 `.git`。
-  let repo = repository.replace(/\/+$/, "");
-  repo = repo.replace(/\.git$/, "");
-  return repo;
+    if (!repository.startsWith("https://")) {
+        throw new Error(`仓库地址必须使用 HTTPS：${repository}`);
+    }
+    if (/[\s@?#]/.test(repository)) {
+        throw new Error(`仓库地址包含不支持的字符：${repository}`);
+    }
+    // 去掉尾部 `/` 与 `.git`。
+    let repo = repository.replace(/\/+$/, "");
+    repo = repo.replace(/\.git$/, "");
+    return repo;
 }
 
 /** 校验 Release ref 字符白名单。 */
 export function validateRef(ref: string): void {
-  if (
-    ref === "" || !REF_RE.test(ref) || ref.startsWith("/") ||
-    ref.endsWith("/") || ref.includes("..") || ref.includes("//")
-  ) {
-    throw new Error(`Release ref 非法：${ref}`);
-  }
+    if (
+        ref === "" || !REF_RE.test(ref) || ref.startsWith("/") ||
+        ref.endsWith("/") || ref.includes("..") || ref.includes("//")
+    ) {
+        throw new Error(`Release ref 非法：${ref}`);
+    }
 }
 
 /**
@@ -110,68 +110,68 @@ export function validateRef(ref: string): void {
  * 不会像旧实现那样退化为 `""` 而把文件静默写进当前工作目录。
  */
 export function validateTargetDir(dir: string): string {
-  if (dir.includes("\n") || dir.includes("\r")) {
-    throw new Error(`安装目录不能包含换行符：${JSON.stringify(dir)}`);
-  }
-  const normalized = dir.replace(/\/+$/, "");
-  if (
-    normalized === "" || normalized === "/" || normalized === "." ||
-    normalized === ".." || dir.trim() === ""
-  ) {
-    throw new Error(`安装目录不安全或为空：${JSON.stringify(dir)}`);
-  }
-  return normalized;
+    if (dir.includes("\n") || dir.includes("\r")) {
+        throw new Error(`安装目录不能包含换行符：${JSON.stringify(dir)}`);
+    }
+    const normalized = dir.replace(/\/+$/, "");
+    if (
+        normalized === "" || normalized === "/" || normalized === "." ||
+        normalized === ".." || dir.trim() === ""
+    ) {
+        throw new Error(`安装目录不安全或为空：${JSON.stringify(dir)}`);
+    }
+    return normalized;
 }
 
 /** 拼出 GitHub Release 资产地址：<repo>/releases/download/<ref>/<asset>。 */
 export function releaseAssetUrl(opts: {
-  repository: string;
-  ref: string;
-  asset: string;
+    repository: string;
+    ref: string;
+    asset: string;
 }): string {
-  return `${opts.repository}/releases/download/${opts.ref}/${opts.asset}`;
+    return `${opts.repository}/releases/download/${opts.ref}/${opts.asset}`;
 }
 
 /** 从 .sha256 文件正文解析期望摘要（首个空白分隔字段，必须 64 位 hex）。 */
 function parseExpectedSha256(text: string, asset: string): string {
-  const first = text.trim().split(/\s+/)[0] ?? "";
-  if (!SHA256_RE.test(first)) {
-    throw new Error(`${asset} 校验文件格式非法：${first || "(空)"}`);
-  }
-  // 摘要统一小写后再比较。
-  return first.toLowerCase();
+    const first = text.trim().split(/\s+/)[0] ?? "";
+    if (!SHA256_RE.test(first)) {
+        throw new Error(`${asset} 校验文件格式非法：${first || "(空)"}`);
+    }
+    // 摘要统一小写后再比较。
+    return first.toLowerCase();
 }
 
 /** 下载单个资产并校验其 .sha256；返回已校验的字节。 */
 async function downloadVerified(
-  opts: {
-    repository: string;
-    ref: string;
-    asset: string;
-    fetcher: Fetcher;
-  },
+    opts: {
+        repository: string;
+        ref: string;
+        asset: string;
+        fetcher: Fetcher;
+    },
 ): Promise<Uint8Array> {
-  const { repository, ref, asset, fetcher } = opts;
-  const url = releaseAssetUrl({ repository, ref, asset });
-  const res = await fetcher(url);
-  if (!res.ok) {
-    throw new Error(`下载 ${asset} 失败：HTTP ${res.status}`);
-  }
-  // 必须先读完正文再发校验请求：fake/流式 fetcher 下避免未消费响应体。
-  const bytes = new Uint8Array(await res.arrayBuffer());
+    const { repository, ref, asset, fetcher } = opts;
+    const url = releaseAssetUrl({ repository, ref, asset });
+    const res = await fetcher(url);
+    if (!res.ok) {
+        throw new Error(`下载 ${asset} 失败：HTTP ${res.status}`);
+    }
+    // 必须先读完正文再发校验请求：fake/流式 fetcher 下避免未消费响应体。
+    const bytes = new Uint8Array(await res.arrayBuffer());
 
-  const shaRes = await fetcher(`${url}.sha256`);
-  if (!shaRes.ok) {
-    throw new Error(`下载 ${asset}.sha256 失败：HTTP ${shaRes.status}`);
-  }
-  const expected = parseExpectedSha256(await shaRes.text(), asset);
-  const actual = await sha256Hex(bytes);
-  if (actual !== expected) {
-    throw new Error(
-      `${asset} SHA-256 校验失败：期望 ${expected}，实际 ${actual}`,
-    );
-  }
-  return bytes;
+    const shaRes = await fetcher(`${url}.sha256`);
+    if (!shaRes.ok) {
+        throw new Error(`下载 ${asset}.sha256 失败：HTTP ${shaRes.status}`);
+    }
+    const expected = parseExpectedSha256(await shaRes.text(), asset);
+    const actual = await sha256Hex(bytes);
+    if (actual !== expected) {
+        throw new Error(
+            `${asset} SHA-256 校验失败：期望 ${expected}，实际 ${actual}`,
+        );
+    }
+    return bytes;
 }
 
 /**
@@ -192,106 +192,106 @@ async function downloadVerified(
  * 返回写入的绝对路径列表（顺序与 RELEASE_FILES 一致）。
  */
 export async function downloadReleaseFiles(
-  opts: DownloadReleaseFilesOptions,
+    opts: DownloadReleaseFilesOptions,
 ): Promise<string[]> {
-  const repository = validateRepository(opts.repository);
-  validateRef(opts.ref);
-  // 在任何文件系统访问之前拒绝危险目标目录。
-  const targetDir = validateTargetDir(opts.targetDir);
-  const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
-  const overwrite = opts.overwrite ?? false;
+    const repository = validateRepository(opts.repository);
+    validateRef(opts.ref);
+    // 在任何文件系统访问之前拒绝危险目标目录。
+    const targetDir = validateTargetDir(opts.targetDir);
+    const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
+    const overwrite = opts.overwrite ?? false;
 
-  const targets = RELEASE_FILES.map(({ target }) => join(targetDir, target));
+    const targets = RELEASE_FILES.map(({ target }) => join(targetDir, target));
 
-  // 覆盖模式下目标目录已存在（安装/升级场景），缺失时按需创建；
-  // 拒绝模式下目录不存在时后续同样按需创建。
-  if (!overwrite) {
-    for (let i = 0; i < RELEASE_FILES.length; i++) {
-      if (await isFile(targets[i]!)) {
+    // 覆盖模式下目标目录已存在（安装/升级场景），缺失时按需创建；
+    // 拒绝模式下目录不存在时后续同样按需创建。
+    if (!overwrite) {
+        for (let i = 0; i < RELEASE_FILES.length; i++) {
+            if (await isFile(targets[i]!)) {
+                throw new Error(
+                    `${
+                        RELEASE_FILES[i]!.target
+                    } 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
+                );
+            }
+        }
+    }
+
+    await Deno.mkdir(targetDir, { recursive: true });
+
+    const staged: { target: string; tmp: string }[] = [];
+    // 提交期间创建的备份：旧文件 rename 到 `.bootstrap-<uid>.bak`，回滚时还原。
+    const backups: { target: string; bak: string }[] = [];
+    // 已提交（rename 进目标目录）的新文件，回滚时删除。
+    const committed: string[] = [];
+    // 回滚失败的备份路径：finally 必须保留它们（见 catch 内说明）。
+    const keepBackups = new Set<string>();
+    try {
+        // 阶段一：全部下载 + 校验到暂存文件。任一步失败都不会触碰目标文件。
+        for (let i = 0; i < RELEASE_FILES.length; i++) {
+            const { asset } = RELEASE_FILES[i]!;
+            const target = targets[i]!;
+            const tmp = join(
+                targetDir,
+                `.bootstrap-${crypto.randomUUID()}.tmp`,
+            );
+            const bytes = await downloadVerified({
+                repository,
+                ref: opts.ref,
+                asset,
+                fetcher,
+            });
+            await Deno.writeFile(tmp, bytes);
+            staged.push({ target, tmp });
+        }
+
+        // 阶段二：事务式提交。先备份将被覆盖的普通文件，再逐个 rename 进去；
+        // 任一步失败都回滚到提交前的完整状态，不留混合状态。
+        for (const { target, tmp } of staged) {
+            if (await isFile(target)) {
+                const bak = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
+                await Deno.rename(target, bak);
+                backups.push({ target, bak });
+            }
+            await Deno.rename(tmp, target);
+            committed.push(target);
+        }
+        return targets;
+    } catch (err) {
+        const problems: string[] = [];
+        // 最新提交的先回滚；best-effort，失败不吞掉、累积到报告中。
+        for (const target of committed.reverse()) {
+            await Deno.remove(target).catch((e) => {
+                problems.push(`删除已提交文件 ${target} 失败：${e.message}`);
+            });
+        }
+        for (const { target, bak } of backups) {
+            await Deno.rename(bak, target).catch((e) => {
+                keepBackups.add(bak);
+                problems.push(
+                    `还原备份 ${bak} -> ${target} 失败：${e.message}（旧文件仍在 ${bak}）`,
+                );
+            });
+        }
+        const detail = problems.length > 0
+            ? `；回滚未完全成功：${problems.join("；")}`
+            : "";
         throw new Error(
-          `${
-            RELEASE_FILES[i]!.target
-          } 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
+            `提交部署文件失败，已回滚：${(err as Error).message}${detail}`,
+            { cause: err },
         );
-      }
+    } finally {
+        // 未提交的暂存文件全部清理；
+        // 回滚成功时备份已被 rename 回去，remove 为 no-op。
+        for (const { tmp } of staged) {
+            await Deno.remove(tmp).catch(() => {});
+        }
+        // 回滚失败的备份不删（它是旧文件唯一副本，已写进抛出的错误）。
+        for (const { bak } of backups) {
+            if (keepBackups.has(bak)) continue;
+            await Deno.remove(bak).catch(() => {});
+        }
     }
-  }
-
-  await Deno.mkdir(targetDir, { recursive: true });
-
-  const staged: { target: string; tmp: string }[] = [];
-  // 提交期间创建的备份：旧文件 rename 到 `.bootstrap-<uid>.bak`，回滚时还原。
-  const backups: { target: string; bak: string }[] = [];
-  // 已提交（rename 进目标目录）的新文件，回滚时删除。
-  const committed: string[] = [];
-  // 回滚失败的备份路径：finally 必须保留它们（见 catch 内说明）。
-  const keepBackups = new Set<string>();
-  try {
-    // 阶段一：全部下载 + 校验到暂存文件。任一步失败都不会触碰目标文件。
-    for (let i = 0; i < RELEASE_FILES.length; i++) {
-      const { asset } = RELEASE_FILES[i]!;
-      const target = targets[i]!;
-      const tmp = join(
-        targetDir,
-        `.bootstrap-${crypto.randomUUID()}.tmp`,
-      );
-      const bytes = await downloadVerified({
-        repository,
-        ref: opts.ref,
-        asset,
-        fetcher,
-      });
-      await Deno.writeFile(tmp, bytes);
-      staged.push({ target, tmp });
-    }
-
-    // 阶段二：事务式提交。先备份将被覆盖的普通文件，再逐个 rename 进去；
-    // 任一步失败都回滚到提交前的完整状态，不留混合状态。
-    for (const { target, tmp } of staged) {
-      if (await isFile(target)) {
-        const bak = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
-        await Deno.rename(target, bak);
-        backups.push({ target, bak });
-      }
-      await Deno.rename(tmp, target);
-      committed.push(target);
-    }
-    return targets;
-  } catch (err) {
-    const problems: string[] = [];
-    // 最新提交的先回滚；best-effort，失败不吞掉、累积到报告中。
-    for (const target of committed.reverse()) {
-      await Deno.remove(target).catch((e) => {
-        problems.push(`删除已提交文件 ${target} 失败：${e.message}`);
-      });
-    }
-    for (const { target, bak } of backups) {
-      await Deno.rename(bak, target).catch((e) => {
-        keepBackups.add(bak);
-        problems.push(
-          `还原备份 ${bak} -> ${target} 失败：${e.message}（旧文件仍在 ${bak}）`,
-        );
-      });
-    }
-    const detail = problems.length > 0
-      ? `；回滚未完全成功：${problems.join("；")}`
-      : "";
-    throw new Error(
-      `提交部署文件失败，已回滚：${(err as Error).message}${detail}`,
-      { cause: err },
-    );
-  } finally {
-    // 未提交的暂存文件全部清理；
-    // 回滚成功时备份已被 rename 回去，remove 为 no-op。
-    for (const { tmp } of staged) {
-      await Deno.remove(tmp).catch(() => {});
-    }
-    // 回滚失败的备份不删（它是旧文件唯一副本，已写进抛出的错误）。
-    for (const { bak } of backups) {
-      if (keepBackups.has(bak)) continue;
-      await Deno.remove(bak).catch(() => {});
-    }
-  }
 }
 
 /**
@@ -301,56 +301,56 @@ export async function downloadReleaseFiles(
  * 两文件兼容契约；升级时由 `runUpdateSync` 在同一目标 ref 下额外拉取它。
  */
 export async function downloadReleaseSet(
-  opts: DownloadReleaseFilesOptions,
+    opts: DownloadReleaseFilesOptions,
 ): Promise<string> {
-  const repository = validateRepository(opts.repository);
-  validateRef(opts.ref);
-  const targetDir = validateTargetDir(opts.targetDir);
-  const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
-  const target = join(targetDir, RELEASE_SET_FILE.target);
-  if (!opts.overwrite && await isFile(target)) {
-    throw new Error(
-      `${RELEASE_SET_FILE.target} 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
-    );
-  }
-  await Deno.mkdir(targetDir, { recursive: true });
-  const tmp = join(targetDir, `.release-set-${crypto.randomUUID()}.tmp`);
-  const backup = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
-  let backedUp = false;
-  let keepBackup = false;
-  try {
-    const bytes = await downloadVerified({
-      repository,
-      ref: opts.ref,
-      asset: RELEASE_SET_FILE.asset,
-      fetcher,
-    });
-    await Deno.writeFile(tmp, bytes);
-    if (opts.overwrite && await isFile(target)) {
-      await Deno.rename(target, backup);
-      backedUp = true;
-    }
-    await Deno.rename(tmp, target);
-    if (backedUp) await Deno.remove(backup);
-    return target;
-  } catch (error) {
-    await Deno.remove(tmp).catch(() => {});
-    if (backedUp) {
-      await Deno.remove(target).catch(() => {});
-      await Deno.rename(backup, target).catch((restoreError) => {
-        keepBackup = true;
+    const repository = validateRepository(opts.repository);
+    validateRef(opts.ref);
+    const targetDir = validateTargetDir(opts.targetDir);
+    const fetcher = opts.fetcher ?? ((url: string) => fetch(url));
+    const target = join(targetDir, RELEASE_SET_FILE.target);
+    if (!opts.overwrite && await isFile(target)) {
         throw new Error(
-          `发布集写入失败且无法还原旧文件：${target}（${
-            (restoreError as Error).message
-          }）`,
-          { cause: error },
+            `${RELEASE_SET_FILE.target} 已存在同名文件，拒绝覆盖（如需更新请显式允许覆盖）`,
         );
-      });
     }
-    throw error;
-  } finally {
-    if (!keepBackup && await isFile(backup)) {
-      await Deno.remove(backup).catch(() => {});
+    await Deno.mkdir(targetDir, { recursive: true });
+    const tmp = join(targetDir, `.release-set-${crypto.randomUUID()}.tmp`);
+    const backup = `${target}.bootstrap-${crypto.randomUUID()}.bak`;
+    let backedUp = false;
+    let keepBackup = false;
+    try {
+        const bytes = await downloadVerified({
+            repository,
+            ref: opts.ref,
+            asset: RELEASE_SET_FILE.asset,
+            fetcher,
+        });
+        await Deno.writeFile(tmp, bytes);
+        if (opts.overwrite && await isFile(target)) {
+            await Deno.rename(target, backup);
+            backedUp = true;
+        }
+        await Deno.rename(tmp, target);
+        if (backedUp) await Deno.remove(backup);
+        return target;
+    } catch (error) {
+        await Deno.remove(tmp).catch(() => {});
+        if (backedUp) {
+            await Deno.remove(target).catch(() => {});
+            await Deno.rename(backup, target).catch((restoreError) => {
+                keepBackup = true;
+                throw new Error(
+                    `发布集写入失败且无法还原旧文件：${target}（${
+                        (restoreError as Error).message
+                    }）`,
+                    { cause: error },
+                );
+            });
+        }
+        throw error;
+    } finally {
+        if (!keepBackup && await isFile(backup)) {
+            await Deno.remove(backup).catch(() => {});
+        }
     }
-  }
 }

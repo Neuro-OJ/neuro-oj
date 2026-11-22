@@ -4,154 +4,171 @@ import { ConflictError } from "../../../../../shared/base/errors.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
-  auditLogs,
-  domainMemberships,
-  domainResourceCounters,
-  domains,
-  users,
+    auditLogs,
+    domainMemberships,
+    domainResourceCounters,
+    domains,
+    users,
 } from "../../../../../shared/db/schema.ts";
 import {
-  adminDeleteAccount,
-  deleteOwnAccount,
-  hashPassword,
+    adminDeleteAccount,
+    deleteOwnAccount,
+    hashPassword,
 } from "../../../identity/index.ts";
 import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { loadWorkspace } from "../../index.ts";
 import {
-  createDomain,
-  ensureDefaultWorkspace,
-  joinDomain,
-  setDomainStatus,
-  transferDomain,
+    createDomain,
+    ensureDefaultWorkspace,
+    joinDomain,
+    setDomainStatus,
+    transferDomain,
 } from "../../../../../../tests/helpers/workspace-actors.ts";
 
 async function account(admin = false) {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await getDb().insert(users).values({
-    id,
-    username: id,
-    email: `${id}@example.com`,
-    password_hash: await hashPassword("Owner-2026-Ab1"),
-    role: admin ? "admin" : "user",
-    created_at: now,
-    updated_at: now,
-  });
-  return id;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+        id,
+        username: id,
+        email: `${id}@example.com`,
+        password_hash: await hashPassword("Owner-2026-Ab1"),
+        role: admin ? "admin" : "user",
+        created_at: now,
+        updated_at: now,
+    });
+    return id;
 }
 
 Deno.test("默认域负责人：排除系统账号，补齐首次管理员且重启不覆盖人工交接", async () => {
-  await resetDbForTest();
-  await ensureDefaultWorkspace();
-  assertEquals((await loadWorkspace("main", null)).domain.owner_id, "0");
-  const operator = await account(true);
-  await ensureDefaultWorkspace();
-  const main = await loadWorkspace("main", operator);
-  assertEquals(main.domain.owner_id, operator);
-  assertEquals(main.context.domainPermissions.has("domain:transfer"), true);
-  const next = await account();
-  await joinDomain("main", next);
-  await transferDomain("main", operator, next);
-  await ensureDefaultWorkspace();
-  assertEquals((await loadWorkspace("main", next)).domain.owner_id, next);
-  const roots = await getDb().select().from(domainMemberships).where(
-    and(
-      eq(domainMemberships.domain_id, main.domain.id),
-      eq(domainMemberships.user_id, "0"),
-      eq(domainMemberships.status, "active"),
-    ),
-  );
-  assertEquals(roots.length, 0);
+    await resetDbForTest();
+    await ensureDefaultWorkspace();
+    assertEquals((await loadWorkspace("main", null)).domain.owner_id, "0");
+    const operator = await account(true);
+    await ensureDefaultWorkspace();
+    const main = await loadWorkspace("main", operator);
+    assertEquals(main.domain.owner_id, operator);
+    assertEquals(main.context.domainPermissions.has("domain:transfer"), true);
+    const next = await account();
+    await joinDomain("main", next);
+    await transferDomain("main", operator, next);
+    await ensureDefaultWorkspace();
+    assertEquals((await loadWorkspace("main", next)).domain.owner_id, next);
+    const roots = await getDb().select().from(domainMemberships).where(
+        and(
+            eq(domainMemberships.domain_id, main.domain.id),
+            eq(domainMemberships.user_id, "0"),
+            eq(domainMemberships.status, "active"),
+        ),
+    );
+    assertEquals(roots.length, 0);
 });
 
 Deno.test("域负责人注销：本人及平台入口均拒绝，拒绝时头像和身份不变；交接后可注销", async () => {
-  await resetDbForTest();
-  const operator = await account(true);
-  const owner = await account();
-  const next = await account();
-  const domain = await createDomain(
-    { slug: "lifecycle-school", name: "学校", preset: "community" },
-    owner,
-    { approved: true },
-  );
-  await getDb().update(users).set({
-    avatar_url: "noj-storage://local/avatar-retained.png",
-  }).where(eq(users.id, owner));
-  for (
-    const action of [
-      () =>
-        deleteOwnAccount(userActorFromAuthenticatedId(owner), "Owner-2026-Ab1"),
-      () => adminDeleteAccount(owner, userActorFromAuthenticatedId(operator)),
-    ]
-  ) {
-    const failure = await assertRejects(action, ConflictError);
-    assertEquals(failure.code, "DOMAIN_OWNER_TRANSFER_REQUIRED");
-    const [user] = await getDb().select().from(users).where(
-      eq(users.id, owner),
+    await resetDbForTest();
+    const operator = await account(true);
+    const owner = await account();
+    const next = await account();
+    const domain = await createDomain(
+        { slug: "lifecycle-school", name: "学校", preset: "community" },
+        owner,
+        { approved: true },
     );
-    assertEquals(user.deleted_at, null);
-    assertEquals(user.avatar_url, "noj-storage://local/avatar-retained.png");
-  }
-  await joinDomain(domain.slug, next);
-  await transferDomain(domain.slug, owner, next);
-  await deleteOwnAccount(userActorFromAuthenticatedId(owner), "Owner-2026-Ab1");
-  assertEquals((await loadWorkspace(domain.slug, next)).domain.owner_id, next);
-  const [history] = await getDb().select().from(domainMemberships).where(
-    eq(domainMemberships.user_id, owner),
-  );
-  assertEquals(!!history, true);
-  assertEquals(history.status, "removed");
-  const [counter] = await getDb().select().from(domainResourceCounters).where(
-    and(
-      eq(domainResourceCounters.domain_id, domain.id),
-      eq(domainResourceCounters.resource, "members"),
-    ),
-  );
-  assertEquals(counter.used, 1);
-  const audit = await getDb().select().from(auditLogs).where(
-    and(
-      eq(auditLogs.target_id, domain.id),
-      eq(auditLogs.action, "domain.member_remove"),
-    ),
-  );
-  assertEquals(
-    audit.some((entry) =>
-      entry.admin_id === owner &&
-      (entry.detail as Record<string, unknown>)?.operation === "account_deleted"
-    ),
-    true,
-  );
+    await getDb().update(users).set({
+        avatar_url: "noj-storage://local/avatar-retained.png",
+    }).where(eq(users.id, owner));
+    for (
+        const action of [
+            () =>
+                deleteOwnAccount(
+                    userActorFromAuthenticatedId(owner),
+                    "Owner-2026-Ab1",
+                ),
+            () =>
+                adminDeleteAccount(
+                    owner,
+                    userActorFromAuthenticatedId(operator),
+                ),
+        ]
+    ) {
+        const failure = await assertRejects(action, ConflictError);
+        assertEquals(failure.code, "DOMAIN_OWNER_TRANSFER_REQUIRED");
+        const [user] = await getDb().select().from(users).where(
+            eq(users.id, owner),
+        );
+        assertEquals(user.deleted_at, null);
+        assertEquals(
+            user.avatar_url,
+            "noj-storage://local/avatar-retained.png",
+        );
+    }
+    await joinDomain(domain.slug, next);
+    await transferDomain(domain.slug, owner, next);
+    await deleteOwnAccount(
+        userActorFromAuthenticatedId(owner),
+        "Owner-2026-Ab1",
+    );
+    assertEquals(
+        (await loadWorkspace(domain.slug, next)).domain.owner_id,
+        next,
+    );
+    const [history] = await getDb().select().from(domainMemberships).where(
+        eq(domainMemberships.user_id, owner),
+    );
+    assertEquals(!!history, true);
+    assertEquals(history.status, "removed");
+    const [counter] = await getDb().select().from(domainResourceCounters).where(
+        and(
+            eq(domainResourceCounters.domain_id, domain.id),
+            eq(domainResourceCounters.resource, "members"),
+        ),
+    );
+    assertEquals(counter.used, 1);
+    const audit = await getDb().select().from(auditLogs).where(
+        and(
+            eq(auditLogs.target_id, domain.id),
+            eq(auditLogs.action, "domain.member_remove"),
+        ),
+    );
+    assertEquals(
+        audit.some((entry) =>
+            entry.admin_id === owner &&
+            (entry.detail as Record<string, unknown>)?.operation ===
+                "account_deleted"
+        ),
+        true,
+    );
 });
 
 Deno.test("停用域交接：普通负责人不能写入，平台治理可转交且保留单一 owner 角色", async () => {
-  await resetDbForTest();
-  const operator = await account(true);
-  const owner = await account();
-  const next = await account();
-  const domain = await createDomain(
-    { slug: "suspended-owner", name: "学校", preset: "community" },
-    owner,
-    { approved: true },
-  );
-  await joinDomain(domain.slug, next);
-  await setDomainStatus(domain.slug, operator, "suspended", domain.revision);
-  await assertRejects(() => transferDomain(domain.slug, owner, next));
-  await transferDomain(domain.slug, operator, next);
-  const [saved] = await getDb().select().from(domains).where(
-    eq(domains.id, domain.id),
-  );
-  assertEquals(saved.owner_id, next);
-  assertEquals(saved.status, "suspended");
-  // 负责人是单一事实：domains.owner_id 指向新负责人，成员角色列不存 owner。
-  const [ownerRow] = await getDb().select({
-    owner_id: domains.owner_id,
-  }).from(domains).where(eq(domains.id, domain.id));
-  assertEquals(ownerRow.owner_id, next);
-  const [membership] = await getDb().select().from(domainMemberships).where(
-    and(
-      eq(domainMemberships.domain_id, domain.id),
-      eq(domainMemberships.user_id, next),
-    ),
-  );
-  assertEquals(membership.role, "admin");
+    await resetDbForTest();
+    const operator = await account(true);
+    const owner = await account();
+    const next = await account();
+    const domain = await createDomain(
+        { slug: "suspended-owner", name: "学校", preset: "community" },
+        owner,
+        { approved: true },
+    );
+    await joinDomain(domain.slug, next);
+    await setDomainStatus(domain.slug, operator, "suspended", domain.revision);
+    await assertRejects(() => transferDomain(domain.slug, owner, next));
+    await transferDomain(domain.slug, operator, next);
+    const [saved] = await getDb().select().from(domains).where(
+        eq(domains.id, domain.id),
+    );
+    assertEquals(saved.owner_id, next);
+    assertEquals(saved.status, "suspended");
+    // 负责人是单一事实：domains.owner_id 指向新负责人，成员角色列不存 owner。
+    const [ownerRow] = await getDb().select({
+        owner_id: domains.owner_id,
+    }).from(domains).where(eq(domains.id, domain.id));
+    assertEquals(ownerRow.owner_id, next);
+    const [membership] = await getDb().select().from(domainMemberships).where(
+        and(
+            eq(domainMemberships.domain_id, domain.id),
+            eq(domainMemberships.user_id, next),
+        ),
+    );
+    assertEquals(membership.role, "admin");
 });

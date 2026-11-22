@@ -18,40 +18,40 @@
  * @returns 首块字节与可重放剩余流
  */
 export async function peekFirstChunk(
-  stream: ReadableStream<Uint8Array>,
+    stream: ReadableStream<Uint8Array>,
 ): Promise<{ first: Uint8Array; rest: ReadableStream<Uint8Array> }> {
-  const reader = stream.getReader();
-  const { done, value } = await reader.read();
-  if (done) {
-    return {
-      first: new Uint8Array(0),
-      rest: new ReadableStream({
-        start(controller) {
-          controller.close();
+    const reader = stream.getReader();
+    const { done, value } = await reader.read();
+    if (done) {
+        return {
+            first: new Uint8Array(0),
+            rest: new ReadableStream({
+                start(controller) {
+                    controller.close();
+                },
+            }),
+        };
+    }
+    const first = value ?? new Uint8Array(0);
+    let firstPending = true;
+    const rest = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+            if (firstPending) {
+                firstPending = false;
+                controller.enqueue(first);
+                return;
+            }
+            const r = await reader.read();
+            if (r.done) {
+                controller.close();
+                reader.releaseLock();
+            } else if (r.value && r.value.length > 0) {
+                controller.enqueue(r.value);
+            }
         },
-      }),
-    };
-  }
-  const first = value ?? new Uint8Array(0);
-  let firstPending = true;
-  const rest = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (firstPending) {
-        firstPending = false;
-        controller.enqueue(first);
-        return;
-      }
-      const r = await reader.read();
-      if (r.done) {
-        controller.close();
-        reader.releaseLock();
-      } else if (r.value && r.value.length > 0) {
-        controller.enqueue(r.value);
-      }
-    },
-    cancel() {
-      reader.releaseLock();
-    },
-  });
-  return { first, rest };
+        cancel() {
+            reader.releaseLock();
+        },
+    });
+    return { first, rest };
 }

@@ -454,10 +454,23 @@ jobs:
         with:
           deno-version-file: .dvmrc
 
+      # 设计门禁要读**目标分支**那份基线，而 PR 的浅检出只有合并提交。
+      # 先按 base SHA 补一次 depth=1 的 fetch，再把 SHA 传给 check-ui-guards
+      #（脚本用 `git show <sha>:scripts/ui-guards-baseline.json` 读取）。
+      - name: 获取目标分支基线（设计门禁跨分支棘轮）
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+          echo "UI_GUARDS_BASE_REF=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_ENV"
+
       - name: 验证 WASM 统一标准
         run: deno run -A scripts/verify-wasm-standard.ts
 
       - name: 仓库级门禁
+        # PR 上 check-ui-guards（scripts/gate-list.ts）会读到上一步的
+        # UI_GUARDS_BASE_REF：除"当前 == 本提交基线"的硬棘轮外，再拒绝任何
+        # 规则 × scope 高于 base 的基线，防止"先加违规、再 --write-baseline
+        # 重建基线"让门禁变绿。
         run: deno run -A scripts/check-ci.ts
 
       # noj-tests 的等待器/启动器清单/分组规划/浏览器生命周期单测不依赖

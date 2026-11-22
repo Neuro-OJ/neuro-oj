@@ -8,8 +8,8 @@ import { claimTasks } from "../../../src/shared/tasks/repository.ts";
 const workerId = Deno.env.get("NOJ_CRASH_WORKER_ID") ?? "crash-fixture";
 const tasks = await claimTasks(workerId, 1, 60_000);
 if (tasks.length !== 1) {
-  console.error(`故障夹具预期领取 1 条任务，实际 ${tasks.length}`);
-  Deno.exit(2);
+    console.error(`故障夹具预期领取 1 条任务，实际 ${tasks.length}`);
+    Deno.exit(2);
 }
 
 // 模拟进程在提交业务事实后、完成任务标记前退出。操作系统会关闭连接，

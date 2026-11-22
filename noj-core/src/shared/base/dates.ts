@@ -7,10 +7,10 @@
 
 /** 当前 UTC ISO 时间戳（`YYYY-MM-DDTHH:mm:ss.sssZ`）。 */
 export function nowIso(): string {
-  return new Date().toISOString();
+    return new Date().toISOString();
 }
 
 /** 今日 UTC 日期字符串（`YYYY-MM-DD`）。 */
 export function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
 }

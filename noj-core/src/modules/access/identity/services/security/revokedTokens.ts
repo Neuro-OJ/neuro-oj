@@ -16,8 +16,8 @@
  * (503)，避免绕过撤销检查。与 loginIpRateLimit 的 fail-closed 一致。
  */
 import {
-  getRedis,
-  type RedisClient,
+    getRedis,
+    type RedisClient,
 } from "../../../../../shared/mq/connection.ts";
 import { ServiceUnavailableError } from "../../../../../shared/base/errors.ts";
 
@@ -33,21 +33,21 @@ const KEY_PREFIX = "jwt:revoked:";
  * @throws {ServiceUnavailableError} Redis 不可用
  */
 export async function revokeJti(
-  jti: string,
-  ttlSeconds: number,
-  redis?: RedisClient,
+    jti: string,
+    ttlSeconds: number,
+    redis?: RedisClient,
 ): Promise<void> {
-  if (!jti) return;
-  // TTL ≤ 0 视为立即过期，无需写入（防御性，正常不会发生）
-  if (ttlSeconds <= 0) return;
-  try {
-    const client = redis ?? getRedis();
-    const value = new Date().toISOString();
-    await client.set(KEY_PREFIX + jti, value, "EX", ttlSeconds);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new ServiceUnavailableError(`撤销令牌失败：${msg}`);
-  }
+    if (!jti) return;
+    // TTL ≤ 0 视为立即过期，无需写入（防御性，正常不会发生）
+    if (ttlSeconds <= 0) return;
+    try {
+        const client = redis ?? getRedis();
+        const value = new Date().toISOString();
+        await client.set(KEY_PREFIX + jti, value, "EX", ttlSeconds);
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new ServiceUnavailableError(`撤销令牌失败：${msg}`);
+    }
 }
 
 /**
@@ -58,31 +58,31 @@ export async function revokeJti(
  * @throws {ServiceUnavailableError} Redis 不可用（fail-closed）
  */
 export async function isJtiRevoked(
-  jti: string,
-  redis?: RedisClient,
+    jti: string,
+    redis?: RedisClient,
 ): Promise<boolean> {
-  if (!jti) return false;
-  // 测试短路开关：测试 helper（如 initRedisForTest）设置此 env 时跳过 Redis 查询，
-  // 避免跨测试状态污染导致 authMiddleware 503。
-  // 纵深防御（issue #655）：仅非生产环境允许短路；生产环境即使误设该变量也忽略，
-  // 保证 logout / 改密 / 封禁 / 角色降级签发的撤销始终生效（fail-closed 不变）。
-  // 启动期另有 production-config 护栏直接拒绝启动。
-  if (
-    redis === undefined && Deno.env.get("NOJ_ENV") !== "production" &&
-    Deno.env.get("NOJ_BYPASS_JWT_REVOKE") === "1"
-  ) {
-    return false;
-  }
-  try {
-    const client = redis ?? getRedis();
-    const result = await client.exists(KEY_PREFIX + jti);
-    return result > 0;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // fail-closed：Redis 不可用时无法确认撤销状态，必须拒绝请求
-    // 避免被偷 token 通过撤销机制失效后还能继续使用
-    throw new ServiceUnavailableError(`校验令牌撤销状态失败：${msg}`);
-  }
+    if (!jti) return false;
+    // 测试短路开关：测试 helper（如 initRedisForTest）设置此 env 时跳过 Redis 查询，
+    // 避免跨测试状态污染导致 authMiddleware 503。
+    // 纵深防御（issue #655）：仅非生产环境允许短路；生产环境即使误设该变量也忽略，
+    // 保证 logout / 改密 / 封禁 / 角色降级签发的撤销始终生效（fail-closed 不变）。
+    // 启动期另有 production-config 护栏直接拒绝启动。
+    if (
+        redis === undefined && Deno.env.get("NOJ_ENV") !== "production" &&
+        Deno.env.get("NOJ_BYPASS_JWT_REVOKE") === "1"
+    ) {
+        return false;
+    }
+    try {
+        const client = redis ?? getRedis();
+        const result = await client.exists(KEY_PREFIX + jti);
+        return result > 0;
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // fail-closed：Redis 不可用时无法确认撤销状态，必须拒绝请求
+        // 避免被偷 token 通过撤销机制失效后还能继续使用
+        throw new ServiceUnavailableError(`校验令牌撤销状态失败：${msg}`);
+    }
 }
 
 /**
@@ -95,10 +95,10 @@ export async function isJtiRevoked(
  * @returns 剩余秒数；已过期返 0；payload 缺失返 0
  */
 export function remainingTtlFromExp(exp: number | undefined): number {
-  if (!exp || typeof exp !== "number") return 0;
-  const nowSec = Math.floor(Date.now() / 1000);
-  const remaining = exp - nowSec;
-  return remaining > 0 ? remaining : 0;
+    if (!exp || typeof exp !== "number") return 0;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const remaining = exp - nowSec;
+    return remaining > 0 ? remaining : 0;
 }
 
 /** 缺少 exp 的历史 token 撤销时使用的保守 TTL（秒），与 jwt_expires_in 默认值一致。 */
@@ -112,5 +112,5 @@ const LEGACY_REVOCATION_TTL_SECONDS = 24 * 60 * 60;
  * @returns TTL 秒数；已过期返回 0（revokeJti 会跳过写入）
  */
 export function revocationTtl(exp: number | undefined): number {
-  return exp ? remainingTtlFromExp(exp) : LEGACY_REVOCATION_TTL_SECONDS;
+    return exp ? remainingTtlFromExp(exp) : LEGACY_REVOCATION_TTL_SECONDS;
 }

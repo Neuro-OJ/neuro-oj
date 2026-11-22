@@ -41,29 +41,29 @@ export const METRIC_BACKUP_BYTES = "noj_backup_snapshot_bytes";
  * 保留 `# HELP` / `# TYPE` 注释：Prometheus 文本格式要求。
  */
 export function renderBackupMetrics(
-  unixSeconds: number,
-  snapshotBytes: number,
+    unixSeconds: number,
+    snapshotBytes: number,
 ): string {
-  return [
-    `# HELP ${METRIC_BACKUP_LAST_SUCCESS} 最近一次成功备份的 Unix 时间戳。`,
-    `# TYPE ${METRIC_BACKUP_LAST_SUCCESS} gauge`,
-    `${METRIC_BACKUP_LAST_SUCCESS} ${unixSeconds}`,
-    `# HELP ${METRIC_BACKUP_BYTES} 最近一次成功备份的快照字节数。`,
-    `# TYPE ${METRIC_BACKUP_BYTES} gauge`,
-    `${METRIC_BACKUP_BYTES} ${snapshotBytes}`,
-  ].join("\n") + "\n";
+    return [
+        `# HELP ${METRIC_BACKUP_LAST_SUCCESS} 最近一次成功备份的 Unix 时间戳。`,
+        `# TYPE ${METRIC_BACKUP_LAST_SUCCESS} gauge`,
+        `${METRIC_BACKUP_LAST_SUCCESS} ${unixSeconds}`,
+        `# HELP ${METRIC_BACKUP_BYTES} 最近一次成功备份的快照字节数。`,
+        `# TYPE ${METRIC_BACKUP_BYTES} gauge`,
+        `${METRIC_BACKUP_BYTES} ${snapshotBytes}`,
+    ].join("\n") + "\n";
 }
 
 /** {@link writeBackupMetrics} 的注入点。 */
 export interface WriteBackupMetricsOptions {
-  /** 备份目录（缺省在其下建 `metrics/`）。 */
-  backupDir: string;
-  /** 显式指标目录（`NOJ_BACKUP_METRICS_DIR`）；给出时优先。 */
-  explicitDir?: string;
-  /** 成功时间（Unix 秒）。 */
-  unixSeconds: number;
-  /** 快照字节数。 */
-  snapshotBytes: number;
+    /** 备份目录（缺省在其下建 `metrics/`）。 */
+    backupDir: string;
+    /** 显式指标目录（`NOJ_BACKUP_METRICS_DIR`）；给出时优先。 */
+    explicitDir?: string;
+    /** 成功时间（Unix 秒）。 */
+    unixSeconds: number;
+    /** 快照字节数。 */
+    snapshotBytes: number;
 }
 
 /**
@@ -74,20 +74,20 @@ export interface WriteBackupMetricsOptions {
  * 而监控恰恰是最后一道防线。
  */
 export async function writeBackupMetrics(
-  opts: WriteBackupMetricsOptions,
+    opts: WriteBackupMetricsOptions,
 ): Promise<string> {
-  const dir = opts.explicitDir !== undefined && opts.explicitDir !== ""
-    ? opts.explicitDir
-    : join(opts.backupDir, "metrics");
-  await Deno.mkdir(dir, { recursive: true, mode: 0o755 });
-  // umask 会让 mkdir 的 mode 变窄，显式 chmod 保证 755。
-  await Deno.chmod(dir, 0o755).catch(() => {});
-  const file = join(dir, BACKUP_METRICS_FILE);
-  await Deno.writeTextFile(
-    file,
-    renderBackupMetrics(opts.unixSeconds, opts.snapshotBytes),
-  );
-  // 同上：WriteTextFile 的权限受 umask 影响，显式设定。
-  await Deno.chmod(file, 0o644);
-  return dir;
+    const dir = opts.explicitDir !== undefined && opts.explicitDir !== ""
+        ? opts.explicitDir
+        : join(opts.backupDir, "metrics");
+    await Deno.mkdir(dir, { recursive: true, mode: 0o755 });
+    // umask 会让 mkdir 的 mode 变窄，显式 chmod 保证 755。
+    await Deno.chmod(dir, 0o755).catch(() => {});
+    const file = join(dir, BACKUP_METRICS_FILE);
+    await Deno.writeTextFile(
+        file,
+        renderBackupMetrics(opts.unixSeconds, opts.snapshotBytes),
+    );
+    // 同上：WriteTextFile 的权限受 umask 影响，显式设定。
+    await Deno.chmod(file, 0o644);
+    return dir;
 }

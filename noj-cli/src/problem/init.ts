@@ -13,10 +13,10 @@
  */
 import { dirname, join } from "@std/path";
 import {
-  isProblemTemplateName,
-  PROBLEM_TEMPLATE_NAMES,
-  type ProblemTemplateName,
-  renderProblemTemplate,
+    isProblemTemplateName,
+    PROBLEM_TEMPLATE_NAMES,
+    type ProblemTemplateName,
+    renderProblemTemplate,
 } from "../../../noj-core/scripts/problem-templates.ts";
 
 export { PROBLEM_TEMPLATE_NAMES, type ProblemTemplateName };
@@ -26,68 +26,71 @@ export const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 
 /** 校验 slug。 */
 export function validateSlug(slug: string): void {
-  if (!SLUG_PATTERN.test(slug)) {
-    throw new Error(
-      `非法 slug：${slug}（要求 3-64 位小写字母/数字/连字符，首尾非连字符）`,
-    );
-  }
+    if (!SLUG_PATTERN.test(slug)) {
+        throw new Error(
+            `非法 slug：${slug}（要求 3-64 位小写字母/数字/连字符，首尾非连字符）`,
+        );
+    }
 }
 
 /** init 选项。 */
 export interface ProblemInitOptions {
-  slug: string;
-  title?: string;
-  difficulty?: string;
-  judgeType?: "dual" | "oi";
-  /** 从可验题模板生成（与 judgeType=oi 互斥）。 */
-  template?: ProblemTemplateName;
-  root?: string;
+    slug: string;
+    title?: string;
+    difficulty?: string;
+    judgeType?: "dual" | "oi";
+    /** 从可验题模板生成（与 judgeType=oi 互斥）。 */
+    template?: ProblemTemplateName;
+    root?: string;
 }
 
 /** init 结果。 */
 export interface ProblemInitResult {
-  dir: string;
-  files: string[];
+    dir: string;
+    files: string[];
 }
 
 /** 生成 problem.json 内容。 */
 function problemJson(options: {
-  slug: string;
-  title: string;
-  difficulty: string;
-  judgeType: "dual" | "oi";
+    slug: string;
+    title: string;
+    difficulty: string;
+    judgeType: "dual" | "oi";
 }): string {
-  // 格式 3 最小 manifest：AI 题 runtime_config 全部可缺省，导入时补全平台缺省值。
-  const manifest = options.judgeType === "oi"
-    ? {
-      format_version: 3,
-      kind: "oi",
-      title: options.title,
-      difficulty: options.difficulty,
-      runtime_config: {
-        backend: "native",
-        languages: ["c", "cc"],
-        time_limit_ms: 1000,
-        memory_limit_mb: 256,
-        checker: { type: "default" },
-        subtasks: [{
-          id: "all",
-          score: 100,
-          cases: [{ input: "testdata/1.in", output: "testdata/1.out" }],
-        }],
-      },
-    }
-    : {
-      format_version: 3,
-      kind: "ai",
-      title: options.title,
-      difficulty: options.difficulty,
-    };
-  return JSON.stringify(manifest, null, 2) + "\n";
+    // 格式 3 最小 manifest：AI 题 runtime_config 全部可缺省，导入时补全平台缺省值。
+    const manifest = options.judgeType === "oi"
+        ? {
+            format_version: 3,
+            kind: "oi",
+            title: options.title,
+            difficulty: options.difficulty,
+            runtime_config: {
+                backend: "native",
+                languages: ["c", "cc"],
+                time_limit_ms: 1000,
+                memory_limit_mb: 256,
+                checker: { type: "default" },
+                subtasks: [{
+                    id: "all",
+                    score: 100,
+                    cases: [{
+                        input: "testdata/1.in",
+                        output: "testdata/1.out",
+                    }],
+                }],
+            },
+        }
+        : {
+            format_version: 3,
+            kind: "ai",
+            title: options.title,
+            difficulty: options.difficulty,
+        };
+    return JSON.stringify(manifest, null, 2) + "\n";
 }
 
 const STATEMENT = (title: string) =>
-  `# ${title}
+    `# ${title}
 
 ## 题目描述
 
@@ -111,7 +114,7 @@ const TEMPLATE_PY = `def solve(a: int, b: int) -> int:
 `;
 
 const EVALUATE_PY =
-  `"""评测脚本：读取 visible.jsonl / hidden.jsonl，比对输出并打分。"""
+    `"""评测脚本：读取 visible.jsonl / hidden.jsonl，比对输出并打分。"""
 
 import json
 import sys
@@ -130,30 +133,30 @@ if __name__ == "__main__":
 `;
 
 function readmeMarkdown(title: string, judgeType: "dual" | "oi"): string {
-  const todo = judgeType === "oi"
-    ? [
-      "- [ ] 填写 statement.md 题面",
-      "- [ ] 补齐 testdata/1.in 与 testdata/1.out，并在 problem.json 配置测试点",
-      "- [ ] 确认 checker 与子任务分值符合 OI 题意",
-      "- [ ] 运行 noj-cli problem lint . 校验",
-      "- [ ] 运行 noj-cli problem pack . 打包",
-    ]
-    : [
-      "- [ ] 填写 statement.md 题面",
-      "- [ ] 实现 evaluate.py 判分逻辑",
-      "- [ ] 补齐 visible.jsonl / hidden.jsonl 用例",
-      "- [ ] 确认 template.py 不含可直接满分的实现",
-      "- [ ] 运行 noj-cli problem lint . 校验",
-      "- [ ] 运行 noj-cli problem pack . 打包",
-    ];
-  return [
-    `# ${title}`,
-    "",
-    "## 待办",
-    "",
-    ...todo,
-    "",
-  ].join("\n");
+    const todo = judgeType === "oi"
+        ? [
+            "- [ ] 填写 statement.md 题面",
+            "- [ ] 补齐 testdata/1.in 与 testdata/1.out，并在 problem.json 配置测试点",
+            "- [ ] 确认 checker 与子任务分值符合 OI 题意",
+            "- [ ] 运行 noj-cli problem lint . 校验",
+            "- [ ] 运行 noj-cli problem pack . 打包",
+        ]
+        : [
+            "- [ ] 填写 statement.md 题面",
+            "- [ ] 实现 evaluate.py 判分逻辑",
+            "- [ ] 补齐 visible.jsonl / hidden.jsonl 用例",
+            "- [ ] 确认 template.py 不含可直接满分的实现",
+            "- [ ] 运行 noj-cli problem lint . 校验",
+            "- [ ] 运行 noj-cli problem pack . 打包",
+        ];
+    return [
+        `# ${title}`,
+        "",
+        "## 待办",
+        "",
+        ...todo,
+        "",
+    ].join("\n");
 }
 
 /**
@@ -166,107 +169,111 @@ function readmeMarkdown(title: string, judgeType: "dual" | "oi"): string {
  * 4. 写入失败时回滚，避免留下「半成品目录」。
  */
 export async function initProblemScaffold(
-  opts: ProblemInitOptions,
+    opts: ProblemInitOptions,
 ): Promise<ProblemInitResult> {
-  validateSlug(opts.slug);
+    validateSlug(opts.slug);
 
-  const difficulty = opts.difficulty ?? "medium";
-  if (!["easy", "medium", "hard"].includes(difficulty)) {
-    throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
-  }
+    const difficulty = opts.difficulty ?? "medium";
+    if (!["easy", "medium", "hard"].includes(difficulty)) {
+        throw new Error(
+            `难度非法：${difficulty}（仅允许 easy / medium / hard）`,
+        );
+    }
 
-  if (
-    opts.judgeType !== undefined && opts.judgeType !== "dual" &&
-    opts.judgeType !== "oi"
-  ) {
-    throw new Error(`评测模式非法：${opts.judgeType}（仅允许 dual/oi）`);
-  }
-  const judgeType = opts.judgeType ?? "dual";
-  if (opts.template !== undefined) {
-    if (!isProblemTemplateName(opts.template)) {
-      throw new Error(
-        `未知模板：${opts.template}（可选 ${
-          PROBLEM_TEMPLATE_NAMES.join("/")
-        }）`,
-      );
+    if (
+        opts.judgeType !== undefined && opts.judgeType !== "dual" &&
+        opts.judgeType !== "oi"
+    ) {
+        throw new Error(`评测模式非法：${opts.judgeType}（仅允许 dual/oi）`);
     }
-    if (judgeType === "oi") {
-      throw new Error("--template 与 --judge-type oi 不能同时使用");
+    const judgeType = opts.judgeType ?? "dual";
+    if (opts.template !== undefined) {
+        if (!isProblemTemplateName(opts.template)) {
+            throw new Error(
+                `未知模板：${opts.template}（可选 ${
+                    PROBLEM_TEMPLATE_NAMES.join("/")
+                }）`,
+            );
+        }
+        if (judgeType === "oi") {
+            throw new Error("--template 与 --judge-type oi 不能同时使用");
+        }
     }
-  }
-  const root = opts.root ?? "problems";
-  const dir = join(root, opts.slug);
-  const title = opts.title?.trim() || opts.slug;
+    const root = opts.root ?? "problems";
+    const dir = join(root, opts.slug);
+    const title = opts.title?.trim() || opts.slug;
 
-  let existing: Deno.FileInfo | undefined;
-  try {
-    existing = await Deno.lstat(dir);
-  } catch (err) {
-    if (!(err instanceof Deno.errors.NotFound)) throw err;
-  }
+    let existing: Deno.FileInfo | undefined;
+    try {
+        existing = await Deno.lstat(dir);
+    } catch (err) {
+        if (!(err instanceof Deno.errors.NotFound)) throw err;
+    }
 
-  let createdDir = false;
-  if (existing) {
-    if (existing.isSymlink) {
-      throw new Error(
-        `目标路径已存在且为符号链接：${dir}（拒绝写入链接目标）`,
-      );
+    let createdDir = false;
+    if (existing) {
+        if (existing.isSymlink) {
+            throw new Error(
+                `目标路径已存在且为符号链接：${dir}（拒绝写入链接目标）`,
+            );
+        }
+        if (!existing.isDirectory) {
+            throw new Error(`目标路径已存在且不是目录：${dir}`);
+        }
+        let empty = true;
+        for await (const _ of Deno.readDir(dir)) {
+            empty = false;
+            break;
+        }
+        if (!empty) {
+            throw new Error(`目标目录已存在且非空：${dir}`);
+        }
+    } else {
+        await Deno.mkdir(dir, { recursive: true });
+        createdDir = true;
     }
-    if (!existing.isDirectory) {
-      throw new Error(`目标路径已存在且不是目录：${dir}`);
-    }
-    let empty = true;
-    for await (const _ of Deno.readDir(dir)) {
-      empty = false;
-      break;
-    }
-    if (!empty) {
-      throw new Error(`目标目录已存在且非空：${dir}`);
-    }
-  } else {
-    await Deno.mkdir(dir, { recursive: true });
-    createdDir = true;
-  }
 
-  const files: Array<[string, string]> = opts.template !== undefined
-    ? renderProblemTemplate(opts.template, { title, difficulty })
-    : judgeType === "oi"
-    ? [
-      [
-        "problem.json",
-        problemJson({ slug: opts.slug, title, difficulty, judgeType }),
-      ],
-      ["statement.md", STATEMENT(title)],
-      ["testdata/1.in", "1\n"],
-      ["testdata/1.out", "1\n"],
-      ["README.md", readmeMarkdown(title, judgeType)],
-    ]
-    : [
-      [
-        "problem.json",
-        problemJson({ slug: opts.slug, title, difficulty, judgeType }),
-      ],
-      ["statement.md", STATEMENT(title)],
-      ["template.py", TEMPLATE_PY],
-      ["evaluate.py", EVALUATE_PY],
-      ["visible.jsonl", ""],
-      ["hidden.jsonl", ""],
-      ["README.md", readmeMarkdown(title, judgeType)],
-    ];
+    const files: Array<[string, string]> = opts.template !== undefined
+        ? renderProblemTemplate(opts.template, { title, difficulty })
+        : judgeType === "oi"
+        ? [
+            [
+                "problem.json",
+                problemJson({ slug: opts.slug, title, difficulty, judgeType }),
+            ],
+            ["statement.md", STATEMENT(title)],
+            ["testdata/1.in", "1\n"],
+            ["testdata/1.out", "1\n"],
+            ["README.md", readmeMarkdown(title, judgeType)],
+        ]
+        : [
+            [
+                "problem.json",
+                problemJson({ slug: opts.slug, title, difficulty, judgeType }),
+            ],
+            ["statement.md", STATEMENT(title)],
+            ["template.py", TEMPLATE_PY],
+            ["evaluate.py", EVALUATE_PY],
+            ["visible.jsonl", ""],
+            ["hidden.jsonl", ""],
+            ["README.md", readmeMarkdown(title, judgeType)],
+        ];
 
-  const written: string[] = [];
-  try {
-    for (const [name, content] of files) {
-      const target = join(dir, name);
-      await Deno.mkdir(dirname(target), { recursive: true });
-      await Deno.writeTextFile(target, content, { createNew: true });
-      written.push(target);
+    const written: string[] = [];
+    try {
+        for (const [name, content] of files) {
+            const target = join(dir, name);
+            await Deno.mkdir(dirname(target), { recursive: true });
+            await Deno.writeTextFile(target, content, { createNew: true });
+            written.push(target);
+        }
+    } catch (err) {
+        for (const target of written) await Deno.remove(target).catch(() => {});
+        if (createdDir) {
+            await Deno.remove(dir, { recursive: true }).catch(() => {});
+        }
+        throw err;
     }
-  } catch (err) {
-    for (const target of written) await Deno.remove(target).catch(() => {});
-    if (createdDir) await Deno.remove(dir, { recursive: true }).catch(() => {});
-    throw err;
-  }
 
-  return { dir, files: files.map(([name]) => name) };
+    return { dir, files: files.map(([name]) => name) };
 }

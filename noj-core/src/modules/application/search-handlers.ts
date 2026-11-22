@@ -17,13 +17,13 @@ import type { SearchEntityType } from "../../shared/search-events.ts";
 const logger = getLogger(["noj", "application", "search-tasks"]);
 
 const KNOWN_ENTITY_TYPES = new Set<SearchEntityType>([
-  "problem",
-  "user",
-  "community_post",
-  "community_comment",
-  "contest",
-  "submission",
-  "announcement",
+    "problem",
+    "user",
+    "community_post",
+    "community_comment",
+    "contest",
+    "submission",
+    "announcement",
 ]);
 
 /**
@@ -33,28 +33,28 @@ const KNOWN_ENTITY_TYPES = new Set<SearchEntityType>([
  * 不应静默跳过（否则索引会无声落后）。
  */
 export async function handleSearchIndexTask(
-  task: ClaimedTask,
+    task: ClaimedTask,
 ): Promise<Record<string, unknown>> {
-  const entityType = task.payload.entity_type;
-  const entityId = task.payload.entity_id;
-  const action = task.payload.action;
-  if (
-    typeof entityType !== "string" ||
-    !KNOWN_ENTITY_TYPES.has(entityType as SearchEntityType)
-  ) {
-    throw new TypeError(`搜索任务实体类型非法：${String(entityType)}`);
-  }
-  if (typeof entityId !== "string" || entityId.length === 0) {
-    throw new TypeError("搜索任务缺少实体 ID");
-  }
-  if (action !== "upsert" && action !== "delete") {
-    throw new TypeError(`搜索任务动作非法：${String(action)}`);
-  }
-  await processSearchIndexEvent(entityType, entityId, action);
-  logger.debug("搜索索引任务完成", {
-    entity_type: entityType,
-    entity_id: entityId,
-    action,
-  });
-  return { entity_type: entityType, action };
+    const entityType = task.payload.entity_type;
+    const entityId = task.payload.entity_id;
+    const action = task.payload.action;
+    if (
+        typeof entityType !== "string" ||
+        !KNOWN_ENTITY_TYPES.has(entityType as SearchEntityType)
+    ) {
+        throw new TypeError(`搜索任务实体类型非法：${String(entityType)}`);
+    }
+    if (typeof entityId !== "string" || entityId.length === 0) {
+        throw new TypeError("搜索任务缺少实体 ID");
+    }
+    if (action !== "upsert" && action !== "delete") {
+        throw new TypeError(`搜索任务动作非法：${String(action)}`);
+    }
+    await processSearchIndexEvent(entityType, entityId, action);
+    logger.debug("搜索索引任务完成", {
+        entity_type: entityType,
+        entity_id: entityId,
+        action,
+    });
+    return { entity_type: entityType, action };
 }

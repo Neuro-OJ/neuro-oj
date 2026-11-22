@@ -22,16 +22,16 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { domainMemberships, users } from "../../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../../shared/workspace/types.ts";
 import {
-  enterTestContext,
-  initSystemSettings,
-  leaveTestContext,
-  resetSetting,
-  updateSetting,
+    enterTestContext,
+    initSystemSettings,
+    leaveTestContext,
+    resetSetting,
+    updateSetting,
 } from "../../../../platform/system/index.ts";
 import { signToken } from "../../../../access/identity/services/security/jwt.ts";
 import {
-  createUserToken,
-  jsonRequest,
+    createUserToken,
+    jsonRequest,
 } from "../../../../../../tests/helper.ts";
 import { createBoard, withDefaultCommunity } from "../../index.ts";
 
@@ -49,60 +49,64 @@ const boardSlug = `perm-regression-${crypto.randomUUID().slice(0, 8)}`;
  * 因此这里只做幂等的设置写入与按需插入，所有实体都用 UUID 标识。
  */
 async function scopedApp() {
-  await initSystemSettings();
-  enterTestContext({ actorId: "0", actorIp: "127.0.0.1", actorRole: "admin" });
-  try {
-    // 实例模块政策可能被同分片的其它文件关闭社区，先恢复默认（全部开放）。
-    await resetSetting(
-      "instance_allowed_modules",
-      userActorFromAuthenticatedId("0"),
-    );
-    await updateSetting(
-      "community_enabled",
-      true,
-      userActorFromAuthenticatedId("0"),
-    );
-    await updateSetting(
-      "community_new_user_review_hours",
-      0,
-      userActorFromAuthenticatedId("0"),
-    );
-    await updateSetting(
-      "community_post_interval_seconds",
-      0,
-      userActorFromAuthenticatedId("0"),
-    );
-    await updateSetting(
-      "community_solutions_enabled",
-      true,
-      userActorFromAuthenticatedId("0"),
-    );
-    await updateSetting(
-      "community_discussions_enabled",
-      true,
-      userActorFromAuthenticatedId("0"),
-    );
-  } finally {
-    leaveTestContext();
-  }
-  return createApp();
+    await initSystemSettings();
+    enterTestContext({
+        actorId: "0",
+        actorIp: "127.0.0.1",
+        actorRole: "admin",
+    });
+    try {
+        // 实例模块政策可能被同分片的其它文件关闭社区，先恢复默认（全部开放）。
+        await resetSetting(
+            "instance_allowed_modules",
+            userActorFromAuthenticatedId("0"),
+        );
+        await updateSetting(
+            "community_enabled",
+            true,
+            userActorFromAuthenticatedId("0"),
+        );
+        await updateSetting(
+            "community_new_user_review_hours",
+            0,
+            userActorFromAuthenticatedId("0"),
+        );
+        await updateSetting(
+            "community_post_interval_seconds",
+            0,
+            userActorFromAuthenticatedId("0"),
+        );
+        await updateSetting(
+            "community_solutions_enabled",
+            true,
+            userActorFromAuthenticatedId("0"),
+        );
+        await updateSetting(
+            "community_discussions_enabled",
+            true,
+            userActorFromAuthenticatedId("0"),
+        );
+    } finally {
+        leaveTestContext();
+    }
+    return createApp();
 }
 
 /** 建一个可登录的普通账号并返回其 id。 */
 async function createUser(role: "user" | "admin" = "user") {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await getDb().insert(users).values({
-    id,
-    username: `perm_${id.slice(0, 8)}`,
-    email: `${id}@test.local`,
-    password_hash: "x",
-    must_change_password: false,
-    role,
-    created_at: now,
-    updated_at: now,
-  });
-  return id;
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+        id,
+        username: `perm_${id.slice(0, 8)}`,
+        email: `${id}@test.local`,
+        password_hash: "x",
+        must_change_password: false,
+        role,
+        created_at: now,
+        updated_at: now,
+    });
+    return id;
 }
 
 /**
@@ -113,184 +117,197 @@ async function createUser(role: "user" | "admin" = "user") {
  * active 成员行——社区授权只看 `domain_memberships` 的有效角色。
  */
 async function joinDefaultDomain(
-  userId: string,
-  role: "member" | "educator" = "member",
+    userId: string,
+    role: "member" | "educator" = "member",
 ): Promise<void> {
-  await getDb().insert(domainMemberships).values({
-    id: crypto.randomUUID(),
-    domain_id: DEFAULT_DOMAIN_ID,
-    user_id: userId,
-    role,
-    status: "active",
-    joined_at: new Date().toISOString(),
-  }).onConflictDoUpdate({
-    target: [domainMemberships.domain_id, domainMemberships.user_id],
-    set: { status: "active", role, left_at: null },
-  });
+    await getDb().insert(domainMemberships).values({
+        id: crypto.randomUUID(),
+        domain_id: DEFAULT_DOMAIN_ID,
+        user_id: userId,
+        role,
+        status: "active",
+        joined_at: new Date().toISOString(),
+    }).onConflictDoUpdate({
+        target: [domainMemberships.domain_id, domainMemberships.user_id],
+        set: { status: "active", role, left_at: null },
+    });
 }
 
 /** 默认域板块（同一测试库内多个用例共用，slug 唯一）。 */
 let fixtureBoard: string | null = null;
 async function boardId(): Promise<string> {
-  if (fixtureBoard) return fixtureBoard;
-  const board = await withDefaultCommunity(
-    "0",
-    { write: true, moderator: true },
-    (scope) => createBoard({ slug: boardSlug, name: "权限回归板块" }, scope),
-  );
-  fixtureBoard = board.id;
-  return board.id;
+    if (fixtureBoard) return fixtureBoard;
+    const board = await withDefaultCommunity(
+        "0",
+        { write: true, moderator: true },
+        (scope) =>
+            createBoard({ slug: boardSlug, name: "权限回归板块" }, scope),
+    );
+    fixtureBoard = board.id;
+    return board.id;
 }
 
 async function token(userId: string, role: "user" | "admin" = "user") {
-  return await signToken({ sub: userId, role });
+    return await signToken({ sub: userId, role });
 }
 
 async function createDiscussion(
-  app: ReturnType<typeof createApp>,
-  accessToken: string,
+    app: ReturnType<typeof createApp>,
+    accessToken: string,
 ) {
-  const res = await jsonRequest(app, `${base}/posts`, {
-    method: "POST",
-    token: accessToken,
-    body: {
-      type: "discussion",
-      board_id: await boardId(),
-      title: "权限回归帖子",
-      content: "正文",
-    },
-  });
-  assertEquals(
-    res.status,
-    201,
-    `发帖失败：${res.status} ${await res.clone().text()}`,
-  );
-  return (await res.json() as { data: { id: string } }).data.id;
+    const res = await jsonRequest(app, `${base}/posts`, {
+        method: "POST",
+        token: accessToken,
+        body: {
+            type: "discussion",
+            board_id: await boardId(),
+            title: "权限回归帖子",
+            content: "正文",
+        },
+    });
+    assertEquals(
+        res.status,
+        201,
+        `发帖失败：${res.status} ${await res.clone().text()}`,
+    );
+    return (await res.json() as { data: { id: string } }).data.id;
 }
 
 Deno.test({
-  name: "默认域社区：成员可发帖/评论/举报，/config 下发可写能力",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
-    const app = await scopedApp();
-    const memberId = await createUser();
-    await joinDefaultDomain(memberId);
-    const memberToken = await token(memberId);
+    name: "默认域社区：成员可发帖/评论/举报，/config 下发可写能力",
+    sanitizeOps: false,
+    sanitizeResources: false,
+    fn: async () => {
+        const app = await scopedApp();
+        const memberId = await createUser();
+        await joinDefaultDomain(memberId);
+        const memberToken = await token(memberId);
 
-    const config = await jsonRequest(app, `${base}/config`, {
-      token: memberToken,
-    });
-    assertEquals(config.status, 200);
-    const permissions = (await config.json() as {
-      data: { permissions: Record<string, boolean> };
-    }).data.permissions;
-    assertEquals(permissions.comment, true);
-    assertEquals(permissions.report, true);
-    assertEquals(permissions.solution, true);
-    assertEquals(permissions.moderate, false, "成员不应显示审核入口");
+        const config = await jsonRequest(app, `${base}/config`, {
+            token: memberToken,
+        });
+        assertEquals(config.status, 200);
+        const permissions = (await config.json() as {
+            data: { permissions: Record<string, boolean> };
+        }).data.permissions;
+        assertEquals(permissions.comment, true);
+        assertEquals(permissions.report, true);
+        assertEquals(permissions.solution, true);
+        assertEquals(permissions.moderate, false, "成员不应显示审核入口");
 
-    const postId = await createDiscussion(app, memberToken);
+        const postId = await createDiscussion(app, memberToken);
 
-    const comment = await jsonRequest(app, `${base}/posts/${postId}/comments`, {
-      method: "POST",
-      token: memberToken,
-      body: { content: "成员评论" },
-    });
-    assertEquals(
-      comment.status,
-      201,
-      `评论失败：${comment.status} ${await comment.clone().text()}`,
-    );
+        const comment = await jsonRequest(
+            app,
+            `${base}/posts/${postId}/comments`,
+            {
+                method: "POST",
+                token: memberToken,
+                body: { content: "成员评论" },
+            },
+        );
+        assertEquals(
+            comment.status,
+            201,
+            `评论失败：${comment.status} ${await comment.clone().text()}`,
+        );
 
-    const report = await jsonRequest(app, `${base}/reports`, {
-      method: "POST",
-      token: memberToken,
-      body: { post_id: postId, category: "垃圾信息", reason: "垃圾内容" },
-    });
-    assertEquals(
-      report.status,
-      201,
-      `举报失败：${report.status} ${await report.clone().text()}`,
-    );
-  },
+        const report = await jsonRequest(app, `${base}/reports`, {
+            method: "POST",
+            token: memberToken,
+            body: { post_id: postId, category: "垃圾信息", reason: "垃圾内容" },
+        });
+        assertEquals(
+            report.status,
+            201,
+            `举报失败：${report.status} ${await report.clone().text()}`,
+        );
+    },
 });
 
 Deno.test({
-  name: "默认域社区：非成员不能评论或举报",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
-    const app = await scopedApp();
-    const authorId = await createUser();
-    await joinDefaultDomain(authorId);
-    const postId = await createDiscussion(app, await token(authorId));
+    name: "默认域社区：非成员不能评论或举报",
+    sanitizeOps: false,
+    sanitizeResources: false,
+    fn: async () => {
+        const app = await scopedApp();
+        const authorId = await createUser();
+        await joinDefaultDomain(authorId);
+        const postId = await createDiscussion(app, await token(authorId));
 
-    const outsiderId = await createUser();
-    const outsiderToken = await token(outsiderId);
+        const outsiderId = await createUser();
+        const outsiderToken = await token(outsiderId);
 
-    const comment = await jsonRequest(app, `${base}/posts/${postId}/comments`, {
-      method: "POST",
-      token: outsiderToken,
-      body: { content: "域外用户评论" },
-    });
-    assertEquals(comment.status, 403);
+        const comment = await jsonRequest(
+            app,
+            `${base}/posts/${postId}/comments`,
+            {
+                method: "POST",
+                token: outsiderToken,
+                body: { content: "域外用户评论" },
+            },
+        );
+        assertEquals(comment.status, 403);
 
-    const report = await jsonRequest(app, `${base}/reports`, {
-      method: "POST",
-      token: outsiderToken,
-      body: { post_id: postId, category: "垃圾信息", reason: "垃圾内容" },
-    });
-    assertEquals(report.status, 403);
-  },
+        const report = await jsonRequest(app, `${base}/reports`, {
+            method: "POST",
+            token: outsiderToken,
+            body: { post_id: postId, category: "垃圾信息", reason: "垃圾内容" },
+        });
+        assertEquals(report.status, 403);
+    },
 });
 
 Deno.test({
-  name: "默认域社区：普通成员不能删除他人内容",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
-    const app = await scopedApp();
-    const authorId = await createUser();
-    await joinDefaultDomain(authorId);
-    const postId = await createDiscussion(app, await token(authorId));
+    name: "默认域社区：普通成员不能删除他人内容",
+    sanitizeOps: false,
+    sanitizeResources: false,
+    fn: async () => {
+        const app = await scopedApp();
+        const authorId = await createUser();
+        await joinDefaultDomain(authorId);
+        const postId = await createDiscussion(app, await token(authorId));
 
-    // 必须是 member：educator 及以上域角色本就有审核权，用它断言 403 就是错的。
-    const otherId = await createUser();
-    await joinDefaultDomain(otherId, "member");
-    const [row] = await getDb().select({ role: domainMemberships.role }).from(
-      domainMemberships,
-    ).where(and(
-      eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
-      eq(domainMemberships.user_id, otherId),
-    ));
-    assert(row?.role === "member", "夹具必须是非审核员成员");
+        // 必须是 member：educator 及以上域角色本就有审核权，用它断言 403 就是错的。
+        const otherId = await createUser();
+        await joinDefaultDomain(otherId, "member");
+        const [row] = await getDb().select({ role: domainMemberships.role })
+            .from(
+                domainMemberships,
+            ).where(and(
+                eq(domainMemberships.domain_id, DEFAULT_DOMAIN_ID),
+                eq(domainMemberships.user_id, otherId),
+            ));
+        assert(row?.role === "member", "夹具必须是非审核员成员");
 
-    const res = await jsonRequest(app, `${base}/posts/${postId}`, {
-      method: "DELETE",
-      token: await token(otherId),
-    });
-    assertEquals(
-      res.status,
-      403,
-      `普通成员不应能删除他人内容：${res.status} ${await res.clone().text()}`,
-    );
-  },
+        const res = await jsonRequest(app, `${base}/posts/${postId}`, {
+            method: "DELETE",
+            token: await token(otherId),
+        });
+        assertEquals(
+            res.status,
+            403,
+            `普通成员不应能删除他人内容：${res.status} ${await res.clone()
+                .text()}`,
+        );
+    },
 });
 
 Deno.test({
-  name: "平台管理员通配：旧入口 /config 返回可写且具备审核标志",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
-    const app = await scopedApp();
-    const adminToken = await createUserToken("admin");
-    const res = await jsonRequest(app, `${base}/config`, { token: adminToken });
-    assertEquals(res.status, 200);
-    const permissions = (await res.json() as {
-      data: { permissions: Record<string, boolean> };
-    }).data.permissions;
-    assertEquals(permissions.discussion, true);
-    assertEquals(permissions.moderate, true);
-  },
+    name: "平台管理员通配：旧入口 /config 返回可写且具备审核标志",
+    sanitizeOps: false,
+    sanitizeResources: false,
+    fn: async () => {
+        const app = await scopedApp();
+        const adminToken = await createUserToken("admin");
+        const res = await jsonRequest(app, `${base}/config`, {
+            token: adminToken,
+        });
+        assertEquals(res.status, 200);
+        const permissions = (await res.json() as {
+            data: { permissions: Record<string, boolean> };
+        }).data.permissions;
+        assertEquals(permissions.discussion, true);
+        assertEquals(permissions.moderate, true);
+    },
 });

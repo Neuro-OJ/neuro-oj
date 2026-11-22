@@ -10,74 +10,74 @@ import type { ColorMode } from "../../util/color.ts";
 import { composeLogs, composePs } from "../compose.ts";
 import type { ComposeOptions } from "../compose.ts";
 import {
-  type DiskUsageReport,
-  formatDiskReportLines,
-  probeDiskUsageReport,
+    type DiskUsageReport,
+    formatDiskReportLines,
+    probeDiskUsageReport,
 } from "../disk-space.ts";
 import {
-  applyLogsColor,
-  decideLogsColor,
-  mergeColorSource,
+    applyLogsColor,
+    decideLogsColor,
+    mergeColorSource,
 } from "./logs-color.ts";
 import { prepareAndCheck } from "./steps.ts";
 import { type LogsColorDecision } from "./logs-color.ts";
 import type { PreparedEnvironment } from "./steps.ts";
 import {
-  emitFailure,
-  failed,
-  jsonPayload,
-  lifecycleContext,
+    emitFailure,
+    failed,
+    jsonPayload,
+    lifecycleContext,
 } from "./context.ts";
 import type { LifecycleContext } from "./context.ts";
 
 export interface LifecycleOptions {
-  /** 生产安装目录（`--dir`）；入口负责归一化（`validateTargetDir`）。 */
-  dir: string;
-  /** 外部命令注入点（docker）。 */
-  runner: CommandRunner;
-  /** 人类可读输出汇聚点；缺省直达真实进程流。 */
-  io?: RenderIO;
-  /** 原始参数：仅用于 `isJsonMode` 判定 `--json`（缺省视为人类模式）。 */
-  args?: string[];
-  /** 着色模式（`--color`）；缺省 `auto`（非 TTY 自动关色）。 */
-  color?: ColorMode;
-  /**
-   * judge socket 存在性探测（`checkJudgeSocket` 的注入点）。
-   *
-   * 仅 judge 启用时被调用；缺省不探测。
-   */
-  socketExists?: (path: string) => Promise<boolean>;
-  /**
-   * 端口占用探测（`lsof -nP -iTCP:<port> -sTCP:LISTEN` 的注入点）。
-   *
-   * 缺省不探测；注入后命中即写一条
-   * 端口冲突告警，**不阻断**命令。
-   */
-  probePort?: (port: number) => Promise<boolean>;
-  /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN`）；缺省 `"docker"`。 */
-  dockerBin?: string;
+    /** 生产安装目录（`--dir`）；入口负责归一化（`validateTargetDir`）。 */
+    dir: string;
+    /** 外部命令注入点（docker）。 */
+    runner: CommandRunner;
+    /** 人类可读输出汇聚点；缺省直达真实进程流。 */
+    io?: RenderIO;
+    /** 原始参数：仅用于 `isJsonMode` 判定 `--json`（缺省视为人类模式）。 */
+    args?: string[];
+    /** 着色模式（`--color`）；缺省 `auto`（非 TTY 自动关色）。 */
+    color?: ColorMode;
+    /**
+     * judge socket 存在性探测（`checkJudgeSocket` 的注入点）。
+     *
+     * 仅 judge 启用时被调用；缺省不探测。
+     */
+    socketExists?: (path: string) => Promise<boolean>;
+    /**
+     * 端口占用探测（`lsof -nP -iTCP:<port> -sTCP:LISTEN` 的注入点）。
+     *
+     * 缺省不探测；注入后命中即写一条
+     * 端口冲突告警，**不阻断**命令。
+     */
+    probePort?: (port: number) => Promise<boolean>;
+    /** docker 可执行名（`NOJ_DEPLOY_DOCKER_BIN`）；缺省 `"docker"`。 */
+    dockerBin?: string;
 }
 
 /** 四个生命周期命令的公共结果形状。 */
 export interface LifecycleBaseResult {
-  /** 归一化安装目录（无尾斜杠）。 */
-  dir: string;
-  /** 状态机给出的当前/最终状态。 */
-  state: DeployState;
-  /** 是否 no-op（未执行任何变更命令）。 */
-  noOp: boolean;
-  /** 进程退出码：0 成功（含 no-op）/ 1 运行失败；用法错误 2 由 CLI 层产出。 */
-  exitCode: number;
-  /** 运行失败的面向用户文案；成功为 null。 */
-  error: string | null;
+    /** 归一化安装目录（无尾斜杠）。 */
+    dir: string;
+    /** 状态机给出的当前/最终状态。 */
+    state: DeployState;
+    /** 是否 no-op（未执行任何变更命令）。 */
+    noOp: boolean;
+    /** 进程退出码：0 成功（含 no-op）/ 1 运行失败；用法错误 2 由 CLI 层产出。 */
+    exitCode: number;
+    /** 运行失败的面向用户文案；成功为 null。 */
+    error: string | null;
 }
 
 /** {@link status} 的结果。 */
 export interface StatusResult extends LifecycleBaseResult {
-  /** `docker compose ps` 的原始 stdout（`status --json` 的机器可读通道）。 */
-  psOutput: string;
-  /** 安装目录与 Docker 数据目录分区的磁盘余量报告（不可探测时省略/为 null）。 */
-  disk?: DiskUsageReport | null;
+    /** `docker compose ps` 的原始 stdout（`status --json` 的机器可读通道）。 */
+    psOutput: string;
+    /** 安装目录与 Docker 数据目录分区的磁盘余量报告（不可探测时省略/为 null）。 */
+    disk?: DiskUsageReport | null;
 }
 
 export { failed, jsonPayload, lifecycleContext };
@@ -85,17 +85,17 @@ export { failed, jsonPayload, lifecycleContext };
 
 /** 由已校验的环境构造 compose 选项（judge → `--profile judge`）。 */
 function composeOptionsOf(env: PreparedEnvironment): ComposeOptions {
-  return {
-    composeFile: env.composeFile,
-    projectDirectory: env.dir,
-    envFile: env.envFile,
-    judge: env.judge,
-  };
+    return {
+        composeFile: env.composeFile,
+        projectDirectory: env.dir,
+        envFile: env.envFile,
+        judge: env.judge,
+    };
 }
 
 /** {@link prepareLifecycle} 的成功分支：已校验的环境事实 + 现成 compose 选项。 */
 export type PreparedLifecycle = PreparedEnvironment & {
-  composeOptions: ComposeOptions;
+    composeOptions: ComposeOptions;
 };
 
 /**
@@ -112,66 +112,70 @@ export type PreparedLifecycle = PreparedEnvironment & {
  * 任一失败都发生在任何 `up`/`stop`/`down` 之前。
  */
 export async function prepareLifecycle(
-  ctx: LifecycleContext,
-  opts: LifecycleOptions,
+    ctx: LifecycleContext,
+    opts: LifecycleOptions,
 ): Promise<PreparedLifecycle | { ok: false; error: string }> {
-  const prepared = await prepareAndCheck({
-    dir: ctx.dir,
-    runner: opts.runner,
-    socketExists: opts.socketExists,
-    probePort: opts.probePort,
-    write: (text) => emitHuman(text + "\n", ctx.io),
-  });
-  if (!prepared.ok) {
-    ctx.error(prepared.error);
-    return { ok: false, error: prepared.error };
-  }
-  ctx.status("success", "生产配置检查通过");
-  // env 透传给 logs：着色取值需要读 .env.prod 的 LOG_COLOR / NO_COLOR，
-  // 复用已读取的同一份值，避免在命令层再解析一遍配置文件。
-  return { ...prepared, composeOptions: composeOptionsOf(prepared) };
+    const prepared = await prepareAndCheck({
+        dir: ctx.dir,
+        runner: opts.runner,
+        socketExists: opts.socketExists,
+        probePort: opts.probePort,
+        write: (text) => emitHuman(text + "\n", ctx.io),
+    });
+    if (!prepared.ok) {
+        ctx.error(prepared.error);
+        return { ok: false, error: prepared.error };
+    }
+    ctx.status("success", "生产配置检查通过");
+    // env 透传给 logs：着色取值需要读 .env.prod 的 LOG_COLOR / NO_COLOR，
+    // 复用已读取的同一份值，避免在命令层再解析一遍配置文件。
+    return { ...prepared, composeOptions: composeOptionsOf(prepared) };
 }
 
 /** 取“当前真实状态”：跑 `docker compose ps` 并用 `prodState` 推断。 */
 export async function probeState(
-  ctx: LifecycleContext,
-  opts: LifecycleOptions,
-  options: ComposeOptions,
+    ctx: LifecycleContext,
+    opts: LifecycleOptions,
+    options: ComposeOptions,
 ): Promise<
-  | { ok: true; state: DeployState; psOutput: string }
-  | { ok: false; error: string }
+    | { ok: true; state: DeployState; psOutput: string }
+    | { ok: false; error: string }
 > {
-  const result = await composePs(opts.runner, options);
-  if (Array.isArray(result)) {
-    // dryRun：没有真实输出可解析；属调用方误用，按运行失败处理。
-    const error = "compose ps 未真实执行（dryRun）";
-    ctx.error(error);
-    return { ok: false, error };
-  }
-  // compose 的告警写在 stderr（可能混有 WARN 行）：原样转 stderr，不静默丢弃。
-  if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
-  if (result.code !== 0) {
-    const error = "docker compose ps 失败：" + result.stderr.trim();
-    ctx.error(error);
-    return { ok: false, error };
-  }
-  return { ok: true, state: prodState(result.stdout), psOutput: result.stdout };
+    const result = await composePs(opts.runner, options);
+    if (Array.isArray(result)) {
+        // dryRun：没有真实输出可解析；属调用方误用，按运行失败处理。
+        const error = "compose ps 未真实执行（dryRun）";
+        ctx.error(error);
+        return { ok: false, error };
+    }
+    // compose 的告警写在 stderr（可能混有 WARN 行）：原样转 stderr，不静默丢弃。
+    if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
+    if (result.code !== 0) {
+        const error = "docker compose ps 失败：" + result.stderr.trim();
+        ctx.error(error);
+        return { ok: false, error };
+    }
+    return {
+        ok: true,
+        state: prodState(result.stdout),
+        psOutput: result.stdout,
+    };
 }
 
 /** 状态 → 状态符号种类 + 中文标签（人类可读摘要行）。 */
 function stateLabel(state: DeployState): { kind: StatusKind; text: string } {
-  switch (state) {
-    case "running":
-      return { kind: "success", text: "生产服务运行中（running）" };
-    case "partial":
-      return { kind: "warning", text: "生产服务部分运行（partial）" };
-    case "stopped":
-      return { kind: "info", text: "生产服务未运行（stopped）" };
-    case "uninitialized":
-      return { kind: "info", text: "生产服务未初始化（uninitialized）" };
-    case "error":
-      return { kind: "error", text: "生产服务处于错误状态（error）" };
-  }
+    switch (state) {
+        case "running":
+            return { kind: "success", text: "生产服务运行中（running）" };
+        case "partial":
+            return { kind: "warning", text: "生产服务部分运行（partial）" };
+        case "stopped":
+            return { kind: "info", text: "生产服务未运行（stopped）" };
+        case "uninitialized":
+            return { kind: "info", text: "生产服务未初始化（uninitialized）" };
+        case "error":
+            return { kind: "error", text: "生产服务处于错误状态（error）" };
+    }
 }
 
 // ---------------- logs ----------------
@@ -187,16 +191,16 @@ function stateLabel(state: DeployState): { kind: StatusKind; text: string } {
  * lifecycle/steps.ts 的 decideLogsColor），不新造第二套解析。
  */
 export interface LogsCommandOptions extends LifecycleOptions {
-  /** 位置参数（服务名）；透传给 compose。缺省 = 所有服务。 */
-  services?: string[];
-  /** 是否 --follow（实时跟随）。 */
-  follow?: boolean;
-  /**
-   * 进程环境快照；缺省 Deno.env.toObject()（与 install 的 processEnv 同义）。
-   *
-   * 只为可测：断言里不必污染真实进程环境，也便于模拟「进程 env > .env.prod」。
-   */
-  env?: Record<string, string>;
+    /** 位置参数（服务名）；透传给 compose。缺省 = 所有服务。 */
+    services?: string[];
+    /** 是否 --follow（实时跟随）。 */
+    follow?: boolean;
+    /**
+     * 进程环境快照；缺省 Deno.env.toObject()（与 install 的 processEnv 同义）。
+     *
+     * 只为可测：断言里不必污染真实进程环境，也便于模拟「进程 env > .env.prod」。
+     */
+    env?: Record<string, string>;
 }
 
 /**
@@ -207,18 +211,18 @@ export interface LogsCommandOptions extends LifecycleOptions {
  * **不代表真实栈状态**。
  */
 export interface LogsResult extends LifecycleBaseResult {
-  /** 透传的服务名（与输入一致）。 */
-  services: string[];
-  /**
-   * 最终**着色决策**：`force` / `inherit` / `no-color`。
-   *
-   * 命名刻意不叫 `color`——它不是 {@link ColorMode}
-   * （`auto`/`always`/`never`），而是 `applyLogsColor` 落回 compose 参数的
-   * 三态结论，也是 `--json` 载荷的一部分，便于测试断言。
-   */
-  colorDecision: LogsColorDecision;
-  /** 是否走实时跟随路径。 */
-  followed: boolean;
+    /** 透传的服务名（与输入一致）。 */
+    services: string[];
+    /**
+     * 最终**着色决策**：`force` / `inherit` / `no-color`。
+     *
+     * 命名刻意不叫 `color`——它不是 {@link ColorMode}
+     * （`auto`/`always`/`never`），而是 `applyLogsColor` 落回 compose 参数的
+     * 三态结论，也是 `--json` 载荷的一部分，便于测试断言。
+     */
+    colorDecision: LogsColorDecision;
+    /** 是否走实时跟随路径。 */
+    followed: boolean;
 }
 
 /**
@@ -238,110 +242,118 @@ export interface LogsResult extends LifecycleBaseResult {
  *    CLI 解析层产出。
  */
 export async function logs(opts: LogsCommandOptions): Promise<LogsResult> {
-  const ctx = lifecycleContext(opts);
-  const services = opts.services ?? [];
-  const followed = opts.follow === true;
+    const ctx = lifecycleContext(opts);
+    const services = opts.services ?? [];
+    const followed = opts.follow === true;
 
-  const prepared = await prepareLifecycle(ctx, opts);
-  if (!prepared.ok) {
-    const result: LogsResult = {
-      ...failed(ctx.dir, prepared.error),
-      services,
-      colorDecision: "no-color",
-      followed,
+    const prepared = await prepareLifecycle(ctx, opts);
+    if (!prepared.ok) {
+        const result: LogsResult = {
+            ...failed(ctx.dir, prepared.error),
+            services,
+            colorDecision: "no-color",
+            followed,
+        };
+        if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+        return result;
+    }
+
+    // ---- 着色判定：进程环境优先，回退 .env.prod；开/关交回 resolveColor ----
+    const processEnv = opts.env ?? Deno.env.toObject();
+    const decision = decideLogsColor({
+        logColor: mergeColorSource(
+            processEnv["LOG_COLOR"],
+            prepared.env["LOG_COLOR"],
+        ),
+        noColor: mergeColorSource(
+            processEnv["NO_COLOR"],
+            prepared.env["NO_COLOR"],
+        ),
+        // 探测 **stdout** 是否 TTY。
+        stream: "stdout",
+    });
+
+    const logOptions = {
+        ...prepared.composeOptions,
+        services,
+        follow: followed,
     };
+    // dryRun 只取参数数组：参数形状由 composeLogs 唯一保证，着色两处插入由 applyLogsColor 完成。
+    const dryRun = await composeLogs(opts.runner, {
+        ...logOptions,
+        dryRun: true,
+    });
+    if (!Array.isArray(dryRun)) {
+        const error = "compose logs 参数构造失败（dryRun 未返回参数数组）";
+        ctx.error(error);
+        const result: LogsResult = {
+            ...failed(ctx.dir, error),
+            services,
+            colorDecision: decision,
+            followed,
+        };
+        if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+        return result;
+    }
+    const args = applyLogsColor(dryRun, decision);
+
+    const code = followed
+        ? await streamLogs(opts.runner, args, ctx)
+        : await runLogs(opts.runner, args, ctx);
+    if (code !== 0) {
+        const error = "查看生产服务日志失败（docker compose 退出码 " + code +
+            "）";
+        ctx.error(error);
+        const result: LogsResult = {
+            ...failed(ctx.dir, error),
+            services,
+            colorDecision: decision,
+            followed,
+        };
+        if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
+        return result;
+    }
+
+    const result: LogsResult = {
+        dir: ctx.dir,
+        state: "running",
+        noOp: false,
+        exitCode: 0,
+        error: null,
+        services,
+        colorDecision: decision,
+        followed,
+    };
+    // JSON 模式：stdout 只含这一个文档；日志本体与诊断已改道 stderr（emitHuman）。
     if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
     return result;
-  }
-
-  // ---- 着色判定：进程环境优先，回退 .env.prod；开/关交回 resolveColor ----
-  const processEnv = opts.env ?? Deno.env.toObject();
-  const decision = decideLogsColor({
-    logColor: mergeColorSource(
-      processEnv["LOG_COLOR"],
-      prepared.env["LOG_COLOR"],
-    ),
-    noColor: mergeColorSource(processEnv["NO_COLOR"], prepared.env["NO_COLOR"]),
-    // 探测 **stdout** 是否 TTY。
-    stream: "stdout",
-  });
-
-  const logOptions = { ...prepared.composeOptions, services, follow: followed };
-  // dryRun 只取参数数组：参数形状由 composeLogs 唯一保证，着色两处插入由 applyLogsColor 完成。
-  const dryRun = await composeLogs(opts.runner, {
-    ...logOptions,
-    dryRun: true,
-  });
-  if (!Array.isArray(dryRun)) {
-    const error = "compose logs 参数构造失败（dryRun 未返回参数数组）";
-    ctx.error(error);
-    const result: LogsResult = {
-      ...failed(ctx.dir, error),
-      services,
-      colorDecision: decision,
-      followed,
-    };
-    if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
-    return result;
-  }
-  const args = applyLogsColor(dryRun, decision);
-
-  const code = followed
-    ? await streamLogs(opts.runner, args, ctx)
-    : await runLogs(opts.runner, args, ctx);
-  if (code !== 0) {
-    const error = "查看生产服务日志失败（docker compose 退出码 " + code + "）";
-    ctx.error(error);
-    const result: LogsResult = {
-      ...failed(ctx.dir, error),
-      services,
-      colorDecision: decision,
-      followed,
-    };
-    if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
-    return result;
-  }
-
-  const result: LogsResult = {
-    dir: ctx.dir,
-    state: "running",
-    noOp: false,
-    exitCode: 0,
-    error: null,
-    services,
-    colorDecision: decision,
-    followed,
-  };
-  // JSON 模式：stdout 只含这一个文档；日志本体与诊断已改道 stderr（emitHuman）。
-  if (ctx.jsonMode) emitJson(logsPayload(result), ctx.io);
-  return result;
 }
 
 /** logs 的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
 function logsPayload(result: LogsResult): Record<string, unknown> {
-  return {
-    dir: result.dir,
-    services: result.services,
-    colorDecision: result.colorDecision,
-    followed: result.followed,
-    error: result.error,
-  };
+    return {
+        dir: result.dir,
+        services: result.services,
+        colorDecision: result.colorDecision,
+        followed: result.followed,
+        error: result.error,
+    };
 }
 
 /** 非 follow：缓冲执行并**自行**写出（runner 不打印）。 */
 async function runLogs(
-  runner: CommandRunner,
-  args: string[],
-  ctx: LifecycleContext,
+    runner: CommandRunner,
+    args: string[],
+    ctx: LifecycleContext,
 ): Promise<number> {
-  const result = await runner.run("docker", args);
-  // 日志本体是人类通道输出（--json 时自动改道 stderr），告警（compose stderr）
-  // 同样改道——stdout 在 JSON 模式下必须逐字节为 JSON。
-  emitHuman(result.stdout, ctx.io);
-  // compose 告警属于诊断：**永远 stderr**，
-  // 这样重定向 stdout 时告警仍可见、--json 的 stdout 也不被污染。
-  if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
-  return result.code;
+    const result = await runner.run("docker", args);
+    // 日志本体是人类通道输出（--json 时自动改道 stderr），告警（compose stderr）
+    // 同样改道——stdout 在 JSON 模式下必须逐字节为 JSON。
+    emitHuman(result.stdout, ctx.io);
+    // compose 告警属于诊断：**永远 stderr**，
+    // 这样重定向 stdout 时告警仍可见、--json 的 stdout 也不被污染。
+    if (result.stderr !== "") emitFailure(ctx.io, result.stderr);
+    return result.code;
 }
 
 /**
@@ -351,17 +363,17 @@ async function runLogs(
  * --follow 悄悄退化成不可用的缓冲调用。
  */
 async function streamLogs(
-  runner: CommandRunner,
-  args: string[],
-  ctx: LifecycleContext,
+    runner: CommandRunner,
+    args: string[],
+    ctx: LifecycleContext,
 ): Promise<number> {
-  if (runner.stream === undefined) {
-    ctx.error("当前运行时不支持实时日志（CommandRunner.stream 缺失）");
-    return 1;
-  }
-  // compose 的告警/进度走 stderr：显式与 stdout 分流。
-  const emit = (line: string) => emitHuman(line + "\n", ctx.io);
-  return await runner.stream("docker", args, emit, { onStderr: emit });
+    if (runner.stream === undefined) {
+        ctx.error("当前运行时不支持实时日志（CommandRunner.stream 缺失）");
+        return 1;
+    }
+    // compose 的告警/进度走 stderr：显式与 stdout 分流。
+    const emit = (line: string) => emitHuman(line + "\n", ctx.io);
+    return await runner.stream("docker", args, emit, { onStderr: emit });
 }
 
 /**
@@ -375,72 +387,72 @@ async function streamLogs(
  * `--json` 时 stdout 只有 `{ dir, state, ps }` 一个 JSON 文档，人类文字改道 stderr。
  */
 export async function status(opts: LifecycleOptions): Promise<StatusResult> {
-  const ctx = lifecycleContext(opts);
-  const prepared = await prepareLifecycle(ctx, opts);
-  if (!prepared.ok) {
-    if (ctx.jsonMode) {
-      emitJson({
-        dir: ctx.dir,
-        state: "uninitialized",
-        ps: "",
-        error: prepared.error,
-      }, ctx.io);
+    const ctx = lifecycleContext(opts);
+    const prepared = await prepareLifecycle(ctx, opts);
+    if (!prepared.ok) {
+        if (ctx.jsonMode) {
+            emitJson({
+                dir: ctx.dir,
+                state: "uninitialized",
+                ps: "",
+                error: prepared.error,
+            }, ctx.io);
+        }
+        return {
+            ...failed(ctx.dir, prepared.error),
+            state: "uninitialized",
+            psOutput: "",
+        };
     }
-    return {
-      ...failed(ctx.dir, prepared.error),
-      state: "uninitialized",
-      psOutput: "",
-    };
-  }
 
-  const probe = await probeState(ctx, opts, prepared.composeOptions);
-  if (!probe.ok) {
-    if (ctx.jsonMode) {
-      emitJson(
-        { dir: ctx.dir, state: "error", ps: "", error: probe.error },
-        ctx.io,
-      );
+    const probe = await probeState(ctx, opts, prepared.composeOptions);
+    if (!probe.ok) {
+        if (ctx.jsonMode) {
+            emitJson(
+                { dir: ctx.dir, state: "error", ps: "", error: probe.error },
+                ctx.io,
+            );
+        }
+        return { ...failed(ctx.dir, probe.error), psOutput: "" };
     }
-    return { ...failed(ctx.dir, probe.error), psOutput: "" };
-  }
 
-  const disk = await probeDiskUsageReport({
-    runner: opts.runner,
-    installDir: ctx.dir,
-    dockerBin: opts.dockerBin,
-  });
+    const disk = await probeDiskUsageReport({
+        runner: opts.runner,
+        installDir: ctx.dir,
+        dockerBin: opts.dockerBin,
+    });
 
-  if (ctx.jsonMode) {
-    const payload: Record<string, unknown> = {
-      dir: ctx.dir,
-      state: probe.state,
-      ps: probe.psOutput,
-    };
+    if (ctx.jsonMode) {
+        const payload: Record<string, unknown> = {
+            dir: ctx.dir,
+            state: probe.state,
+            ps: probe.psOutput,
+        };
+        if (disk !== null) {
+            payload["disk"] = disk.partitions;
+        }
+        emitJson(payload, ctx.io);
+    }
+    const label = stateLabel(probe.state);
+    ctx.status(label.kind, label.text);
     if (disk !== null) {
-      payload["disk"] = disk.partitions;
+        const lines = formatDiskReportLines(disk);
+        for (let i = 0; i < disk.entries.length; i++) {
+            const entry = disk.entries[i]!;
+            ctx.status(entry.status === "ok" ? "info" : "warning", lines[i]!);
+        }
     }
-    emitJson(payload, ctx.io);
-  }
-  const label = stateLabel(probe.state);
-  ctx.status(label.kind, label.text);
-  if (disk !== null) {
-    const lines = formatDiskReportLines(disk);
-    for (let i = 0; i < disk.entries.length; i++) {
-      const entry = disk.entries[i]!;
-      ctx.status(entry.status === "ok" ? "info" : "warning", lines[i]!);
-    }
-  }
-  if (probe.psOutput !== "") emitHuman(probe.psOutput, ctx.io);
+    if (probe.psOutput !== "") emitHuman(probe.psOutput, ctx.io);
 
-  return {
-    dir: ctx.dir,
-    state: probe.state,
-    noOp: false,
-    exitCode: 0,
-    error: null,
-    psOutput: probe.psOutput,
-    ...(disk !== null ? { disk } : {}),
-  };
+    return {
+        dir: ctx.dir,
+        state: probe.state,
+        noOp: false,
+        exitCode: 0,
+        error: null,
+        psOutput: probe.psOutput,
+        ...(disk !== null ? { disk } : {}),
+    };
 }
 
 /** `start` 的核心（不写 JSON；由公开入口按模式补写）。 */

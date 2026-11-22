@@ -9,142 +9,143 @@ import { decodeBase64, encodeBase64 } from "@std/encoding/base64";
 const IV_LENGTH = 12;
 
 async function deriveKey(secret: string): Promise<CryptoKey> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(secret),
-  );
-  return crypto.subtle.importKey(
-    "raw",
-    digest,
-    { name: "AES-GCM" },
-    false,
-    ["encrypt", "decrypt"],
-  );
+    const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(secret),
+    );
+    return crypto.subtle.importKey(
+        "raw",
+        digest,
+        { name: "AES-GCM" },
+        false,
+        ["encrypt", "decrypt"],
+    );
 }
 
 /** 使用 AES-256-GCM 加密字符串，返回 base64(iv || ciphertext || tag) */
 export async function encryptSecret(
-  plaintext: string,
-  storeKey: string,
+    plaintext: string,
+    storeKey: string,
 ): Promise<string> {
-  const key = await deriveKey(storeKey);
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    new TextEncoder().encode(plaintext),
-  );
-  const data = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
-  data.set(iv);
-  data.set(new Uint8Array(ciphertext), IV_LENGTH);
-  return encodeBase64(data);
+    const key = await deriveKey(storeKey);
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        new TextEncoder().encode(plaintext),
+    );
+    const data = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
+    data.set(iv);
+    data.set(new Uint8Array(ciphertext), IV_LENGTH);
+    return encodeBase64(data);
 }
 
 /** 解密 encryptSecret 产生的密文 */
 export async function decryptSecret(
-  payload: string,
-  storeKey: string,
+    payload: string,
+    storeKey: string,
 ): Promise<string> {
-  const key = await deriveKey(storeKey);
-  const data = decodeBase64(payload);
-  if (data.length < IV_LENGTH) {
-    throw new Error("密文格式错误：长度不足");
-  }
-  const iv = data.slice(0, IV_LENGTH);
-  const ciphertext = data.slice(IV_LENGTH);
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    ciphertext,
-  );
-  return new TextDecoder().decode(plaintext);
+    const key = await deriveKey(storeKey);
+    const data = decodeBase64(payload);
+    if (data.length < IV_LENGTH) {
+        throw new Error("密文格式错误：长度不足");
+    }
+    const iv = data.slice(0, IV_LENGTH);
+    const ciphertext = data.slice(IV_LENGTH);
+    const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        key,
+        ciphertext,
+    );
+    return new TextDecoder().decode(plaintext);
 }
 
 export interface EvalTokenPayload {
-  domain_id: string;
-  jti: string;
-  submission_id: string;
-  /**
-   * 评测尝试 ID（版本化后一次评测一个预算）。
-   *
-   * 协议 v3 强制携带；额度计数、吊销键与审计归属按 attempt 隔离，
-   * 同一提交的重测不会撞上旧尝试
-   * 已耗尽的预算，旧尝试被吊销也不会误杀新尝试。
-   */
-  attempt_id: string;
-  /** 本次评测使用的题目版本（审计用；不参与限额计算）。 */
-  problem_version_id?: string | null;
-  /**
-   * token 协议版本（Handbook §6.7）。
-   *
-   * core 侧常量 `LLM_TOKEN_PROTOCOL_VERSION`；当前只接受第 3 版，
-   * 强制使用域与评测尝试。新增协议字段须同步 core 的签发与这里的校验。
-   */
-  protocol_version: number;
-  problem_id: string;
-  user_id: string;
-  provider_id: string;
-  allowed_models: string[];
-  /** 模型别名 → 上游真实模型名；缺省表示 allowed_models 即真实模型名 */
-  model_map?: Record<string, string>;
-  iat: number;
-  exp: number;
-  max_calls: number;
-  max_tokens: number;
+    domain_id: string;
+    jti: string;
+    submission_id: string;
+    /**
+     * 评测尝试 ID（版本化后一次评测一个预算）。
+     *
+     * 协议 v3 强制携带；额度计数、吊销键与审计归属按 attempt 隔离，
+     * 同一提交的重测不会撞上旧尝试
+     * 已耗尽的预算，旧尝试被吊销也不会误杀新尝试。
+     */
+    attempt_id: string;
+    /** 本次评测使用的题目版本（审计用；不参与限额计算）。 */
+    problem_version_id?: string | null;
+    /**
+     * token 协议版本（Handbook §6.7）。
+     *
+     * core 侧常量 `LLM_TOKEN_PROTOCOL_VERSION`；当前只接受第 3 版，
+     * 强制使用域与评测尝试。新增协议字段须同步 core 的签发与这里的校验。
+     */
+    protocol_version: number;
+    problem_id: string;
+    user_id: string;
+    provider_id: string;
+    allowed_models: string[];
+    /** 模型别名 → 上游真实模型名；缺省表示 allowed_models 即真实模型名 */
+    model_map?: Record<string, string>;
+    iat: number;
+    exp: number;
+    max_calls: number;
+    max_tokens: number;
 }
 
 /** 签发 AEAD eval_token，返回 base64url(iv || ciphertext || tag) */
 export async function mintEvalToken(
-  payload: EvalTokenPayload,
-  serviceToken: string,
+    payload: EvalTokenPayload,
+    serviceToken: string,
 ): Promise<string> {
-  const key = await deriveKey(serviceToken);
-  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-  const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    plaintext,
-  );
-  const data = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
-  data.set(iv);
-  data.set(new Uint8Array(ciphertext), IV_LENGTH);
-  return encodeBase64(data);
+    const key = await deriveKey(serviceToken);
+    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+    const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        plaintext,
+    );
+    const data = new Uint8Array(IV_LENGTH + ciphertext.byteLength);
+    data.set(iv);
+    data.set(new Uint8Array(ciphertext), IV_LENGTH);
+    return encodeBase64(data);
 }
 
 /** 校验并解密 eval_token；过期或非法时抛出错误 */
 export async function verifyEvalToken(
-  token: string,
-  serviceToken: string,
+    token: string,
+    serviceToken: string,
 ): Promise<EvalTokenPayload> {
-  const key = await deriveKey(serviceToken);
-  const data = decodeBase64(token);
-  if (data.length < IV_LENGTH) {
-    throw new Error("eval_token 格式错误");
-  }
-  const iv = data.slice(0, IV_LENGTH);
-  const ciphertext = data.slice(IV_LENGTH);
-  let plaintext: ArrayBuffer;
-  try {
-    plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
-      key,
-      ciphertext,
-    );
-  } catch {
-    throw new Error("eval_token 校验失败");
-  }
-  const payload = JSON.parse(
-    new TextDecoder().decode(plaintext),
-  ) as EvalTokenPayload;
-  if (
-    payload.protocol_version !== 3 || typeof payload.domain_id !== "string" ||
-    !payload.domain_id || !payload.attempt_id
-  ) {
-    throw new Error("eval_token 域协议不匹配");
-  }
-  if (payload.exp < Math.floor(Date.now() / 1000)) {
-    throw new Error("eval_token 已过期");
-  }
-  return payload;
+    const key = await deriveKey(serviceToken);
+    const data = decodeBase64(token);
+    if (data.length < IV_LENGTH) {
+        throw new Error("eval_token 格式错误");
+    }
+    const iv = data.slice(0, IV_LENGTH);
+    const ciphertext = data.slice(IV_LENGTH);
+    let plaintext: ArrayBuffer;
+    try {
+        plaintext = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv },
+            key,
+            ciphertext,
+        );
+    } catch {
+        throw new Error("eval_token 校验失败");
+    }
+    const payload = JSON.parse(
+        new TextDecoder().decode(plaintext),
+    ) as EvalTokenPayload;
+    if (
+        payload.protocol_version !== 3 ||
+        typeof payload.domain_id !== "string" ||
+        !payload.domain_id || !payload.attempt_id
+    ) {
+        throw new Error("eval_token 域协议不匹配");
+    }
+    if (payload.exp < Math.floor(Date.now() / 1000)) {
+        throw new Error("eval_token 已过期");
+    }
+    return payload;
 }

@@ -16,88 +16,88 @@ import { join } from "@std/path";
 import { UsageError } from "../../util/args.ts";
 
 Deno.test("judgeInstallEnv 检查依赖并输出 rootless 隔离指引", async () => {
-  const calls: string[] = [];
-  const out: string[] = [];
-  const { judgeInstallEnv } = await import("./actions.ts");
-  const result = await judgeInstallEnv({
-    dir: "/srv/noj-judge",
-    runner: {
-      run(cmd: string, args: string[]) {
-        calls.push([cmd, ...args].join(" "));
-        return Promise.resolve({ code: 0, stdout: "", stderr: "" });
-      },
-      spawn() {
-        throw new Error("不应 spawn");
-      },
-    },
-    log: (t: string) => out.push(t),
-  });
-  assertEquals(result.exitCode, 0);
-  // 必须真的探测 daemon 与 compose（而非只打印文案）
-  assert(
-    calls.some((c) => c.includes("docker") && c.includes("info")),
-    `应探测 Docker daemon，实得调用：${calls.join(" | ")}`,
-  );
-  assert(
-    calls.some((c) => c.includes("compose") && c.includes("version")),
-    "应探测 Compose v2",
-  );
-  const text = out.join("\n");
-  // 四条隔离条件必须逐条出现
-  for (const kw of ["rootless", "socket", "UID", "Redis"]) {
-    assert(text.includes(kw), `指引应含 "${kw}"，实得：${text}`);
-  }
-  // 安全边界声明不得丢失
-  assert(
-    text.includes("/var/run/docker.sock"),
-    "必须声明不会把宿主 socket 提供给 Judge",
-  );
+    const calls: string[] = [];
+    const out: string[] = [];
+    const { judgeInstallEnv } = await import("./actions.ts");
+    const result = await judgeInstallEnv({
+        dir: "/srv/noj-judge",
+        runner: {
+            run(cmd: string, args: string[]) {
+                calls.push([cmd, ...args].join(" "));
+                return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+            },
+            spawn() {
+                throw new Error("不应 spawn");
+            },
+        },
+        log: (t: string) => out.push(t),
+    });
+    assertEquals(result.exitCode, 0);
+    // 必须真的探测 daemon 与 compose（而非只打印文案）
+    assert(
+        calls.some((c) => c.includes("docker") && c.includes("info")),
+        `应探测 Docker daemon，实得调用：${calls.join(" | ")}`,
+    );
+    assert(
+        calls.some((c) => c.includes("compose") && c.includes("version")),
+        "应探测 Compose v2",
+    );
+    const text = out.join("\n");
+    // 四条隔离条件必须逐条出现
+    for (const kw of ["rootless", "socket", "UID", "Redis"]) {
+        assert(text.includes(kw), `指引应含 "${kw}"，实得：${text}`);
+    }
+    // 安全边界声明不得丢失
+    assert(
+        text.includes("/var/run/docker.sock"),
+        "必须声明不会把宿主 socket 提供给 Judge",
+    );
 });
 
 Deno.test("judgeInstallEnv 在 daemon 不可用时失败且不打印指引", async () => {
-  const out: string[] = [];
-  const { judgeInstallEnv } = await import("./actions.ts");
-  const result = await judgeInstallEnv({
-    dir: "/srv/noj-judge",
-    runner: {
-      run(_cmd: string, args: string[]) {
-        // 只有 `docker info` 失败
-        return Promise.resolve({
-          code: args[0] === "info" ? 1 : 0,
-          stdout: "",
-          stderr: "Cannot connect to the Docker daemon",
-        });
-      },
-      spawn() {
-        throw new Error("不应 spawn");
-      },
-    },
-    log: (t: string) => out.push(t),
-  });
-  assertEquals(result.exitCode, 1, "daemon 不可用必须失败");
-  assertEquals(
-    out.join("\n").includes("rootless"),
-    false,
-    "前置失败时不得打印后续指引（避免误以为已就绪）",
-  );
+    const out: string[] = [];
+    const { judgeInstallEnv } = await import("./actions.ts");
+    const result = await judgeInstallEnv({
+        dir: "/srv/noj-judge",
+        runner: {
+            run(_cmd: string, args: string[]) {
+                // 只有 `docker info` 失败
+                return Promise.resolve({
+                    code: args[0] === "info" ? 1 : 0,
+                    stdout: "",
+                    stderr: "Cannot connect to the Docker daemon",
+                });
+            },
+            spawn() {
+                throw new Error("不应 spawn");
+            },
+        },
+        log: (t: string) => out.push(t),
+    });
+    assertEquals(result.exitCode, 1, "daemon 不可用必须失败");
+    assertEquals(
+        out.join("\n").includes("rootless"),
+        false,
+        "前置失败时不得打印后续指引（避免误以为已就绪）",
+    );
 });
 
 Deno.test("门禁: judge 必须可从 CLI 到达（命令注册表 + 分发）", async () => {
-  // 反向门禁：防止"模块已交付但未接线"再次发生。
-  // 断言的是**可达性**，而不是某个函数存在。
-  const { COMMANDS } = await import("../../commands.ts");
-  const names = COMMANDS.map((c) => c.name);
-  assert(
-    names.includes("judge"),
-    `judge 必须在命令注册表中声明（否则用户无法发现），实得：${
-      names.join(", ")
-    }`,
-  );
-  const { PRODUCTION_COMMANDS } = await import("../../commands.ts");
-  assert(
-    PRODUCTION_COMMANDS.has("judge"),
-    "judge 必须是生产命令（否则不会被分发到生产层）",
-  );
+    // 反向门禁：防止"模块已交付但未接线"再次发生。
+    // 断言的是**可达性**，而不是某个函数存在。
+    const { COMMANDS } = await import("../../commands.ts");
+    const names = COMMANDS.map((c) => c.name);
+    assert(
+        names.includes("judge"),
+        `judge 必须在命令注册表中声明（否则用户无法发现），实得：${
+            names.join(", ")
+        }`,
+    );
+    const { PRODUCTION_COMMANDS } = await import("../../commands.ts");
+    assert(
+        PRODUCTION_COMMANDS.has("judge"),
+        "judge 必须是生产命令（否则不会被分发到生产层）",
+    );
 });
 
 // ── 回归：judge upgrade 报成功但版本没变 ──────────────
@@ -109,70 +109,70 @@ Deno.test("门禁: judge 必须可从 CLI 到达（命令注册表 + 分发）",
 // 升级前必须重渲染 compose。
 
 Deno.test("judge upgrade 必须先重渲染 Compose（否则版本不变的空升级）", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const dir = join(root, "judge");
-    await Deno.mkdir(dir, { recursive: true });
-    const envFile = join(dir, ".env.judge");
-    const composeFile = join(dir, "docker-compose.judge.yml");
-    // 既有配置：旧版本 v0.9.5
-    // 全部 JUDGE_REQUIRED_KEYS 齐备，才能走到 upgrade 的渲染/pull/up 段；
-    // 目标版本直接写 v0.10.0（"用户改完配置再升级"的场景）。
-    await Deno.writeTextFile(
-      envFile,
-      [
-        "NOJ_VERSION=v0.10.0",
-        "REDIS_URL=redis://redis:6379",
-        "JUDGE_QUEUE=noj:judge:queue",
-        "RESULT_QUEUE=noj:judge:results",
-        "WORK_DIR=/var/lib/noj-judge",
-        "JUDGE_MAX_CONCURRENT_JUDGES=2",
-        "JUDGE_IMAGE_PREFIX=noj-judge",
-        "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
-        "JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock",
-        "JUDGE_DOCKER_SOCKET_GID=10001",
-        "JUDGE_UID=10001",
-        "JUDGE_GID=10001",
-        "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
-        "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
-        "",
-      ].join("\n"),
-    );
-    await Deno.chmod(envFile, 0o600);
-    // 既有 compose 仍指向旧版本（模拟未重渲染的状态）
-    await Deno.writeTextFile(
-      composeFile,
-      "services:\n  judge:\n    image: ghcr.io/neuro-oj/noj-judge:v0.9.5\n",
-    );
+    const root = await Deno.makeTempDir();
+    try {
+        const dir = join(root, "judge");
+        await Deno.mkdir(dir, { recursive: true });
+        const envFile = join(dir, ".env.judge");
+        const composeFile = join(dir, "docker-compose.judge.yml");
+        // 既有配置：旧版本 v0.9.5
+        // 全部 JUDGE_REQUIRED_KEYS 齐备，才能走到 upgrade 的渲染/pull/up 段；
+        // 目标版本直接写 v0.10.0（"用户改完配置再升级"的场景）。
+        await Deno.writeTextFile(
+            envFile,
+            [
+                "NOJ_VERSION=v0.10.0",
+                "REDIS_URL=redis://redis:6379",
+                "JUDGE_QUEUE=noj:judge:queue",
+                "RESULT_QUEUE=noj:judge:results",
+                "WORK_DIR=/var/lib/noj-judge",
+                "JUDGE_MAX_CONCURRENT_JUDGES=2",
+                "JUDGE_IMAGE_PREFIX=noj-judge",
+                "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
+                "JUDGE_DOCKER_SOCKET=/run/noj-judge/docker.sock",
+                "JUDGE_DOCKER_SOCKET_GID=10001",
+                "JUDGE_UID=10001",
+                "JUDGE_GID=10001",
+                "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
+                "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
+                "",
+            ].join("\n"),
+        );
+        await Deno.chmod(envFile, 0o600);
+        // 既有 compose 仍指向旧版本（模拟未重渲染的状态）
+        await Deno.writeTextFile(
+            composeFile,
+            "services:\n  judge:\n    image: ghcr.io/neuro-oj/noj-judge:v0.9.5\n",
+        );
 
-    const { judgeUpgrade } = await import("./actions.ts");
-    const res = await judgeUpgrade({
-      dir,
-      envFile,
-      composeFile,
-      runner: {
-        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
-        spawn: () => {
-          throw new Error("no spawn");
-        },
-      },
-      log: () => {},
-    });
-    void res;
+        const { judgeUpgrade } = await import("./actions.ts");
+        const res = await judgeUpgrade({
+            dir,
+            envFile,
+            composeFile,
+            runner: {
+                run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+                spawn: () => {
+                    throw new Error("no spawn");
+                },
+            },
+            log: () => {},
+        });
+        void res;
 
-    // 重渲染后 compose 必须指向**新**版本
-    const after = await Deno.readTextFile(composeFile);
-    assert(
-      after.includes("v0.10.0"),
-      `upgrade 必须重渲染 compose 到目标版本，实得：${after}`,
-    );
-    assert(
-      !after.includes("v0.9.5"),
-      `compose 不得残留旧版本 tag，实得：${after}`,
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
-  }
+        // 重渲染后 compose 必须指向**新**版本
+        const after = await Deno.readTextFile(composeFile);
+        assert(
+            after.includes("v0.10.0"),
+            `upgrade 必须重渲染 compose 到目标版本，实得：${after}`,
+        );
+        assert(
+            !after.includes("v0.9.5"),
+            `compose 不得残留旧版本 tag，实得：${after}`,
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
 });
 
 // ── 回归：judge install --dry-run 不是 dry ────────────
@@ -184,74 +184,80 @@ Deno.test("judge upgrade 必须先重渲染 Compose（否则版本不变的空�
 // 违反"dry-run 零副作用"。
 
 Deno.test("judge install --dry-run 不得写入任何文件", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const dir = join(root, "judge");
-    await Deno.mkdir(dir, { recursive: true });
-    const { judgeInstall } = await import("./actions.ts");
-    const result = await judgeInstall({
-      dir,
-      dryRun: true,
-      runner: {
-        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
-        spawn: () => {
-          throw new Error("no spawn");
-        },
-      },
-      log: () => {},
-      // 完整合法配置，确保 dry-run 走的是"校验通过"分支而不是早退
-      version: "v0.9.5",
-      redisUrl: "redis://redis:6379",
-      socketPath: "/run/noj-judge/docker.sock",
-      values: {
-        JUDGE_QUEUE: "noj:judge:queue",
-        RESULT_QUEUE: "noj:judge:results",
-        WORK_DIR: "/var/lib/noj-judge",
-        JUDGE_MAX_CONCURRENT_JUDGES: "2",
-        JUDGE_IMAGE_PREFIX: "noj-judge",
-        JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
-        JUDGE_DOCKER_SOCKET_GID: "10001",
-        JUDGE_UID: "10001",
-        JUDGE_GID: "10001",
-        JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
-        JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
-      },
-      host: {
-        os: "linux",
-        docker: () => Promise.resolve(true),
-        compose: () => Promise.resolve(true),
-        curl: () => Promise.resolve(true),
-      },
-    } as never);
-    assertEquals(result.exitCode, 0, `dry-run 应校验通过：${result.message}`);
-    // **关键**：目录里不得出现任何产物
-    const entries: string[] = [];
-    for await (const e of Deno.readDir(dir)) entries.push(e.name);
-    assertEquals(
-      entries,
-      [],
-      `dry-run 必须零副作用，实得产物：${entries.join(", ")}`,
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
-  }
+    const root = await Deno.makeTempDir();
+    try {
+        const dir = join(root, "judge");
+        await Deno.mkdir(dir, { recursive: true });
+        const { judgeInstall } = await import("./actions.ts");
+        const result = await judgeInstall({
+            dir,
+            dryRun: true,
+            runner: {
+                run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+                spawn: () => {
+                    throw new Error("no spawn");
+                },
+            },
+            log: () => {},
+            // 完整合法配置，确保 dry-run 走的是"校验通过"分支而不是早退
+            version: "v0.9.5",
+            redisUrl: "redis://redis:6379",
+            socketPath: "/run/noj-judge/docker.sock",
+            values: {
+                JUDGE_QUEUE: "noj:judge:queue",
+                RESULT_QUEUE: "noj:judge:results",
+                WORK_DIR: "/var/lib/noj-judge",
+                JUDGE_MAX_CONCURRENT_JUDGES: "2",
+                JUDGE_IMAGE_PREFIX: "noj-judge",
+                JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
+                JUDGE_DOCKER_SOCKET_GID: "10001",
+                JUDGE_UID: "10001",
+                JUDGE_GID: "10001",
+                JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
+                JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
+            },
+            host: {
+                os: "linux",
+                docker: () => Promise.resolve(true),
+                compose: () => Promise.resolve(true),
+                curl: () => Promise.resolve(true),
+            },
+        } as never);
+        assertEquals(
+            result.exitCode,
+            0,
+            `dry-run 应校验通过：${result.message}`,
+        );
+        // **关键**：目录里不得出现任何产物
+        const entries: string[] = [];
+        for await (const e of Deno.readDir(dir)) entries.push(e.name);
+        assertEquals(
+            entries,
+            [],
+            `dry-run 必须零副作用，实得产物：${entries.join(", ")}`,
+        );
+    } finally {
+        await Deno.remove(root, { recursive: true }).catch(() => {});
+    }
 });
 
 Deno.test("生产命令的 --dry-run 拒绝不影响 judge（已实现，须放行）", async () => {
-  const { rejectUnimplementedProdFlags } = await import("../commands/args.ts");
-  // 生产命令（未实现）：拒绝——注意 `--` 之后的旗标才是被检查的对象，
-  // 命令名本身不参与判断，故这里只传旗标。
-  assertThrows(
-    () => rejectUnimplementedProdFlags(["--dry-run"]),
-    UsageError,
-  );
-  // judge（已实现）：显式放行 → 不抛
-  rejectUnimplementedProdFlags(["--dry-run"], ["--dry-run"]);
-  // 未列入 allow 的其它未实现旗标仍拒绝
-  assertThrows(
-    () => rejectUnimplementedProdFlags(["--panel"], ["--dry-run"]),
-    UsageError,
-  );
+    const { rejectUnimplementedProdFlags } = await import(
+        "../commands/args.ts"
+    );
+    // 生产命令（未实现）：拒绝——注意 `--` 之后的旗标才是被检查的对象，
+    // 命令名本身不参与判断，故这里只传旗标。
+    assertThrows(
+        () => rejectUnimplementedProdFlags(["--dry-run"]),
+        UsageError,
+    );
+    // judge（已实现）：显式放行 → 不抛
+    rejectUnimplementedProdFlags(["--dry-run"], ["--dry-run"]);
+    // 未列入 allow 的其它未实现旗标仍拒绝
+    assertThrows(
+        () => rejectUnimplementedProdFlags(["--panel"], ["--dry-run"]),
+        UsageError,
+    );
 });
 
 // ── 回归：judge start 不校验专用 socket ──────────────
@@ -263,69 +269,70 @@ Deno.test("生产命令的 --dry-run 拒绝不影响 judge（已实现，须放�
 // 即守卫成了"某几个子命令各自记得调用"的东西，而不是加载配置的固有一步。
 
 Deno.test("所有走 prepareExisting 的子命令都必须拒绝共享 socket", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const dir = join(root, "judge");
-    await Deno.mkdir(dir, { recursive: true });
-    const envFile = join(dir, ".env.judge");
-    await Deno.writeTextFile(
-      envFile,
-      [
-        "NOJ_VERSION=v0.9.5",
-        "REDIS_URL=redis://redis:6379",
-        "JUDGE_QUEUE=noj:judge:queue",
-        "RESULT_QUEUE=noj:judge:results",
-        "WORK_DIR=/var/lib/noj-judge",
-        "JUDGE_MAX_CONCURRENT_JUDGES=2",
-        "JUDGE_IMAGE_PREFIX=noj-judge",
-        "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
-        // 宿主 socket（四层守卫都应拦住）
-        "JUDGE_DOCKER_SOCKET=/var/run/docker.sock",
-        "JUDGE_DOCKER_SOCKET_GID=10001",
-        "JUDGE_UID=10001",
-        "JUDGE_GID=10001",
-        "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
-        "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
-        "",
-      ].join("\n"),
-    );
-    await Deno.chmod(envFile, 0o600);
-    await Deno.writeTextFile(
-      join(dir, "docker-compose.judge.yml"),
-      "services: {}\n",
-    );
+    const root = await Deno.makeTempDir();
+    try {
+        const dir = join(root, "judge");
+        await Deno.mkdir(dir, { recursive: true });
+        const envFile = join(dir, ".env.judge");
+        await Deno.writeTextFile(
+            envFile,
+            [
+                "NOJ_VERSION=v0.9.5",
+                "REDIS_URL=redis://redis:6379",
+                "JUDGE_QUEUE=noj:judge:queue",
+                "RESULT_QUEUE=noj:judge:results",
+                "WORK_DIR=/var/lib/noj-judge",
+                "JUDGE_MAX_CONCURRENT_JUDGES=2",
+                "JUDGE_IMAGE_PREFIX=noj-judge",
+                "JUDGE_IMAGE_REGISTRY=ghcr.io/neuro-oj",
+                // 宿主 socket（四层守卫都应拦住）
+                "JUDGE_DOCKER_SOCKET=/var/run/docker.sock",
+                "JUDGE_DOCKER_SOCKET_GID=10001",
+                "JUDGE_UID=10001",
+                "JUDGE_GID=10001",
+                "JUDGE_DOCKER_HOST=unix:///run/noj-judge/docker.sock",
+                "JUDGE_REQUIRE_ISOLATED_DOCKER=true",
+                "",
+            ].join("\n"),
+        );
+        await Deno.chmod(envFile, 0o600);
+        await Deno.writeTextFile(
+            join(dir, "docker-compose.judge.yml"),
+            "services: {}\n",
+        );
 
-    const acts = await import("./actions.ts");
-    const base = {
-      dir,
-      envFile,
-      composeFile: join(dir, "docker-compose.judge.yml"),
-      runner: {
-        run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
-        spawn: () => {
-          throw new Error("no spawn");
-        },
-      },
-      log: () => {},
-    };
-    for (
-      const [name, fn] of [
-        ["start", acts.judgeStart],
-        ["stop", acts.judgeStop],
-        ["status", acts.judgeStatus],
-        ["logs", acts.judgeLogs],
-      ] as const
-    ) {
-      const r = await (fn as (o: unknown) => Promise<{ message: string }>)(
-        base,
-      );
-      assert(
-        r.message.includes("禁止使用应用宿主机 Docker socket") ||
-          r.message.includes("宿主机"),
-        `${name} 必须拒绝共享 socket，实得：${r.message}`,
-      );
+        const acts = await import("./actions.ts");
+        const base = {
+            dir,
+            envFile,
+            composeFile: join(dir, "docker-compose.judge.yml"),
+            runner: {
+                run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }),
+                spawn: () => {
+                    throw new Error("no spawn");
+                },
+            },
+            log: () => {},
+        };
+        for (
+            const [name, fn] of [
+                ["start", acts.judgeStart],
+                ["stop", acts.judgeStop],
+                ["status", acts.judgeStatus],
+                ["logs", acts.judgeLogs],
+            ] as const
+        ) {
+            const r =
+                await (fn as (o: unknown) => Promise<{ message: string }>)(
+                    base,
+                );
+            assert(
+                r.message.includes("禁止使用应用宿主机 Docker socket") ||
+                    r.message.includes("宿主机"),
+                `${name} 必须拒绝共享 socket，实得：${r.message}`,
+            );
+        }
+    } finally {
+        await Deno.remove(root, { recursive: true }).catch(() => {});
     }
-  } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
-  }
 });

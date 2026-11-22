@@ -1,6 +1,6 @@
 {
-  "format_version": 3,
-  "kind": "objective",
-  "title": "模板：客观题试卷",
-  "difficulty": "easy"
+    "format_version": 3,
+    "kind": "objective",
+    "title": "模板：客观题试卷",
+    "difficulty": "easy"
 }

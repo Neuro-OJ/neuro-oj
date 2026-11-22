@@ -30,7 +30,8 @@
                                     <span :title="row.commitFull ?? undefined">{{ row.commit }}</span>
                                 </div>
                                 <ClientOnly :fallback="row.builtAtUtc">
-                                    <span :title="row.builtAtIso ?? undefined" class="tabular-nums">{{ row.builtAtLocal }}</span>
+                                    <span :title="row.builtAtIso ?? undefined"
+                                        class="tabular-nums">{{ row.builtAtLocal }}</span>
                                 </ClientOnly>
                             </dd>
                         </template>
@@ -40,37 +41,51 @@
                 <!-- 站内导航 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">站内导航</h4>
-                    <NuxtLink :to="workspacePath(domainSlug, 'problems')" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
-                    <NuxtLink :to="workspacePath(domainSlug, 'contests')" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
-                    <NuxtLink :to="workspacePath(domainSlug, 'community')" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
-                    <NuxtLink to="/data-policy" class="block w-fit text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
-                    <NuxtLink to="/legal/privacy" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">隐私政策</NuxtLink>
-                    <NuxtLink to="/legal/terms" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">服务条款</NuxtLink>
-                    <NuxtLink to="/about" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">关于</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'problems')"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">题库</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'contests')"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">竞赛</NuxtLink>
+                    <NuxtLink :to="workspacePath(domainSlug, 'community')"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">社区</NuxtLink>
+                    <NuxtLink to="/data-policy"
+                        class="block w-fit text-text-secondary text-sm mb-2 hover:text-primary">数据使用与注销说明</NuxtLink>
+                    <NuxtLink to="/legal/privacy"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">隐私政策</NuxtLink>
+                    <NuxtLink to="/legal/terms"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">服务条款</NuxtLink>
+                    <NuxtLink to="/about"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">关于</NuxtLink>
                 </div>
 
                 <!-- 开源 / 文档 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">开源 / 文档</h4>
-                    <a href="https://docs.noj.xyber-nova.space" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">文档站</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">License</a>
+                    <a href="https://docs.noj.xyber-nova.space" target="_blank" rel="noopener"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">文档站</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj" target="_blank" rel="noopener"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">License</a>
                 </div>
 
                 <!-- 社区联系 -->
                 <div>
                     <h4 class="text-text text-xs font-semibold mb-3 uppercase tracking-[0.5px]">社区联系</h4>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/discussions" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Discussions</a>
-                    <a href="https://github.com/Neuro-OJ/neuro-oj/issues" target="_blank" rel="noopener" class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Issues</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj/discussions" target="_blank" rel="noopener"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Discussions</a>
+                    <a href="https://github.com/Neuro-OJ/neuro-oj/issues" target="_blank" rel="noopener"
+                        class="block w-fit text-text-secondary no-underline text-sm mb-2 transition-colors hover:text-primary">GitHub Issues</a>
                     <!-- 群号直接展示：此前把群号当 qm.qq.com 短链码，点击后是 404。 -->
                     <p class="text-text-secondary text-sm mb-2 select-all tabular-nums">QQ 群 414014391</p>
                 </div>
             </div>
 
-            <div class="mt-8 pt-4 border-t border-border text-xs text-text-muted text-center flex flex-col sm:flex-row items-center justify-center gap-1">
+            <div
+                class="mt-8 pt-4 border-t border-border text-xs text-text-muted text-center flex flex-col sm:flex-row items-center justify-center gap-1">
                 <span>&copy; {{ year }} Neuro OJ. 独立社区项目，与 CCF 及 LMCC 无官方关系。</span>
                 <span class="hidden sm:inline">·</span>
-                <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener" class="text-text-muted hover:text-primary no-underline">AGPL-3.0</a>
+                <a href="https://github.com/Neuro-OJ/neuro-oj/blob/main/LICENSE" target="_blank" rel="noopener"
+                    class="text-text-muted hover:text-primary no-underline">AGPL-3.0</a>
                 <!-- 备案信息：未配置时不渲染（见 buildFilingLinks） -->
                 <template v-if="filingLinks.length > 0">
                     <span class="hidden sm:inline">·</span>
@@ -89,30 +104,24 @@
 </template>
 
 <script setup lang="ts">
-import { workspacePath } from "~/utils/workspace";
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 const domainSlug = useNavigationDomain();
-import { buildFilingLinks, EMPTY_SITE_META } from "~/utils/siteMeta";
-import {
-    type BuildInfo,
-    commitDisplay,
-    commitFull,
-    formatBuiltAt,
-    normalizeVersion,
-} from "~/utils/buildInfo";
+import { buildFilingLinks, EMPTY_SITE_META } from '~/utils/server/siteMeta';
+import { type BuildInfo, commitDisplay, commitFull, formatBuiltAt, normalizeVersion } from '~/utils/buildInfo';
 
 const year = new Date().getFullYear();
 
 // 备案信息（公开端点，失败静默降级为不展示）
 const { api } = useApi();
-const { data: metaData } = await useAsyncData("site-meta", () =>
+const { data: metaData } = await useAsyncData('site-meta', () =>
     api.get<{ data: typeof EMPTY_SITE_META }>(
-        "/api/v1/site/meta",
+        '/api/v1/site/meta',
         { silent: true },
     ));
 const filingLinks = computed(() => buildFilingLinks(metaData.value?.data ?? EMPTY_SITE_META));
 
 /** 空构建身份：字段缺失时统一渲染 `unknown`，而不是整行消失。 */
-const EMPTY_BUILD: BuildInfo = { version: "", commit: null, builtAt: null };
+const EMPTY_BUILD: BuildInfo = { version: '', commit: null, builtAt: null };
 
 /** 前端构建身份：构建期写进 runtimeConfig.public，随产物一起编译。 */
 const uiBuild = computed<BuildInfo>(() =>
@@ -129,16 +138,16 @@ const coreBuild = computed<BuildInfo>(() => metaData.value?.data.build ?? EMPTY_
  * 提供，需要精确核对时仍可取用。
  */
 const buildRows = computed(() =>
-    ([
-        { label: "前端", info: uiBuild.value },
-        { label: "后端", info: coreBuild.value },
-    ]).map(({ label, info }) => ({
+    [
+        { label: '前端', info: uiBuild.value },
+        { label: '后端', info: coreBuild.value },
+    ].map(({ label, info }) => ({
         label,
         version: normalizeVersion(info.version),
         commit: commitDisplay(info.commit),
         commitFull: commitFull(info.commit),
         builtAtLocal: formatBuiltAt(info.builtAt),
-        builtAtUtc: formatBuiltAt(info.builtAt, "UTC"),
+        builtAtUtc: formatBuiltAt(info.builtAt, 'UTC'),
         builtAtIso: info.builtAt,
     }))
 );

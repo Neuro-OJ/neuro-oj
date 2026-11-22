@@ -1,17 +1,17 @@
 import { Hono } from "hono";
 import {
-  type AuthEnv,
-  authMiddleware,
-  optionalAuthMiddleware,
-  resolveUserId,
+    type AuthEnv,
+    authMiddleware,
+    optionalAuthMiddleware,
+    resolveUserId,
 } from "../../modules/access/index.ts";
 import { UnauthorizedError } from "../../shared/base/errors.ts";
 import { enforceCheckinRateLimit } from "../../modules/platform/index.ts";
 import {
-  checkIn,
-  getCheckinHistory,
-  getCheckinStats,
-  getTodayCheckIn,
+    checkIn,
+    getCheckinHistory,
+    getCheckinStats,
+    getTodayCheckIn,
 } from "./service.ts";
 
 /** 签到路由，挂在 `/api/v1` 下（原 `identityRouter.route("/checkin", …)`）。 */
@@ -26,10 +26,10 @@ const prefix = "/checkin";
  * 因此加账号维度写窗口（60s/10）。只按账号计数，不按 IP——NAT 下同班学生会互相顶掉。
  */
 checkinRouter.post(prefix, authMiddleware, async (c) => {
-  const userId = c.var.userId as string;
-  await enforceCheckinRateLimit(userId);
-  const result = await checkIn(userId);
-  return c.json({ data: result });
+    const userId = c.var.userId as string;
+    await enforceCheckinRateLimit(userId);
+    const result = await checkIn(userId);
+    return c.json({ data: result });
 });
 
 /**
@@ -37,9 +37,9 @@ checkinRouter.post(prefix, authMiddleware, async (c) => {
  * GET /api/v1/checkin/today
  */
 checkinRouter.get(`${prefix}/today`, authMiddleware, async (c) => {
-  const userId = c.var.userId as string;
-  const result = await getTodayCheckIn(userId);
-  return c.json({ data: result });
+    const userId = c.var.userId as string;
+    const result = await getTodayCheckIn(userId);
+    return c.json({ data: result });
 });
 
 /**
@@ -50,15 +50,15 @@ checkinRouter.get(`${prefix}/today`, authMiddleware, async (c) => {
  * 传 user_id 时公开返回该用户统计（个人主页活跃度卡片展示他人数据）。
  */
 checkinRouter.get(`${prefix}/stats`, optionalAuthMiddleware, async (c) => {
-  const targetUserId = c.req.query("user_id") ?? c.var.userId;
-  if (!targetUserId) {
-    throw new UnauthorizedError("未提供认证令牌");
-  }
-  const data = await getCheckinStats(
-    await resolveUserId(targetUserId),
-    c.req.query("month") ?? undefined,
-  );
-  return c.json({ data });
+    const targetUserId = c.req.query("user_id") ?? c.var.userId;
+    if (!targetUserId) {
+        throw new UnauthorizedError("未提供认证令牌");
+    }
+    const data = await getCheckinStats(
+        await resolveUserId(targetUserId),
+        c.req.query("month") ?? undefined,
+    );
+    return c.json({ data });
 });
 
 /**
@@ -67,11 +67,14 @@ checkinRouter.get(`${prefix}/stats`, optionalAuthMiddleware, async (c) => {
  * 语义与 /stats 一致：user_id 缺省时返回本人（需登录）。
  */
 checkinRouter.get(`${prefix}/history`, optionalAuthMiddleware, async (c) => {
-  const targetUserId = c.req.query("user_id") ?? c.var.userId;
-  if (!targetUserId) {
-    throw new UnauthorizedError("未提供认证令牌");
-  }
-  const days = Number(c.req.query("days") ?? "30");
-  const data = await getCheckinHistory(await resolveUserId(targetUserId), days);
-  return c.json({ data });
+    const targetUserId = c.req.query("user_id") ?? c.var.userId;
+    if (!targetUserId) {
+        throw new UnauthorizedError("未提供认证令牌");
+    }
+    const days = Number(c.req.query("days") ?? "30");
+    const data = await getCheckinHistory(
+        await resolveUserId(targetUserId),
+        days,
+    );
+    return c.json({ data });
 });

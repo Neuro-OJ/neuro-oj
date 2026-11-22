@@ -15,9 +15,9 @@
 
 /** 构建身份三元组（前后端同构）。 */
 export interface BuildInfo {
-  version: string;
-  commit: string | null;
-  builtAt: string | null;
+    version: string;
+    commit: string | null;
+    builtAt: string | null;
 }
 
 /** 字段缺失或无法解析时的占位文本。 */
@@ -33,9 +33,9 @@ const COMMIT_DISPLAY_LENGTH = 7;
  * @returns 展示用版本号；缺失时为 {@link UNKNOWN_TEXT}
  */
 export function normalizeVersion(version: string | null | undefined): string {
-  const value = (version ?? '').trim();
-  if (!value || value === UNKNOWN_TEXT) return UNKNOWN_TEXT;
-  return value.startsWith('v') ? value : `v${value}`;
+    const value = (version ?? '').trim();
+    if (!value || value === UNKNOWN_TEXT) return UNKNOWN_TEXT;
+    return value.startsWith('v') ? value : `v${value}`;
 }
 
 /**
@@ -44,13 +44,13 @@ export function normalizeVersion(version: string | null | undefined): string {
  * 输入形如 `4b7e3e2a9`、`4b7e3e2a9-dirty` 或完整 40 位 SHA。
  */
 function splitCommit(
-  commit: string | null | undefined,
+    commit: string | null | undefined,
 ): { sha: string; dirty: boolean } | null {
-  const value = (commit ?? '').trim();
-  if (!value || value === UNKNOWN_TEXT) return null;
-  const dirty = value.endsWith('-dirty');
-  const sha = dirty ? value.slice(0, -'-dirty'.length) : value;
-  return sha ? { sha, dirty } : null;
+    const value = (commit ?? '').trim();
+    if (!value || value === UNKNOWN_TEXT) return null;
+    const dirty = value.endsWith('-dirty');
+    const sha = dirty ? value.slice(0, -'-dirty'.length) : value;
+    return sha ? { sha, dirty } : null;
 }
 
 /**
@@ -60,10 +60,10 @@ function splitCommit(
  * @returns 展示用短 SHA；缺失时为 {@link UNKNOWN_TEXT}
  */
 export function commitDisplay(commit: string | null | undefined): string {
-  const parsed = splitCommit(commit);
-  if (!parsed) return UNKNOWN_TEXT;
-  const short = parsed.sha.slice(0, COMMIT_DISPLAY_LENGTH);
-  return parsed.dirty ? `${short}-dirty` : short;
+    const parsed = splitCommit(commit);
+    if (!parsed) return UNKNOWN_TEXT;
+    const short = parsed.sha.slice(0, COMMIT_DISPLAY_LENGTH);
+    return parsed.dirty ? `${short}-dirty` : short;
 }
 
 /**
@@ -73,7 +73,7 @@ export function commitDisplay(commit: string | null | undefined): string {
  * @returns 完整 SHA；缺失时为 null
  */
 export function commitFull(commit: string | null | undefined): string | null {
-  return splitCommit(commit)?.sha ?? null;
+    return splitCommit(commit)?.sha ?? null;
 }
 
 /**
@@ -85,30 +85,30 @@ export function commitFull(commit: string | null | undefined): string | null {
  * @returns 展示用时间；缺失或非法时为 {@link UNKNOWN_TEXT}
  */
 export function formatBuiltAt(
-  builtAt: string | null | undefined,
-  timeZone?: string,
+    builtAt: string | null | undefined,
+    timeZone?: string,
 ): string {
-  const value = (builtAt ?? '').trim();
-  if (!value || value === UNKNOWN_TEXT) return UNKNOWN_TEXT;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return UNKNOWN_TEXT;
+    const value = (builtAt ?? '').trim();
+    if (!value || value === UNKNOWN_TEXT) return UNKNOWN_TEXT;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return UNKNOWN_TEXT;
 
-  const parts = new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZoneName: 'short',
-    ...(timeZone ? { timeZone } : {}),
-  }).formatToParts(date);
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZoneName: 'short',
+        ...(timeZone ? { timeZone } : {}),
+    }).formatToParts(date);
 
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
-  const dateText = `${get('year')}-${get('month')}-${get('day')}`;
-  const timeText = `${get('hour')}:${get('minute')}`;
-  const zone = get('timeZoneName');
-  return zone ? `${dateText} ${timeText} ${zone}` : `${dateText} ${timeText}`;
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+    const dateText = `${get('year')}-${get('month')}-${get('day')}`;
+    const timeText = `${get('hour')}:${get('minute')}`;
+    const zone = get('timeZoneName');
+    return zone ? `${dateText} ${timeText} ${zone}` : `${dateText} ${timeText}`;
 }
 
 /**
@@ -118,9 +118,9 @@ export function formatBuiltAt(
  * @returns 形如 `v0.10.5 · 4b7e3e2 · 2026-09-27 20:31 GMT+8`
  */
 export function buildInfoText(info: BuildInfo): string {
-  return [
-    normalizeVersion(info.version),
-    commitDisplay(info.commit),
-    formatBuiltAt(info.builtAt),
-  ].join(' · ');
+    return [
+        normalizeVersion(info.version),
+        commitDisplay(info.commit),
+        formatBuiltAt(info.builtAt),
+    ].join(' · ');
 }

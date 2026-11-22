@@ -18,13 +18,13 @@ export const gatewayContextStorage = store;
 
 /** 在带 `request_id` 的上下文中执行 `fn`。 */
 export function runWithRequestId<T>(requestId: string, fn: () => T): T {
-  return store.run({ [REQUEST_ID_KEY]: requestId }, fn);
+    return store.run({ [REQUEST_ID_KEY]: requestId }, fn);
 }
 
 /** 读取当前 `request_id`（不在请求上下文中时返回 undefined）。 */
 export function getRequestId(): string | undefined {
-  const v = store.getStore()?.[REQUEST_ID_KEY];
-  return typeof v === "string" ? v : undefined;
+    const v = store.getStore()?.[REQUEST_ID_KEY];
+    return typeof v === "string" ? v : undefined;
 }
 
 /**
@@ -33,12 +33,13 @@ export function getRequestId(): string | undefined {
  * 透传客户端提供的 ID 便于跨服务串联；无则生成 UUID。
  */
 export function requestIdMiddleware(): MiddlewareHandler {
-  return async (c, next) => {
-    const incoming = c.req.header("x-request-id");
-    const requestId = incoming && incoming.length > 0 && incoming.length <= 128
-      ? incoming
-      : crypto.randomUUID();
-    c.header("X-Request-Id", requestId);
-    return await runWithRequestId(requestId, () => next());
-  };
+    return async (c, next) => {
+        const incoming = c.req.header("x-request-id");
+        const requestId =
+            incoming && incoming.length > 0 && incoming.length <= 128
+                ? incoming
+                : crypto.randomUUID();
+        c.header("X-Request-Id", requestId);
+        return await runWithRequestId(requestId, () => next());
+    };
 }

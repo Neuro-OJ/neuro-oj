@@ -9,5 +9,5 @@ import type { MetricDefinition } from "../../../../shared/observability/contract
 import { observability } from "../write.ts";
 
 export function registerBusinessMetric(def: MetricDefinition): void {
-  observability.registerBusinessMetric(def);
+    observability.registerBusinessMetric(def);
 }

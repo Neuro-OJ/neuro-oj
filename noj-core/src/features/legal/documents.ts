@@ -16,14 +16,14 @@ import { getDb } from "../../shared/db/connection.ts";
 import type { DbRoot } from "../../shared/db/executor.ts";
 import type { UserActor } from "../../modules/access/contracts/actor.ts";
 import {
-  legalDocuments,
-  legalDocumentVersions,
+    legalDocuments,
+    legalDocumentVersions,
 } from "../../shared/db/schema.ts";
 import { ConflictError, ValidationError } from "../../shared/base/errors.ts";
 import type {
-  LegalDocumentSnapshot,
-  LegalKind,
-  LegalVersionSummary,
+    LegalDocumentSnapshot,
+    LegalKind,
+    LegalVersionSummary,
 } from "./types.ts";
 import { isLegalKind } from "./types.ts";
 import { type AuditMeta, recordAudit } from "../../modules/platform/index.ts";
@@ -43,7 +43,7 @@ type LegalReader = Pick<DbRoot, "select">;
  * @returns 规范化后的正文
  */
 export function normalizeContent(content: string): string {
-  return content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
+    return content.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trim();
 }
 
 /**
@@ -53,27 +53,27 @@ export function normalizeContent(content: string): string {
  * @returns 小写十六进制哈希
  */
 export async function hashContent(content: string): Promise<string> {
-  const data = new TextEncoder().encode(normalizeContent(content));
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+    const data = new TextEncoder().encode(normalizeContent(content));
+    const digest = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(digest))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 }
 
 /** 断言 kind 合法，否则抛 ValidationError（路由层 400）。 */
 function assertKind(kind: string): asserts kind is LegalKind {
-  if (!isLegalKind(kind)) {
-    throw new ValidationError(`未知的法律文档类型：${kind}`);
-  }
+    if (!isLegalKind(kind)) {
+        throw new ValidationError(`未知的法律文档类型：${kind}`);
+    }
 }
 
 /** 判断数据库错误是否为 PostgreSQL 唯一约束冲突（23505）。 */
 function isUniqueViolation(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const rec = err as Record<string, unknown>;
-  const pgCode = rec.code ??
-    ((rec.cause as Record<string, unknown> | undefined)?.code);
-  return pgCode === "23505";
+    if (!err || typeof err !== "object") return false;
+    const rec = err as Record<string, unknown>;
+    const pgCode = rec.code ??
+        ((rec.cause as Record<string, unknown> | undefined)?.code);
+    return pgCode === "23505";
 }
 
 /**
@@ -84,37 +84,37 @@ function isUniqueViolation(err: unknown): boolean {
  * @returns 当前快照；尚未发布任何版本时返回 null
  */
 export async function getCurrentDocument(
-  kind: LegalKind,
-  dbHandle: LegalReader = getDb(),
+    kind: LegalKind,
+    dbHandle: LegalReader = getDb(),
 ): Promise<LegalDocumentSnapshot | null> {
-  assertKind(kind);
-  const db = dbHandle;
-  const [doc] = await db
-    .select()
-    .from(legalDocuments)
-    .where(eq(legalDocuments.kind, kind))
-    .limit(1);
-  if (!doc || doc.current_version <= 0) return null;
+    assertKind(kind);
+    const db = dbHandle;
+    const [doc] = await db
+        .select()
+        .from(legalDocuments)
+        .where(eq(legalDocuments.kind, kind))
+        .limit(1);
+    if (!doc || doc.current_version <= 0) return null;
 
-  const [row] = await db
-    .select()
-    .from(legalDocumentVersions)
-    .where(
-      and(
-        eq(legalDocumentVersions.document_id, doc.id),
-        eq(legalDocumentVersions.version, doc.current_version),
-      ),
-    )
-    .limit(1);
-  if (!row) return null;
+    const [row] = await db
+        .select()
+        .from(legalDocumentVersions)
+        .where(
+            and(
+                eq(legalDocumentVersions.document_id, doc.id),
+                eq(legalDocumentVersions.version, doc.current_version),
+            ),
+        )
+        .limit(1);
+    if (!row) return null;
 
-  return {
-    kind,
-    version: row.version,
-    content: row.content,
-    content_hash: row.content_hash,
-    is_material: row.is_material,
-  };
+    return {
+        kind,
+        version: row.version,
+        content: row.content,
+        content_hash: row.content_hash,
+        is_material: row.is_material,
+    };
 }
 
 /**
@@ -125,29 +125,29 @@ export async function getCurrentDocument(
  * @returns 版本号；无重大版本时返回 0
  */
 export async function getRequiredConsentVersion(
-  kind: LegalKind,
+    kind: LegalKind,
 ): Promise<number> {
-  assertKind(kind);
-  const db = getDb();
-  const [doc] = await db
-    .select()
-    .from(legalDocuments)
-    .where(eq(legalDocuments.kind, kind))
-    .limit(1);
-  if (!doc) return 0;
+    assertKind(kind);
+    const db = getDb();
+    const [doc] = await db
+        .select()
+        .from(legalDocuments)
+        .where(eq(legalDocuments.kind, kind))
+        .limit(1);
+    if (!doc) return 0;
 
-  const [row] = await db
-    .select({ version: legalDocumentVersions.version })
-    .from(legalDocumentVersions)
-    .where(
-      and(
-        eq(legalDocumentVersions.document_id, doc.id),
-        eq(legalDocumentVersions.is_material, true),
-      ),
-    )
-    .orderBy(desc(legalDocumentVersions.version))
-    .limit(1);
-  return row?.version ?? 0;
+    const [row] = await db
+        .select({ version: legalDocumentVersions.version })
+        .from(legalDocumentVersions)
+        .where(
+            and(
+                eq(legalDocumentVersions.document_id, doc.id),
+                eq(legalDocumentVersions.is_material, true),
+            ),
+        )
+        .orderBy(desc(legalDocumentVersions.version))
+        .limit(1);
+    return row?.version ?? 0;
 }
 
 /**
@@ -159,32 +159,32 @@ export async function getRequiredConsentVersion(
  * @returns 详情；无重大版本时返回 null
  */
 export async function getRequiredConsentInfo(
-  kind: LegalKind,
+    kind: LegalKind,
 ): Promise<{ version: number; change_summary: string | null } | null> {
-  assertKind(kind);
-  const db = getDb();
-  const [doc] = await db
-    .select()
-    .from(legalDocuments)
-    .where(eq(legalDocuments.kind, kind))
-    .limit(1);
-  if (!doc) return null;
+    assertKind(kind);
+    const db = getDb();
+    const [doc] = await db
+        .select()
+        .from(legalDocuments)
+        .where(eq(legalDocuments.kind, kind))
+        .limit(1);
+    if (!doc) return null;
 
-  const [row] = await db
-    .select({
-      version: legalDocumentVersions.version,
-      change_summary: legalDocumentVersions.change_summary,
-    })
-    .from(legalDocumentVersions)
-    .where(
-      and(
-        eq(legalDocumentVersions.document_id, doc.id),
-        eq(legalDocumentVersions.is_material, true),
-      ),
-    )
-    .orderBy(desc(legalDocumentVersions.version))
-    .limit(1);
-  return row ?? null;
+    const [row] = await db
+        .select({
+            version: legalDocumentVersions.version,
+            change_summary: legalDocumentVersions.change_summary,
+        })
+        .from(legalDocumentVersions)
+        .where(
+            and(
+                eq(legalDocumentVersions.document_id, doc.id),
+                eq(legalDocumentVersions.is_material, true),
+            ),
+        )
+        .orderBy(desc(legalDocumentVersions.version))
+        .limit(1);
+    return row ?? null;
 }
 
 /**
@@ -193,28 +193,28 @@ export async function getRequiredConsentInfo(
  * @param kind 文档类型
  */
 export async function listVersions(
-  kind: LegalKind,
+    kind: LegalKind,
 ): Promise<LegalVersionSummary[]> {
-  assertKind(kind);
-  const db = getDb();
-  const [doc] = await db
-    .select()
-    .from(legalDocuments)
-    .where(eq(legalDocuments.kind, kind))
-    .limit(1);
-  if (!doc) return [];
+    assertKind(kind);
+    const db = getDb();
+    const [doc] = await db
+        .select()
+        .from(legalDocuments)
+        .where(eq(legalDocuments.kind, kind))
+        .limit(1);
+    if (!doc) return [];
 
-  const rows = await db
-    .select({
-      version: legalDocumentVersions.version,
-      published_at: legalDocumentVersions.published_at,
-      is_material: legalDocumentVersions.is_material,
-      change_summary: legalDocumentVersions.change_summary,
-    })
-    .from(legalDocumentVersions)
-    .where(eq(legalDocumentVersions.document_id, doc.id))
-    .orderBy(desc(legalDocumentVersions.version));
-  return rows;
+    const rows = await db
+        .select({
+            version: legalDocumentVersions.version,
+            published_at: legalDocumentVersions.published_at,
+            is_material: legalDocumentVersions.is_material,
+            change_summary: legalDocumentVersions.change_summary,
+        })
+        .from(legalDocumentVersions)
+        .where(eq(legalDocumentVersions.document_id, doc.id))
+        .orderBy(desc(legalDocumentVersions.version));
+    return rows;
 }
 
 /**
@@ -231,103 +231,105 @@ export async function listVersions(
  * @returns 新版本号
  */
 export async function publishVersion(
-  kind: LegalKind,
-  content: string,
-  changeSummary: string | null,
-  isMaterial: boolean,
-  actor: UserActor,
-  auditMeta: AuditMeta = { ipAddress: "unknown" },
+    kind: LegalKind,
+    content: string,
+    changeSummary: string | null,
+    isMaterial: boolean,
+    actor: UserActor,
+    auditMeta: AuditMeta = { ipAddress: "unknown" },
 ): Promise<number> {
-  assertKind(kind);
-  if (typeof content !== "string" || content.trim().length === 0) {
-    throw new ValidationError("文档内容不能为空");
-  }
-  const db = getDb();
-  const now = new Date().toISOString();
-  // 正文与哈希同源：落库的是规范化结果，保证 content_hash 可独立复核 content。
-  const normalized = normalizeContent(content);
-  const contentHash = await hashContent(normalized);
-
-  const newVersion = await db.transaction(async (tx) => {
-    const [doc] = await tx
-      .select()
-      .from(legalDocuments)
-      .where(eq(legalDocuments.kind, kind))
-      .limit(1);
-
-    let docId: string;
-    let version: number;
-    if (!doc) {
-      docId = crypto.randomUUID();
-      version = 1;
-      try {
-        await tx.insert(legalDocuments).values({
-          id: docId,
-          kind,
-          current_version: version,
-          created_at: now,
-          updated_at: now,
-        });
-      } catch (err) {
-        // 同一 kind 的 `legal_documents_kind_unique`：两个管理员同时首发布时，
-        // 后到者在此撞唯一键（2026-09-25 评审）→ 409 而非 500。
-        if (isUniqueViolation(err)) {
-          throw new ConflictError("该文档已被其他管理员创建，请刷新后重试");
-        }
-        throw err;
-      }
-    } else {
-      docId = doc.id;
-      version = doc.current_version + 1;
-      // 乐观锁（2026-09-25 评审）：并发发布会算出同一个 version，进而撞
-      // legal_document_versions 的唯一键并以未翻译异常 500 返回。这里按
-      // 读到的 current_version 做条件更新，未命中即判为并发冲突 → 409。
-      const updated = await tx
-        .update(legalDocuments)
-        .set({ current_version: version, updated_at: now })
-        .where(
-          and(
-            eq(legalDocuments.id, docId),
-            eq(legalDocuments.current_version, doc.current_version),
-          ),
-        )
-        .returning({ id: legalDocuments.id });
-      if (updated.length === 0) {
-        throw new ConflictError(
-          "该文档已被其他管理员发布新版本，请刷新后重试",
-        );
-      }
+    assertKind(kind);
+    if (typeof content !== "string" || content.trim().length === 0) {
+        throw new ValidationError("文档内容不能为空");
     }
+    const db = getDb();
+    const now = new Date().toISOString();
+    // 正文与哈希同源：落库的是规范化结果，保证 content_hash 可独立复核 content。
+    const normalized = normalizeContent(content);
+    const contentHash = await hashContent(normalized);
 
-    await tx.insert(legalDocumentVersions).values({
-      id: crypto.randomUUID(),
-      document_id: docId,
-      version,
-      content: normalized,
-      content_hash: contentHash,
-      change_summary: changeSummary,
-      is_material: isMaterial,
-      published_at: now,
-      created_by: actor.userId,
+    const newVersion = await db.transaction(async (tx) => {
+        const [doc] = await tx
+            .select()
+            .from(legalDocuments)
+            .where(eq(legalDocuments.kind, kind))
+            .limit(1);
+
+        let docId: string;
+        let version: number;
+        if (!doc) {
+            docId = crypto.randomUUID();
+            version = 1;
+            try {
+                await tx.insert(legalDocuments).values({
+                    id: docId,
+                    kind,
+                    current_version: version,
+                    created_at: now,
+                    updated_at: now,
+                });
+            } catch (err) {
+                // 同一 kind 的 `legal_documents_kind_unique`：两个管理员同时首发布时，
+                // 后到者在此撞唯一键（2026-09-25 评审）→ 409 而非 500。
+                if (isUniqueViolation(err)) {
+                    throw new ConflictError(
+                        "该文档已被其他管理员创建，请刷新后重试",
+                    );
+                }
+                throw err;
+            }
+        } else {
+            docId = doc.id;
+            version = doc.current_version + 1;
+            // 乐观锁（2026-09-25 评审）：并发发布会算出同一个 version，进而撞
+            // legal_document_versions 的唯一键并以未翻译异常 500 返回。这里按
+            // 读到的 current_version 做条件更新，未命中即判为并发冲突 → 409。
+            const updated = await tx
+                .update(legalDocuments)
+                .set({ current_version: version, updated_at: now })
+                .where(
+                    and(
+                        eq(legalDocuments.id, docId),
+                        eq(legalDocuments.current_version, doc.current_version),
+                    ),
+                )
+                .returning({ id: legalDocuments.id });
+            if (updated.length === 0) {
+                throw new ConflictError(
+                    "该文档已被其他管理员发布新版本，请刷新后重试",
+                );
+            }
+        }
+
+        await tx.insert(legalDocumentVersions).values({
+            id: crypto.randomUUID(),
+            document_id: docId,
+            version,
+            content: normalized,
+            content_hash: contentHash,
+            change_summary: changeSummary,
+            is_material: isMaterial,
+            published_at: now,
+            created_by: actor.userId,
+        });
+
+        return version;
     });
 
-    return version;
-  });
+    // 合规留痕（2026-09-24 评审）：政策发布是最需要审计链的操作之一，
+    // 与 announcement/carousel 等同类管理动作口径一致。
+    await recordAudit(
+        actor,
+        auditMeta,
+        "legal.publish_version",
+        {
+            action: "legal.publish_version",
+            kind,
+            version: newVersion,
+            is_material: isMaterial,
+        },
+        { type: "legal_document", id: kind },
+    );
 
-  // 合规留痕（2026-09-24 评审）：政策发布是最需要审计链的操作之一，
-  // 与 announcement/carousel 等同类管理动作口径一致。
-  await recordAudit(
-    actor,
-    auditMeta,
-    "legal.publish_version",
-    {
-      action: "legal.publish_version",
-      kind,
-      version: newVersion,
-      is_material: isMaterial,
-    },
-    { type: "legal_document", id: kind },
-  );
-
-  return newVersion;
+    return newVersion;
 }

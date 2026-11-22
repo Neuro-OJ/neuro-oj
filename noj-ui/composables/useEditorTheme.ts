@@ -10,28 +10,28 @@ export type EditorTheme = 'light' | 'dark';
 const STORAGE_KEY = 'noj:editor:theme';
 
 export function useEditorTheme() {
-  const theme = useState<EditorTheme>('editor:theme', () => {
-    if (import.meta.client) {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored === 'light' || stored === 'dark') return stored;
-    }
-    return 'dark'; // 默认 dark（沉浸式场景）
-  });
-
-  function set(t: EditorTheme) {
-    theme.value = t;
-  }
-
-  function toggle() {
-    theme.value = theme.value === 'dark' ? 'light' : 'dark';
-  }
-
-  // 写入 localStorage
-  if (import.meta.client) {
-    watch(theme, (t) => {
-      localStorage.setItem(STORAGE_KEY, t);
+    const theme = useState<EditorTheme>('editor:theme', () => {
+        if (import.meta.client) {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored === 'light' || stored === 'dark') return stored;
+        }
+        return 'dark'; // 默认 dark（沉浸式场景）
     });
-  }
 
-  return { theme, set, toggle };
+    function set(t: EditorTheme) {
+        theme.value = t;
+    }
+
+    function toggle() {
+        theme.value = theme.value === 'dark' ? 'light' : 'dark';
+    }
+
+    // 写入 localStorage
+    if (import.meta.client) {
+        watch(theme, (t) => {
+            localStorage.setItem(STORAGE_KEY, t);
+        });
+    }
+
+    return { theme, set, toggle };
 }

@@ -8,23 +8,23 @@ import { defineFeature } from "../../shared/feature.ts";
 import { tagsRouter } from "./routes.ts";
 
 export const feature = defineFeature({
-  name: "tags",
-  router: tagsRouter,
+    name: "tags",
+    router: tagsRouter,
 });
 
 export {
-  createTag,
-  type CreateTagInput,
-  deleteTag,
-  getTag,
-  getTagIdsByNames,
-  isValidTagKind,
-  listTags,
-  mergeTags,
-  TAG_KINDS,
-  type TagKind,
-  type TagResponse,
-  type TagWriteContext,
-  updateTag,
-  type UpdateTagInput,
+    createTag,
+    type CreateTagInput,
+    deleteTag,
+    getTag,
+    getTagIdsByNames,
+    isValidTagKind,
+    listTags,
+    mergeTags,
+    TAG_KINDS,
+    type TagKind,
+    type TagResponse,
+    type TagWriteContext,
+    updateTag,
+    type UpdateTagInput,
 } from "./service.ts";

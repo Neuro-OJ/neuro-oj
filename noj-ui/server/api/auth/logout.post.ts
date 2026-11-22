@@ -1,4 +1,4 @@
-import { authCookieNames } from '../../../utils/auth-cookies.ts';
+import { authCookieNames } from '../../../utils/auth/auth-cookies.ts';
 
 /**
  * 本地注销端点（issue #75 JWT 撤销机制）。
@@ -13,30 +13,30 @@ import { authCookieNames } from '../../../utils/auth-cookies.ts';
  * 受保护页面时被中间件挡」之间存在 token 仍有效的窗口期（攻击者可劫持）。
  */
 export default defineEventHandler(async (event) => {
-  const config = useRuntimeConfig();
-  const names = authCookieNames(config.public.authCookiePrefix);
-  const cookies = parseCookies(event);
-  const token = cookies[names.token];
+    const config = useRuntimeConfig();
+    const names = authCookieNames(config.public.authCookiePrefix);
+    const cookies = parseCookies(event);
+    const token = cookies[names.token];
 
-  // 1. 通知后端撤销该 token（fail-open：失败时也要清本地 Cookie）
-  if (token) {
-    try {
-      await $fetch(`${config.apiBase}/api/v1/auth/logout`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` },
-      });
-    } catch (err) {
-      console.warn('[logout] 后端撤销失败，继续清本地 Cookie:', err);
+    // 1. 通知后端撤销该 token（fail-open：失败时也要清本地 Cookie）
+    if (token) {
+        try {
+            await $fetch(`${config.apiBase}/api/v1/auth/logout`, {
+                method: 'POST',
+                headers: { authorization: `Bearer ${token}` },
+            });
+        } catch (err) {
+            console.warn('[logout] 后端撤销失败，继续清本地 Cookie:', err);
+        }
     }
-  }
 
-  // 2. 清除本地 Cookie
-  deleteCookie(event, names.token, {
-    path: '/',
-  });
-  deleteCookie(event, names.session, {
-    path: '/',
-  });
+    // 2. 清除本地 Cookie
+    deleteCookie(event, names.token, {
+        path: '/',
+    });
+    deleteCookie(event, names.session, {
+        path: '/',
+    });
 
-  return { success: true };
+    return { success: true };
 });

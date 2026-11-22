@@ -20,32 +20,32 @@ const REQUEST_LIMIT = { windowSec: 300, max: 10 };
 
 /** 提交删除/更正请求。 */
 router.post("/legal/data-requests", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  const actor = requireUserActor(c.get("actor"));
-  await enforceRateLimit(`data-request:user:${userId}`, REQUEST_LIMIT);
+    const userId = c.get("userId") as string;
+    const actor = requireUserActor(c.get("actor"));
+    await enforceRateLimit(`data-request:user:${userId}`, REQUEST_LIMIT);
 
-  const body = await parseJsonBody<{
-    kind?: string;
-    target_type?: string;
-    target_id?: string | null;
-    detail?: string;
-  }>(c);
+    const body = await parseJsonBody<{
+        kind?: string;
+        target_type?: string;
+        target_id?: string | null;
+        detail?: string;
+    }>(c);
 
-  const id = await createDataRequest(
-    actor,
-    body.kind ?? "",
-    body.target_type ?? "",
-    body.target_id ?? null,
-    body.detail ?? "",
-  );
-  return c.json({ data: { id } }, 201);
+    const id = await createDataRequest(
+        actor,
+        body.kind ?? "",
+        body.target_type ?? "",
+        body.target_id ?? null,
+        body.detail ?? "",
+    );
+    return c.json({ data: { id } }, 201);
 });
 
 /** 查看自己的请求列表。 */
 router.get("/legal/data-requests", authMiddleware, async (c) => {
-  const userId = c.get("userId") as string;
-  const rows = await listUserDataRequests(userId);
-  return c.json({ data: rows });
+    const userId = c.get("userId") as string;
+    const rows = await listUserDataRequests(userId);
+    return c.json({ data: rows });
 });
 
 export default router;

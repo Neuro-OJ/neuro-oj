@@ -19,14 +19,14 @@ import { validateProblemRuntimeConfig } from "../services/problems/problems-type
 import type { LlmConfig, SubmissionMode } from "./problems.ts";
 import { isValidLlmConfig, isValidSubmissionMode } from "./problems.ts";
 import type {
-  ObjectiveAnswerValue,
-  ObjectiveOption,
-  QuestionType,
+    ObjectiveAnswerValue,
+    ObjectiveOption,
+    QuestionType,
 } from "./objective.ts";
 import {
-  JUDGE_OPTIONS,
-  validateAnswerForType,
-  validateOptions,
+    JUDGE_OPTIONS,
+    validateAnswerForType,
+    validateOptions,
 } from "./objective.ts";
 
 /** 当前内容 schema 版本；写入 `problem_versions.schema_version`。 */
@@ -42,64 +42,64 @@ export type ProblemContentKind = "objective" | "oi" | "ai";
  * 重判时按 key 匹配旧答案。
  */
 export interface ObjectiveQuestionSnapshot {
-  key: string;
-  sort_order: number;
-  type: QuestionType;
-  prompt: string;
-  options: ObjectiveOption[];
-  answer: ObjectiveAnswerValue[];
-  explanation: string;
+    key: string;
+    sort_order: number;
+    type: QuestionType;
+    prompt: string;
+    options: ObjectiveOption[];
+    answer: ObjectiveAnswerValue[];
+    explanation: string;
 }
 
 /** 三类内容共有的题面部分。 */
 export interface ProblemContentBase {
-  title: string;
-  description: string;
-  samples: ProblemSample[];
+    title: string;
+    description: string;
+    samples: ProblemSample[];
 }
 
 /** 客观题内容：整卷一次性发布，小题答案随版本固定。 */
 export interface ObjectiveProblemContent extends ProblemContentBase {
-  kind: "objective";
-  questions: ObjectiveQuestionSnapshot[];
+    kind: "objective";
+    questions: ObjectiveQuestionSnapshot[];
 }
 
 /** OI 内容：测试点、子任务、checker、语言列表随版本固定。 */
 export interface OiProblemContent extends ProblemContentBase {
-  kind: "oi";
-  runtime_config: OiRuntimeConfig;
+    kind: "oi";
+    runtime_config: OiRuntimeConfig;
 }
 
 /** AI 内容：dual 容器配置、模板、产物上限与 LLM 能力声明。 */
 export interface AiProblemContent extends ProblemContentBase {
-  kind: "ai";
-  submission_mode: SubmissionMode;
-  runtime_config: RuntimeConfig;
-  template_content: string;
-  artifact_max_size_mb: number | null;
-  llm_config: LlmConfig | null;
+    kind: "ai";
+    submission_mode: SubmissionMode;
+    runtime_config: RuntimeConfig;
+    template_content: string;
+    artifact_max_size_mb: number | null;
+    llm_config: LlmConfig | null;
 }
 
 /** 一份完整、已发布的作答与评测内容。 */
 export type ProblemContentV1 =
-  | ObjectiveProblemContent
-  | OiProblemContent
-  | AiProblemContent;
+    | ObjectiveProblemContent
+    | OiProblemContent
+    | AiProblemContent;
 
 /** 草稿内容：允许暂时缺少完整配置，但 `kind` 与题面骨架必须始终存在。 */
 export type ProblemDraftContent = {
-  kind: ProblemContentKind;
-  title: string;
-  description: string;
-  samples: ProblemSample[];
+    kind: ProblemContentKind;
+    title: string;
+    description: string;
+    samples: ProblemSample[];
 } & Record<string, unknown>;
 
 /** 参与内容哈希的文件引用（路径排序后入哈希）。 */
 export interface ProblemContentFileRef {
-  role: "support_package" | "oi_file";
-  path: string;
-  /** 未知哈希的存量对象为 `null`，此时不参与内容相等性判定之外的语义。 */
-  sha256: string | null;
+    role: "support_package" | "oi_file";
+    path: string;
+    /** 未知哈希的存量对象为 `null`，此时不参与内容相等性判定之外的语义。 */
+    sha256: string | null;
 }
 
 /**
@@ -107,11 +107,11 @@ export interface ProblemContentFileRef {
  * U/P 只表示题库归属，不用于表示 AI/OI 题型（Handbook §1.4）。
  */
 export function problemContentKindOf(problem: {
-  is_objective: boolean;
-  judge_type: string;
+    is_objective: boolean;
+    judge_type: string;
 }): ProblemContentKind {
-  if (problem.is_objective) return "objective";
-  return problem.judge_type === "oi" ? "oi" : "ai";
+    if (problem.is_objective) return "objective";
+    return problem.judge_type === "oi" ? "oi" : "ai";
 }
 
 /**
@@ -121,24 +121,28 @@ export function problemContentKindOf(problem: {
  * 否则"相同内容重复发布"会被误判为新版本。
  */
 export function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? "null";
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).filter((key) => record[key] !== undefined)
-    .sort();
-  return `{${
-    keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-      .join(",")
-  }}`;
+    if (value === null || typeof value !== "object") {
+        return JSON.stringify(value) ?? "null";
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+    }
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).filter((key) => record[key] !== undefined)
+        .sort();
+    return `{${
+        keys.map((key) =>
+            `${JSON.stringify(key)}:${canonicalJson(record[key])}`
+        )
+            .join(",")
+    }}`;
 }
 
 /** hex 编码。 */
 function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join(
+        "",
+    );
 }
 
 /**
@@ -148,44 +152,44 @@ function toHex(bytes: Uint8Array): string {
  * 重复发布可以返回 `unchanged: true` 而不制造空版本。
  */
 export async function computeProblemContentHash(
-  content: ProblemContentV1,
-  files: readonly ProblemContentFileRef[] = [],
+    content: ProblemContentV1,
+    files: readonly ProblemContentFileRef[] = [],
 ): Promise<string> {
-  const normalizedFiles = [...files]
-    .map((file) => ({
-      role: file.role,
-      path: file.path,
-      sha256: file.sha256 ?? "",
-    }))
-    .sort((a, b) =>
-      a.role === b.role
-        ? (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
-        : (a.role < b.role ? -1 : 1)
+    const normalizedFiles = [...files]
+        .map((file) => ({
+            role: file.role,
+            path: file.path,
+            sha256: file.sha256 ?? "",
+        }))
+        .sort((a, b) =>
+            a.role === b.role
+                ? (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
+                : (a.role < b.role ? -1 : 1)
+        );
+    const payload = canonicalJson({ content, files: normalizedFiles });
+    const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(payload),
     );
-  const payload = canonicalJson({ content, files: normalizedFiles });
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(payload),
-  );
-  return toHex(new Uint8Array(digest));
+    return toHex(new Uint8Array(digest));
 }
 
 /** 校验题面骨架（三类内容共用）。 */
 function validateBase(value: Record<string, unknown>): void {
-  if (typeof value.title !== "string" || value.title.trim().length === 0) {
-    throw new BadRequestError("题目内容缺少标题");
-  }
-  if (typeof value.description !== "string") {
-    throw new BadRequestError("题目内容缺少题面");
-  }
-  if (value.samples === undefined) return;
-  try {
-    validateProblemSamples(value.samples);
-  } catch (error) {
-    throw error instanceof BadRequestError
-      ? error
-      : new BadRequestError("样例格式不合法");
-  }
+    if (typeof value.title !== "string" || value.title.trim().length === 0) {
+        throw new BadRequestError("题目内容缺少标题");
+    }
+    if (typeof value.description !== "string") {
+        throw new BadRequestError("题目内容缺少题面");
+    }
+    if (value.samples === undefined) return;
+    try {
+        validateProblemSamples(value.samples);
+    } catch (error) {
+        throw error instanceof BadRequestError
+            ? error
+            : new BadRequestError("样例格式不合法");
+    }
 }
 
 /**
@@ -203,92 +207,96 @@ function validateBase(value: Record<string, unknown>): void {
  * 的小题，因此这里必须是唯一的强校验器。
  */
 export function validateObjectiveQuestionSnapshots(
-  value: unknown,
+    value: unknown,
 ): asserts value is ObjectiveQuestionSnapshot[] {
-  if (!Array.isArray(value)) {
-    throw new BadRequestError("客观题内容缺少小题数组");
-  }
-  if (value.length === 0) {
-    throw new BadRequestError("客观题发布前必须至少包含一道小题");
-  }
-  const keys = new Set<string>();
-  const sortOrders = new Set<number>();
-  for (const item of value) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) {
-      throw new BadRequestError("客观题小题格式不合法");
+    if (!Array.isArray(value)) {
+        throw new BadRequestError("客观题内容缺少小题数组");
     }
-    const question = item as Record<string, unknown>;
-    if (
-      typeof question.key !== "string" || question.key.length === 0 ||
-      question.key.length > 128
-    ) {
-      throw new BadRequestError("客观题小题必须携带稳定 key");
+    if (value.length === 0) {
+        throw new BadRequestError("客观题发布前必须至少包含一道小题");
     }
-    if (keys.has(question.key)) {
-      throw new BadRequestError(`客观题小题 key 重复：${question.key}`);
-    }
-    keys.add(question.key);
-
-    const type = question.type;
-    if (
-      typeof type !== "string" ||
-      !["single", "multiple", "judge"].includes(type)
-    ) {
-      throw new BadRequestError(`客观题小题题型不合法：${question.key}`);
-    }
-    if (typeof question.prompt !== "string" || question.prompt.length === 0) {
-      throw new BadRequestError(`客观题小题缺少题干：${question.key}`);
-    }
-
-    // 答案形式：题型专属规则（single 单答案 / judge 布尔 / 非空）
-    try {
-      validateAnswerForType(type, question.answer);
-    } catch (error) {
-      throw new BadRequestError(
-        `客观题小题 ${question.key} 答案不合法：${
-          error instanceof Error ? error.message : "未知错误"
-        }`,
-      );
-    }
-
-    // 选项：judge 固定对/错；single/multiple 必须给出合法选项且答案引用存在
-    let options: ObjectiveOption[];
-    if (type === "judge") {
-      options = JUDGE_OPTIONS.map((option) => ({ ...option }));
-    } else {
-      if (question.options === undefined) {
-        throw new BadRequestError(`客观题小题缺少选项：${question.key}`);
-      }
-      try {
-        validateOptions(question.options);
-      } catch (error) {
-        throw new BadRequestError(
-          `客观题小题 ${question.key} 选项不合法：${
-            error instanceof Error ? error.message : "未知错误"
-          }`,
-        );
-      }
-      options = question.options as ObjectiveOption[];
-      for (const answerKey of question.answer as string[]) {
-        if (!options.some((option) => option.key === answerKey)) {
-          throw new BadRequestError(
-            `客观题小题 ${question.key} 的答案选项不存在：${answerKey}`,
-          );
+    const keys = new Set<string>();
+    const sortOrders = new Set<number>();
+    for (const item of value) {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+            throw new BadRequestError("客观题小题格式不合法");
         }
-      }
-    }
+        const question = item as Record<string, unknown>;
+        if (
+            typeof question.key !== "string" || question.key.length === 0 ||
+            question.key.length > 128
+        ) {
+            throw new BadRequestError("客观题小题必须携带稳定 key");
+        }
+        if (keys.has(question.key)) {
+            throw new BadRequestError(`客观题小题 key 重复：${question.key}`);
+        }
+        keys.add(question.key);
 
-    const sortOrder = question.sort_order;
-    if (!Number.isInteger(sortOrder) || (sortOrder as number) < 0) {
-      throw new BadRequestError(
-        `客观题小题排序号必须是非负整数：${question.key}`,
-      );
+        const type = question.type;
+        if (
+            typeof type !== "string" ||
+            !["single", "multiple", "judge"].includes(type)
+        ) {
+            throw new BadRequestError(`客观题小题题型不合法：${question.key}`);
+        }
+        if (
+            typeof question.prompt !== "string" || question.prompt.length === 0
+        ) {
+            throw new BadRequestError(`客观题小题缺少题干：${question.key}`);
+        }
+
+        // 答案形式：题型专属规则（single 单答案 / judge 布尔 / 非空）
+        try {
+            validateAnswerForType(type, question.answer);
+        } catch (error) {
+            throw new BadRequestError(
+                `客观题小题 ${question.key} 答案不合法：${
+                    error instanceof Error ? error.message : "未知错误"
+                }`,
+            );
+        }
+
+        // 选项：judge 固定对/错；single/multiple 必须给出合法选项且答案引用存在
+        let options: ObjectiveOption[];
+        if (type === "judge") {
+            options = JUDGE_OPTIONS.map((option) => ({ ...option }));
+        } else {
+            if (question.options === undefined) {
+                throw new BadRequestError(
+                    `客观题小题缺少选项：${question.key}`,
+                );
+            }
+            try {
+                validateOptions(question.options);
+            } catch (error) {
+                throw new BadRequestError(
+                    `客观题小题 ${question.key} 选项不合法：${
+                        error instanceof Error ? error.message : "未知错误"
+                    }`,
+                );
+            }
+            options = question.options as ObjectiveOption[];
+            for (const answerKey of question.answer as string[]) {
+                if (!options.some((option) => option.key === answerKey)) {
+                    throw new BadRequestError(
+                        `客观题小题 ${question.key} 的答案选项不存在：${answerKey}`,
+                    );
+                }
+            }
+        }
+
+        const sortOrder = question.sort_order;
+        if (!Number.isInteger(sortOrder) || (sortOrder as number) < 0) {
+            throw new BadRequestError(
+                `客观题小题排序号必须是非负整数：${question.key}`,
+            );
+        }
+        if (sortOrders.has(sortOrder as number)) {
+            throw new BadRequestError(`客观题小题排序号重复：${sortOrder}`);
+        }
+        sortOrders.add(sortOrder as number);
     }
-    if (sortOrders.has(sortOrder as number)) {
-      throw new BadRequestError(`客观题小题排序号重复：${sortOrder}`);
-    }
-    sortOrders.add(sortOrder as number);
-  }
 }
 
 /**
@@ -298,80 +306,82 @@ export function validateObjectiveQuestionSnapshots(
  * 答案都在这里拒绝。
  */
 export function validateProblemContent(
-  kind: ProblemContentKind,
-  value: unknown,
+    kind: ProblemContentKind,
+    value: unknown,
 ): asserts value is ProblemContentV1 {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new BadRequestError("题目内容必须是对象");
-  }
-  const content = value as Record<string, unknown>;
-  if (content.kind !== kind) {
-    throw new BadRequestError(
-      `题目内容类别不可变：期望 ${kind}，实际 ${String(content.kind)}`,
-    );
-  }
-  validateBase(content);
-
-  if (kind === "objective") {
-    validateObjectiveQuestionSnapshots(content.questions);
-    return;
-  }
-
-  const runtimeConfig = content.runtime_config;
-  if (!runtimeConfig || typeof runtimeConfig !== "object") {
-    throw new BadRequestError("题目内容缺少运行配置");
-  }
-  if (kind === "oi") {
-    try {
-      validateOiRuntimeConfig(runtimeConfig);
-    } catch (error) {
-      throw error instanceof BadRequestError
-        ? error
-        : new BadRequestError("OI 运行配置不合法");
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new BadRequestError("题目内容必须是对象");
     }
-    return;
-  }
+    const content = value as Record<string, unknown>;
+    if (content.kind !== kind) {
+        throw new BadRequestError(
+            `题目内容类别不可变：期望 ${kind}，实际 ${String(content.kind)}`,
+        );
+    }
+    validateBase(content);
 
-  // AI：submission_mode 必填且合法，artifact 上限与 LLM 配置类型正确
-  if (
-    typeof content.submission_mode !== "string" ||
-    !isValidSubmissionMode(content.submission_mode)
-  ) {
-    throw new BadRequestError("AI 题目必须声明合法的提交模式");
-  }
-  const runtime = runtimeConfig as Record<string, unknown>;
-  // prediction 题只运行 Evaluator（无 Solution 容器），solution 可省略。
-  const requiresSolution = content.submission_mode !== "prediction";
-  if (!runtime.evaluator || (requiresSolution && !runtime.solution)) {
-    throw new BadRequestError(
-      requiresSolution
-        ? "AI 题目运行配置必须包含 evaluator 与 solution"
-        : "预测提交题运行配置必须包含 evaluator",
+    if (kind === "objective") {
+        validateObjectiveQuestionSnapshots(content.questions);
+        return;
+    }
+
+    const runtimeConfig = content.runtime_config;
+    if (!runtimeConfig || typeof runtimeConfig !== "object") {
+        throw new BadRequestError("题目内容缺少运行配置");
+    }
+    if (kind === "oi") {
+        try {
+            validateOiRuntimeConfig(runtimeConfig);
+        } catch (error) {
+            throw error instanceof BadRequestError
+                ? error
+                : new BadRequestError("OI 运行配置不合法");
+        }
+        return;
+    }
+
+    // AI：submission_mode 必填且合法，artifact 上限与 LLM 配置类型正确
+    if (
+        typeof content.submission_mode !== "string" ||
+        !isValidSubmissionMode(content.submission_mode)
+    ) {
+        throw new BadRequestError("AI 题目必须声明合法的提交模式");
+    }
+    const runtime = runtimeConfig as Record<string, unknown>;
+    // prediction 题只运行 Evaluator（无 Solution 容器），solution 可省略。
+    const requiresSolution = content.submission_mode !== "prediction";
+    if (!runtime.evaluator || (requiresSolution && !runtime.solution)) {
+        throw new BadRequestError(
+            requiresSolution
+                ? "AI 题目运行配置必须包含 evaluator 与 solution"
+                : "预测提交题运行配置必须包含 evaluator",
+        );
+    }
+    validateProblemRuntimeConfig(
+        runtimeConfig as RuntimeConfig,
+        content.submission_mode,
     );
-  }
-  validateProblemRuntimeConfig(
-    runtimeConfig as RuntimeConfig,
-    content.submission_mode,
-  );
-  // prediction 评测不注入 NOJ_LLM_*，题目级 LLM 配置不会生效，发布期即拒绝。
-  if (content.submission_mode === "prediction" && content.llm_config != null) {
-    throw new BadRequestError("预测提交题不支持 LLM 配置");
-  }
-  if (typeof content.template_content !== "string") {
-    throw new BadRequestError("AI 题目必须给出模板内容（可为空串）");
-  }
-  if (
-    content.artifact_max_size_mb !== null &&
-    content.artifact_max_size_mb !== undefined &&
-    (typeof content.artifact_max_size_mb !== "number" ||
-      !Number.isInteger(content.artifact_max_size_mb) ||
-      content.artifact_max_size_mb <= 0)
-  ) {
-    throw new BadRequestError("产物大小上限必须为正整数或 null");
-  }
-  if (content.llm_config != null && !isValidLlmConfig(content.llm_config)) {
-    throw new BadRequestError("LLM 配置不合法");
-  }
+    // prediction 评测不注入 NOJ_LLM_*，题目级 LLM 配置不会生效，发布期即拒绝。
+    if (
+        content.submission_mode === "prediction" && content.llm_config != null
+    ) {
+        throw new BadRequestError("预测提交题不支持 LLM 配置");
+    }
+    if (typeof content.template_content !== "string") {
+        throw new BadRequestError("AI 题目必须给出模板内容（可为空串）");
+    }
+    if (
+        content.artifact_max_size_mb !== null &&
+        content.artifact_max_size_mb !== undefined &&
+        (typeof content.artifact_max_size_mb !== "number" ||
+            !Number.isInteger(content.artifact_max_size_mb) ||
+            content.artifact_max_size_mb <= 0)
+    ) {
+        throw new BadRequestError("产物大小上限必须为正整数或 null");
+    }
+    if (content.llm_config != null && !isValidLlmConfig(content.llm_config)) {
+        throw new BadRequestError("LLM 配置不合法");
+    }
 }
 
 /**
@@ -381,20 +391,20 @@ export function validateProblemContent(
  * 客观题/编程题或 code/artifact 的转换必须新建题目。
  */
 export function assertContentKindTransition(
-  existingKind: ProblemContentKind,
-  existingSubmissionMode: SubmissionMode | null,
-  nextContent: ProblemContentV1,
+    existingKind: ProblemContentKind,
+    existingSubmissionMode: SubmissionMode | null,
+    nextContent: ProblemContentV1,
 ): void {
-  if (existingKind !== nextContent.kind) {
-    throw new BadRequestError(
-      `题目类别不可变（${existingKind} → ${nextContent.kind}）；如需转换请新建题目`,
-    );
-  }
-  if (existingKind !== "ai") return;
-  const nextMode = (nextContent as AiProblemContent).submission_mode;
-  if (existingSubmissionMode != null && existingSubmissionMode !== nextMode) {
-    throw new BadRequestError(
-      `提交模式不可变（${existingSubmissionMode} → ${nextMode}）；如需转换请新建题目`,
-    );
-  }
+    if (existingKind !== nextContent.kind) {
+        throw new BadRequestError(
+            `题目类别不可变（${existingKind} → ${nextContent.kind}）；如需转换请新建题目`,
+        );
+    }
+    if (existingKind !== "ai") return;
+    const nextMode = (nextContent as AiProblemContent).submission_mode;
+    if (existingSubmissionMode != null && existingSubmissionMode !== nextMode) {
+        throw new BadRequestError(
+            `提交模式不可变（${existingSubmissionMode} → ${nextMode}）；如需转换请新建题目`,
+        );
+    }
 }

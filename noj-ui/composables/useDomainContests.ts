@@ -1,135 +1,130 @@
 import type {
-  Clarification,
-  ClarificationReply,
-  Contest,
-  ContestPayload,
-  ContestProblem,
-  KaggleRankingRow,
-  Pagination,
-} from '~/utils/contest-types';
+    Clarification,
+    ClarificationReply,
+    Contest,
+    ContestPayload,
+    ContestProblem,
+    KaggleRankingRow,
+    Pagination,
+} from '~/utils/domain/contest/contest-types';
 export interface DomainContest extends Contest {
-  domain_id: string;
-  revision: number;
-  can_manage?: boolean;
-  classrooms?: { id: string; name: string }[];
+    domain_id: string;
+    revision: number;
+    can_manage?: boolean;
+    classrooms?: { id: string; name: string }[];
 }
 /** 榜单行（页面按此渲染表格；与 SSE 事件载荷同构）。 */
 export type DomainContestRankingRow = KaggleRankingRow;
 export interface DomainContestRanking {
-  classrooms?: { id: string; name: string }[];
-  classroom_rows?: KaggleRankingRow[];
-  other_rows?: KaggleRankingRow[];
-  data: KaggleRankingRow[];
-  result_type?: 'official';
-  view?: 'live' | 'frozen' | 'official';
-  snapshot?: { version: number; note: string; created_at: string };
-  frozen?: boolean;
+    classrooms?: { id: string; name: string }[];
+    classroom_rows?: KaggleRankingRow[];
+    other_rows?: KaggleRankingRow[];
+    data: KaggleRankingRow[];
+    result_type?: 'official';
+    view?: 'live' | 'frozen' | 'official';
+    snapshot?: { version: number; note: string; created_at: string };
+    frozen?: boolean;
 }
 /** 域比赛的授权和赛制裁剪由后端统一决定。 */
 export function useDomainContests() {
-  const { api } = useApi();
-  const path = (slug: string, id?: string) =>
-    `/api/v1/domains/${encodeURIComponent(slug)}/contests${id ? `/${encodeURIComponent(id)}` : ''}`;
-  return {
-    list: (
-      slug: string,
-      page: number,
-      filters: { classroom_id?: string; my_classrooms?: boolean } = {},
-    ) =>
-      api.get<{ data: DomainContest[]; pagination: Pagination }>(path(slug), {
-        query: { page, per_page: 20, ...filters },
-        silent: true,
-      }),
-    detail: (slug: string, id: string) => api.get<{ data: DomainContest }>(path(slug, id), { silent: true }),
-    create: (slug: string, body: ContestPayload) => api.post<{ data: DomainContest }>(path(slug), body),
-    update: (
-      slug: string,
-      id: string,
-      body: Partial<ContestPayload>,
-      revision: number,
-    ) =>
-      api.patch<{ data: DomainContest }>(path(slug, id), body, {
-        headers: { 'If-Match': String(revision) },
-      }),
-    register: (slug: string, id: string) => api.post(`${path(slug, id)}/register`, {}),
-    problems: (slug: string, id: string) =>
-      api.get<{ data: ContestProblem[] }>(`${path(slug, id)}/problems`, {
-        silent: true,
-      }),
-    /**
-     * 竞赛答疑（域入口）。
-     *
-     * 只走域路径：旧无域 `/api/v1/contests/:id/clarifications` 仍保留只读兼容，
-     * 但域页面的可见性、保密与主持人判定都按域规则执行，混用会拿到另一套授权结果。
-     */
-    listClarifications: (
-      slug: string,
-      id: string,
-      query?: { page?: number; per_page?: number },
-    ) =>
-      api.get<{ data: Clarification[]; pagination: Pagination }>(
-        `${path(slug, id)}/clarifications`,
-        { query, silent: true },
-      ),
-    askClarification: (
-      slug: string,
-      id: string,
-      body: { content: string; problem_id?: string },
-    ) => api.post<{ data: Clarification }>(`${path(slug, id)}/clarifications`, body),
-    replyClarification: (
-      slug: string,
-      id: string,
-      clarId: string,
-      body: { content: string; is_public: boolean },
-    ) =>
-      api.post<{ data: ClarificationReply }>(
-        `${path(slug, id)}/clarifications/${encodeURIComponent(clarId)}/reply`,
-        body,
-      ),
-    ranking: (
-      slug: string,
-      id: string,
-      official = false,
-      classroomId?: string,
-    ) =>
-      api.get<DomainContestRanking>(
-        `${path(slug, id)}/${official ? 'final-ranking' : 'ranking'}`,
-        {
-          query: { classroom_id: classroomId },
-          silent: true,
-        },
-      ),
-    settlement: (slug: string, id: string) =>
-      api.get<
-        {
-          data: {
-            ready: boolean;
-            pending_count: number;
-            failed_count: number;
-            [key: string]: unknown;
-          };
-        }
-      >(
-        `${path(slug, id)}/settlement`,
-        { silent: true },
-      ),
-    snapshots: (slug: string, id: string) =>
-      api.get<
-        {
-          data: Array<
-            { id: string; version: number; note: string; created_at: string }
-          >;
-        }
-      >(
-        `${path(slug, id)}/snapshots`,
-        { silent: true },
-      ),
-    /** 正式成绩 CSV（逐人逐题明细，分数为展示量纲）。 */
-    snapshotCsv: (slug: string, id: string, version: number) =>
-      api.get<string>(`${path(slug, id)}/snapshots/${version}.csv`, {
-        responseType: 'text',
-      }),
-    publish: (slug: string, id: string, note: string, allow_failed: boolean) =>
-      api.post(`${path(slug, id)}/publish-ranking`, { note, allow_failed }),
-  };
+    const { api } = useApi();
+    const path = (slug: string, id?: string) =>
+        `/api/v1/domains/${encodeURIComponent(slug)}/contests${id ? `/${encodeURIComponent(id)}` : ''}`;
+    return {
+        list: (
+            slug: string,
+            page: number,
+            filters: { classroom_id?: string; my_classrooms?: boolean } = {},
+        ) => api.get<{ data: DomainContest[]; pagination: Pagination }>(path(slug), {
+            query: { page, per_page: 20, ...filters },
+            silent: true,
+        }),
+        detail: (slug: string, id: string) => api.get<{ data: DomainContest }>(path(slug, id), { silent: true }),
+        create: (slug: string, body: ContestPayload) => api.post<{ data: DomainContest }>(path(slug), body),
+        update: (
+            slug: string,
+            id: string,
+            body: Partial<ContestPayload>,
+            revision: number,
+        ) => api.patch<{ data: DomainContest }>(path(slug, id), body, {
+            headers: { 'If-Match': String(revision) },
+        }),
+        register: (slug: string, id: string) => api.post(`${path(slug, id)}/register`, {}),
+        problems: (slug: string, id: string) =>
+            api.get<{ data: ContestProblem[] }>(`${path(slug, id)}/problems`, {
+                silent: true,
+            }),
+        /**
+         * 竞赛答疑（域入口）。
+         *
+         * 只走域路径：旧无域 `/api/v1/contests/:id/clarifications` 仍保留只读兼容，
+         * 但域页面的可见性、保密与主持人判定都按域规则执行，混用会拿到另一套授权结果。
+         */
+        listClarifications: (
+            slug: string,
+            id: string,
+            query?: { page?: number; per_page?: number },
+        ) => api.get<{ data: Clarification[]; pagination: Pagination }>(
+            `${path(slug, id)}/clarifications`,
+            { query, silent: true },
+        ),
+        askClarification: (
+            slug: string,
+            id: string,
+            body: { content: string; problem_id?: string },
+        ) => api.post<{ data: Clarification }>(`${path(slug, id)}/clarifications`, body),
+        replyClarification: (
+            slug: string,
+            id: string,
+            clarId: string,
+            body: { content: string; is_public: boolean },
+        ) => api.post<{ data: ClarificationReply }>(
+            `${path(slug, id)}/clarifications/${encodeURIComponent(clarId)}/reply`,
+            body,
+        ),
+        ranking: (
+            slug: string,
+            id: string,
+            official = false,
+            classroomId?: string,
+        ) => api.get<DomainContestRanking>(
+            `${path(slug, id)}/${official ? 'final-ranking' : 'ranking'}`,
+            {
+                query: { classroom_id: classroomId },
+                silent: true,
+            },
+        ),
+        settlement: (slug: string, id: string) =>
+            api.get<
+                {
+                    data: {
+                        ready: boolean;
+                        pending_count: number;
+                        failed_count: number;
+                        [key: string]: unknown;
+                    };
+                }
+            >(
+                `${path(slug, id)}/settlement`,
+                { silent: true },
+            ),
+        snapshots: (slug: string, id: string) =>
+            api.get<
+                {
+                    data: Array<
+                        { id: string; version: number; note: string; created_at: string }
+                    >;
+                }
+            >(
+                `${path(slug, id)}/snapshots`,
+                { silent: true },
+            ),
+        /** 正式成绩 CSV（逐人逐题明细，分数为展示量纲）。 */
+        snapshotCsv: (slug: string, id: string, version: number) =>
+            api.get<string>(`${path(slug, id)}/snapshots/${version}.csv`, {
+                responseType: 'text',
+            }),
+        publish: (slug: string, id: string, note: string, allow_failed: boolean) =>
+            api.post(`${path(slug, id)}/publish-ranking`, { note, allow_failed }),
+    };
 }

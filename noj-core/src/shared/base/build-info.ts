@@ -21,12 +21,12 @@ export const UNKNOWN_VERSION = "unknown";
 
 /** 构建身份三元组。 */
 export interface BuildInfo {
-  /** 版本号（如 `0.10.5`）；无法确定时为 {@link UNKNOWN_VERSION}。 */
-  version: string;
-  /** 短 commit hash（可带 `-dirty` 后缀）；无法确定时为 null。 */
-  commit: string | null;
-  /** 构建时刻（ISO 8601 UTC）；开发环境为进程启动时刻；无法确定时为 null。 */
-  builtAt: string | null;
+    /** 版本号（如 `0.10.5`）；无法确定时为 {@link UNKNOWN_VERSION}。 */
+    version: string;
+    /** 短 commit hash（可带 `-dirty` 后缀）；无法确定时为 null。 */
+    commit: string | null;
+    /** 构建时刻（ISO 8601 UTC）；开发环境为进程启动时刻；无法确定时为 null。 */
+    builtAt: string | null;
 }
 
 /** 进程启动时刻：开发环境下作为 `builtAt` 的替代值。 */
@@ -38,17 +38,17 @@ const PROCESS_STARTED_AT = new Date().toISOString();
  * 仅在未注入构建期 ENV 时调用（即开发环境），生产镜像内不执行外部命令。
  */
 function tryGit(args: string[]): string | null {
-  try {
-    const result = new Deno.Command("git", {
-      args,
-      stdout: "piped",
-      stderr: "null",
-    }).outputSync();
-    if (!result.success) return null;
-    return new TextDecoder().decode(result.stdout).trim();
-  } catch {
-    return null;
-  }
+    try {
+        const result = new Deno.Command("git", {
+            args,
+            stdout: "piped",
+            stderr: "null",
+        }).outputSync();
+        if (!result.success) return null;
+        return new TextDecoder().decode(result.stdout).trim();
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -58,42 +58,42 @@ function tryGit(args: string[]): string | null {
  * 读取失败即返回 null——生产环境的值来自 ENV，不依赖这条路径。
  */
 function tryManifestVersion(): string | null {
-  try {
-    const raw = Deno.readTextFileSync(
-      new URL("../../../deno.json", import.meta.url),
-    );
-    const parsed = JSON.parse(raw) as { version?: unknown };
-    return typeof parsed.version === "string" && parsed.version.trim()
-      ? parsed.version
-      : null;
-  } catch {
-    return null;
-  }
+    try {
+        const raw = Deno.readTextFileSync(
+            new URL("../../../deno.json", import.meta.url),
+        );
+        const parsed = JSON.parse(raw) as { version?: unknown };
+        return typeof parsed.version === "string" && parsed.version.trim()
+            ? parsed.version
+            : null;
+    } catch {
+        return null;
+    }
 }
 
 /** 解析构建身份（ENV → 开发回退 → unknown）。 */
 function resolveBuildInfo(): BuildInfo {
-  const envVersion = Deno.env.get("NOJ_BUILD_VERSION")?.trim();
-  const envCommit = Deno.env.get("NOJ_BUILD_COMMIT")?.trim();
-  const envBuiltAt = Deno.env.get("NOJ_BUILD_TIME")?.trim();
+    const envVersion = Deno.env.get("NOJ_BUILD_VERSION")?.trim();
+    const envCommit = Deno.env.get("NOJ_BUILD_COMMIT")?.trim();
+    const envBuiltAt = Deno.env.get("NOJ_BUILD_TIME")?.trim();
 
-  const version = envVersion || tryManifestVersion() || UNKNOWN_VERSION;
+    const version = envVersion || tryManifestVersion() || UNKNOWN_VERSION;
 
-  // commit：注入值优先；否则开发环境用本地 git（工作区脏则标注）
-  let commit = envCommit || null;
-  if (!commit) {
-    const head = tryGit(["rev-parse", "--short", "HEAD"]);
-    if (head) {
-      const dirty = (tryGit(["status", "--porcelain"]) ?? "").length > 0;
-      commit = dirty ? `${head}-dirty` : head;
+    // commit：注入值优先；否则开发环境用本地 git（工作区脏则标注）
+    let commit = envCommit || null;
+    if (!commit) {
+        const head = tryGit(["rev-parse", "--short", "HEAD"]);
+        if (head) {
+            const dirty = (tryGit(["status", "--porcelain"]) ?? "").length > 0;
+            commit = dirty ? `${head}-dirty` : head;
+        }
     }
-  }
 
-  return Object.freeze({
-    version,
-    commit,
-    builtAt: envBuiltAt || PROCESS_STARTED_AT,
-  });
+    return Object.freeze({
+        version,
+        commit,
+        builtAt: envBuiltAt || PROCESS_STARTED_AT,
+    });
 }
 
 /** 本进程的构建身份（模块加载时求值一次）。 */
@@ -106,5 +106,5 @@ const BUILD_INFO: BuildInfo = resolveBuildInfo();
  * 保证任何对外暴露的版本号都来自同一处，不再出现"探针说 A、页脚说 B"。
  */
 export function getBuildInfo(): BuildInfo {
-  return BUILD_INFO;
+    return BUILD_INFO;
 }

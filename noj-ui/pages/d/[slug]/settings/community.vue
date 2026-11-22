@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import CommunityManage from '~/components/feature/community/CommunityManage.vue';
+import CommunityManage from '~/components/community/CommunityManage.vue';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { key } = useCommunityScope();
 useSeoMeta({ title: '社区设置 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
-    <CommunityManage :key="key" />
-  </DomainSettingsShell>
+    <WorkspaceSettingsShell>
+        <CommunityManage :key="key" />
+    </WorkspaceSettingsShell>
 </template>

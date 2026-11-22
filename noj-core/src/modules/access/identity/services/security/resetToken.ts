@@ -18,9 +18,9 @@ import { encodeBase64Url } from "jsr:@std/encoding@^1";
  * @returns base64url 编码的明文 token
  */
 export function generateResetToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return encodeBase64Url(bytes);
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return encodeBase64Url(bytes);
 }
 
 /**
@@ -33,9 +33,9 @@ export function generateResetToken(): string {
  * @returns SHA-256 hex 哈希
  */
 export async function hashResetToken(token: string): Promise<string> {
-  const data = new TextEncoder().encode(token);
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+    const data = new TextEncoder().encode(token);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
 }

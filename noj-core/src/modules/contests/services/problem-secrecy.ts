@@ -13,12 +13,12 @@ import { unendedWindowCondition } from "./contest-window.ts";
 
 /** 触发保密的一场比赛（足够渲染"已被关联到竞赛 …"提示）。 */
 export type PublicContestSecrecyRef = {
-  /** 竞赛 UUID */
-  contestId: string;
-  /** 竞赛公开 ID（`ct-…`），用于构造竞赛首页链接 */
-  publicId: string;
-  /** 竞赛标题 */
-  title: string;
+    /** 竞赛 UUID */
+    contestId: string;
+    /** 竞赛公开 ID（`ct-…`），用于构造竞赛首页链接 */
+    publicId: string;
+    /** 竞赛标题 */
+    title: string;
 };
 
 /**
@@ -29,33 +29,33 @@ export type PublicContestSecrecyRef = {
  *          该题目当前不受保密比赛保密约束。
  */
 export async function loadPublicContestSecrecy(
-  problemId: string,
-  executor: Executor = getDb(),
-  domainId?: string,
+    problemId: string,
+    executor: Executor = getDb(),
+    domainId?: string,
 ): Promise<PublicContestSecrecyRef[]> {
-  const rows = await executor
-    .select({
-      contestId: contests.id,
-      publicId: contests.public_id,
-      title: contests.title,
-    })
-    .from(contestProblems)
-    .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
-    .where(and(
-      eq(contestProblems.problem_id, problemId),
-      domainId
-        ? or(
-          eq(contests.domain_id, domainId),
-          domainId === DEFAULT_DOMAIN_ID
-            ? isNull(contests.domain_id)
-            : undefined,
-        )
-        : undefined,
-      eq(contests.secrecy_enabled, true),
-      unendedWindowCondition(contests.end_time),
-    ))
-    .orderBy(asc(contests.end_time), asc(contests.id));
-  return rows;
+    const rows = await executor
+        .select({
+            contestId: contests.id,
+            publicId: contests.public_id,
+            title: contests.title,
+        })
+        .from(contestProblems)
+        .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
+        .where(and(
+            eq(contestProblems.problem_id, problemId),
+            domainId
+                ? or(
+                    eq(contests.domain_id, domainId),
+                    domainId === DEFAULT_DOMAIN_ID
+                        ? isNull(contests.domain_id)
+                        : undefined,
+                )
+                : undefined,
+            eq(contests.secrecy_enabled, true),
+            unendedWindowCondition(contests.end_time),
+        ))
+        .orderBy(asc(contests.end_time), asc(contests.id));
+    return rows;
 }
 
 /**
@@ -80,18 +80,18 @@ export async function loadPublicContestSecrecy(
  * @returns 该题目受未结束保密比赛保密时为真的 `EXISTS` 子查询。
  */
 export function unendedPublicContestForProblem(
-  problemIdExpr: AnyColumn | SQL,
-  domainIdExpr?: AnyColumn | SQL,
+    problemIdExpr: AnyColumn | SQL,
+    domainIdExpr?: AnyColumn | SQL,
 ): SQL {
-  return sql`EXISTS (
+    return sql`EXISTS (
     SELECT 1 FROM contest_problems cp
     JOIN contests c ON c.id = cp.contest_id
     WHERE cp.problem_id = ${problemIdExpr}
       ${
-    domainIdExpr
-      ? sql`AND COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID}) = ${domainIdExpr}`
-      : sql``
-  }
+        domainIdExpr
+            ? sql`AND COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID}) = ${domainIdExpr}`
+            : sql``
+    }
       AND c.secrecy_enabled = true
       AND ${unendedWindowCondition(sql`c.end_time`)}
   )`;
@@ -108,29 +108,29 @@ export function unendedPublicContestForProblem(
  * @returns 受未结束保密比赛保密时为 true。
  */
 export async function isProblemInUnendedPublicContest(
-  problemId: string,
-  domainId?: string,
-  executor: Executor = getDb(),
+    problemId: string,
+    domainId?: string,
+    executor: Executor = getDb(),
 ): Promise<boolean> {
-  const rows = await executor
-    .select({ contestId: contests.id })
-    .from(contestProblems)
-    .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
-    .where(and(
-      eq(contestProblems.problem_id, problemId),
-      domainId
-        ? or(
-          eq(contests.domain_id, domainId),
-          domainId === DEFAULT_DOMAIN_ID
-            ? isNull(contests.domain_id)
-            : undefined,
-        )
-        : undefined,
-      eq(contests.secrecy_enabled, true),
-      unendedWindowCondition(contests.end_time),
-    ))
-    .limit(1);
-  return rows.length > 0;
+    const rows = await executor
+        .select({ contestId: contests.id })
+        .from(contestProblems)
+        .innerJoin(contests, eq(contestProblems.contest_id, contests.id))
+        .where(and(
+            eq(contestProblems.problem_id, problemId),
+            domainId
+                ? or(
+                    eq(contests.domain_id, domainId),
+                    domainId === DEFAULT_DOMAIN_ID
+                        ? isNull(contests.domain_id)
+                        : undefined,
+                )
+                : undefined,
+            eq(contests.secrecy_enabled, true),
+            unendedWindowCondition(contests.end_time),
+        ))
+        .limit(1);
+    return rows.length > 0;
 }
 
 /**
@@ -141,26 +141,26 @@ export async function isProblemInUnendedPublicContest(
  * @returns 存在未结束保密比赛时为 true。
  */
 export async function hasUnendedPublicContest(
-  domainId?: string,
-  executor: Executor = getDb(),
+    domainId?: string,
+    executor: Executor = getDb(),
 ): Promise<boolean> {
-  const rows = await executor
-    .select({ contestId: contests.id })
-    .from(contests)
-    .where(and(
-      domainId
-        ? or(
-          eq(contests.domain_id, domainId),
-          domainId === DEFAULT_DOMAIN_ID
-            ? isNull(contests.domain_id)
-            : undefined,
-        )
-        : undefined,
-      eq(contests.secrecy_enabled, true),
-      unendedWindowCondition(contests.end_time),
-    ))
-    .limit(1);
-  return rows.length > 0;
+    const rows = await executor
+        .select({ contestId: contests.id })
+        .from(contests)
+        .where(and(
+            domainId
+                ? or(
+                    eq(contests.domain_id, domainId),
+                    domainId === DEFAULT_DOMAIN_ID
+                        ? isNull(contests.domain_id)
+                        : undefined,
+                )
+                : undefined,
+            eq(contests.secrecy_enabled, true),
+            unendedWindowCondition(contests.end_time),
+        ))
+        .limit(1);
+    return rows.length > 0;
 }
 
 /**
@@ -174,30 +174,30 @@ export async function hasUnendedPublicContest(
  * @returns 尚未结束的竞赛 id 集合。
  */
 export async function filterUnendedContestIds(
-  contestIds: string[],
+    contestIds: string[],
 ): Promise<Set<string>> {
-  const ids = [...new Set(contestIds.filter((id) => id.length > 0))];
-  if (ids.length === 0) return new Set();
-  const rows = await getDb()
-    .select({
-      id: contests.id,
-      // 用同一 SQL 条件**作为投影列**而不是 WHERE 过滤：这样既能知道"哪些未结束"，
-      // 又能区分"哪些竞赛压根不存在"（后者必须 fail-closed 视为未结束）。
-      // 放进 WHERE 会让"已结束"与"不存在"在结果里都消失，无法区分。
-      unended: sql<boolean>`${unendedWindowCondition(contests.end_time)}`
-        .as("unended"),
-    })
-    .from(contests)
-    .where(inArray(contests.id, ids));
-  const unended = new Set<string>();
-  const found = new Set<string>();
-  for (const row of rows) {
-    found.add(row.id);
-    if (row.unended) unended.add(row.id);
-  }
-  // 查不到的竞赛 id：无法证明已结束 → fail-closed 视为未结束（继续隐藏）
-  for (const id of ids) {
-    if (!found.has(id)) unended.add(id);
-  }
-  return unended;
+    const ids = [...new Set(contestIds.filter((id) => id.length > 0))];
+    if (ids.length === 0) return new Set();
+    const rows = await getDb()
+        .select({
+            id: contests.id,
+            // 用同一 SQL 条件**作为投影列**而不是 WHERE 过滤：这样既能知道"哪些未结束"，
+            // 又能区分"哪些竞赛压根不存在"（后者必须 fail-closed 视为未结束）。
+            // 放进 WHERE 会让"已结束"与"不存在"在结果里都消失，无法区分。
+            unended: sql<boolean>`${unendedWindowCondition(contests.end_time)}`
+                .as("unended"),
+        })
+        .from(contests)
+        .where(inArray(contests.id, ids));
+    const unended = new Set<string>();
+    const found = new Set<string>();
+    for (const row of rows) {
+        found.add(row.id);
+        if (row.unended) unended.add(row.id);
+    }
+    // 查不到的竞赛 id：无法证明已结束 → fail-closed 视为未结束（继续隐藏）
+    for (const id of ids) {
+        if (!found.has(id)) unended.add(id);
+    }
+    return unended;
 }

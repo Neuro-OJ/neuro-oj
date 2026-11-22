@@ -2,7 +2,7 @@
 export { createAccountNotificationTx } from "../account-notifications.ts";
 
 export {
-  getAccountNotification,
-  listAccountNotifications,
-  readAccountNotifications,
+    getAccountNotification,
+    listAccountNotifications,
+    readAccountNotifications,
 } from "../account-notifications.ts";

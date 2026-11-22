@@ -7,16 +7,16 @@ import { getEmailConfigStatus } from "../../../../platform/contracts/cross-modul
 import { logAuthEvent } from "../../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { recordConsentsForRegistration } from "../../../../../features/legal/index.ts";
 import {
-  BadRequestError,
-  ConflictError,
-  ForbiddenError,
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
 } from "../../../../../shared/base/errors.ts";
 import type { RegisterInput, UserResponse } from "../../types/auth.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../../shared/security/admin-initialization.ts";
 import {
-  assertInstanceRegistration,
-  enrollRegisteredAccountTx,
-  type InvitationRegistrationBoundary,
+    assertInstanceRegistration,
+    enrollRegisteredAccountTx,
+    type InvitationRegistrationBoundary,
 } from "../../../registration.ts";
 import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 
@@ -43,31 +43,31 @@ export const MIN_PASSWORD_LENGTH = 8;
  * @throws {BadRequestError} 不符合任一规则
  */
 export function validatePasswordStrength(
-  password: string,
-  username: string,
-  email: string,
+    password: string,
+    username: string,
+    email: string,
 ): void {
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    throw new BadRequestError(
-      `密码长度不足（当前 ${password.length} 字符，至少需要 ${MIN_PASSWORD_LENGTH} 字符）`,
-    );
-  }
-  if (!/[a-z]/.test(password)) {
-    throw new BadRequestError("密码必须包含至少一个小写字母");
-  }
-  if (!/[A-Z]/.test(password)) {
-    throw new BadRequestError("密码必须包含至少一个大写字母");
-  }
-  if (!/[0-9]/.test(password)) {
-    throw new BadRequestError("密码必须包含至少一个数字");
-  }
-  if (password.toLowerCase() === username.toLowerCase()) {
-    throw new BadRequestError("密码不能与用户名相同");
-  }
-  const emailPrefix = email.split("@")[0]?.toLowerCase() ?? "";
-  if (emailPrefix && password.toLowerCase() === emailPrefix) {
-    throw new BadRequestError("密码不能与邮箱前缀相同");
-  }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+        throw new BadRequestError(
+            `密码长度不足（当前 ${password.length} 字符，至少需要 ${MIN_PASSWORD_LENGTH} 字符）`,
+        );
+    }
+    if (!/[a-z]/.test(password)) {
+        throw new BadRequestError("密码必须包含至少一个小写字母");
+    }
+    if (!/[A-Z]/.test(password)) {
+        throw new BadRequestError("密码必须包含至少一个大写字母");
+    }
+    if (!/[0-9]/.test(password)) {
+        throw new BadRequestError("密码必须包含至少一个数字");
+    }
+    if (password.toLowerCase() === username.toLowerCase()) {
+        throw new BadRequestError("密码不能与用户名相同");
+    }
+    const emailPrefix = email.split("@")[0]?.toLowerCase() ?? "";
+    if (emailPrefix && password.toLowerCase() === emailPrefix) {
+        throw new BadRequestError("密码不能与邮箱前缀相同");
+    }
 }
 
 /**
@@ -75,27 +75,27 @@ export function validatePasswordStrength(
  * 排除 password_hash 等敏感字段。
  */
 export function toUserResponse(
-  row: typeof users.$inferSelect,
-  options?: {
-    activeBan?: { reason: string; banned_until: string | null } | null;
-  },
+    row: typeof users.$inferSelect,
+    options?: {
+        activeBan?: { reason: string; banned_until: string | null } | null;
+    },
 ): UserResponse {
-  const role = row.role === "admin" ? "admin" : "user";
-  return {
-    id: row.id,
-    username: row.username,
-    email: row.email,
-    role,
-    is_admin: role === "admin",
-    has_local_password: row.password_hash !== null,
-    must_change_password: row.must_change_password,
-    email_verified: row.email_verified,
-    active_ban: options?.activeBan ?? null,
-    avatar_url: row.avatar_url ?? null,
-    tfa_enabled: row.tfa_enabled,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
+    const role = row.role === "admin" ? "admin" : "user";
+    return {
+        id: row.id,
+        username: row.username,
+        email: row.email,
+        role,
+        is_admin: role === "admin",
+        has_local_password: row.password_hash !== null,
+        must_change_password: row.must_change_password,
+        email_verified: row.email_verified,
+        active_ban: options?.activeBan ?? null,
+        avatar_url: row.avatar_url ?? null,
+        tfa_enabled: row.tfa_enabled,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    };
 }
 
 /**
@@ -106,27 +106,27 @@ export function toUserResponse(
  * 仍返回 409，但不向客户端暴露数据库错误详情。
  */
 function conflictFromUniqueViolation(err: unknown): ConflictError | null {
-  if (!err || typeof err !== "object") return null;
+    if (!err || typeof err !== "object") return null;
 
-  const error = err as Record<string, unknown>;
-  const cause = error.cause && typeof error.cause === "object"
-    ? error.cause as Record<string, unknown>
-    : undefined;
-  const code = error.code ?? cause?.code;
-  if (code !== "23505") return null;
+    const error = err as Record<string, unknown>;
+    const cause = error.cause && typeof error.cause === "object"
+        ? error.cause as Record<string, unknown>
+        : undefined;
+    const code = error.code ?? cause?.code;
+    if (code !== "23505") return null;
 
-  const constraint = String(
-    error.constraint ?? error.constraint_name ??
-      cause?.constraint ?? cause?.constraint_name ?? "",
-  );
-  if (constraint.includes("username")) {
-    return new ConflictError("用户名已存在");
-  }
-  if (constraint.includes("email")) {
-    return new ConflictError("邮箱已被注册");
-  }
+    const constraint = String(
+        error.constraint ?? error.constraint_name ??
+            cause?.constraint ?? cause?.constraint_name ?? "",
+    );
+    if (constraint.includes("username")) {
+        return new ConflictError("用户名已存在");
+    }
+    if (constraint.includes("email")) {
+        return new ConflictError("邮箱已被注册");
+    }
 
-  return new ConflictError("用户名或邮箱已存在");
+    return new ConflictError("用户名或邮箱已存在");
 }
 
 /**
@@ -137,124 +137,124 @@ function conflictFromUniqueViolation(err: unknown): ConflictError | null {
  * @throws {ConflictError} 用户名或邮箱已存在
  */
 export async function registerUser(
-  input: RegisterInput,
-  clientIp?: string,
-  userAgent?: string | null,
-  options: { invitationBoundary?: InvitationRegistrationBoundary } = {},
+    input: RegisterInput,
+    clientIp?: string,
+    userAgent?: string | null,
+    options: { invitationBoundary?: InvitationRegistrationBoundary } = {},
 ): Promise<UserResponse> {
-  assertInstanceRegistration(input.invitation_token);
-  // 密码强度校验（issue 64 评论 §6.5）
-  validatePasswordStrength(input.password, input.username, input.email);
+    assertInstanceRegistration(input.invitation_token);
+    // 密码强度校验（issue 64 评论 §6.5）
+    validatePasswordStrength(input.password, input.username, input.email);
 
-  const db = getDb();
+    const db = getDb();
 
-  // 哈希密码
-  const passwordHash = await hashPassword(input.password);
+    // 哈希密码
+    const passwordHash = await hashPassword(input.password);
 
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
 
-  await db.transaction(async (tx) => {
-    // 检查用户名是否已存在
-    const existingUsername = await tx
-      .select()
-      .from(users)
-      .where(eq(users.username, input.username))
-      .limit(1);
+    await db.transaction(async (tx) => {
+        // 检查用户名是否已存在
+        const existingUsername = await tx
+            .select()
+            .from(users)
+            .where(eq(users.username, input.username))
+            .limit(1);
 
-    if (existingUsername.length > 0) {
-      throw new ConflictError("用户名已存在");
-    }
+        if (existingUsername.length > 0) {
+            throw new ConflictError("用户名已存在");
+        }
 
-    // 检查邮箱是否已注册
-    const existingEmail = await tx
-      .select()
-      .from(users)
-      .where(eq(users.email, input.email))
-      .limit(1);
+        // 检查邮箱是否已注册
+        const existingEmail = await tx
+            .select()
+            .from(users)
+            .where(eq(users.email, input.email))
+            .limit(1);
 
-    if (existingEmail.length > 0) {
-      throw new ConflictError("邮箱已被注册");
-    }
+        if (existingEmail.length > 0) {
+            throw new ConflictError("邮箱已被注册");
+        }
 
-    // 与本机初始化争用同一持久标记，公开注册先完成时永久关闭初始化。
-    await tx.insert(systemSettings).values({
-      key: ADMIN_INITIALIZATION_KEY,
-      value: "true",
-      updated_at: now,
-    }).onConflictDoNothing();
+        // 与本机初始化争用同一持久标记，公开注册先完成时永久关闭初始化。
+        await tx.insert(systemSettings).values({
+            key: ADMIN_INITIALIZATION_KEY,
+            value: "true",
+            updated_at: now,
+        }).onConflictDoNothing();
 
-    // 公开注册没有管理员引导例外，邮件必须就绪。
-    if (!getEmailConfigStatus().configured) {
-      throw new ForbiddenError(
-        "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
-        "REGISTER_EMAIL_UNCONFIGURED",
-      );
-    }
+        // 公开注册没有管理员引导例外，邮件必须就绪。
+        if (!getEmailConfigStatus().configured) {
+            throw new ForbiddenError(
+                "邮件服务未配置，暂不接受注册；请稍后再试或联系管理员",
+                "REGISTER_EMAIL_UNCONFIGURED",
+            );
+        }
 
-    await tx.insert(users).values({
-      id,
-      username: input.username,
-      email: input.email,
-      password_hash: passwordHash,
-      email_verified: false,
-      // 公开注册固定为普通用户；同邮箱/已有账户不会自动提权。
-      role: "user",
-      created_at: now,
-      updated_at: now,
+        await tx.insert(users).values({
+            id,
+            username: input.username,
+            email: input.email,
+            password_hash: passwordHash,
+            email_verified: false,
+            // 公开注册固定为普通用户；同邮箱/已有账户不会自动提权。
+            role: "user",
+            created_at: now,
+            updated_at: now,
+        });
+
+        // PIPL：同一事务内写入 privacy + terms 的当前版本同意记录（原子，避免半写入）。
+        await recordConsentsForRegistration(
+            tx,
+            userActorFromAuthenticatedId(id),
+            clientIp ?? null,
+            userAgent ?? null,
+        );
+        await enrollRegisteredAccountTx(
+            tx,
+            userActorFromAuthenticatedId(id),
+            input.invitation_token,
+            {
+                ...(options.invitationBoundary
+                    ? { invitationBoundary: options.invitationBoundary }
+                    : {}),
+            },
+        );
+    }).catch((err) => {
+        const conflict = conflictFromUniqueViolation(err);
+        if (conflict) throw conflict;
+        throw err;
     });
 
-    // PIPL：同一事务内写入 privacy + terms 的当前版本同意记录（原子，避免半写入）。
-    await recordConsentsForRegistration(
-      tx,
-      userActorFromAuthenticatedId(id),
-      clientIp ?? null,
-      userAgent ?? null,
+    // PR-2 审计：注册成功
+    await logAuthEvent(
+        id,
+        clientIp ?? "unknown",
+        "auth.register",
+        {
+            user_id: id,
+            username: input.username,
+            email: input.email,
+            is_admin: false,
+        },
     );
-    await enrollRegisteredAccountTx(
-      tx,
-      userActorFromAuthenticatedId(id),
-      input.invitation_token,
-      {
-        ...(options.invitationBoundary
-          ? { invitationBoundary: options.invitationBoundary }
-          : {}),
-      },
-    );
-  }).catch((err) => {
-    const conflict = conflictFromUniqueViolation(err);
-    if (conflict) throw conflict;
-    throw err;
-  });
 
-  // PR-2 审计：注册成功
-  await logAuthEvent(
-    id,
-    clientIp ?? "unknown",
-    "auth.register",
-    {
-      user_id: id,
-      username: input.username,
-      email: input.email,
-      is_admin: false,
-    },
-  );
+    await enqueueSearchIndexTask("user", id, "upsert");
 
-  await enqueueSearchIndexTask("user", id, "upsert");
-
-  return {
-    id,
-    username: input.username,
-    email: input.email,
-    role: "user",
-    is_admin: false,
-    has_local_password: true,
-    must_change_password: false,
-    email_verified: false,
-    active_ban: null,
-    avatar_url: null,
-    tfa_enabled: false,
-    created_at: now,
-    updated_at: now,
-  };
+    return {
+        id,
+        username: input.username,
+        email: input.email,
+        role: "user",
+        is_admin: false,
+        has_local_password: true,
+        must_change_password: false,
+        email_verified: false,
+        active_ban: null,
+        avatar_url: null,
+        tfa_enabled: false,
+        created_at: now,
+        updated_at: now,
+    };
 }

@@ -27,7 +27,7 @@ import { judgeEnabledFrom } from "../config/checks.ts";
 
 /** 生效环境文件缺失 `NOJ_VERSION` 时的报错文案。 */
 export function targetVersionMissingHint(envFile: string): string {
-  return `目标发布配置缺少 NOJ_VERSION：${envFile}`;
+    return `目标发布配置缺少 NOJ_VERSION：${envFile}`;
 }
 
 /**
@@ -35,14 +35,14 @@ export function targetVersionMissingHint(envFile: string): string {
  * `prepareLifecycle` 提供）：compose 文件路径、默认生效 env 文件及其键值。
  */
 export interface TargetEnvSource {
-  /** 归一化安装目录；compose 的 `--project-directory` 固定使用它。 */
-  dir: string;
-  /** compose 文件路径（前置校验已确认存在）。 */
-  composeFile: string;
-  /** 默认生效 env 文件（通常为 `.env.prod`）。 */
-  envFile: string;
-  /** 该文件的已解析键值。 */
-  env: EnvValues;
+    /** 归一化安装目录；compose 的 `--project-directory` 固定使用它。 */
+    dir: string;
+    /** compose 文件路径（前置校验已确认存在）。 */
+    composeFile: string;
+    /** 默认生效 env 文件（通常为 `.env.prod`）。 */
+    envFile: string;
+    /** 该文件的已解析键值。 */
+    env: EnvValues;
 }
 
 /**
@@ -52,22 +52,22 @@ export interface TargetEnvSource {
  * compose 消费 {@link ResolvedTargetConfig.composeOptions}，二者不可能再分叉。
  */
 export interface ResolvedTargetConfig {
-  /** 生效环境文件：有暂存配置时为其路径，否则为 `.env.prod`。 */
-  envFile: string;
-  /** 从 {@link ResolvedTargetConfig.envFile} 一次性解析的键值。 */
-  env: EnvValues;
-  /** 目标版本（`NOJ_VERSION` 原文，保留 `v` 前缀）。 */
-  version: string;
-  /** judge 是否启用（由目标 env 推导，决定 compose 的 `--profile judge`）。 */
-  judge: boolean;
-  /** compose 选项：`--env-file` 恒指向 {@link ResolvedTargetConfig.envFile}。 */
-  composeOptions: ComposeOptions;
+    /** 生效环境文件：有暂存配置时为其路径，否则为 `.env.prod`。 */
+    envFile: string;
+    /** 从 {@link ResolvedTargetConfig.envFile} 一次性解析的键值。 */
+    env: EnvValues;
+    /** 目标版本（`NOJ_VERSION` 原文，保留 `v` 前缀）。 */
+    version: string;
+    /** judge 是否启用（由目标 env 推导，决定 compose 的 `--profile judge`）。 */
+    judge: boolean;
+    /** compose 选项：`--env-file` 恒指向 {@link ResolvedTargetConfig.envFile}。 */
+    composeOptions: ComposeOptions;
 }
 
 /** {@link resolveTargetConfig} 的结果。 */
 export type ResolveTargetConfigResult =
-  | { ok: true; target: ResolvedTargetConfig }
-  | { ok: false; error: string };
+    | { ok: true; target: ResolvedTargetConfig }
+    | { ok: false; error: string };
 
 /**
  * 解析目标发布配置（升级序列的第 0 步，必须先于备份 / pull / 验签 / up）。
@@ -81,47 +81,47 @@ export type ResolveTargetConfigResult =
  * 且此函数不产生任何变更命令。
  */
 export async function resolveTargetConfig(
-  prepared: TargetEnvSource,
-  stagedEnvFile?: string,
-  stagedComposeFile?: string,
+    prepared: TargetEnvSource,
+    stagedEnvFile?: string,
+    stagedComposeFile?: string,
 ): Promise<ResolveTargetConfigResult> {
-  const envFile = stagedEnvFile ?? prepared.envFile;
-  let env: EnvValues;
-  if (stagedEnvFile === undefined) {
-    env = prepared.env;
-  } else {
-    try {
-      env = await readEnvValues(stagedEnvFile);
-    } catch (err) {
-      return {
-        ok: false,
-        error: `无法读取目标发布配置：${stagedEnvFile}（${
-          (err as Error).message
-        }）`,
-      };
+    const envFile = stagedEnvFile ?? prepared.envFile;
+    let env: EnvValues;
+    if (stagedEnvFile === undefined) {
+        env = prepared.env;
+    } else {
+        try {
+            env = await readEnvValues(stagedEnvFile);
+        } catch (err) {
+            return {
+                ok: false,
+                error: `无法读取目标发布配置：${stagedEnvFile}（${
+                    (err as Error).message
+                }）`,
+            };
+        }
     }
-  }
 
-  const version = env["NOJ_VERSION"] ?? "";
-  if (version === "") {
-    return { ok: false, error: targetVersionMissingHint(envFile) };
-  }
+    const version = env["NOJ_VERSION"] ?? "";
+    if (version === "") {
+        return { ok: false, error: targetVersionMissingHint(envFile) };
+    }
 
-  const judge = judgeEnabledFrom(env);
-  return {
-    ok: true,
-    target: {
-      envFile,
-      env,
-      version,
-      judge,
-      composeOptions: {
-        composeFile: stagedComposeFile ?? prepared.composeFile,
-        // 即使 `-f` 指向暂存文件，项目目录也固定为安装目录，保证相对挂载稳定。
-        projectDirectory: prepared.dir,
-        envFile,
-        judge,
-      },
-    },
-  };
+    const judge = judgeEnabledFrom(env);
+    return {
+        ok: true,
+        target: {
+            envFile,
+            env,
+            version,
+            judge,
+            composeOptions: {
+                composeFile: stagedComposeFile ?? prepared.composeFile,
+                // 即使 `-f` 指向暂存文件，项目目录也固定为安装目录，保证相对挂载稳定。
+                projectDirectory: prepared.dir,
+                envFile,
+                judge,
+            },
+        },
+    };
 }

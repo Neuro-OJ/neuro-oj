@@ -15,7 +15,7 @@ BFF 不访问 Core 数据库，不增加 Core API，不允许客户端任意指�
 信封包含 `kind`、经 Core 验证的 `viewer`、`workspace` 和 `sections`。模块结构为
 `{ data: <原接口响应> }` 或
 `{ error: { statusCode, data: { error, code?, request_id? } } }`。
-模块名与类型见 `utils/bff-view.ts`。作业详情包含当前角色可见的成绩、反馈和求助，
+模块名与类型见 `utils/server/bff-view.ts`。作业详情包含当前角色可见的成绩、反馈和求助，
 以及 `help`、`feedback`、`history=1` 通知深链指定的初始内容。
 
 全局导航不再预取视图，也不向共享异步键写入私有快照。每个页面自己调用 BFF 并拥有

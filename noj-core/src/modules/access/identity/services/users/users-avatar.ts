@@ -5,14 +5,14 @@ import { users } from "../../../../../shared/db/schema.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import {
-  getStorageProvider,
-  isStorageUrl,
-  parseStorageUrl,
+    getStorageProvider,
+    isStorageUrl,
+    parseStorageUrl,
 } from "../../../../assets/storage/mod.ts";
 import {
-  IMAGE_MAGIC_MIME,
-  type ImageFile,
-  validateImageFile,
+    IMAGE_MAGIC_MIME,
+    type ImageFile,
+    validateImageFile,
 } from "../../../../../shared/security/image-validation.ts";
 
 /** 头像大小上限（2MB） */
@@ -29,7 +29,7 @@ export const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
  * @throws {BadRequestError} 任一项不满足
  */
 function validateAvatarFile(file: File): Promise<ImageFile> {
-  return validateImageFile(file, MAX_AVATAR_SIZE, "2MB");
+    return validateImageFile(file, MAX_AVATAR_SIZE, "2MB");
 }
 
 /**
@@ -42,10 +42,10 @@ function validateAvatarFile(file: File): Promise<ImageFile> {
  * 非 `noj-storage://` URL（脏数据）短路返回 false，不抛错。
  */
 export function sameStorageObject(a: string, b: string): boolean {
-  if (!isStorageUrl(a) || !isStorageUrl(b)) return false;
-  const pa = parseStorageUrl(a);
-  const pb = parseStorageUrl(b);
-  return pa.provider === pb.provider && pa.key === pb.key;
+    if (!isStorageUrl(a) || !isStorageUrl(b)) return false;
+    const pa = parseStorageUrl(a);
+    const pb = parseStorageUrl(b);
+    return pa.provider === pb.provider && pa.key === pb.key;
 }
 
 /**
@@ -62,18 +62,18 @@ export function sameStorageObject(a: string, b: string): boolean {
  * @throws 沿用 provider.delete 的异常语义（调用方按需静默）
  */
 export async function deleteAvatarIfUnreferenced(
-  db: ReturnType<typeof getDb>,
-  userId: string,
-  oldUrl: string,
+    db: ReturnType<typeof getDb>,
+    userId: string,
+    oldUrl: string,
 ): Promise<void> {
-  const provider = await getStorageProvider();
-  if (parseStorageUrl(oldUrl).provider === "local") {
-    const refs = await db.select({ id: users.id }).from(users)
-      .where(and(eq(users.avatar_url, oldUrl), ne(users.id, userId)))
-      .limit(1);
-    if (refs.length > 0) return; // 仍有其他用户引用，跳过删除
-  }
-  await provider.delete(oldUrl);
+    const provider = await getStorageProvider();
+    if (parseStorageUrl(oldUrl).provider === "local") {
+        const refs = await db.select({ id: users.id }).from(users)
+            .where(and(eq(users.avatar_url, oldUrl), ne(users.id, userId)))
+            .limit(1);
+        if (refs.length > 0) return; // 仍有其他用户引用，跳过删除
+    }
+    await provider.delete(oldUrl);
 }
 
 /**
@@ -83,70 +83,70 @@ export async function deleteAvatarIfUnreferenced(
  * 内容寻址下同图 URL 相同，固定 key 模式下同 key 不误删。
  */
 export async function updateUserAvatar(
-  userId: string,
-  file: File,
+    userId: string,
+    file: File,
 ): Promise<{ avatar_url: string | null }> {
-  const { bytes, type } = await validateAvatarFile(file);
-  const provider = await getStorageProvider();
-  // 1. 先存新文件（key 带用户 id 与扩展名，供 S3 模式的 Content-Type 推断）
-  const ext = type === "png" ? "png" : type === "webp" ? "webp" : "jpg";
-  const newUrl = await provider.put(
-    `avatar/${userId}.${ext}`,
-    bytes,
-    IMAGE_MAGIC_MIME[type],
-  );
+    const { bytes, type } = await validateAvatarFile(file);
+    const provider = await getStorageProvider();
+    // 1. 先存新文件（key 带用户 id 与扩展名，供 S3 模式的 Content-Type 推断）
+    const ext = type === "png" ? "png" : type === "webp" ? "webp" : "jpg";
+    const newUrl = await provider.put(
+        `avatar/${userId}.${ext}`,
+        bytes,
+        IMAGE_MAGIC_MIME[type],
+    );
 
-  const db = getDb();
-  // 2. 更新 DB（先取旧 URL 用于清理）
-  const old = await db.select({ avatar_url: users.avatar_url }).from(users)
-    .where(eq(users.id, userId)).limit(1);
-  if (!old[0]) {
-    throw new NotFoundError("用户不存在");
-  }
-  await db.update(users)
-    .set({ avatar_url: newUrl, updated_at: new Date().toISOString() })
-    .where(eq(users.id, userId));
-
-  // 3. 清理旧文件（幂等；同 key 同一对象不误删；local 共享引用不误删）
-  const oldUrl = old[0].avatar_url;
-  if (oldUrl && !sameStorageObject(oldUrl, newUrl)) {
-    try {
-      await deleteAvatarIfUnreferenced(db, userId, oldUrl);
-    } catch {
-      // 旧文件不存在时静默忽略
+    const db = getDb();
+    // 2. 更新 DB（先取旧 URL 用于清理）
+    const old = await db.select({ avatar_url: users.avatar_url }).from(users)
+        .where(eq(users.id, userId)).limit(1);
+    if (!old[0]) {
+        throw new NotFoundError("用户不存在");
     }
-  }
+    await db.update(users)
+        .set({ avatar_url: newUrl, updated_at: new Date().toISOString() })
+        .where(eq(users.id, userId));
 
-  await enqueueSearchIndexTask("user", userId, "upsert");
+    // 3. 清理旧文件（幂等；同 key 同一对象不误删；local 共享引用不误删）
+    const oldUrl = old[0].avatar_url;
+    if (oldUrl && !sameStorageObject(oldUrl, newUrl)) {
+        try {
+            await deleteAvatarIfUnreferenced(db, userId, oldUrl);
+        } catch {
+            // 旧文件不存在时静默忽略
+        }
+    }
 
-  return { avatar_url: newUrl };
+    await enqueueSearchIndexTask("user", userId, "upsert");
+
+    return { avatar_url: newUrl };
 }
 
 /**
  * 删除头像：清空字段 + 删除文件（幂等）。
  */
 export async function clearUserAvatar(
-  userId: string,
+    userId: string,
 ): Promise<{ avatar_url: null }> {
-  const db = getDb();
-  const old = await db.select({ avatar_url: users.avatar_url }).from(users)
-    .where(eq(users.id, userId)).limit(1);
-  if (!old[0]) {
-    throw new NotFoundError("用户不存在");
-  }
-  await db.update(users)
-    .set({ avatar_url: null, updated_at: new Date().toISOString() })
-    .where(eq(users.id, userId));
-
-  const oldUrl = old[0].avatar_url;
-  if (oldUrl) {
-    try {
-      await deleteAvatarIfUnreferenced(db, userId, oldUrl);
-    } catch {
-      // 幂等：文件不存在时静默忽略
+    const db = getDb();
+    const old = await db.select({ avatar_url: users.avatar_url }).from(users)
+        .where(eq(users.id, userId)).limit(1);
+    if (!old[0]) {
+        throw new NotFoundError("用户不存在");
     }
-  }
-  return { avatar_url: null };
+    await db.update(users)
+        .set({ avatar_url: null, updated_at: new Date().toISOString() })
+        .where(eq(users.id, userId));
+
+    const oldUrl = old[0].avatar_url;
+    if (oldUrl) {
+        try {
+            await deleteAvatarIfUnreferenced(db, userId, oldUrl);
+        } catch {
+            // 幂等：文件不存在时静默忽略
+        }
+    }
+    return { avatar_url: null };
 }
 
 /**
@@ -155,25 +155,25 @@ export async function clearUserAvatar(
  * @throws {NotFoundError} 用户无头像
  */
 export async function getUserAvatarBytes(
-  userId: string,
+    userId: string,
 ): Promise<{ bytes: Uint8Array; contentType: string; etag: string }> {
-  const db = getDb();
-  const row = await db.select({ avatar_url: users.avatar_url }).from(users)
-    .where(eq(users.id, userId)).limit(1);
-  const url = row[0]?.avatar_url;
-  if (!url) {
-    throw new NotFoundError("该用户未设置头像");
-  }
-  const provider = await getStorageProvider();
-  const bytes = await provider.get(url);
-  const parsed = parseStorageUrl(url);
-  const contentType = /\.png$/i.test(parsed.key)
-    ? "image/png"
-    : /\.webp$/i.test(parsed.key)
-    ? "image/webp"
-    : "image/jpeg";
-  const etag = parsed.checksumSha256
-    ? `"${parsed.checksumSha256}"`
-    : `"${parsed.key}"`;
-  return { bytes, contentType, etag };
+    const db = getDb();
+    const row = await db.select({ avatar_url: users.avatar_url }).from(users)
+        .where(eq(users.id, userId)).limit(1);
+    const url = row[0]?.avatar_url;
+    if (!url) {
+        throw new NotFoundError("该用户未设置头像");
+    }
+    const provider = await getStorageProvider();
+    const bytes = await provider.get(url);
+    const parsed = parseStorageUrl(url);
+    const contentType = /\.png$/i.test(parsed.key)
+        ? "image/png"
+        : /\.webp$/i.test(parsed.key)
+        ? "image/webp"
+        : "image/jpeg";
+    const etag = parsed.checksumSha256
+        ? `"${parsed.checksumSha256}"`
+        : `"${parsed.key}"`;
+    return { bytes, contentType, etag };
 }

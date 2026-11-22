@@ -14,7 +14,7 @@ import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
 import { ensureRootUser } from "../../src/modules/access/identity/index.ts";
 import { seedJudgeImages } from "../../src/modules/platform/system/index.ts";
 import {
-  _resetSystemSettingsForTest,
+    _resetSystemSettingsForTest,
 } from "../../src/modules/platform/services/system-settings.ts";
 import { ensureDefaultWorkspace } from "../../src/modules/access/domains.ts";
 import { createSystemActor } from "../../src/shared/access/system-actors.ts";
@@ -37,40 +37,40 @@ const TEST_DATABASE_IDENTIFIER = /^[A-Za-z0-9_]+$/;
  * 数据库都不会被误认为本 run 的 destructive 目标。
  */
 export function isOwnedTestDatabaseName(
-  databaseName: string,
-  prefix: string,
+    databaseName: string,
+    prefix: string,
 ): boolean {
-  return /^noj_test_[A-Za-z0-9_]{4,32}$/.test(prefix) &&
-    TEST_DATABASE_IDENTIFIER.test(databaseName) &&
-    databaseName.startsWith(`${prefix}_`);
+    return /^noj_test_[A-Za-z0-9_]{4,32}$/.test(prefix) &&
+        TEST_DATABASE_IDENTIFIER.test(databaseName) &&
+        databaseName.startsWith(`${prefix}_`);
 }
 
 /** 测试侧必须显式提供的运行时密钥。 */
 function assertRequiredTestEnvironment(): void {
-  if (!Deno.env.get("DATABASE_URL")) {
-    throw new Error(
-      "拒绝执行数据库测试：DATABASE_URL 未设置；请使用测试启动器提供的专用 PostgreSQL 数据库",
-    );
-  }
-  if (!Deno.env.get("JWT_SECRET")) {
-    throw new Error(
-      "拒绝执行数据库测试：JWT_SECRET 未设置；测试不得以 ignore 静默跳过必需依赖",
-    );
-  }
+    if (!Deno.env.get("DATABASE_URL")) {
+        throw new Error(
+            "拒绝执行数据库测试：DATABASE_URL 未设置；请使用测试启动器提供的专用 PostgreSQL 数据库",
+        );
+    }
+    if (!Deno.env.get("JWT_SECRET")) {
+        throw new Error(
+            "拒绝执行数据库测试：JWT_SECRET 未设置；测试不得以 ignore 静默跳过必需依赖",
+        );
+    }
 }
 
 function databaseNameFromUrl(databaseUrl: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(databaseUrl);
-  } catch {
-    throw new Error("拒绝执行测试数据库 reset：DATABASE_URL 不是合法 URL");
-  }
-  const databaseName = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
-  if (!databaseName) {
-    throw new Error("拒绝执行测试数据库 reset：DATABASE_URL 缺少数据库名");
-  }
-  return databaseName;
+    let parsed: URL;
+    try {
+        parsed = new URL(databaseUrl);
+    } catch {
+        throw new Error("拒绝执行测试数据库 reset：DATABASE_URL 不是合法 URL");
+    }
+    const databaseName = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
+    if (!databaseName) {
+        throw new Error("拒绝执行测试数据库 reset：DATABASE_URL 缺少数据库名");
+    }
+    return databaseName;
 }
 
 /**
@@ -82,67 +82,67 @@ function databaseNameFromUrl(databaseUrl: string): string {
  * @returns 当前测试数据库名
  */
 export async function assertOwnedTestDatabase(): Promise<string> {
-  assertRequiredTestEnvironment();
-  if (Deno.env.get(TEST_DATABASE_OWNED_ENV) !== "1") {
-    throw new Error(
-      `拒绝执行测试数据库 reset：缺少 ${TEST_DATABASE_OWNED_ENV}=1 标记`,
-    );
-  }
-  const databaseUrl = Deno.env.get("DATABASE_URL")!;
-  const databaseName = databaseNameFromUrl(databaseUrl);
-  const prefix = Deno.env.get(TEST_DATABASE_PREFIX_ENV)?.trim();
-  if (!prefix) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：${TEST_DATABASE_PREFIX_ENV} 必须由当前 run 显式提供且非空`,
-    );
-  }
-  if (!/^noj_test_[A-Za-z0-9_]{4,32}$/.test(prefix)) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：${TEST_DATABASE_PREFIX_ENV} 必须符合启动器的 noj_test_<runId> 格式`,
-    );
-  }
-  if (!isOwnedTestDatabaseName(databaseName, prefix)) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：数据库名 ${databaseName} 不属于测试 run ${prefix}`,
-    );
-  }
-  const expectedName = Deno.env.get(TEST_DATABASE_NAME_ENV)?.trim();
-  if (!expectedName) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：${TEST_DATABASE_NAME_ENV} 必须由当前 run 显式提供`,
-    );
-  }
-  if (expectedName !== databaseName) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：当前数据库 ${databaseName} 与启动器声明的 ${expectedName} 不一致`,
-    );
-  }
-  if (!isOwnedTestDatabaseName(expectedName, prefix)) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：${TEST_DATABASE_NAME_ENV} 不属于测试 run ${prefix}`,
-    );
-  }
-  const current = unwrapRows<{ current_database: string }>(
-    (await getDb().execute(sql`SELECT current_database()`)) as never,
-  )[0]?.current_database;
-  if (current !== databaseName) {
-    throw new Error(
-      `拒绝执行测试数据库 reset：连接实际数据库 ${
-        current ?? "<unknown>"
-      } 与声明的 ${databaseName} 不一致`,
-    );
-  }
-  return current;
+    assertRequiredTestEnvironment();
+    if (Deno.env.get(TEST_DATABASE_OWNED_ENV) !== "1") {
+        throw new Error(
+            `拒绝执行测试数据库 reset：缺少 ${TEST_DATABASE_OWNED_ENV}=1 标记`,
+        );
+    }
+    const databaseUrl = Deno.env.get("DATABASE_URL")!;
+    const databaseName = databaseNameFromUrl(databaseUrl);
+    const prefix = Deno.env.get(TEST_DATABASE_PREFIX_ENV)?.trim();
+    if (!prefix) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：${TEST_DATABASE_PREFIX_ENV} 必须由当前 run 显式提供且非空`,
+        );
+    }
+    if (!/^noj_test_[A-Za-z0-9_]{4,32}$/.test(prefix)) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：${TEST_DATABASE_PREFIX_ENV} 必须符合启动器的 noj_test_<runId> 格式`,
+        );
+    }
+    if (!isOwnedTestDatabaseName(databaseName, prefix)) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：数据库名 ${databaseName} 不属于测试 run ${prefix}`,
+        );
+    }
+    const expectedName = Deno.env.get(TEST_DATABASE_NAME_ENV)?.trim();
+    if (!expectedName) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：${TEST_DATABASE_NAME_ENV} 必须由当前 run 显式提供`,
+        );
+    }
+    if (expectedName !== databaseName) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：当前数据库 ${databaseName} 与启动器声明的 ${expectedName} 不一致`,
+        );
+    }
+    if (!isOwnedTestDatabaseName(expectedName, prefix)) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：${TEST_DATABASE_NAME_ENV} 不属于测试 run ${prefix}`,
+        );
+    }
+    const current = unwrapRows<{ current_database: string }>(
+        (await getDb().execute(sql`SELECT current_database()`)) as never,
+    )[0]?.current_database;
+    if (current !== databaseName) {
+        throw new Error(
+            `拒绝执行测试数据库 reset：连接实际数据库 ${
+                current ?? "<unknown>"
+            } 与声明的 ${databaseName} 不一致`,
+        );
+    }
+    return current;
 }
 
 /** reset 阶段名（P0 计时契约的一部分，报告按阶段聚合）。 */
 const RESET_PHASE = {
-  ownershipCheck: "core.reset.ownership-check",
-  truncate: "core.reset.truncate",
-  root: "core.reset.root",
-  workspace: "core.reset.workspace",
-  images: "core.reset.images",
-  invocations: "core.reset.invocations",
+    ownershipCheck: "core.reset.ownership-check",
+    truncate: "core.reset.truncate",
+    root: "core.reset.root",
+    workspace: "core.reset.workspace",
+    images: "core.reset.images",
+    invocations: "core.reset.invocations",
 } as const;
 
 /**
@@ -163,10 +163,10 @@ const RESET_STRATEGY_ENV = "NOJ_TEST_RESET_STRATEGY";
  * 本来就没有可清的内容。
  */
 async function listResetTables(): Promise<
-  Array<{ name: string; hasData: boolean }>
+    Array<{ name: string; hasData: boolean }>
 > {
-  const db = getDb();
-  const result = await db.execute(sql`
+    const db = getDb();
+    const result = await db.execute(sql`
     SELECT c.relname AS name,
       pg_relation_size(c.oid) > 0 AS has_data
     FROM pg_class c
@@ -176,19 +176,19 @@ async function listResetTables(): Promise<
       AND c.relname NOT LIKE '__drizzle%'
     ORDER BY c.relname
   `);
-  return unwrapRows<{ name: string; has_data: boolean }>(result as never).map(
-    (row) => ({ name: row.name, hasData: row.has_data }),
-  );
+    return unwrapRows<{ name: string; has_data: boolean }>(result as never).map(
+        (row) => ({ name: row.name, hasData: row.has_data }),
+    );
 }
 
 /** 引用标识符（表名来自 pg_class，这里仍按标准双写转义）。 */
 function quoteIdentifier(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
+    return `"${name.replaceAll('"', '""')}"`;
 }
 
 /** 读取 schema 内的外键边（child → parent），自引用边不计入排序。 */
 async function loadForeignKeyEdges(): Promise<Array<[string, string]>> {
-  const result = await getDb().execute(sql`
+    const result = await getDb().execute(sql`
     SELECT child.relname AS child, parent.relname AS parent
     FROM pg_constraint con
     JOIN pg_class child ON child.oid = con.conrelid
@@ -198,9 +198,9 @@ async function loadForeignKeyEdges(): Promise<Array<[string, string]>> {
       AND n.nspname = current_schema()
       AND child.relname <> parent.relname
   `);
-  return unwrapRows<{ child: string; parent: string }>(result as never).map(
-    (row) => [row.child, row.parent],
-  );
+    return unwrapRows<{ child: string; parent: string }>(result as never).map(
+        (row) => [row.child, row.parent],
+    );
 }
 
 /** 外键边缓存：schema 在一次测试进程内不变，只查一次。 */
@@ -223,44 +223,46 @@ let cycleWarningEmitted = false;
  * @returns 删除顺序；无法排序时为空数组
  */
 function orderTablesForDelete(
-  targets: string[],
-  edges: Array<[string, string]>,
+    targets: string[],
+    edges: Array<[string, string]>,
 ): string[] {
-  const remaining = new Set(targets);
-  const related = edges.filter(([child, parent]) =>
-    remaining.has(child) && remaining.has(parent)
-  );
-  const ordered: string[] = [];
-  while (remaining.size > 0) {
-    const referenced = new Set<string>();
-    for (const [child, parent] of related) {
-      if (remaining.has(child)) referenced.add(parent);
+    const remaining = new Set(targets);
+    const related = edges.filter(([child, parent]) =>
+        remaining.has(child) && remaining.has(parent)
+    );
+    const ordered: string[] = [];
+    while (remaining.size > 0) {
+        const referenced = new Set<string>();
+        for (const [child, parent] of related) {
+            if (remaining.has(child)) referenced.add(parent);
+        }
+        const batch = [...remaining]
+            .filter((table) => !referenced.has(table))
+            .sort();
+        if (batch.length === 0) return [];
+        for (const table of batch) {
+            ordered.push(table);
+            remaining.delete(table);
+        }
     }
-    const batch = [...remaining]
-      .filter((table) => !referenced.has(table))
-      .sort();
-    if (batch.length === 0) return [];
-    for (const table of batch) {
-      ordered.push(table);
-      remaining.delete(table);
-    }
-  }
-  return ordered;
+    return ordered;
 }
 
 /** 在一个事务里按依赖序清空目标表。 */
 async function deleteTablesInOrder(order: string[]): Promise<void> {
-  await getDb().transaction(async (tx) => {
-    for (const table of order) {
-      await tx.execute(sql.raw(`DELETE FROM ${quoteIdentifier(table)}`));
-    }
-  });
+    await getDb().transaction(async (tx) => {
+        for (const table of order) {
+            await tx.execute(sql.raw(`DELETE FROM ${quoteIdentifier(table)}`));
+        }
+    });
 }
 
 /** 旧路径：TRUNCATE ... CASCADE。 */
 async function truncateTables(targets: string[]): Promise<void> {
-  const quoted = targets.map(quoteIdentifier);
-  await getDb().execute(sql.raw(`TRUNCATE TABLE ${quoted.join(", ")} CASCADE`));
+    const quoted = targets.map(quoteIdentifier);
+    await getDb().execute(
+        sql.raw(`TRUNCATE TABLE ${quoted.join(", ")} CASCADE`),
+    );
 }
 
 /**
@@ -278,45 +280,47 @@ async function truncateTables(targets: string[]): Promise<void> {
  * TRUNCATE，保持旧语义；NOJ_TEST_RESET_STRATEGY=truncate 可强制旧路径。
  */
 async function clearResetTables(): Promise<void> {
-  const tables = await listResetTables();
-  if (tables.length === 0) {
-    throw new Error("测试数据库未发现任何用户表：请确认启动器已执行正式迁移");
-  }
-  const targets = tables.filter((table) => table.hasData).map((table) =>
-    table.name
-  );
-  if (targets.length === 0) return;
-
-  const forceTruncate =
-    (Deno.env.get(RESET_STRATEGY_ENV) ?? "auto").trim().toLowerCase() ===
-      "truncate";
-  if (!forceTruncate && !deleteStrategyDisabled) {
-    try {
-      foreignKeyEdges ??= loadForeignKeyEdges();
-      const order = orderTablesForDelete(targets, await foreignKeyEdges);
-      if (order.length > 0) {
-        await deleteTablesInOrder(order);
-        return;
-      }
-      if (!cycleWarningEmitted) {
-        cycleWarningEmitted = true;
-        console.warn(
-          "[test-db] 外键依赖图无法给出删除顺序（可能存在环），清表回退 TRUNCATE",
+    const tables = await listResetTables();
+    if (tables.length === 0) {
+        throw new Error(
+            "测试数据库未发现任何用户表：请确认启动器已执行正式迁移",
         );
-      }
-    } catch (error) {
-      // 清表本身失败时事务已回滚（DELETE 未生效），随后用旧路径重做一遍；
-      // 外键图查询失败则清掉缓存，避免把 rejected promise 永久留在进程里。
-      foreignKeyEdges = undefined;
-      deleteStrategyDisabled = true;
-      console.warn(
-        `[test-db] 依赖序 DELETE 清表失败，本进程回退 TRUNCATE：${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
     }
-  }
-  await truncateTables(targets);
+    const targets = tables.filter((table) => table.hasData).map((table) =>
+        table.name
+    );
+    if (targets.length === 0) return;
+
+    const forceTruncate =
+        (Deno.env.get(RESET_STRATEGY_ENV) ?? "auto").trim().toLowerCase() ===
+            "truncate";
+    if (!forceTruncate && !deleteStrategyDisabled) {
+        try {
+            foreignKeyEdges ??= loadForeignKeyEdges();
+            const order = orderTablesForDelete(targets, await foreignKeyEdges);
+            if (order.length > 0) {
+                await deleteTablesInOrder(order);
+                return;
+            }
+            if (!cycleWarningEmitted) {
+                cycleWarningEmitted = true;
+                console.warn(
+                    "[test-db] 外键依赖图无法给出删除顺序（可能存在环），清表回退 TRUNCATE",
+                );
+            }
+        } catch (error) {
+            // 清表本身失败时事务已回滚（DELETE 未生效），随后用旧路径重做一遍；
+            // 外键图查询失败则清掉缓存，避免把 rejected promise 永久留在进程里。
+            foreignKeyEdges = undefined;
+            deleteStrategyDisabled = true;
+            console.warn(
+                `[test-db] 依赖序 DELETE 清表失败，本进程回退 TRUNCATE：${
+                    error instanceof Error ? error.message : String(error)
+                }`,
+            );
+        }
+    }
+    await truncateTables(targets);
 }
 
 /**
@@ -324,34 +328,34 @@ async function clearResetTables(): Promise<void> {
  * judge-python）。三条一次批量 insert，id 已存在时整条跳过。
  */
 async function seedCompatJudgeImages(): Promise<void> {
-  const db = getDb();
-  const now = new Date().toISOString();
-  const images = [
-    {
-      id: "e0000000-0000-0000-0000-000000000001",
-      image: "noj-judge-python",
-      mode: "all_versions",
-      kind: "evaluator",
-      description: "Python 3.12 评测环境",
-    },
-    {
-      id: "e0000000-0000-0000-0000-000000000002",
-      image: "noj-evaluator-python",
-      mode: "all_versions",
-      kind: "evaluator",
-      description: "Evaluator 运行时",
-    },
-    {
-      id: "e0000000-0000-0000-0000-000000000003",
-      image: "noj-solution-python",
-      mode: "all_versions",
-      kind: "solution",
-      description: "Solution 运行时",
-    },
-  ];
-  await db.insert(judgeImages).values(
-    images.map((image) => ({ ...image, created_at: now, updated_at: now })),
-  ).onConflictDoNothing();
+    const db = getDb();
+    const now = new Date().toISOString();
+    const images = [
+        {
+            id: "e0000000-0000-0000-0000-000000000001",
+            image: "noj-judge-python",
+            mode: "all_versions",
+            kind: "evaluator",
+            description: "Python 3.12 评测环境",
+        },
+        {
+            id: "e0000000-0000-0000-0000-000000000002",
+            image: "noj-evaluator-python",
+            mode: "all_versions",
+            kind: "evaluator",
+            description: "Evaluator 运行时",
+        },
+        {
+            id: "e0000000-0000-0000-0000-000000000003",
+            image: "noj-solution-python",
+            mode: "all_versions",
+            kind: "solution",
+            description: "Solution 运行时",
+        },
+    ];
+    await db.insert(judgeImages).values(
+        images.map((image) => ({ ...image, created_at: now, updated_at: now })),
+    ).onConflictDoNothing();
 }
 
 /**
@@ -361,17 +365,17 @@ async function seedCompatJudgeImages(): Promise<void> {
  * 仍走既有 reset 接口（_resetSystemSettingsForTest）。
  */
 async function seedTestDatabaseContent(): Promise<void> {
-  await measurePhase(RESET_PHASE.root, () => ensureRootUser());
-  await measurePhase(
-    RESET_PHASE.workspace,
-    () => ensureDefaultWorkspace(createSystemActor("bootstrap")),
-  );
-  await measurePhase(RESET_PHASE.images, async () => {
-    await seedCompatJudgeImages();
-    // 生产初始化仍使用完整镜像清单；在测试库补齐 AI 镜像不改变旧断言。
-    await seedJudgeImages();
-  });
-  _resetSystemSettingsForTest();
+    await measurePhase(RESET_PHASE.root, () => ensureRootUser());
+    await measurePhase(
+        RESET_PHASE.workspace,
+        () => ensureDefaultWorkspace(createSystemActor("bootstrap")),
+    );
+    await measurePhase(RESET_PHASE.images, async () => {
+        await seedCompatJudgeImages();
+        // 生产初始化仍使用完整镜像清单；在测试库补齐 AI 镜像不改变旧断言。
+        await seedJudgeImages();
+    });
+    _resetSystemSettingsForTest();
 }
 
 /**
@@ -380,11 +384,11 @@ async function seedTestDatabaseContent(): Promise<void> {
  * 仅在测试数据库内调用；会同步清空 system-settings 进程内缓存。
  */
 export async function seedTestDatabase(): Promise<void> {
-  await measurePhase(
-    RESET_PHASE.ownershipCheck,
-    () => assertOwnedTestDatabase(),
-  );
-  await seedTestDatabaseContent();
+    await measurePhase(
+        RESET_PHASE.ownershipCheck,
+        () => assertOwnedTestDatabase(),
+    );
+    await seedTestDatabaseContent();
 }
 
 /**
@@ -393,15 +397,15 @@ export async function seedTestDatabase(): Promise<void> {
  * 不执行迁移；迁移由测试启动器在模板数据库中完成。普通测试只调用本函数。
  */
 export async function resetDbForTest(): Promise<void> {
-  // 次数计数：报告用它区分"reset 变少"与"单次 reset 变快"。
-  countPhase(RESET_PHASE.invocations, 1);
-  await measurePhase(
-    RESET_PHASE.ownershipCheck,
-    () => assertOwnedTestDatabase(),
-  );
-  await measurePhase(RESET_PHASE.truncate, () => clearResetTables());
-  await seedTestDatabaseContent();
-  // 榜单读取已改为内联查询，旧的物化视图刷新不再需要执行。
+    // 次数计数：报告用它区分"reset 变少"与"单次 reset 变快"。
+    countPhase(RESET_PHASE.invocations, 1);
+    await measurePhase(
+        RESET_PHASE.ownershipCheck,
+        () => assertOwnedTestDatabase(),
+    );
+    await measurePhase(RESET_PHASE.truncate, () => clearResetTables());
+    await seedTestDatabaseContent();
+    // 榜单读取已改为内联查询，旧的物化视图刷新不再需要执行。
 }
 
 /**
@@ -410,7 +414,7 @@ export async function resetDbForTest(): Promise<void> {
  * 仅测试启动器/显式 bootstrap 调用；普通 reset 不得调用本函数。
  */
 export async function setupSchemaForTest(): Promise<void> {
-  await assertOwnedTestDatabase();
-  await runMigrations();
-  await seedTestDatabase();
+    await assertOwnedTestDatabase();
+    await runMigrations();
+    await seedTestDatabase();
 }

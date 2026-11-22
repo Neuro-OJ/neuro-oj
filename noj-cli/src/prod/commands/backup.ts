@@ -5,62 +5,62 @@ import type { CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE } from "../compose.ts";
 import {
-  type BackupPruneResult,
-  type BackupVerifyResult,
-  listBackupCommand,
-  prodBackupDir,
-  pruneCommand,
-  restoreConfirmed,
-  restorePlan,
-  type RestoreStep,
-  verifyCommand,
+    type BackupPruneResult,
+    type BackupVerifyResult,
+    listBackupCommand,
+    prodBackupDir,
+    pruneCommand,
+    restoreConfirmed,
+    restorePlan,
+    type RestoreStep,
+    verifyCommand,
 } from "../backup/commands.ts";
 import {
-  createContainer,
-  type CreateContainerResult,
+    createContainer,
+    type CreateContainerResult,
 } from "../backup/container.ts";
 import {
-  acquireBackupLock,
-  checkAndCleanStaleBackupArtifacts,
+    acquireBackupLock,
+    checkAndCleanStaleBackupArtifacts,
 } from "../backup/stale-cleanup.ts";
 import { pruneBackups } from "../backup/list.ts";
 import {
-  createProdPayloadOps,
-  type ProdComposeContext,
-  realRawDriver,
+    createProdPayloadOps,
+    type ProdComposeContext,
+    realRawDriver,
 } from "../backup/driver.ts";
 import { writeBackupMetrics } from "../backup/metrics.ts";
 import type { ContainerPayloadOps } from "../backup/container.ts";
 import {
-  type BackupDataEstimate,
-  type DiskPartitionInfo,
-  estimateBackupDataSize,
-  evaluateBackupDiskSpace,
-  formatDiskBytes,
-  probeDiskPartition,
-  resolveBackupMinFreeMb,
+    type BackupDataEstimate,
+    type DiskPartitionInfo,
+    estimateBackupDataSize,
+    evaluateBackupDiskSpace,
+    formatDiskBytes,
+    probeDiskPartition,
+    resolveBackupMinFreeMb,
 } from "../disk-space.ts";
 import {
-  installSchedule,
-  removeSchedule,
-  statusSchedule,
+    installSchedule,
+    removeSchedule,
+    statusSchedule,
 } from "../schedule.ts";
 import type { ScheduleResult } from "../schedule.ts";
 import { gpgDecrypt, untarZst } from "../gpg-tar.ts";
 import { hasJson, humanOutput, positionals } from "./args.ts";
 import { flagValue, hasFlag, optionalCount } from "../../util/args.ts";
 import {
-  envNumber,
-  numberFlag,
-  prodDeps,
-  readConfiguredPassphrase,
-  resolveBackupPassphrase,
+    envNumber,
+    numberFlag,
+    prodDeps,
+    readConfiguredPassphrase,
+    resolveBackupPassphrase,
 } from "./deps.ts";
 import { runBackupDrill } from "./drill.ts";
 import {
-  EXIT_FAILURE,
-  EXIT_OK,
-  EXIT_USAGE,
+    EXIT_FAILURE,
+    EXIT_OK,
+    EXIT_USAGE,
 } from "../../cli-commands/exit-codes.ts";
 import type { ProdCliDeps } from "./types.ts";
 import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
@@ -73,31 +73,31 @@ import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
  * `--backup-dir /x/` 时 `excludePaths` 完全失配）。
  */
 export function normalizeDir(path: string): string {
-  if (path.length <= 1) return path;
-  return path.replace(/\/+$/, "");
+    if (path.length <= 1) return path;
+    return path.replace(/\/+$/, "");
 }
 
 /** 校验一个非负整数旗标。 */
 function assertNonNegative(value: number, flag: string): number {
-  if (!Number.isInteger(value) || value < 0) {
-    throw new UsageError(`${flag} 必须是非负整数，收到 "${value}"`);
-  }
-  return value;
+    if (!Number.isInteger(value) || value < 0) {
+        throw new UsageError(`${flag} 必须是非负整数，收到 "${value}"`);
+    }
+    return value;
 }
 
 /** 构造备份采集与数据量估算共用的只读 compose 上下文。 */
 export function buildBackupComposeContext(
-  composeFile: string,
-  envFile: string,
-  processEnv: Record<string, string | undefined>,
+    composeFile: string,
+    envFile: string,
+    processEnv: Record<string, string | undefined>,
 ): ProdComposeContext {
-  return {
-    composeFile,
-    envFile,
-    dockerBin: processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker",
-    judge: true,
-    noAnsi: true,
-  };
+    return {
+        composeFile,
+        envFile,
+        dockerBin: processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker",
+        judge: true,
+        noAnsi: true,
+    };
 }
 
 /**
@@ -125,87 +125,87 @@ export function buildBackupComposeContext(
  * 4. 查询失败 → `migration-status-unavailable`。
  */
 async function readMigrationStatus(
-  runner: CommandRunner,
-  composeFile: string,
-  envFile: string,
-  env: Record<string, string | undefined>,
+    runner: CommandRunner,
+    composeFile: string,
+    envFile: string,
+    env: Record<string, string | undefined>,
 ): Promise<string> {
-  const user = env["POSTGRES_USER"] ?? "noj";
-  const db = env["POSTGRES_DB"] ?? "noj";
-  const psql = async (sql: string): Promise<string | null> => {
-    try {
-      const res = await runner.run("docker", [
-        "compose",
-        "--env-file",
-        envFile,
-        "--file",
-        composeFile,
-        "exec",
-        "-T",
-        "postgres",
-        "psql",
-        "-U",
-        user,
-        "-d",
-        db,
-        "-Atqc",
-        sql,
-      ]);
-      if (res.code !== 0) return null;
-      return res.stdout.trim();
-    } catch {
-      return null;
-    }
-  };
-  const exists = await psql(
-    "SELECT to_regclass('drizzle.__drizzle_migrations')",
-  );
-  if (exists === null || exists === "") return "not-initialized";
-  const status = await psql(
-    "SELECT hash || ':' || created_at::text FROM drizzle.__drizzle_migrations ORDER BY created_at",
-  );
-  return status === null || status === ""
-    ? "migration-status-unavailable"
-    : status;
+    const user = env["POSTGRES_USER"] ?? "noj";
+    const db = env["POSTGRES_DB"] ?? "noj";
+    const psql = async (sql: string): Promise<string | null> => {
+        try {
+            const res = await runner.run("docker", [
+                "compose",
+                "--env-file",
+                envFile,
+                "--file",
+                composeFile,
+                "exec",
+                "-T",
+                "postgres",
+                "psql",
+                "-U",
+                user,
+                "-d",
+                db,
+                "-Atqc",
+                sql,
+            ]);
+            if (res.code !== 0) return null;
+            return res.stdout.trim();
+        } catch {
+            return null;
+        }
+    };
+    const exists = await psql(
+        "SELECT to_regclass('drizzle.__drizzle_migrations')",
+    );
+    if (exists === null || exists === "") return "not-initialized";
+    const status = await psql(
+        "SELECT hash || ':' || created_at::text FROM drizzle.__drizzle_migrations ORDER BY created_at",
+    );
+    return status === null || status === ""
+        ? "migration-status-unavailable"
+        : status;
 }
 
 /** `backup create` 的选项（在 CLI 旗标之上再暴露 `args` 便于测试注入）。 */
 export interface BackupCreateCliOptions {
-  passphraseFile?: string;
-  backupDir?: string;
-  zstdLevel?: number;
-  noEncrypt?: boolean;
-  /**
-   * 保留天数（`--retention-days` / `NOJ_BACKUP_RETENTION_DAYS`，默认 30）。
-   *
-   * 写入 manifest，并在**成功创建快照后**清理
-   * 早于该天数的快照。
-   */
-  retentionDays?: number;
-  /**
-   * 最低可用空间（MB，`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）。
-   *
-   * 作为固定兜底下限与数据量估算峰值取较大值，空间不足直接失败。
-   */
-  minFreeMb?: number;
-  args: string[];
-  deps: ProdCliDeps;
-  /**
-   * 采集/打包操作集注入点；缺省用真实的 `createProdPayloadOps`。
-   *
-   * 存在的理由：**让"create 成功后是否写了指标"这条接线可测**。
-   */
-  ops?: ContainerPayloadOps;
-  /** 可用空间探测注入点（仅返回可用字节）。 */
-  probeFreeBytes?: (dir: string) => Promise<number>;
-  /** 分区级磁盘空间探测注入点（缺省用 `probeDiskPartition`）。 */
-  probePartition?: (dir: string) => Promise<DiskPartitionInfo | null>;
-  /** 数据量估算注入点（缺省用 `estimateBackupDataSize`）。 */
-  estimateDataSize?: () => Promise<BackupDataEstimate | null>;
-  /** 调用方预估算的结果透传（如 `update` 预检已估过，避免重复运行 `mc du`）。 */
-  precomputedEstimate?: BackupDataEstimate | null;
-  /** 进程存活探测注入点（供测试残留清理与锁判定）。 */
-  isProcessAlive?: (pid: number) => Promise<boolean>;
+    passphraseFile?: string;
+    backupDir?: string;
+    zstdLevel?: number;
+    noEncrypt?: boolean;
+    /**
+     * 保留天数（`--retention-days` / `NOJ_BACKUP_RETENTION_DAYS`，默认 30）。
+     *
+     * 写入 manifest，并在**成功创建快照后**清理
+     * 早于该天数的快照。
+     */
+    retentionDays?: number;
+    /**
+     * 最低可用空间（MB，`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）。
+     *
+     * 作为固定兜底下限与数据量估算峰值取较大值，空间不足直接失败。
+     */
+    minFreeMb?: number;
+    args: string[];
+    deps: ProdCliDeps;
+    /**
+     * 采集/打包操作集注入点；缺省用真实的 `createProdPayloadOps`。
+     *
+     * 存在的理由：**让"create 成功后是否写了指标"这条接线可测**。
+     */
+    ops?: ContainerPayloadOps;
+    /** 可用空间探测注入点（仅返回可用字节）。 */
+    probeFreeBytes?: (dir: string) => Promise<number>;
+    /** 分区级磁盘空间探测注入点（缺省用 `probeDiskPartition`）。 */
+    probePartition?: (dir: string) => Promise<DiskPartitionInfo | null>;
+    /** 数据量估算注入点（缺省用 `estimateBackupDataSize`）。 */
+    estimateDataSize?: () => Promise<BackupDataEstimate | null>;
+    /** 调用方预估算的结果透传（如 `update` 预检已估过，避免重复运行 `mc du`）。 */
+    precomputedEstimate?: BackupDataEstimate | null;
+    /** 进程存活探测注入点（供测试残留清理与锁判定）。 */
+    isProcessAlive?: (pid: number) => Promise<boolean>;
 }
 
 /**
@@ -217,249 +217,252 @@ export interface BackupCreateCliOptions {
  * 4. 持锁执行采集 → 流式打包加密 → 原子提交 → 指标 → 清理旧快照。
  */
 export async function runBackupCreate(
-  dir: string,
-  opts: BackupCreateCliOptions,
+    dir: string,
+    opts: BackupCreateCliOptions,
 ): Promise<CreateContainerResult> {
-  const d = prodDeps(opts.deps);
-  const envFile = join(dir, PROD_ENV_FILE);
-  const composeFile = join(dir, PROD_COMPOSE_FILE);
-  // **归一化尾随斜杠**（2026-09-23 复审）：`--backup-dir /x/` 与
-  // `listBackups` 拼出的 `/x//name` 不一致，会让下面的 `excludePaths` 完全失配
-  // → 刚创建的快照仍可能被自己的清理删掉。
-  const backupDir = normalizeDir(opts.backupDir ?? prodBackupDir(dir));
-  const env = await readEnvValuesOrEmpty(envFile);
-  // 口令来源：显式选项（旗标）> 进程环境 > `.env.prod`，与 verify/restore/drill
-  // 一致。此前只认旗标：`install`/`update` 已把口令路径写进 `.env.prod`，
-  // 手动 `backup create` 却仍报"缺少 GPG 口令文件"。
-  const passphraseFile = opts.passphraseFile ??
-    resolveBackupPassphrase(opts.args, {
-      env: d.processEnv,
-      configured: env["NOJ_BACKUP_PASSPHRASE_FILE"],
-    });
+    const d = prodDeps(opts.deps);
+    const envFile = join(dir, PROD_ENV_FILE);
+    const composeFile = join(dir, PROD_COMPOSE_FILE);
+    // **归一化尾随斜杠**（2026-09-23 复审）：`--backup-dir /x/` 与
+    // `listBackups` 拼出的 `/x//name` 不一致，会让下面的 `excludePaths` 完全失配
+    // → 刚创建的快照仍可能被自己的清理删掉。
+    const backupDir = normalizeDir(opts.backupDir ?? prodBackupDir(dir));
+    const env = await readEnvValuesOrEmpty(envFile);
+    // 口令来源：显式选项（旗标）> 进程环境 > `.env.prod`，与 verify/restore/drill
+    // 一致。此前只认旗标：`install`/`update` 已把口令路径写进 `.env.prod`，
+    // 手动 `backup create` 却仍报"缺少 GPG 口令文件"。
+    const passphraseFile = opts.passphraseFile ??
+        resolveBackupPassphrase(opts.args, {
+            env: d.processEnv,
+            configured: env["NOJ_BACKUP_PASSPHRASE_FILE"],
+        });
 
-  // ---- 0. 数字旗标校验----
-  // **必须在任何副作用之前**：`--retention-days oops` 若拖到清理阶段才报错，
-  // 备份已经产出、用户却拿到失败退出码。
-  const retentionDays = assertNonNegative(
-    opts.retentionDays ?? 30,
-    "--retention-days",
-  );
-  const flagMinFreeMb = opts.minFreeMb !== undefined
-    ? assertNonNegative(opts.minFreeMb, "--min-free-mb")
-    : numberFlag(opts.args, "--min-free-mb");
-  const minFreeMb = resolveBackupMinFreeMb({
-    flag: flagMinFreeMb,
-    processEnv: d.processEnv["NOJ_BACKUP_MIN_FREE_MB"],
-    configured: env["NOJ_BACKUP_MIN_FREE_MB"],
-  });
-  const note = opts.deps.err ?? ((t: string) => console.error(t));
-
-  // ---- 0a. 启动前检查锁并清理上次异常中断残留的临时产物 ----
-  const cleaned = await checkAndCleanStaleBackupArtifacts(backupDir, {
-    runner: d.runner,
-    isProcessAlive: opts.isProcessAlive,
-    now: opts.deps.now?.(),
-  });
-  if (cleaned.removedStaleLock || cleaned.removed.length > 0) {
-    note(
-      `✓ 启动前已清理崩溃残留（释放 ${
-        formatDiskBytes(cleaned.reclaimedBytes)
-      }，移除 ${cleaned.removed.length} 项临时产物）`,
+    // ---- 0. 数字旗标校验----
+    // **必须在任何副作用之前**：`--retention-days oops` 若拖到清理阶段才报错，
+    // 备份已经产出、用户却拿到失败退出码。
+    const retentionDays = assertNonNegative(
+        opts.retentionDays ?? 30,
+        "--retention-days",
     );
-  }
-
-  // ---- 0b. 按固定下限 + 真实数据量预估执行磁盘空间预检（零写入前拦截）----
-  const composeCtx = buildBackupComposeContext(
-    composeFile,
-    envFile,
-    d.processEnv,
-  );
-  let partition: DiskPartitionInfo | null = null;
-  let availableBytes = Number.POSITIVE_INFINITY;
-  if (opts.probeFreeBytes !== undefined) {
-    availableBytes = await opts.probeFreeBytes(backupDir);
-  } else {
-    partition = opts.probePartition !== undefined
-      ? await opts.probePartition(backupDir)
-      : await probeDiskPartition(d.runner, backupDir);
-    if (partition !== null) availableBytes = partition.availableBytes;
-  }
-
-  const streaming = opts.noEncrypt === true || (
-    opts.ops === undefined
-      ? d.runner.pipe !== undefined
-      : opts.ops.tarZstEncrypt !== undefined
-  );
-  if (Number.isFinite(availableBytes)) {
-    const floorCheck = evaluateBackupDiskSpace({
-      partition,
-      availableBytes,
-      minFreeMb,
-      estimate: null,
-      streaming,
+    const flagMinFreeMb = opts.minFreeMb !== undefined
+        ? assertNonNegative(opts.minFreeMb, "--min-free-mb")
+        : numberFlag(opts.args, "--min-free-mb");
+    const minFreeMb = resolveBackupMinFreeMb({
+        flag: flagMinFreeMb,
+        processEnv: d.processEnv["NOJ_BACKUP_MIN_FREE_MB"],
+        configured: env["NOJ_BACKUP_MIN_FREE_MB"],
     });
-    if (!floorCheck.ok) {
-      throw new Error(floorCheck.error ?? "备份目录可用空间不足");
-    }
+    const note = opts.deps.err ?? ((t: string) => console.error(t));
 
-    const estimate = opts.precomputedEstimate !== undefined
-      ? opts.precomputedEstimate
-      : opts.estimateDataSize !== undefined
-      ? await opts.estimateDataSize()
-      : await estimateBackupDataSize({
+    // ---- 0a. 启动前检查锁并清理上次异常中断残留的临时产物 ----
+    const cleaned = await checkAndCleanStaleBackupArtifacts(backupDir, {
         runner: d.runner,
-        compose: composeCtx,
-        env,
-      });
-    const fullCheck = evaluateBackupDiskSpace({
-      partition,
-      availableBytes,
-      minFreeMb,
-      estimate,
-      streaming,
+        isProcessAlive: opts.isProcessAlive,
+        now: opts.deps.now?.(),
     });
-    if (!fullCheck.ok) {
-      throw new Error(fullCheck.error ?? "备份目录可用空间不足");
+    if (cleaned.removedStaleLock || cleaned.removed.length > 0) {
+        note(
+            `✓ 启动前已清理崩溃残留（释放 ${
+                formatDiskBytes(cleaned.reclaimedBytes)
+            }，移除 ${cleaned.removed.length} 项临时产物）`,
+        );
     }
-  }
 
-  const ops = opts.ops ?? createProdPayloadOps({
-    runner: d.runner,
-    driver: realRawDriver(d.runner),
-    compose: composeCtx,
-    env,
-  });
-
-  // ---- 0c. 获取排他锁并在 finally 确保释放 ----
-  const lock = await acquireBackupLock(backupDir, {
-    runner: d.runner,
-    isProcessAlive: opts.isProcessAlive,
-    now: opts.deps.now?.(),
-  });
-  let created: CreateContainerResult;
-  try {
-    created = await createContainer({
-      backupDir,
-      // staging 与产物同目录：跨目录 rename 可能退化为拷贝并丢失原子性
-      stagingParent: backupDir,
-      passphraseFile,
-      noEncrypt: opts.noEncrypt === true,
-      zstdLevel: opts.zstdLevel,
-      retentionDays,
-      envFile,
-      postgresDatabase: env["POSTGRES_DB"] ?? "noj",
-      migrationStatus: await readMigrationStatus(
-        d.runner,
+    // ---- 0b. 按固定下限 + 真实数据量预估执行磁盘空间预检（零写入前拦截）----
+    const composeCtx = buildBackupComposeContext(
         composeFile,
         envFile,
+        d.processEnv,
+    );
+    let partition: DiskPartitionInfo | null = null;
+    let availableBytes = Number.POSITIVE_INFINITY;
+    if (opts.probeFreeBytes !== undefined) {
+        availableBytes = await opts.probeFreeBytes(backupDir);
+    } else {
+        partition = opts.probePartition !== undefined
+            ? await opts.probePartition(backupDir)
+            : await probeDiskPartition(d.runner, backupDir);
+        if (partition !== null) availableBytes = partition.availableBytes;
+    }
+
+    const streaming = opts.noEncrypt === true || (
+        opts.ops === undefined
+            ? d.runner.pipe !== undefined
+            : opts.ops.tarZstEncrypt !== undefined
+    );
+    if (Number.isFinite(availableBytes)) {
+        const floorCheck = evaluateBackupDiskSpace({
+            partition,
+            availableBytes,
+            minFreeMb,
+            estimate: null,
+            streaming,
+        });
+        if (!floorCheck.ok) {
+            throw new Error(floorCheck.error ?? "备份目录可用空间不足");
+        }
+
+        const estimate = opts.precomputedEstimate !== undefined
+            ? opts.precomputedEstimate
+            : opts.estimateDataSize !== undefined
+            ? await opts.estimateDataSize()
+            : await estimateBackupDataSize({
+                runner: d.runner,
+                compose: composeCtx,
+                env,
+            });
+        const fullCheck = evaluateBackupDiskSpace({
+            partition,
+            availableBytes,
+            minFreeMb,
+            estimate,
+            streaming,
+        });
+        if (!fullCheck.ok) {
+            throw new Error(fullCheck.error ?? "备份目录可用空间不足");
+        }
+    }
+
+    const ops = opts.ops ?? createProdPayloadOps({
+        runner: d.runner,
+        driver: realRawDriver(d.runner),
+        compose: composeCtx,
         env,
-      ),
-      ops,
-      now: opts.deps.now?.(),
     });
 
-    // ---- 13. 备份新鲜度指标（node_exporter textfile）----
-    // **只在成功后写**：`NojBackupStale` 的语义是"最近一次**成功**距今多久"，
-    // 失败也写会让"备份一直没成功"被掩盖——那正是该告警要抓的。
-    // 指标缺失（脚本删掉后 TS 侧曾无写入方）会触发 `NojBackupMetricMissing`
-    // 持续报警，进而让人忽略真正的备份故障。
+    // ---- 0c. 获取排他锁并在 finally 确保释放 ----
+    const lock = await acquireBackupLock(backupDir, {
+        runner: d.runner,
+        isProcessAlive: opts.isProcessAlive,
+        now: opts.deps.now?.(),
+    });
+    let created: CreateContainerResult;
     try {
-      const size = (await Deno.stat(created.path)).size;
-      const at = opts.deps.now?.() ?? new Date();
-      await writeBackupMetrics({
-        backupDir,
-        explicitDir: d.processEnv["NOJ_BACKUP_METRICS_DIR"],
-        unixSeconds: Math.floor(at.getTime() / 1000),
-        snapshotBytes: size,
-      });
-    } catch (err) {
-      // 备份**本体**已成功，指标写失败不该把成功报成失败；但必须可见
-      // （静默会让"指标缺失"变成无声故障）。
-      note(`! 备份已完成，但新鲜度指标写入失败：${(err as Error).message}`);
-    }
+        created = await createContainer({
+            backupDir,
+            // staging 与产物同目录：跨目录 rename 可能退化为拷贝并丢失原子性
+            stagingParent: backupDir,
+            passphraseFile,
+            noEncrypt: opts.noEncrypt === true,
+            zstdLevel: opts.zstdLevel,
+            retentionDays,
+            envFile,
+            postgresDatabase: env["POSTGRES_DB"] ?? "noj",
+            migrationStatus: await readMigrationStatus(
+                d.runner,
+                composeFile,
+                envFile,
+                env,
+            ),
+            ops,
+            now: opts.deps.now?.(),
+        });
 
-    // ---- 14. 按保留天数清理旧快照----
-    // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
-    // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
-    //
-    // **人类提示一律走 stderr**（2026-09-23 复审）：`backup create --json` 的 stdout
-    // 必须**逐字节为 JSON**，此前这些 `✓ 已清理…` 走 stdout
-    // 会让 `JSON.parse(stdout)` 直接抛错。
-    try {
-      const pruned = await pruneBackups(backupDir, {
-        olderThanDays: retentionDays,
-        confirm: true,
-        // **必须把"刚创建的这一份"排除在清理之外**：`--retention-days 0` 的语义是
-        // "不留旧快照"，但刚产出的这一份不在其列。
-        // 若按 `ageDays > 0` 判定，刚产出的快照（ageDays≈0）在某些时钟/时区下会
-        // 被判为"过期"并当场删除，只剩孤儿 `.sha256`（复审实测：exit 0 但快照消失）。
-        excludePaths: new Set([created.path]),
-      });
-      for (const path of pruned.deleted) {
-        note(`✓ 已清理过期快照：${path}`);
-      }
-      if (pruned.failed.length > 0) {
-        note(
-          `! 有 ${pruned.failed.length} 份过期快照清理失败：` +
-            pruned.failed.map((f) => f.path).join("、"),
-        );
-      }
-    } catch (err) {
-      note(`! 备份已完成，但过期快照清理失败：${(err as Error).message}`);
+        // ---- 13. 备份新鲜度指标（node_exporter textfile）----
+        // **只在成功后写**：`NojBackupStale` 的语义是"最近一次**成功**距今多久"，
+        // 失败也写会让"备份一直没成功"被掩盖——那正是该告警要抓的。
+        // 指标缺失（脚本删掉后 TS 侧曾无写入方）会触发 `NojBackupMetricMissing`
+        // 持续报警，进而让人忽略真正的备份故障。
+        try {
+            const size = (await Deno.stat(created.path)).size;
+            const at = opts.deps.now?.() ?? new Date();
+            await writeBackupMetrics({
+                backupDir,
+                explicitDir: d.processEnv["NOJ_BACKUP_METRICS_DIR"],
+                unixSeconds: Math.floor(at.getTime() / 1000),
+                snapshotBytes: size,
+            });
+        } catch (err) {
+            // 备份**本体**已成功，指标写失败不该把成功报成失败；但必须可见
+            // （静默会让"指标缺失"变成无声故障）。
+            note(
+                `! 备份已完成，但新鲜度指标写入失败：${(err as Error).message}`,
+            );
+        }
+
+        // ---- 14. 按保留天数清理旧快照----
+        // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
+        // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
+        //
+        // **人类提示一律走 stderr**（2026-09-23 复审）：`backup create --json` 的 stdout
+        // 必须**逐字节为 JSON**，此前这些 `✓ 已清理…` 走 stdout
+        // 会让 `JSON.parse(stdout)` 直接抛错。
+        try {
+            const pruned = await pruneBackups(backupDir, {
+                olderThanDays: retentionDays,
+                confirm: true,
+                // **必须把"刚创建的这一份"排除在清理之外**：`--retention-days 0` 的语义是
+                // "不留旧快照"，但刚产出的这一份不在其列。
+                // 若按 `ageDays > 0` 判定，刚产出的快照（ageDays≈0）在某些时钟/时区下会
+                // 被判为"过期"并当场删除，只剩孤儿 `.sha256`（复审实测：exit 0 但快照消失）。
+                excludePaths: new Set([created.path]),
+            });
+            for (const path of pruned.deleted) {
+                note(`✓ 已清理过期快照：${path}`);
+            }
+            if (pruned.failed.length > 0) {
+                note(
+                    `! 有 ${pruned.failed.length} 份过期快照清理失败：` +
+                        pruned.failed.map((f) => f.path).join("、"),
+                );
+            }
+        } catch (err) {
+            note(`! 备份已完成，但过期快照清理失败：${(err as Error).message}`);
+        }
+        return created;
+    } finally {
+        await lock.release();
     }
-    return created;
-  } finally {
-    await lock.release();
-  }
 }
 
 /** `backup verify`（三档）。 */
 export async function runBackupVerify(
-  dir: string,
-  args: string[],
-  deps: ProdCliDeps,
+    dir: string,
+    args: string[],
+    deps: ProdCliDeps,
 ): Promise<BackupVerifyResult> {
-  const snapshot = positionals(args)[0];
-  if (snapshot === undefined) {
-    throw new UsageError("backup verify 需要 <snapshot> 路径");
-  }
-  const d = prodDeps(deps);
-  // 口令来源：旗标 > 进程环境 > `.env.prod`（环境变量此前未接线，
-  // 而 `install` 会把它写进 `.env.prod`）。
-  const configured = await readConfiguredPassphrase(dir);
-  const passphraseFile = resolveBackupPassphrase(args, {
-    env: d.processEnv,
-    configured,
-  });
-  const work = await Deno.makeTempDir({ prefix: "noj-verify-" });
-  try {
-    return await verifyCommand({
-      path: snapshot,
-      workDir: work,
-      passphraseFile,
-      encrypted: !hasFlag(args, "--no-encrypt"),
-      deep: hasFlag(args, "--deep"),
-      payloadSha: hasFlag(args, "--payload-sha"),
-      ops: {
-        gpgDecrypt: (src, dest, pass) => gpgDecrypt(d.runner, src, dest, pass),
-        untarZst: (src, destDir) => untarZst(d.runner, src, destDir),
-      },
+    const snapshot = positionals(args)[0];
+    if (snapshot === undefined) {
+        throw new UsageError("backup verify 需要 <snapshot> 路径");
+    }
+    const d = prodDeps(deps);
+    // 口令来源：旗标 > 进程环境 > `.env.prod`（环境变量此前未接线，
+    // 而 `install` 会把它写进 `.env.prod`）。
+    const configured = await readConfiguredPassphrase(dir);
+    const passphraseFile = resolveBackupPassphrase(args, {
+        env: d.processEnv,
+        configured,
     });
-  } finally {
-    await Deno.remove(work, { recursive: true }).catch(() => {});
-  }
+    const work = await Deno.makeTempDir({ prefix: "noj-verify-" });
+    try {
+        return await verifyCommand({
+            path: snapshot,
+            workDir: work,
+            passphraseFile,
+            encrypted: !hasFlag(args, "--no-encrypt"),
+            deep: hasFlag(args, "--deep"),
+            payloadSha: hasFlag(args, "--payload-sha"),
+            ops: {
+                gpgDecrypt: (src, dest, pass) =>
+                    gpgDecrypt(d.runner, src, dest, pass),
+                untarZst: (src, destDir) => untarZst(d.runner, src, destDir),
+            },
+        });
+    } finally {
+        await Deno.remove(work, { recursive: true }).catch(() => {});
+    }
 }
 
 /** `backup list`。 */
 export function runBackupList(
-  dir: string,
-  args: string[],
-  deps: ProdCliDeps,
+    dir: string,
+    args: string[],
+    deps: ProdCliDeps,
 ): Promise<import("../backup/commands.ts").BackupListResult> {
-  const d = prodDeps(deps);
-  void d;
-  const backupDir = flagValue(args, "--backup-dir") ?? prodBackupDir(dir);
-  return listBackupCommand(backupDir);
+    const d = prodDeps(deps);
+    void d;
+    const backupDir = flagValue(args, "--backup-dir") ?? prodBackupDir(dir);
+    return listBackupCommand(backupDir);
 }
 
 /**
@@ -468,22 +471,22 @@ export function runBackupList(
  * `--confirm` 才真正删除——这条安全默认在 `pruneCommand` 里，本函数只透传。
  */
 export function runBackupPrune(
-  dir: string,
-  args: string[],
-  deps: ProdCliDeps,
+    dir: string,
+    args: string[],
+    deps: ProdCliDeps,
 ): Promise<BackupPruneResult> {
-  void deps;
-  const backupDir = flagValue(args, "--backup-dir") ?? prodBackupDir(dir);
-  // **必须校验**：`Number("oops")` 是 `NaN`，
-  // 而 `planPrune` 的 `Math.max(0, NaN)` 仍是 `NaN`、`slice(0, NaN)` 返回空集，
-  // 于是"受数量保护"的集合为空 → **每一份备份都被删**。
-  // 用户输入 `--keep oops --confirm` 的本意是"保留一些"，结果全删了。
-  return pruneCommand(backupDir, {
-    keep: optionalCount(args, "--keep"),
-    olderThanDays: optionalCount(args, "--older-than"),
-    includeLegacy: hasFlag(args, "--include-legacy"),
-    confirm: hasFlag(args, "--confirm"),
-  });
+    void deps;
+    const backupDir = flagValue(args, "--backup-dir") ?? prodBackupDir(dir);
+    // **必须校验**：`Number("oops")` 是 `NaN`，
+    // 而 `planPrune` 的 `Math.max(0, NaN)` 仍是 `NaN`、`slice(0, NaN)` 返回空集，
+    // 于是"受数量保护"的集合为空 → **每一份备份都被删**。
+    // 用户输入 `--keep oops --confirm` 的本意是"保留一些"，结果全删了。
+    return pruneCommand(backupDir, {
+        keep: optionalCount(args, "--keep"),
+        olderThanDays: optionalCount(args, "--older-than"),
+        includeLegacy: hasFlag(args, "--include-legacy"),
+        confirm: hasFlag(args, "--confirm"),
+    });
 }
 
 /**
@@ -498,280 +501,286 @@ export function runBackupPrune(
  * 恢复失败绝不能被当成"成功但没什么可做"。
  */
 export async function runBackupRestore(
-  dir: string,
-  args: string[],
-  deps: ProdCliDeps,
+    dir: string,
+    args: string[],
+    deps: ProdCliDeps,
 ): Promise<
-  | {
-    kind: "dry-run";
-    steps: RestoreStep[];
-    verified: boolean;
-    summary: string;
-  }
-  | { kind: "restored"; summary: string; restored: string[]; path: string }
-> {
-  const snapshot = positionals(args)[0];
-  if (snapshot === undefined) {
-    throw new UsageError("backup restore 需要 <snapshot> 路径");
-  }
-  const d = prodDeps(deps);
-  // 口令来源：旗标 > 进程环境 > `.env.prod`（环境变量此前未接线）。
-  const passphraseFile = resolveBackupPassphrase(args, {
-    env: d.processEnv,
-    configured: await readConfiguredPassphrase(dir),
-  });
-  const dockerBin = d.processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker";
-  const work = await Deno.makeTempDir({ prefix: "noj-restore-" });
-  try {
-    const ops = {
-      gpgDecrypt: (src: string, dest: string, pass: string) =>
-        gpgDecrypt(d.runner, src, dest, pass),
-      untarZst: (src: string, destDir: string) =>
-        untarZst(d.runner, src, destDir),
-    };
-    // 无 --confirm（或显式 --dry-run）：保持 dry-run（零副作用），并明确告知"未执行"
-    if (!hasFlag(args, "--confirm")) {
-      const plan = await restorePlan({
-        path: snapshot,
-        workDir: work,
-        passphraseFile,
-        encrypted: !hasFlag(args, "--no-encrypt"),
-        restoreEnv: flagValue(args, "--restore-env"),
-        bucket: undefined,
-        ops,
-      });
-      return {
-        kind: "dry-run",
-        steps: plan.steps,
-        verified: plan.verified,
-        summary: plan.summary +
-          "\n（未执行任何变更；要真正恢复请追加 --confirm）",
-      };
+    | {
+        kind: "dry-run";
+        steps: RestoreStep[];
+        verified: boolean;
+        summary: string;
     }
-    // --confirm：真实恢复
-    const result = await restoreConfirmed({
-      path: snapshot,
-      dir,
-      composeFile: join(dir, PROD_COMPOSE_FILE),
-      envFile: join(dir, PROD_ENV_FILE),
-      runner: d.runner,
-      confirm: true,
-      workDir: work,
-      passphraseFile,
-      encrypted: !hasFlag(args, "--no-encrypt"),
-      restoreEnv: flagValue(args, "--restore-env"),
-      judge: false,
-      dockerBin,
-      // `--json` 时 stdout 必须逐字节为 JSON（CHANGELOG 的生产命令契约），
-      // 因此人类日志改道 stderr（2026-09-23 复审）。
-      log: (line) => {
-        if (hasJson(args)) console.error(line);
-        else (deps.out ?? ((t: string) => console.log(t)))(line);
-      },
-      ops,
+    | { kind: "restored"; summary: string; restored: string[]; path: string }
+> {
+    const snapshot = positionals(args)[0];
+    if (snapshot === undefined) {
+        throw new UsageError("backup restore 需要 <snapshot> 路径");
+    }
+    const d = prodDeps(deps);
+    // 口令来源：旗标 > 进程环境 > `.env.prod`（环境变量此前未接线）。
+    const passphraseFile = resolveBackupPassphrase(args, {
+        env: d.processEnv,
+        configured: await readConfiguredPassphrase(dir),
     });
-    return {
-      kind: "restored",
-      summary: result.summary,
-      restored: result.restored,
-      path: result.path,
-    };
-  } finally {
-    await Deno.remove(work, { recursive: true }).catch(() => {});
-  }
+    const dockerBin = d.processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker";
+    const work = await Deno.makeTempDir({ prefix: "noj-restore-" });
+    try {
+        const ops = {
+            gpgDecrypt: (src: string, dest: string, pass: string) =>
+                gpgDecrypt(d.runner, src, dest, pass),
+            untarZst: (src: string, destDir: string) =>
+                untarZst(d.runner, src, destDir),
+        };
+        // 无 --confirm（或显式 --dry-run）：保持 dry-run（零副作用），并明确告知"未执行"
+        if (!hasFlag(args, "--confirm")) {
+            const plan = await restorePlan({
+                path: snapshot,
+                workDir: work,
+                passphraseFile,
+                encrypted: !hasFlag(args, "--no-encrypt"),
+                restoreEnv: flagValue(args, "--restore-env"),
+                bucket: undefined,
+                ops,
+            });
+            return {
+                kind: "dry-run",
+                steps: plan.steps,
+                verified: plan.verified,
+                summary: plan.summary +
+                    "\n（未执行任何变更；要真正恢复请追加 --confirm）",
+            };
+        }
+        // --confirm：真实恢复
+        const result = await restoreConfirmed({
+            path: snapshot,
+            dir,
+            composeFile: join(dir, PROD_COMPOSE_FILE),
+            envFile: join(dir, PROD_ENV_FILE),
+            runner: d.runner,
+            confirm: true,
+            workDir: work,
+            passphraseFile,
+            encrypted: !hasFlag(args, "--no-encrypt"),
+            restoreEnv: flagValue(args, "--restore-env"),
+            judge: false,
+            dockerBin,
+            // `--json` 时 stdout 必须逐字节为 JSON（CHANGELOG 的生产命令契约），
+            // 因此人类日志改道 stderr（2026-09-23 复审）。
+            log: (line) => {
+                if (hasJson(args)) console.error(line);
+                else (deps.out ?? ((t: string) => console.log(t)))(line);
+            },
+            ops,
+        });
+        return {
+            kind: "restored",
+            summary: result.summary,
+            restored: result.restored,
+            path: result.path,
+        };
+    } finally {
+        await Deno.remove(work, { recursive: true }).catch(() => {});
+    }
 }
 
 /** `backup schedule`。 */
 export async function runBackupSchedule(
-  dir: string,
-  args: string[],
-  deps: ProdCliDeps,
+    dir: string,
+    args: string[],
+    deps: ProdCliDeps,
 ): Promise<ScheduleResult> {
-  const d = prodDeps(deps);
-  const sub = positionals(args)[0] ?? "status";
-  const crontabBin = d.processEnv["NOJ_BACKUP_CRONTAB_BIN"];
-  const common = {
-    runner: d.runner,
-    crontabBin,
-    installDir: dir,
-    envFile: join(dir, PROD_ENV_FILE),
-    composeFile: join(dir, PROD_COMPOSE_FILE),
-    backupDir: flagValue(args, "--backup-dir") ?? prodBackupDir(dir),
-    // 口令来源与 create/verify 一致：旗标 > 进程环境 > `.env.prod`。
-    passphraseFile: resolveBackupPassphrase(args, {
-      env: d.processEnv,
-      configured: await readConfiguredPassphrase(dir),
-    }),
-    // 同上：`--json` 时人类日志走 stderr，保证 stdout 干净。
-    log: (line: string) => {
-      if (hasJson(args)) console.error(line);
-      else (deps.out ?? ((t: string) => console.log(t)))(line);
-    },
-  };
-  switch (sub) {
-    case "install":
-      return await installSchedule({
-        ...common,
-        schedule: flagValue(args, "--schedule"),
-      });
-    case "remove":
-      return await removeSchedule(common);
-    case "status":
-      return await statusSchedule(common);
-    default:
-      throw new UsageError(
-        `backup schedule 需要子命令 install/status/remove，收到 "${sub}"`,
-      );
-  }
+    const d = prodDeps(deps);
+    const sub = positionals(args)[0] ?? "status";
+    const crontabBin = d.processEnv["NOJ_BACKUP_CRONTAB_BIN"];
+    const common = {
+        runner: d.runner,
+        crontabBin,
+        installDir: dir,
+        envFile: join(dir, PROD_ENV_FILE),
+        composeFile: join(dir, PROD_COMPOSE_FILE),
+        backupDir: flagValue(args, "--backup-dir") ?? prodBackupDir(dir),
+        // 口令来源与 create/verify 一致：旗标 > 进程环境 > `.env.prod`。
+        passphraseFile: resolveBackupPassphrase(args, {
+            env: d.processEnv,
+            configured: await readConfiguredPassphrase(dir),
+        }),
+        // 同上：`--json` 时人类日志走 stderr，保证 stdout 干净。
+        log: (line: string) => {
+            if (hasJson(args)) console.error(line);
+            else (deps.out ?? ((t: string) => console.log(t)))(line);
+        },
+    };
+    switch (sub) {
+        case "install":
+            return await installSchedule({
+                ...common,
+                schedule: flagValue(args, "--schedule"),
+            });
+        case "remove":
+            return await removeSchedule(common);
+        case "status":
+            return await statusSchedule(common);
+        default:
+            throw new UsageError(
+                `backup schedule 需要子命令 install/status/remove，收到 "${sub}"`,
+            );
+    }
 }
 
 /** 人类可读字节数（备份 list 展示用）。 */
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return bytes + "B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + "K";
-  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + "M";
-  return (bytes / 1024 / 1024 / 1024).toFixed(1) + "G";
+    if (bytes < 1024) return bytes + "B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + "K";
+    if (bytes < 1024 * 1024 * 1024) {
+        return (bytes / 1024 / 1024).toFixed(1) + "M";
+    }
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + "G";
 }
 
 /** `backup` 的子命令分发。 */
 export async function runProdBackup(
-  dir: string,
-  args: string[],
-  json: boolean,
+    dir: string,
+    args: string[],
+    json: boolean,
 ): Promise<number> {
-  const sub = args[0] ?? "";
-  const rest = args.slice(1);
-  const say = humanOutput(json);
-  switch (sub) {
-    case "drill":
-      return await runBackupDrill(dir, rest);
-    case "create": {
-      const created = await runBackupCreate(dir, {
-        args: rest,
-        deps: {},
-        passphraseFile: flagValue(rest, "--passphrase-file"),
-        backupDir: flagValue(rest, "--backup-dir"),
-        zstdLevel: numberFlag(rest, "--zstd-level"),
-        noEncrypt: hasFlag(rest, "--no-encrypt"),
-        // 旗标缺省时读环境变量 `NOJ_BACKUP_RETENTION_DAYS` /
-        // `NOJ_BACKUP_MIN_FREE_MB`。
-        retentionDays: numberFlag(rest, "--retention-days") ??
-          envNumber("NOJ_BACKUP_RETENTION_DAYS"),
-        minFreeMb: numberFlag(rest, "--min-free-mb") ??
-          envNumber("NOJ_BACKUP_MIN_FREE_MB"),
-      });
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            path: created.path,
-            sha256: created.sha256,
-            sidecar: created.sidecar,
-            payload_layout: created.manifest.payload_layout,
-          },
-          null,
-          2,
-        ));
-      } else {
-        say(`完整生产快照已创建：${created.path}`);
-        say(`校验文件：${created.sidecar}`);
-      }
-      return EXIT_OK;
-    }
-    case "verify": {
-      const r = await runBackupVerify(dir, rest, {});
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            path: r.path,
-            pass: r.pass,
-            checks: r.checks,
-            issues: r.issues,
-          },
-          null,
-          2,
-        ));
-      } else {
-        say(r.summary);
-      }
-      return r.pass ? EXIT_OK : EXIT_FAILURE;
-    }
-    case "list": {
-      const r = await runBackupList(dir, rest, {});
-      if (json) {
-        console.log(JSON.stringify(r, null, 2));
-      } else if (r.entries.length === 0) {
-        say("没有可用备份");
-      } else {
-        for (const e of r.entries) {
-          say(`${e.name}  ${formatBytes(e.bytes ?? 0)}  ${e.createdAt}`);
+    const sub = args[0] ?? "";
+    const rest = args.slice(1);
+    const say = humanOutput(json);
+    switch (sub) {
+        case "drill":
+            return await runBackupDrill(dir, rest);
+        case "create": {
+            const created = await runBackupCreate(dir, {
+                args: rest,
+                deps: {},
+                passphraseFile: flagValue(rest, "--passphrase-file"),
+                backupDir: flagValue(rest, "--backup-dir"),
+                zstdLevel: numberFlag(rest, "--zstd-level"),
+                noEncrypt: hasFlag(rest, "--no-encrypt"),
+                // 旗标缺省时读环境变量 `NOJ_BACKUP_RETENTION_DAYS` /
+                // `NOJ_BACKUP_MIN_FREE_MB`。
+                retentionDays: numberFlag(rest, "--retention-days") ??
+                    envNumber("NOJ_BACKUP_RETENTION_DAYS"),
+                minFreeMb: numberFlag(rest, "--min-free-mb") ??
+                    envNumber("NOJ_BACKUP_MIN_FREE_MB"),
+            });
+            if (json) {
+                console.log(JSON.stringify(
+                    {
+                        path: created.path,
+                        sha256: created.sha256,
+                        sidecar: created.sidecar,
+                        payload_layout: created.manifest.payload_layout,
+                    },
+                    null,
+                    2,
+                ));
+            } else {
+                say(`完整生产快照已创建：${created.path}`);
+                say(`校验文件：${created.sidecar}`);
+            }
+            return EXIT_OK;
         }
-      }
-      return EXIT_OK;
-    }
-    case "prune": {
-      const r = await runBackupPrune(dir, rest, {});
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            applied: r.applied,
-            deleted: r.deleted.map((p) => p),
-            planned: r.plan.remove.map((e) => e.name),
-            failed: r.failed.map((f) => f.path),
-          },
-          null,
-          2,
-        ));
-      } else {
-        // 默认 dry-run：必须明确告知"没有删任何东西"，否则用户以为已清理
-        say(
-          r.applied
-            ? `已删除 ${r.deleted.length} 个备份`
-            : `[dry-run] 将删除 ${r.plan.remove.length} 个备份（加 --confirm 才真正删除）`,
-        );
-        for (const e of r.plan.remove) say(`  - ${e.name}`);
-      }
-      return r.failed.length === 0 ? EXIT_OK : EXIT_FAILURE;
-    }
-    case "restore": {
-      // `--confirm` → 真实恢复；否则 dry-run 计划（文档承诺的语义）。
-      // `--dry-run` 是**显式**的 dry-run 请求：与 `--confirm` 互斥的检查
-      // 已在 `dispatchProduction` 的开头完成（纯参数错误先于目录解析）。
-      const r = await runBackupRestore(dir, rest, {});
-      if (json) {
-        console.log(JSON.stringify(r, null, 2));
-      } else {
-        say(r.summary);
-        if (r.kind === "restored") {
-          for (const component of r.restored) say(`  ✓ 已恢复：${component}`);
+        case "verify": {
+            const r = await runBackupVerify(dir, rest, {});
+            if (json) {
+                console.log(JSON.stringify(
+                    {
+                        path: r.path,
+                        pass: r.pass,
+                        checks: r.checks,
+                        issues: r.issues,
+                    },
+                    null,
+                    2,
+                ));
+            } else {
+                say(r.summary);
+            }
+            return r.pass ? EXIT_OK : EXIT_FAILURE;
         }
-      }
-      if (r.kind === "dry-run") {
-        return r.verified ? EXIT_OK : EXIT_FAILURE;
-      }
-      return EXIT_OK;
+        case "list": {
+            const r = await runBackupList(dir, rest, {});
+            if (json) {
+                console.log(JSON.stringify(r, null, 2));
+            } else if (r.entries.length === 0) {
+                say("没有可用备份");
+            } else {
+                for (const e of r.entries) {
+                    say(`${e.name}  ${
+                        formatBytes(e.bytes ?? 0)
+                    }  ${e.createdAt}`);
+                }
+            }
+            return EXIT_OK;
+        }
+        case "prune": {
+            const r = await runBackupPrune(dir, rest, {});
+            if (json) {
+                console.log(JSON.stringify(
+                    {
+                        applied: r.applied,
+                        deleted: r.deleted.map((p) => p),
+                        planned: r.plan.remove.map((e) => e.name),
+                        failed: r.failed.map((f) => f.path),
+                    },
+                    null,
+                    2,
+                ));
+            } else {
+                // 默认 dry-run：必须明确告知"没有删任何东西"，否则用户以为已清理
+                say(
+                    r.applied
+                        ? `已删除 ${r.deleted.length} 个备份`
+                        : `[dry-run] 将删除 ${r.plan.remove.length} 个备份（加 --confirm 才真正删除）`,
+                );
+                for (const e of r.plan.remove) say(`  - ${e.name}`);
+            }
+            return r.failed.length === 0 ? EXIT_OK : EXIT_FAILURE;
+        }
+        case "restore": {
+            // `--confirm` → 真实恢复；否则 dry-run 计划（文档承诺的语义）。
+            // `--dry-run` 是**显式**的 dry-run 请求：与 `--confirm` 互斥的检查
+            // 已在 `dispatchProduction` 的开头完成（纯参数错误先于目录解析）。
+            const r = await runBackupRestore(dir, rest, {});
+            if (json) {
+                console.log(JSON.stringify(r, null, 2));
+            } else {
+                say(r.summary);
+                if (r.kind === "restored") {
+                    for (const component of r.restored) {
+                        say(`  ✓ 已恢复：${component}`);
+                    }
+                }
+            }
+            if (r.kind === "dry-run") {
+                return r.verified ? EXIT_OK : EXIT_FAILURE;
+            }
+            return EXIT_OK;
+        }
+        case "schedule": {
+            const r = await runBackupSchedule(dir, rest, {});
+            if (json) {
+                console.log(JSON.stringify(
+                    {
+                        exitCode: r.exitCode,
+                        message: r.message,
+                        block: r.block,
+                    },
+                    null,
+                    2,
+                ));
+            } else {
+                say(r.message);
+            }
+            return r.exitCode;
+        }
+        default:
+            console.error(
+                `backup 需要子命令 create/verify/list/prune/restore/drill/schedule，` +
+                    `收到 "${sub}"`,
+            );
+            return EXIT_USAGE;
     }
-    case "schedule": {
-      const r = await runBackupSchedule(dir, rest, {});
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            exitCode: r.exitCode,
-            message: r.message,
-            block: r.block,
-          },
-          null,
-          2,
-        ));
-      } else {
-        say(r.message);
-      }
-      return r.exitCode;
-    }
-    default:
-      console.error(
-        `backup 需要子命令 create/verify/list/prune/restore/drill/schedule，` +
-          `收到 "${sub}"`,
-      );
-      return EXIT_USAGE;
-  }
 }

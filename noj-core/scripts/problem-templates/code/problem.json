@@ -1,10 +1,10 @@
 {
-  "format_version": 3,
-  "kind": "ai",
-  "title": "模板：代码题（函数调用）",
-  "difficulty": "easy",
-  "runtime_config": {
-    "evaluator": { "time_limit_ms": 30000, "memory_limit_mb": 256 },
-    "solution": { "call_timeout_ms": 2000, "memory_limit_mb": 256 }
-  }
+    "format_version": 3,
+    "kind": "ai",
+    "title": "模板：代码题（函数调用）",
+    "difficulty": "easy",
+    "runtime_config": {
+        "evaluator": { "time_limit_ms": 30000, "memory_limit_mb": 256 },
+        "solution": { "call_timeout_ms": 2000, "memory_limit_mb": 256 }
+    }
 }

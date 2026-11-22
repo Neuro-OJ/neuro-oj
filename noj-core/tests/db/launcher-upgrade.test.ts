@@ -11,26 +11,26 @@ import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { PgDialect } from "drizzle-orm/pg-core";
 import {
-  type MigrationConfig,
-  type MigrationMeta,
-  readMigrationFiles,
+    type MigrationConfig,
+    type MigrationMeta,
+    readMigrationFiles,
 } from "drizzle-orm/migrator";
 import postgres from "postgres";
 import {
-  assertDatabaseIdentifier,
-  databaseUrlFor,
-  isOwnedDatabaseName,
+    assertDatabaseIdentifier,
+    databaseUrlFor,
+    isOwnedDatabaseName,
 } from "../../scripts/test-launcher-resources.ts";
 import { assertOwnedTestDatabase } from "../helpers/db.ts";
 
 const MIGRATIONS_DIR = resolve(
-  dirname(fromFileUrl(import.meta.url)),
-  "../../drizzle",
+    dirname(fromFileUrl(import.meta.url)),
+    "../../drizzle",
 );
 const MIGRATION_CONFIG: MigrationConfig = {
-  migrationsFolder: MIGRATIONS_DIR,
-  migrationsSchema: "drizzle",
-  migrationsTable: "__drizzle_migrations",
+    migrationsFolder: MIGRATIONS_DIR,
+    migrationsSchema: "drizzle",
+    migrationsTable: "__drizzle_migrations",
 };
 
 type PgClient = ReturnType<typeof postgres>;
@@ -47,136 +47,138 @@ const REDEEMED_AT = "2025-01-02T03:04:05.000Z";
 const EXPIRES_AT = "2099-01-02T03:04:05.000Z";
 
 function adminUrlForCurrentDatabase(): string {
-  const databaseUrl = Deno.env.get("DATABASE_URL");
-  if (!databaseUrl) {
-    throw new Error(
-      "DATABASE_URL 未设置：迁移升级集成测试必须连接真实 PostgreSQL",
-    );
-  }
-  const adminUrl = new URL(databaseUrl);
-  adminUrl.pathname = "/postgres";
-  return adminUrl.toString();
+    const databaseUrl = Deno.env.get("DATABASE_URL");
+    if (!databaseUrl) {
+        throw new Error(
+            "DATABASE_URL 未设置：迁移升级集成测试必须连接真实 PostgreSQL",
+        );
+    }
+    const adminUrl = new URL(databaseUrl);
+    adminUrl.pathname = "/postgres";
+    return adminUrl.toString();
 }
 
 function migrationConfigFor(folder: string): MigrationConfig {
-  return { ...MIGRATION_CONFIG, migrationsFolder: folder };
+    return { ...MIGRATION_CONFIG, migrationsFolder: folder };
 }
 
 function openClient(databaseUrl: string): PgClient {
-  return postgres(databaseUrl, { max: 1 });
+    return postgres(databaseUrl, { max: 1 });
 }
 
 function migrationSession(client: PgClient): PgMigrationSession {
-  // 无 schema 的 migrator 只需要 PgSession；drizzlePg 的公开推导会保留
-  // `ExtractTablesWithRelations`，这里按 Drizzle 官方 PgDialect 参数收窄。
-  return drizzlePg(client)._.session as unknown as PgMigrationSession;
+    // 无 schema 的 migrator 只需要 PgSession；drizzlePg 的公开推导会保留
+    // `ExtractTablesWithRelations`，这里按 Drizzle 官方 PgDialect 参数收窄。
+    return drizzlePg(client)._.session as unknown as PgMigrationSession;
 }
 
 async function migrateWithAssets(
-  client: PgClient,
-  folder: string,
+    client: PgClient,
+    folder: string,
 ): Promise<MigrationMeta[]> {
-  const config = migrationConfigFor(folder);
-  // readMigrationFiles 是 Drizzle 官方 migrator 使用的 journal/SQL 读取入口。
-  const migrations = readMigrationFiles(config);
-  await new PgDialect().migrate(migrations, migrationSession(client), config);
-  return migrations;
+    const config = migrationConfigFor(folder);
+    // readMigrationFiles 是 Drizzle 官方 migrator 使用的 journal/SQL 读取入口。
+    const migrations = readMigrationFiles(config);
+    await new PgDialect().migrate(migrations, migrationSession(client), config);
+    return migrations;
 }
 
 async function currentDatabase(client: PgClient): Promise<string> {
-  const rows = await client`SELECT current_database() AS name`;
-  return String(rows[0]?.name ?? "");
+    const rows = await client`SELECT current_database() AS name`;
+    return String(rows[0]?.name ?? "");
 }
 
 async function assertLedgerMatches(
-  client: PgClient,
-  migrations: MigrationMeta[],
+    client: PgClient,
+    migrations: MigrationMeta[],
 ): Promise<void> {
-  const rows = await client<LedgerRow[]>`
+    const rows = await client<LedgerRow[]>`
     SELECT hash, created_at::text AS created_at
     FROM drizzle.__drizzle_migrations
     -- journal 的历史 folderMillis 并非严格递增；PgDialect 按 journal 顺序
     -- 追加自增 id，因此 ledger 的应用顺序必须以 id 为准。
     ORDER BY id ASC
   `;
-  assertEquals(
-    rows.length,
-    migrations.length,
-    "迁移 ledger 条目数必须与正式迁移集一致",
-  );
-  for (const [index, migration] of migrations.entries()) {
     assertEquals(
-      rows[index]?.hash,
-      migration.hash,
-      `ledger 第 ${index + 1} 条 hash 不匹配`,
+        rows.length,
+        migrations.length,
+        "迁移 ledger 条目数必须与正式迁移集一致",
     );
-    assertEquals(
-      rows[index]?.created_at,
-      String(migration.folderMillis),
-      `ledger 第 ${index + 1} 条 created_at 不匹配`,
-    );
-  }
+    for (const [index, migration] of migrations.entries()) {
+        assertEquals(
+            rows[index]?.hash,
+            migration.hash,
+            `ledger 第 ${index + 1} 条 hash 不匹配`,
+        );
+        assertEquals(
+            rows[index]?.created_at,
+            String(migration.folderMillis),
+            `ledger 第 ${index + 1} 条 created_at 不匹配`,
+        );
+    }
 }
 
 async function createDatabase(
-  admin: PgClient,
-  databaseName: string,
-  created: string[],
+    admin: PgClient,
+    databaseName: string,
+    created: string[],
 ): Promise<void> {
-  assertDatabaseIdentifier(databaseName);
-  await admin.unsafe(`CREATE DATABASE "${databaseName}"`);
-  created.push(databaseName);
+    assertDatabaseIdentifier(databaseName);
+    await admin.unsafe(`CREATE DATABASE "${databaseName}"`);
+    created.push(databaseName);
 }
 
 async function dropOwnedDatabases(
-  admin: PgClient,
-  created: string[],
-  prefix: string,
+    admin: PgClient,
+    created: string[],
+    prefix: string,
 ): Promise<void> {
-  const failures: unknown[] = [];
-  for (const databaseName of [...created].reverse()) {
-    if (!isOwnedDatabaseName(databaseName, prefix)) continue;
-    try {
-      await admin.unsafe(
-        `DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`,
-      );
-    } catch (error) {
-      failures.push(error);
+    const failures: unknown[] = [];
+    for (const databaseName of [...created].reverse()) {
+        if (!isOwnedDatabaseName(databaseName, prefix)) continue;
+        try {
+            await admin.unsafe(
+                `DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`,
+            );
+        } catch (error) {
+            failures.push(error);
+        }
     }
-  }
-  if (failures.length > 0) {
-    throw new AggregateError(failures, "迁移升级测试临时数据库清理失败");
-  }
+    if (failures.length > 0) {
+        throw new AggregateError(failures, "迁移升级测试临时数据库清理失败");
+    }
 }
 
 async function copyMissingMigrationAssets(): Promise<{
-  folder: string;
-  missingFile: string;
+    folder: string;
+    missingFile: string;
 }> {
-  const folder = await Deno.makeTempDir({ prefix: "noj-missing-migrations-" });
-  await Deno.mkdir(`${folder}/meta`, { recursive: true });
-  await Deno.copyFile(
-    `${MIGRATIONS_DIR}/meta/_journal.json`,
-    `${folder}/meta/_journal.json`,
-  );
-  const journal = JSON.parse(
-    await Deno.readTextFile(`${MIGRATIONS_DIR}/meta/_journal.json`),
-  ) as { entries: Array<{ tag: string }> };
-  const missingFile = `${journal.entries.at(-1)!.tag}.sql`;
-  for await (const entry of Deno.readDir(MIGRATIONS_DIR)) {
-    if (!entry.isFile || !entry.name.endsWith(".sql")) continue;
-    if (entry.name === missingFile) continue;
+    const folder = await Deno.makeTempDir({
+        prefix: "noj-missing-migrations-",
+    });
+    await Deno.mkdir(`${folder}/meta`, { recursive: true });
     await Deno.copyFile(
-      `${MIGRATIONS_DIR}/${entry.name}`,
-      `${folder}/${entry.name}`,
+        `${MIGRATIONS_DIR}/meta/_journal.json`,
+        `${folder}/meta/_journal.json`,
     );
-  }
-  return { folder, missingFile };
+    const journal = JSON.parse(
+        await Deno.readTextFile(`${MIGRATIONS_DIR}/meta/_journal.json`),
+    ) as { entries: Array<{ tag: string }> };
+    const missingFile = `${journal.entries.at(-1)!.tag}.sql`;
+    for await (const entry of Deno.readDir(MIGRATIONS_DIR)) {
+        if (!entry.isFile || !entry.name.endsWith(".sql")) continue;
+        if (entry.name === missingFile) continue;
+        await Deno.copyFile(
+            `${MIGRATIONS_DIR}/${entry.name}`,
+            `${folder}/${entry.name}`,
+        );
+    }
+    return { folder, missingFile };
 }
 
 async function insertHistoricalRows(client: PgClient): Promise<void> {
-  const createdAt = "2024-01-02T03:04:05.000Z";
-  await client`
+    const createdAt = "2024-01-02T03:04:05.000Z";
+    await client`
     INSERT INTO users
       (id, username, email, password_hash, email_verified, session_version,
        bio, must_change_password, tfa_enabled, created_at, updated_at)
@@ -186,7 +188,7 @@ async function insertHistoricalRows(client: PgClient): Promise<void> {
       (${LEGACY_USER_ID}, 'migration_upgrade_legacy', 'migration_upgrade_legacy@example.test',
        'not-a-login-secret', true, 0, '历史用户', false, false, ${createdAt}, ${createdAt})
   `;
-  await client`
+    await client`
     INSERT INTO domains
       (id, slug, name, description, status, owner_id, preset, configuration,
        revision, next_problem_number, created_at, updated_at)
@@ -195,7 +197,7 @@ async function insertHistoricalRows(client: PgClient): Promise<void> {
        'community', ${JSON.stringify({ access: "public" })}::jsonb, 0, 1001,
        ${createdAt}, ${createdAt})
   `;
-  await client`
+    await client`
     INSERT INTO domain_invitations
       (id, domain_id, classroom_id, token_hash, email, expires_at, used_at,
        revoked_at, created_by, created_at)
@@ -208,21 +210,21 @@ async function insertHistoricalRows(client: PgClient): Promise<void> {
 }
 
 async function assertCurrentSchemaAndUsers(
-  client: PgClient,
-  expectedDatabase: string,
+    client: PgClient,
+    expectedDatabase: string,
 ): Promise<void> {
-  assertEquals(await currentDatabase(client), expectedDatabase);
-  const rows = await client`
+    assertEquals(await currentDatabase(client), expectedDatabase);
+    const rows = await client`
     SELECT to_regclass('public.users')::text AS users_table,
            to_regclass('drizzle.__drizzle_migrations')::text AS ledger_table
   `;
-  assertEquals(rows[0]?.users_table, "users");
-  assertEquals(rows[0]?.ledger_table, "drizzle.__drizzle_migrations");
+    assertEquals(rows[0]?.users_table, "users");
+    assertEquals(rows[0]?.ledger_table, "drizzle.__drizzle_migrations");
 }
 
 async function _assertInvitationConstraints(client: PgClient): Promise<void> {
-  const invalidMode = await assertRejects(() =>
-    client`
+    const invalidMode = await assertRejects(() =>
+        client`
     INSERT INTO domain_invitations
       (id, domain_id, token_hash, email, expires_at, created_by, created_at,
        mode, max_uses, used_count)
@@ -231,11 +233,11 @@ async function _assertInvitationConstraints(client: PgClient): Promise<void> {
        'migration-invalid-mode', NULL, ${EXPIRES_AT}, ${ROOT_ID}, ${REDEEMED_AT},
        'invalid', 1, 0)
   `
-  );
-  assert(String(invalidMode).includes("domain_invitations_mode_check"));
+    );
+    assert(String(invalidMode).includes("domain_invitations_mode_check"));
 
-  const invalidTarget = await assertRejects(() =>
-    client`
+    const invalidTarget = await assertRejects(() =>
+        client`
     INSERT INTO domain_invitations
       (id, domain_id, token_hash, email, expires_at, created_by, created_at,
        mode, max_uses, used_count)
@@ -244,11 +246,11 @@ async function _assertInvitationConstraints(client: PgClient): Promise<void> {
        'migration-invalid-target', 'must-be-null@example.test', ${EXPIRES_AT},
        ${ROOT_ID}, ${REDEEMED_AT}, 'once', 1, 0)
   `
-  );
-  assert(String(invalidTarget).includes("domain_invitations_target_check"));
+    );
+    assert(String(invalidTarget).includes("domain_invitations_target_check"));
 
-  const invalidUses = await assertRejects(() =>
-    client`
+    const invalidUses = await assertRejects(() =>
+        client`
     INSERT INTO domain_invitations
       (id, domain_id, token_hash, email, expires_at, created_by, created_at,
        mode, max_uses, used_count)
@@ -257,10 +259,10 @@ async function _assertInvitationConstraints(client: PgClient): Promise<void> {
        'migration-invalid-uses', NULL, ${EXPIRES_AT}, ${ROOT_ID}, ${REDEEMED_AT},
        'general', 0, 0)
   `
-  );
-  assert(String(invalidUses).includes("domain_invitations_uses_check"));
+    );
+    assert(String(invalidUses).includes("domain_invitations_uses_check"));
 
-  await client`
+    await client`
     INSERT INTO domain_invitations
       (id, domain_id, token_hash, email, expires_at, created_by, created_at,
        code_hash, mode, max_uses, used_count)
@@ -269,8 +271,8 @@ async function _assertInvitationConstraints(client: PgClient): Promise<void> {
        ${EXPIRES_AT}, ${ROOT_ID}, ${REDEEMED_AT}, 'migration-code-hash',
        'general', NULL, 0)
   `;
-  const duplicateCode = await assertRejects(() =>
-    client`
+    const duplicateCode = await assertRejects(() =>
+        client`
     INSERT INTO domain_invitations
       (id, domain_id, token_hash, email, expires_at, created_by, created_at,
        code_hash, mode, max_uses, used_count)
@@ -279,163 +281,181 @@ async function _assertInvitationConstraints(client: PgClient): Promise<void> {
        'migration-duplicate-code-token', NULL, ${EXPIRES_AT}, ${ROOT_ID},
        ${REDEEMED_AT}, 'migration-code-hash', 'general', NULL, 0)
   `
-  );
-  assert(String(duplicateCode).includes("domain_invitations_code_hash_unique"));
+    );
+    assert(
+        String(duplicateCode).includes("domain_invitations_code_hash_unique"),
+    );
 
-  await client`
+    await client`
     INSERT INTO domain_invitation_redemptions
       (invitation_id, user_id, redeemed_at)
     VALUES (${USED_INVITATION_ID}, ${LEGACY_USER_ID}, ${REDEEMED_AT})
   `;
-  const duplicateRedemption = await assertRejects(() =>
-    client`
+    const duplicateRedemption = await assertRejects(() =>
+        client`
     INSERT INTO domain_invitation_redemptions
       (invitation_id, user_id, redeemed_at)
     VALUES (${USED_INVITATION_ID}, ${LEGACY_USER_ID}, ${REDEEMED_AT})
   `
-  );
-  assert(
-    String(duplicateRedemption).includes(
-      "domain_invitation_redemptions_invitation_id_user_id_pk",
-    ),
-  );
+    );
+    assert(
+        String(duplicateRedemption).includes(
+            "domain_invitation_redemptions_invitation_id_user_id_pk",
+        ),
+    );
 }
 
 Deno.test({
-  name: "launcher upgrade: 真实空库全链迁移、存量 0118 到 0119 回填和资产负例",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    // 先验证正式 child 本身，防止这个集成测试绕过启动器直接使用未知数据库。
-    const currentRunDatabase = await assertOwnedTestDatabase();
-    assert(currentRunDatabase.startsWith("noj_test_"));
+    name:
+        "launcher upgrade: 真实空库全链迁移、存量 0118 到 0119 回填和资产负例",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        // 先验证正式 child 本身，防止这个集成测试绕过启动器直接使用未知数据库。
+        const currentRunDatabase = await assertOwnedTestDatabase();
+        assert(currentRunDatabase.startsWith("noj_test_"));
 
-    const admin = openClient(adminUrlForCurrentDatabase());
-    const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 10);
-    const prefix = assertDatabaseIdentifier(`noj_test_upgrade_${suffix}`);
-    const emptyDatabase = assertDatabaseIdentifier(`${prefix}_empty`);
-    const legacyDatabase = assertDatabaseIdentifier(`${prefix}_legacy`);
-    const missingAssetsDatabase = assertDatabaseIdentifier(`${prefix}_missing`);
-    const createdDatabases: string[] = [];
-    let missingAssetsFolder: string | undefined;
-    try {
-      const migrations = readMigrationFiles(MIGRATION_CONFIG);
-      assert(migrations.length > 1, "正式迁移集必须至少包含 0118 和 0119");
-      const journal = JSON.parse(
-        await Deno.readTextFile(`${MIGRATIONS_DIR}/meta/_journal.json`),
-      ) as { entries: Array<{ tag: string }> };
-      // 0118/0119 是本次「存量升级」场景的历史锚点；后续批次会继续追加迁移，
-      // 所以这里断言两者相邻且都在正式迁移集中，而不是断言它们是最后两条。
-      const index0119 = journal.entries.findIndex((entry) =>
-        entry.tag === "0119_nasty_thena"
-      );
-      assert(index0119 > 0, "正式迁移集必须包含 0119_nasty_thena");
-      assertEquals(
-        journal.entries[index0119 - 1]?.tag,
-        "0118_polite_fat_cobra",
-        "0119 必须紧接在 0118 之后",
-      );
-      assert(
-        index0119 < journal.entries.length - 1,
-        "0119 之后必须还有已生成的后续迁移",
-      );
-
-      // 空库：完整正式迁移必须真实执行成功，并产生完整 ledger。
-      await createDatabase(admin, emptyDatabase, createdDatabases);
-      const emptyClient = openClient(
-        databaseUrlFor(adminUrlForCurrentDatabase(), emptyDatabase),
-      );
-      try {
-        const migrated = await migrateWithAssets(emptyClient, MIGRATIONS_DIR);
-        assertEquals(migrated.length, migrations.length);
-        await assertCurrentSchemaAndUsers(emptyClient, emptyDatabase);
-        await assertLedgerMatches(emptyClient, migrations);
-      } finally {
-        await emptyClient.end({ timeout: 5 });
-      }
-
-      // 存量库：只迁移到 0118，插入历史数据，再由正式 0119 做升级。
-      await createDatabase(admin, legacyDatabase, createdDatabases);
-      const legacyClient = openClient(
-        databaseUrlFor(adminUrlForCurrentDatabase(), legacyDatabase),
-      );
-      try {
-        // 只迁移到 0118（含），插入历史数据后再由正式 0119 做回填、0120 及之后继续升级。
-        const beforeUpgrade = migrations.slice(0, index0119);
-        await new PgDialect().migrate(
-          beforeUpgrade,
-          migrationSession(legacyClient),
-          MIGRATION_CONFIG,
+        const admin = openClient(adminUrlForCurrentDatabase());
+        const suffix = crypto.randomUUID().replaceAll("-", "").slice(0, 10);
+        const prefix = assertDatabaseIdentifier(`noj_test_upgrade_${suffix}`);
+        const emptyDatabase = assertDatabaseIdentifier(`${prefix}_empty`);
+        const legacyDatabase = assertDatabaseIdentifier(`${prefix}_legacy`);
+        const missingAssetsDatabase = assertDatabaseIdentifier(
+            `${prefix}_missing`,
         );
-        await assertCurrentSchemaAndUsers(legacyClient, legacyDatabase);
-        await assertLedgerMatches(legacyClient, beforeUpgrade);
-        await insertHistoricalRows(legacyClient);
+        const createdDatabases: string[] = [];
+        let missingAssetsFolder: string | undefined;
+        try {
+            const migrations = readMigrationFiles(MIGRATION_CONFIG);
+            assert(
+                migrations.length > 1,
+                "正式迁移集必须至少包含 0118 和 0119",
+            );
+            const journal = JSON.parse(
+                await Deno.readTextFile(`${MIGRATIONS_DIR}/meta/_journal.json`),
+            ) as { entries: Array<{ tag: string }> };
+            // 0118/0119 是本次「存量升级」场景的历史锚点；后续批次会继续追加迁移，
+            // 所以这里断言两者相邻且都在正式迁移集中，而不是断言它们是最后两条。
+            const index0119 = journal.entries.findIndex((entry) =>
+                entry.tag === "0119_nasty_thena"
+            );
+            assert(index0119 > 0, "正式迁移集必须包含 0119_nasty_thena");
+            assertEquals(
+                journal.entries[index0119 - 1]?.tag,
+                "0118_polite_fat_cobra",
+                "0119 必须紧接在 0118 之后",
+            );
+            assert(
+                index0119 < journal.entries.length - 1,
+                "0119 之后必须还有已生成的后续迁移",
+            );
 
-        // 旧授权模型库必须被拒绝：迁移在锁内抛错，ledger 与历史数据保持原样。
-        const upgradeError = await assertRejects(() =>
-          new PgDialect().migrate(
-            migrations,
-            migrationSession(legacyClient),
-            MIGRATION_CONFIG,
-          )
-        );
-        assert(
-          String(upgradeError).includes("此版本仅支持全新初始化"),
-          "旧库升级必须被明确拒绝",
-        );
-        await assertLedgerMatches(legacyClient, beforeUpgrade);
+            // 空库：完整正式迁移必须真实执行成功，并产生完整 ledger。
+            await createDatabase(admin, emptyDatabase, createdDatabases);
+            const emptyClient = openClient(
+                databaseUrlFor(adminUrlForCurrentDatabase(), emptyDatabase),
+            );
+            try {
+                const migrated = await migrateWithAssets(
+                    emptyClient,
+                    MIGRATIONS_DIR,
+                );
+                assertEquals(migrated.length, migrations.length);
+                await assertCurrentSchemaAndUsers(emptyClient, emptyDatabase);
+                await assertLedgerMatches(emptyClient, migrations);
+            } finally {
+                await emptyClient.end({ timeout: 5 });
+            }
 
-        // 升级被拒绝后仍停留在 0118 schema：只断言历史数据未被破坏。
-        const users = await legacyClient`
+            // 存量库：只迁移到 0118，插入历史数据，再由正式 0119 做升级。
+            await createDatabase(admin, legacyDatabase, createdDatabases);
+            const legacyClient = openClient(
+                databaseUrlFor(adminUrlForCurrentDatabase(), legacyDatabase),
+            );
+            try {
+                // 只迁移到 0118（含），插入历史数据后再由正式 0119 做回填、0120 及之后继续升级。
+                const beforeUpgrade = migrations.slice(0, index0119);
+                await new PgDialect().migrate(
+                    beforeUpgrade,
+                    migrationSession(legacyClient),
+                    MIGRATION_CONFIG,
+                );
+                await assertCurrentSchemaAndUsers(legacyClient, legacyDatabase);
+                await assertLedgerMatches(legacyClient, beforeUpgrade);
+                await insertHistoricalRows(legacyClient);
+
+                // 旧授权模型库必须被拒绝：迁移在锁内抛错，ledger 与历史数据保持原样。
+                const upgradeError = await assertRejects(() =>
+                    new PgDialect().migrate(
+                        migrations,
+                        migrationSession(legacyClient),
+                        MIGRATION_CONFIG,
+                    )
+                );
+                assert(
+                    String(upgradeError).includes("此版本仅支持全新初始化"),
+                    "旧库升级必须被明确拒绝",
+                );
+                await assertLedgerMatches(legacyClient, beforeUpgrade);
+
+                // 升级被拒绝后仍停留在 0118 schema：只断言历史数据未被破坏。
+                const users = await legacyClient`
           SELECT id FROM users
           WHERE id IN (${ROOT_ID}, ${LEGACY_USER_ID}) ORDER BY id
         `;
-        assertEquals(users.length, 2, "历史用户必须保留");
-        const invitations = await legacyClient`
+                assertEquals(users.length, 2, "历史用户必须保留");
+                const invitations = await legacyClient`
           SELECT id, email, used_at FROM domain_invitations
           WHERE id IN (${PENDING_INVITATION_ID}, ${USED_INVITATION_ID})
           ORDER BY id
         `;
-        assertEquals(invitations.length, 2, "历史邀请必须保留");
-        assertEquals(invitations[0]?.email, "pending@example.test");
-        assertEquals(invitations[0]?.used_at, null);
-        assertEquals(invitations[1]?.email, "used@example.test");
-        assertEquals(invitations[1]?.used_at, REDEEMED_AT);
-      } finally {
-        await legacyClient.end({ timeout: 5 });
-      }
+                assertEquals(invitations.length, 2, "历史邀请必须保留");
+                assertEquals(invitations[0]?.email, "pending@example.test");
+                assertEquals(invitations[0]?.used_at, null);
+                assertEquals(invitations[1]?.email, "used@example.test");
+                assertEquals(invitations[1]?.used_at, REDEEMED_AT);
+            } finally {
+                await legacyClient.end({ timeout: 5 });
+            }
 
-      // 缺失迁移资产：官方读取入口必须在真实空库上失败，且不能留下半套 schema。
-      await createDatabase(admin, missingAssetsDatabase, createdDatabases);
-      const missingClient = openClient(
-        databaseUrlFor(adminUrlForCurrentDatabase(), missingAssetsDatabase),
-      );
-      try {
-        const assets = await copyMissingMigrationAssets();
-        missingAssetsFolder = assets.folder;
-        const error = await assertRejects(() =>
-          migrateWithAssets(missingClient, assets.folder)
-        );
-        assert(String(error).includes("No file"));
-        assert(String(error).includes(assets.missingFile));
-        const state = await missingClient`
+            // 缺失迁移资产：官方读取入口必须在真实空库上失败，且不能留下半套 schema。
+            await createDatabase(
+                admin,
+                missingAssetsDatabase,
+                createdDatabases,
+            );
+            const missingClient = openClient(
+                databaseUrlFor(
+                    adminUrlForCurrentDatabase(),
+                    missingAssetsDatabase,
+                ),
+            );
+            try {
+                const assets = await copyMissingMigrationAssets();
+                missingAssetsFolder = assets.folder;
+                const error = await assertRejects(() =>
+                    migrateWithAssets(missingClient, assets.folder)
+                );
+                assert(String(error).includes("No file"));
+                assert(String(error).includes(assets.missingFile));
+                const state = await missingClient`
           SELECT to_regclass('public.users')::text AS users_table,
                  to_regclass('drizzle.__drizzle_migrations')::text AS ledger_table
         `;
-        assertEquals(state[0]?.users_table, null);
-        assertEquals(state[0]?.ledger_table, null);
-      } finally {
-        await missingClient.end({ timeout: 5 });
-      }
-    } finally {
-      if (missingAssetsFolder) {
-        await Deno.remove(missingAssetsFolder, { recursive: true });
-      }
-      try {
-        await dropOwnedDatabases(admin, createdDatabases, prefix);
-      } finally {
-        await admin.end({ timeout: 5 });
-      }
-    }
-  },
+                assertEquals(state[0]?.users_table, null);
+                assertEquals(state[0]?.ledger_table, null);
+            } finally {
+                await missingClient.end({ timeout: 5 });
+            }
+        } finally {
+            if (missingAssetsFolder) {
+                await Deno.remove(missingAssetsFolder, { recursive: true });
+            }
+            try {
+                await dropOwnedDatabases(admin, createdDatabases, prefix);
+            } finally {
+                await admin.end({ timeout: 5 });
+            }
+        }
+    },
 });

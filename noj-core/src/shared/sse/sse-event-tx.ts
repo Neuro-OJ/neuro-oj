@@ -20,15 +20,15 @@ import { sseEvents } from "../db/schema.ts";
  * `createdAt` 显式传入便于重放与测试。
  */
 export async function recordSseEventTx(
-  tx: DbTx,
-  channel: string,
-  payload: unknown,
-  createdAt = new Date().toISOString(),
+    tx: DbTx,
+    channel: string,
+    payload: unknown,
+    createdAt = new Date().toISOString(),
 ): Promise<number> {
-  const rows = await tx.insert(sseEvents).values({
-    channel,
-    payload,
-    created_at: createdAt,
-  }).returning({ id: sseEvents.id });
-  return rows[0].id;
+    const rows = await tx.insert(sseEvents).values({
+        channel,
+        payload,
+        created_at: createdAt,
+    }).returning({ id: sseEvents.id });
+    return rows[0].id;
 }

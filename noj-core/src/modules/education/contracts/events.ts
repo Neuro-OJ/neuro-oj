@@ -18,19 +18,19 @@ import { type EducationEvent, recordEducationEvent } from "./facts.ts";
 
 /** 题目内容或可见性变化：让引用该题的教学单元陈旧。 */
 export interface ProblemChangeEvent {
-  readonly domainId: string;
-  /** 受影响题目；缺省表示域级题目变化（例如域政策或状态影响其全部引用）。 */
-  readonly problemId?: string;
-  /** 可选的受影响学生；缺省表示整题（域内全员）。 */
-  readonly userId?: string;
+    readonly domainId: string;
+    /** 受影响题目；缺省表示域级题目变化（例如域政策或状态影响其全部引用）。 */
+    readonly problemId?: string;
+    /** 可选的受影响学生；缺省表示整题（域内全员）。 */
+    readonly userId?: string;
 }
 
 /** 公开发布新版本后，受影响绑定集合的教学事实登记结果。 */
 export interface PublishedBindingChangesInput {
-  readonly problemId: string;
-  readonly versionId: string;
-  readonly actorId: string | null;
-  readonly now: string;
+    readonly problemId: string;
+    readonly versionId: string;
+    readonly actorId: string | null;
+    readonly now: string;
 }
 
 /**
@@ -39,15 +39,15 @@ export interface PublishedBindingChangesInput {
  * 必须在业务事务内调用：题目写入与教学失效依据共同提交或回滚。
  */
 export async function recordProblemChangeTx(
-  tx: DbTx,
-  event: ProblemChangeEvent,
+    tx: DbTx,
+    event: ProblemChangeEvent,
 ): Promise<void> {
-  await recordEducationEvent(tx, {
-    domain_id: event.domainId,
-    ...(event.problemId ? { problem_id: event.problemId } : {}),
-    ...(event.userId ? { user_id: event.userId } : {}),
-    event_type: "problem.changed",
-  });
+    await recordEducationEvent(tx, {
+        domain_id: event.domainId,
+        ...(event.problemId ? { problem_id: event.problemId } : {}),
+        ...(event.userId ? { user_id: event.userId } : {}),
+        event_type: "problem.changed",
+    });
 }
 
 /**
@@ -56,27 +56,29 @@ export async function recordProblemChangeTx(
  * 消费者按当前有效成绩与版本策略重算，因此事件只带定位，不带分数。
  */
 export async function recordEvaluationChangeTx(
-  tx: DbTx,
-  event: {
-    readonly domainId: string;
-    readonly userId: string;
-    readonly problemId: string;
-    /** 竞赛提交可以延后到比赛结束再生效。 */
-    readonly contestId?: string | null;
-    readonly availableAt?: string;
-  },
-): Promise<void> {
-  await recordEducationEvent(
-    tx,
-    {
-      domain_id: event.domainId,
-      user_id: event.userId,
-      problem_id: event.problemId,
-      event_type: "submission.changed",
-      ...(event.contestId ? { payload: { contest_id: event.contestId } } : {}),
+    tx: DbTx,
+    event: {
+        readonly domainId: string;
+        readonly userId: string;
+        readonly problemId: string;
+        /** 竞赛提交可以延后到比赛结束再生效。 */
+        readonly contestId?: string | null;
+        readonly availableAt?: string;
     },
-    event.availableAt ? { availableAt: event.availableAt } : {},
-  );
+): Promise<void> {
+    await recordEducationEvent(
+        tx,
+        {
+            domain_id: event.domainId,
+            user_id: event.userId,
+            problem_id: event.problemId,
+            event_type: "submission.changed",
+            ...(event.contestId
+                ? { payload: { contest_id: event.contestId } }
+                : {}),
+        },
+        event.availableAt ? { availableAt: event.availableAt } : {},
+    );
 }
 
 /**
@@ -85,24 +87,24 @@ export async function recordEvaluationChangeTx(
  * 与题目变化分开，避免把"整个域"的失效写成一堆逐题事件。
  */
 export async function recordModuleChangeTx(
-  tx: DbTx,
-  event: {
-    readonly domainId: string;
-    readonly detail?: Record<string, unknown>;
-  },
+    tx: DbTx,
+    event: {
+        readonly domainId: string;
+        readonly detail?: Record<string, unknown>;
+    },
 ): Promise<void> {
-  await recordEducationEvent(tx, {
-    domain_id: event.domainId,
-    event_type: "module.changed",
-    ...(event.detail ? { payload: event.detail } : {}),
-  });
+    await recordEducationEvent(tx, {
+        domain_id: event.domainId,
+        event_type: "module.changed",
+        ...(event.detail ? { payload: event.detail } : {}),
+    });
 }
 
 /** 通用事实登记入口；保留给尚未细分事件类型的迁移期调用方。 */
 export async function recordEducationEventTx(
-  tx: DbTx,
-  event: EducationEvent,
-  options: { availableAt?: string } = {},
+    tx: DbTx,
+    event: EducationEvent,
+    options: { availableAt?: string } = {},
 ): Promise<void> {
-  await recordEducationEvent(tx, event, options);
+    await recordEducationEvent(tx, event, options);
 }

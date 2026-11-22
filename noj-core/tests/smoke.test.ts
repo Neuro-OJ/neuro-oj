@@ -21,8 +21,8 @@ import { createApp } from "../src/app.ts";
 import { ensureDefaultWorkspace } from "./helpers/workspace-actors.ts";
 import { resetDbForTest } from "./helpers/db.ts";
 import {
-  _resetSystemSettingsForTest,
-  initSystemSettings,
+    _resetSystemSettingsForTest,
+    initSystemSettings,
 } from "../src/modules/platform/system/index.ts";
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
@@ -31,16 +31,16 @@ import {
 // PR-1 已被 main revert，但 smoke 测试仍走 authMiddleware → isJtiRevoked。
 // 短路让 isJtiRevoked 直接返 false，避免 Redis 跨测试状态污染。
 if (Deno.env.get("REDIS_URL")) {
-  Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
-  try {
-    const redisModule = await import("./../src/shared/mq/connection.ts");
-    redisModule.resetRedisForTest();
-    await redisModule.connectRedis();
-  } catch (e) {
-    if (!String(e).includes("already connecting/connected")) {
-      console.warn("[smoke] Redis 连接失败:", e);
+    Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
+    try {
+        const redisModule = await import("./../src/shared/mq/connection.ts");
+        redisModule.resetRedisForTest();
+        await redisModule.connectRedis();
+    } catch (e) {
+        if (!String(e).includes("already connecting/connected")) {
+            console.warn("[smoke] Redis 连接失败:", e);
+        }
     }
-  }
 }
 
 await resetDbForTest();
@@ -60,154 +60,154 @@ const app = createApp();
 // ── 健康检查 ──
 
 Deno.test({
-  name: "[smoke] GET /health 返回 200 + 服务状态",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const res = await app.request("/health");
-    assertEquals(res.status, 200, "/health 应返回 200");
-    const body = await res.json();
-    assertEquals(body.service, "noj-core");
-    assertExists(body.status);
-    assertExists(body.database);
-    console.log("  ✓ /health → " + body.status);
-  },
+    name: "[smoke] GET /health 返回 200 + 服务状态",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const res = await app.request("/health");
+        assertEquals(res.status, 200, "/health 应返回 200");
+        const body = await res.json();
+        assertEquals(body.service, "noj-core");
+        assertExists(body.status);
+        assertExists(body.database);
+        console.log("  ✓ /health → " + body.status);
+    },
 });
 
 // ── 用户注册/登录 ──
 
 Deno.test({
-  name: "[smoke] POST /auth/register 返回 201",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const ts = Date.now().toString(36);
-    const res = await app.request("/api/v1/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "smoke_" + ts,
-        email: "smoke_" + ts + "@test.com",
-        password: "SmokeTestPass123",
-        accepted_legal: true,
-      }),
-    });
-    assertEquals(res.status, 201, "注册应返回 201");
-    console.log("  ✓ POST /auth/register → 201");
-  },
+    name: "[smoke] POST /auth/register 返回 201",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const ts = Date.now().toString(36);
+        const res = await app.request("/api/v1/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: "smoke_" + ts,
+                email: "smoke_" + ts + "@test.com",
+                password: "SmokeTestPass123",
+                accepted_legal: true,
+            }),
+        });
+        assertEquals(res.status, 201, "注册应返回 201");
+        console.log("  ✓ POST /auth/register → 201");
+    },
 });
 
 Deno.test({
-  name: "[smoke] POST /auth/login 返回 200 + token",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const ts = Date.now().toString(36) + "b";
-    // 先注册
-    await app.request("/api/v1/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "smoke_b_" + ts,
-        email: "smoke_b_" + ts + "@test.com",
-        password: "SmokeTestPass123",
-        accepted_legal: true,
-      }),
-    });
-    // 再登录
-    const res = await app.request("/api/v1/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        login: "smoke_b_" + ts + "@test.com",
-        password: "SmokeTestPass123",
-      }),
-    });
-    assertEquals(res.status, 200, "登录应返回 200");
-    const body = await res.json();
-    assertExists(body.data?.token, "登录响应应包含 token");
-    console.log("  ✓ POST /auth/login → 200 + token");
-  },
+    name: "[smoke] POST /auth/login 返回 200 + token",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const ts = Date.now().toString(36) + "b";
+        // 先注册
+        await app.request("/api/v1/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: "smoke_b_" + ts,
+                email: "smoke_b_" + ts + "@test.com",
+                password: "SmokeTestPass123",
+                accepted_legal: true,
+            }),
+        });
+        // 再登录
+        const res = await app.request("/api/v1/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                login: "smoke_b_" + ts + "@test.com",
+                password: "SmokeTestPass123",
+            }),
+        });
+        assertEquals(res.status, 200, "登录应返回 200");
+        const body = await res.json();
+        assertExists(body.data?.token, "登录响应应包含 token");
+        console.log("  ✓ POST /auth/login → 200 + token");
+    },
 });
 
 Deno.test({
-  name: "[smoke] GET /auth/me 返回当前用户",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const ts = Date.now().toString(36) + "c";
-    // 注册并登录
-    await app.request("/api/v1/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username: "smoke_c_" + ts,
-        email: "smoke_c_" + ts + "@test.com",
-        password: "SmokeTestPass123",
-        accepted_legal: true,
-      }),
-    });
-    const loginRes = await app.request("/api/v1/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        login: "smoke_c_" + ts + "@test.com",
-        password: "SmokeTestPass123",
-      }),
-    });
-    const { data } = await loginRes.json() as { data: { token: string } };
+    name: "[smoke] GET /auth/me 返回当前用户",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const ts = Date.now().toString(36) + "c";
+        // 注册并登录
+        await app.request("/api/v1/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                username: "smoke_c_" + ts,
+                email: "smoke_c_" + ts + "@test.com",
+                password: "SmokeTestPass123",
+                accepted_legal: true,
+            }),
+        });
+        const loginRes = await app.request("/api/v1/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                login: "smoke_c_" + ts + "@test.com",
+                password: "SmokeTestPass123",
+            }),
+        });
+        const { data } = await loginRes.json() as { data: { token: string } };
 
-    const res = await app.request("/api/v1/auth/me", {
-      headers: { Authorization: "Bearer " + data.token },
-    });
-    assertEquals(res.status, 200, "/me 应返回 200");
-    const me = await res.json();
-    assertExists(me.data?.id, "/me 应返回 id");
-    assertEquals(me.data?.email, "smoke_c_" + ts + "@test.com");
-    console.log("  ✓ GET /auth/me → 200 (user:" + me.data?.username + ")");
-  },
+        const res = await app.request("/api/v1/auth/me", {
+            headers: { Authorization: "Bearer " + data.token },
+        });
+        assertEquals(res.status, 200, "/me 应返回 200");
+        const me = await res.json();
+        assertExists(me.data?.id, "/me 应返回 id");
+        assertEquals(me.data?.email, "smoke_c_" + ts + "@test.com");
+        console.log("  ✓ GET /auth/me → 200 (user:" + me.data?.username + ")");
+    },
 });
 
 // ── 题目列表 ──
 
 Deno.test({
-  name: "[smoke] GET /problems 返回列表",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    await ensureDefaultWorkspace();
-    const res = await app.request("/api/v1/problems");
-    assertEquals(res.status, 200, "题目列表应返回 200");
-    const body = await res.json();
-    assertExists(body.data, "响应应包含 data 字段");
-    console.log("  ✓ GET /problems → 200 (" + body.data?.length + " 题)");
-  },
+    name: "[smoke] GET /problems 返回列表",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        await ensureDefaultWorkspace();
+        const res = await app.request("/api/v1/problems");
+        assertEquals(res.status, 200, "题目列表应返回 200");
+        const body = await res.json();
+        assertExists(body.data, "响应应包含 data 字段");
+        console.log("  ✓ GET /problems → 200 (" + body.data?.length + " 题)");
+    },
 });
 
 // ── 分类树 ──
 
 Deno.test({
-  name: "[smoke] GET /tags 返回标签列表",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const res = await app.request("/api/v1/tags");
-    assertEquals(res.status, 200, "分类树应返回 200");
-    const body = await res.json();
-    assertExists(body.data, "响应应包含 data 字段");
-    console.log("  ✓ GET /tags → 200");
-  },
+    name: "[smoke] GET /tags 返回标签列表",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const res = await app.request("/api/v1/tags");
+        assertEquals(res.status, 200, "分类树应返回 200");
+        const body = await res.json();
+        assertExists(body.data, "响应应包含 data 字段");
+        console.log("  ✓ GET /tags → 200");
+    },
 });
 
 // ── 认证保护 ──
 
 Deno.test({
-  name: "[smoke] 未认证访问受保护端点返回 401",
-  sanitizeResources: false,
-  sanitizeOps: false,
-  fn: async () => {
-    const res = await app.request("/api/v1/submissions");
-    assertEquals(res.status, 401, "未认证应返回 401");
-    console.log("  ✓ 未认证 /submissions → 401");
-  },
+    name: "[smoke] 未认证访问受保护端点返回 401",
+    sanitizeResources: false,
+    sanitizeOps: false,
+    fn: async () => {
+        const res = await app.request("/api/v1/submissions");
+        assertEquals(res.status, 401, "未认证应返回 401");
+        console.log("  ✓ 未认证 /submissions → 401");
+    },
 });

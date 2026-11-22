@@ -10,9 +10,9 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { buildConnectionOptions } from "../../../src/shared/db/options.ts";
 
 Deno.test("buildConnectionOptions: 默认关闭 JIT", () => {
-  assertEquals(buildConnectionOptions(true), { options: "-cjit=off" });
+    assertEquals(buildConnectionOptions(true), { options: "-cjit=off" });
 });
 
 Deno.test("buildConnectionOptions: DATABASE_JIT=on 时不注入 jit 参数", () => {
-  assertEquals(buildConnectionOptions(false), undefined);
+    assertEquals(buildConnectionOptions(false), undefined);
 });

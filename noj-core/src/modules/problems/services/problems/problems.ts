@@ -17,21 +17,21 @@
  */
 
 export {
-  assertProblemEditPermission,
-  assertProblemEditPermissionForActor,
-  createDomainProblem,
-  createDomainProblemForActor,
-  createProblem,
-  createProblemForActor,
-  updateProblem,
-  updateProblemForActor,
+    assertProblemEditPermission,
+    assertProblemEditPermissionForActor,
+    createDomainProblem,
+    createDomainProblemForActor,
+    createProblem,
+    createProblemForActor,
+    updateProblem,
+    updateProblemForActor,
 } from "./problems-crud.ts";
 
 export {
-  getDefaultDomainProblemByNumber,
-  getProblem,
-  listAllProblems,
-  listProblems,
+    getDefaultDomainProblemByNumber,
+    getProblem,
+    listAllProblems,
+    listProblems,
 } from "./problems-list.ts";
 
 export { syncProblemTags } from "./problems-tags.ts";
@@ -43,8 +43,8 @@ export { validateRuntimeConfig } from "./problems-types.ts";
  * 具体定义见 problems-types.ts。
  */
 export type {
-  AdminProblemListItem,
-  AdminProblemListResponse,
-  ProblemListResponse,
-  ProblemResponse,
+    AdminProblemListItem,
+    AdminProblemListResponse,
+    ProblemListResponse,
+    ProblemResponse,
 } from "./problems-types.ts";

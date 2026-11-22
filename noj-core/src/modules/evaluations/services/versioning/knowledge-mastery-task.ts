@@ -20,14 +20,14 @@ export const KNOWLEDGE_MASTERY_TARGET_KIND = "user_knowledge_mastery";
 
 /** 在有效成绩变更事务内登记掌握度重算；同一题目重复投递同键时合并。 */
 export async function enqueueKnowledgeMasteryTaskTx(
-  tx: DbTx,
-  input: { userId: string; problemId: string },
+    tx: DbTx,
+    input: { userId: string; problemId: string },
 ): Promise<void> {
-  await enqueueTaskTx(tx, {
-    taskType: KNOWLEDGE_MASTERY_TASK_TYPE,
-    targetKind: KNOWLEDGE_MASTERY_TARGET_KIND,
-    targetId: input.userId,
-    dedupeKey: `mastery:${input.problemId}`,
-    payload: { user_id: input.userId },
-  });
+    await enqueueTaskTx(tx, {
+        taskType: KNOWLEDGE_MASTERY_TASK_TYPE,
+        targetKind: KNOWLEDGE_MASTERY_TARGET_KIND,
+        targetId: input.userId,
+        dedupeKey: `mastery:${input.problemId}`,
+        payload: { user_id: input.userId },
+    });
 }

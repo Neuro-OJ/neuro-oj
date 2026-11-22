@@ -11,8 +11,8 @@ import { adminMiddleware, authMiddleware } from "../../middleware/auth.ts";
 import { AppError } from "../../../../../shared/base/errors.ts";
 import { signToken } from "../../services/security/jwt.ts";
 import {
-  createUserToken,
-  jsonRequest,
+    createUserToken,
+    jsonRequest,
 } from "../../../../../../tests/helper.ts";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
@@ -24,19 +24,19 @@ await initRedisForTest();
 await resetDbForTest();
 
 async function createActiveUser(role: "user" | "admin" = "user") {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  await getDb().insert(users).values({
-    id,
-    username: `auth_middleware_${id.slice(0, 8)}`,
-    email: `auth_middleware_${id.slice(0, 8)}@example.com`,
-    password_hash: "test-only",
-    // 平台角色以用户行为准；token 中的 role 仅供展示。
-    role,
-    created_at: now,
-    updated_at: now,
-  });
-  return { id, token: await signToken({ sub: id, role }) };
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await getDb().insert(users).values({
+        id,
+        username: `auth_middleware_${id.slice(0, 8)}`,
+        email: `auth_middleware_${id.slice(0, 8)}@example.com`,
+        password_hash: "test-only",
+        // 平台角色以用户行为准；token 中的 role 仅供展示。
+        role,
+        created_at: now,
+        updated_at: now,
+    });
+    return { id, token: await signToken({ sub: id, role }) };
 }
 
 /**
@@ -50,130 +50,130 @@ async function createActiveUser(role: "user" | "admin" = "user") {
  */
 // deno-lint-ignore no-explicit-any
 function registerAppErrorHandler(app: Hono<any, any, "/">) {
-  app.onError((err, c) => {
-    if (err instanceof AppError) {
-      const requestId = crypto.randomUUID();
-      return c.json(
-        {
-          error: err.message,
-          code: err.code,
-          request_id: requestId,
-        },
-        err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
-      );
-    }
-    console.error("未处理的错误:", err);
-    return c.json({ error: "服务器内部错误" }, 500);
-  });
+    app.onError((err, c) => {
+        if (err instanceof AppError) {
+            const requestId = crypto.randomUUID();
+            return c.json(
+                {
+                    error: err.message,
+                    code: err.code,
+                    request_id: requestId,
+                },
+                err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
+            );
+        }
+        console.error("未处理的错误:", err);
+        return c.json({ error: "服务器内部错误" }, 500);
+    });
 }
 
 /**
  * 创建带认证中间件的测试用 Hono 应用。
  */
 function createTestApp() {
-  const app = new Hono<{
-    Variables: { userId: string; userRole: string };
-  }>();
+    const app = new Hono<{
+        Variables: { userId: string; userRole: string };
+    }>();
 
-  // deno-lint-ignore no-explicit-any
-  registerAppErrorHandler(app as Hono<any, any, "/">);
+    // deno-lint-ignore no-explicit-any
+    registerAppErrorHandler(app as Hono<any, any, "/">);
 
-  app.get("/protected", authMiddleware, (c) => {
-    return c.json({
-      userId: c.get("userId"),
-      userRole: c.get("userRole"),
+    app.get("/protected", authMiddleware, (c) => {
+        return c.json({
+            userId: c.get("userId"),
+            userRole: c.get("userRole"),
+        });
     });
-  });
 
-  return app;
+    return app;
 }
 
 Deno.test({
-  name: "middleware: 缺少 Authorization 头返回 401",
-  fn: async () => {
-    const app = createTestApp();
-    const res = await jsonRequest(app, "/protected");
-    assertEquals(res.status, 401);
+    name: "middleware: 缺少 Authorization 头返回 401",
+    fn: async () => {
+        const app = createTestApp();
+        const res = await jsonRequest(app, "/protected");
+        assertEquals(res.status, 401);
 
-    const body = await res.json();
-    assertEquals(body.error, "未提供认证令牌");
-  },
+        const body = await res.json();
+        assertEquals(body.error, "未提供认证令牌");
+    },
 });
 
 Deno.test({
-  name: "middleware: 空的 Authorization 头返回 401",
-  fn: async () => {
-    const app = createTestApp();
-    // 显式覆盖 Authorization，跳过 helper 的 Bearer 前缀
-    const res = await jsonRequest(app, "/protected", {
-      headers: { Authorization: "" },
-    });
-    assertEquals(res.status, 401);
-  },
+    name: "middleware: 空的 Authorization 头返回 401",
+    fn: async () => {
+        const app = createTestApp();
+        // 显式覆盖 Authorization，跳过 helper 的 Bearer 前缀
+        const res = await jsonRequest(app, "/protected", {
+            headers: { Authorization: "" },
+        });
+        assertEquals(res.status, 401);
+    },
 });
 
 Deno.test({
-  name: "middleware: 非 Bearer 格式的 Authorization 头返回 401",
-  fn: async () => {
-    const app = createTestApp();
-    const res = await jsonRequest(app, "/protected", {
-      headers: { Authorization: "Token abc123" },
-    });
-    assertEquals(res.status, 401);
-  },
+    name: "middleware: 非 Bearer 格式的 Authorization 头返回 401",
+    fn: async () => {
+        const app = createTestApp();
+        const res = await jsonRequest(app, "/protected", {
+            headers: { Authorization: "Token abc123" },
+        });
+        assertEquals(res.status, 401);
+    },
 });
 
 Deno.test({
-  name: "middleware: 无效的 Bearer token 返回 401",
-  fn: async () => {
-    const app = createTestApp();
-    const res = await jsonRequest(app, "/protected", {
-      headers: { Authorization: "Bearer invalid-token" },
-    });
-    assertEquals(res.status, 401);
-    const body = await res.json();
-    assertEquals(body.error, "认证令牌无效或已过期");
-  },
+    name: "middleware: 无效的 Bearer token 返回 401",
+    fn: async () => {
+        const app = createTestApp();
+        const res = await jsonRequest(app, "/protected", {
+            headers: { Authorization: "Bearer invalid-token" },
+        });
+        assertEquals(res.status, 401);
+        const body = await res.json();
+        assertEquals(body.error, "认证令牌无效或已过期");
+    },
 });
 
 Deno.test({
-  name: "middleware: 有效的 Bearer token 通过认证并设置 userId/userRole",
-  fn: async () => {
-    const app = createTestApp();
-    const { id, token } = await createActiveUser("admin");
+    name: "middleware: 有效的 Bearer token 通过认证并设置 userId/userRole",
+    fn: async () => {
+        const app = createTestApp();
+        const { id, token } = await createActiveUser("admin");
 
-    const res = await jsonRequest(app, "/protected", { token });
-    assertEquals(res.status, 200);
+        const res = await jsonRequest(app, "/protected", { token });
+        assertEquals(res.status, 200);
 
-    const body = await res.json();
-    assertEquals(body.userId, id);
-    assertEquals(body.userRole, "admin");
-  },
+        const body = await res.json();
+        assertEquals(body.userId, id);
+        assertEquals(body.userRole, "admin");
+    },
 });
 
 Deno.test({
-  name:
-    "middleware: token 展示角色不影响实际平台角色（降权后旧 token 立即失效）",
-  fn: async () => {
-    const app = createTestApp();
-    const { id } = await createActiveUser("user");
-    // 伪造一个展示角色为 admin 的 token：数据库仍是 user，授权必须以数据库为准。
-    const forged = await signToken({ sub: id, role: "admin" });
-    const res = await jsonRequest(app, "/protected", { token: forged });
-    assertEquals(res.status, 200);
-    assertEquals((await res.json()).userRole, "user");
-  },
+    name:
+        "middleware: token 展示角色不影响实际平台角色（降权后旧 token 立即失效）",
+    fn: async () => {
+        const app = createTestApp();
+        const { id } = await createActiveUser("user");
+        // 伪造一个展示角色为 admin 的 token：数据库仍是 user，授权必须以数据库为准。
+        const forged = await signToken({ sub: id, role: "admin" });
+        const res = await jsonRequest(app, "/protected", { token: forged });
+        assertEquals(res.status, 200);
+        assertEquals((await res.json()).userRole, "user");
+    },
 });
 
 Deno.test({
-  name: "middleware: 'Bearer ' 前缀后无 token 返回 401",
-  fn: async () => {
-    const app = createTestApp();
-    const res = await jsonRequest(app, "/protected", {
-      headers: { Authorization: "Bearer " },
-    });
-    assertEquals(res.status, 401);
-  },
+    name: "middleware: 'Bearer ' 前缀后无 token 返回 401",
+    fn: async () => {
+        const app = createTestApp();
+        const res = await jsonRequest(app, "/protected", {
+            headers: { Authorization: "Bearer " },
+        });
+        assertEquals(res.status, 401);
+    },
 });
 
 /**
@@ -184,54 +184,54 @@ Deno.test({
  * 创建带 authMiddleware + adminMiddleware 的测试用 Hono 应用。
  */
 function createAdminTestApp() {
-  const app = new Hono<{
-    Variables: { userId: string; userRole: string };
-  }>();
+    const app = new Hono<{
+        Variables: { userId: string; userRole: string };
+    }>();
 
-  // deno-lint-ignore no-explicit-any
-  registerAppErrorHandler(app as Hono<any, any, "/">);
+    // deno-lint-ignore no-explicit-any
+    registerAppErrorHandler(app as Hono<any, any, "/">);
 
-  app.get("/admin-only", authMiddleware, adminMiddleware, (c) => {
-    return c.json({ ok: true });
-  });
+    app.get("/admin-only", authMiddleware, adminMiddleware, (c) => {
+        return c.json({ ok: true });
+    });
 
-  return app;
+    return app;
 }
 
 Deno.test({
-  name: "adminMiddleware: 非管理员用户返回 403",
-  fn: async () => {
-    const app = createAdminTestApp();
-    const token = await createUserToken();
+    name: "adminMiddleware: 非管理员用户返回 403",
+    fn: async () => {
+        const app = createAdminTestApp();
+        const token = await createUserToken();
 
-    const res = await jsonRequest(app, "/admin-only", { token });
-    assertEquals(res.status, 403);
+        const res = await jsonRequest(app, "/admin-only", { token });
+        assertEquals(res.status, 403);
 
-    const body = await res.json();
-    assertEquals(body.error, "需要管理员权限");
-  },
+        const body = await res.json();
+        assertEquals(body.error, "需要管理员权限");
+    },
 });
 
 Deno.test({
-  name: "adminMiddleware: 管理员用户通过",
-  fn: async () => {
-    const app = createAdminTestApp();
-    const token = await createUserToken("admin");
+    name: "adminMiddleware: 管理员用户通过",
+    fn: async () => {
+        const app = createAdminTestApp();
+        const token = await createUserToken("admin");
 
-    const res = await jsonRequest(app, "/admin-only", { token });
-    assertEquals(res.status, 200);
+        const res = await jsonRequest(app, "/admin-only", { token });
+        assertEquals(res.status, 200);
 
-    const body = await res.json();
-    assertEquals(body.ok, true);
-  },
+        const body = await res.json();
+        assertEquals(body.ok, true);
+    },
 });
 
 Deno.test({
-  name: "adminMiddleware: 未登录用户先被 authMiddleware 拦截返回 401",
-  fn: async () => {
-    const app = createAdminTestApp();
+    name: "adminMiddleware: 未登录用户先被 authMiddleware 拦截返回 401",
+    fn: async () => {
+        const app = createAdminTestApp();
 
-    const res = await jsonRequest(app, "/admin-only");
-    assertEquals(res.status, 401);
-  },
+        const res = await jsonRequest(app, "/admin-only");
+        assertEquals(res.status, 401);
+    },
 });

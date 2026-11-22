@@ -9,13 +9,13 @@
 
 /** 可被全局搜索索引的实体类型。 */
 export type SearchEntityType =
-  | "problem"
-  | "user"
-  | "community_post"
-  | "community_comment"
-  | "contest"
-  | "submission"
-  | "announcement";
+    | "problem"
+    | "user"
+    | "community_post"
+    | "community_comment"
+    | "contest"
+    | "submission"
+    | "announcement";
 
 /** 索引动作。 */
 export type SearchIndexAction = "upsert" | "delete";

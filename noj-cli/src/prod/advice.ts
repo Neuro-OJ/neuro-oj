@@ -12,8 +12,8 @@
 
 /** 交互式向导所需的最小输入集合。 */
 export interface NonInteractiveAdvice {
-  /** 检测到非交互环境且缺少必需参数时给出的提示。 */
-  message: string;
+    /** 检测到非交互环境且缺少必需参数时给出的提示。 */
+    message: string;
 }
 
 /**
@@ -24,22 +24,22 @@ export interface NonInteractiveAdvice {
  * @returns 拒绝时的可操作提示；可以进入交互时返回 null
  */
 export function nonInteractiveAdvice(
-  isTty: boolean,
-  hasMode: boolean,
+    isTty: boolean,
+    hasMode: boolean,
 ): NonInteractiveAdvice | null {
-  if (isTty) return null;
-  // 非 TTY 下：即便给了必需参数，后续仍可能问端口/域名等，
-  // 因此一律拒绝交互，并告诉用户如何补齐。
-  if (hasMode) {
+    if (isTty) return null;
+    // 非 TTY 下：即便给了必需参数，后续仍可能问端口/域名等，
+    // 因此一律拒绝交互，并告诉用户如何补齐。
+    if (hasMode) {
+        return {
+            message: "检测到非交互环境（标准输入不是终端）。\n" +
+                "生产安装仍需交互确认（域名、端口、组件开关等），无法在非交互环境完成。\n" +
+                "请在终端中直接运行 noj-cli install --dir <安装目录>，" +
+                "或先用 --non-interactive 与显式环境变量补齐配置。",
+        };
+    }
     return {
-      message: "检测到非交互环境（标准输入不是终端）。\n" +
-        "生产安装仍需交互确认（域名、端口、组件开关等），无法在非交互环境完成。\n" +
-        "请在终端中直接运行 noj-cli install --dir <安装目录>，" +
-        "或先用 --non-interactive 与显式环境变量补齐配置。",
+        message: "检测到非交互环境（标准输入不是终端），无法进入交互向导。\n" +
+            "请在终端中直接运行 noj-cli install --dir <安装目录>。",
     };
-  }
-  return {
-    message: "检测到非交互环境（标准输入不是终端），无法进入交互向导。\n" +
-      "请在终端中直接运行 noj-cli install --dir <安装目录>。",
-  };
 }

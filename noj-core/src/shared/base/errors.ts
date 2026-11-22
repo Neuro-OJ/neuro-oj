@@ -8,32 +8,32 @@
  * 由 app.ts onError 透传到 JSON 响应。
  */
 export class AppError extends Error {
-  /** HTTP 状态码 */
-  statusCode: number;
-  /** Hono 兼容字段——默认错误处理通过 err.status 读取状态码 */
-  get status(): number {
-    return this.statusCode;
-  }
-  /** 机器可读的错误码（如 "VALIDATION_ERROR"）；未显式传入时根据类名自动生成 */
-  code: string;
-  /** 请求关联 ID（由全局错误处理注入，便于日志追踪） */
-  requestId?: string;
-  /** 附加字段，会被原样透传到错误响应（issue #102 USER_BANNED 用） */
-  meta?: Record<string, unknown>;
+    /** HTTP 状态码 */
+    statusCode: number;
+    /** Hono 兼容字段——默认错误处理通过 err.status 读取状态码 */
+    get status(): number {
+        return this.statusCode;
+    }
+    /** 机器可读的错误码（如 "VALIDATION_ERROR"）；未显式传入时根据类名自动生成 */
+    code: string;
+    /** 请求关联 ID（由全局错误处理注入，便于日志追踪） */
+    requestId?: string;
+    /** 附加字段，会被原样透传到错误响应（issue #102 USER_BANNED 用） */
+    meta?: Record<string, unknown>;
 
-  constructor(
-    message: string,
-    statusCode: number,
-    code?: string,
-    meta?: Record<string, unknown>,
-    options?: ErrorOptions,
-  ) {
-    super(message, options);
-    this.name = "AppError";
-    this.statusCode = statusCode;
-    this.code = code ?? "INTERNAL_ERROR";
-    if (meta) this.meta = meta;
-  }
+    constructor(
+        message: string,
+        statusCode: number,
+        code?: string,
+        meta?: Record<string, unknown>,
+        options?: ErrorOptions,
+    ) {
+        super(message, options);
+        this.name = "AppError";
+        this.statusCode = statusCode;
+        this.code = code ?? "INTERNAL_ERROR";
+        if (meta) this.meta = meta;
+    }
 }
 
 /**
@@ -41,10 +41,10 @@ export class AppError extends Error {
  * 用于资源重复场景（如用户名/邮箱已存在）。
  */
 export class ConflictError extends AppError {
-  constructor(message: string, code?: string) {
-    super(message, 409, code ?? "CONFLICT_ERROR");
-    this.name = "ConflictError";
-  }
+    constructor(message: string, code?: string) {
+        super(message, 409, code ?? "CONFLICT_ERROR");
+        this.name = "ConflictError";
+    }
 }
 
 /**
@@ -52,10 +52,10 @@ export class ConflictError extends AppError {
  * 用于认证失败场景（如密码错误、令牌无效）。
  */
 export class UnauthorizedError extends AppError {
-  constructor(message: string, code?: string) {
-    super(message, 401, code ?? "UNAUTHORIZED");
-    this.name = "UnauthorizedError";
-  }
+    constructor(message: string, code?: string) {
+        super(message, 401, code ?? "UNAUTHORIZED");
+        this.name = "UnauthorizedError";
+    }
 }
 
 /**
@@ -63,10 +63,10 @@ export class UnauthorizedError extends AppError {
  * 用于请求体格式或内容不符合要求。
  */
 export class ValidationError extends AppError {
-  constructor(message: string) {
-    super(message, 400, "VALIDATION_ERROR");
-    this.name = "ValidationError";
-  }
+    constructor(message: string) {
+        super(message, 400, "VALIDATION_ERROR");
+        this.name = "ValidationError";
+    }
 }
 
 /**
@@ -74,10 +74,10 @@ export class ValidationError extends AppError {
  * 用于资源不存在场景（如题目/提交不存在）。
  */
 export class NotFoundError extends AppError {
-  constructor(message: string) {
-    super(message, 404, "NOT_FOUND");
-    this.name = "NotFoundError";
-  }
+    constructor(message: string) {
+        super(message, 404, "NOT_FOUND");
+        this.name = "NotFoundError";
+    }
 }
 
 /**
@@ -85,16 +85,16 @@ export class NotFoundError extends AppError {
  * 用于请求参数或内容错误。
  */
 export class BadRequestError extends AppError {
-  constructor(
-    message: string,
-    code?: string,
-    meta?: Record<string, unknown>,
-  ) {
-    // 400 的默认错误码必须是校验类而不是 INTERNAL_ERROR：客户端与日志都按
-    // code 区分"请求非法"和"服务端故障"。
-    super(message, 400, code ?? "VALIDATION_ERROR", meta);
-    this.name = "BadRequestError";
-  }
+    constructor(
+        message: string,
+        code?: string,
+        meta?: Record<string, unknown>,
+    ) {
+        // 400 的默认错误码必须是校验类而不是 INTERNAL_ERROR：客户端与日志都按
+        // code 区分"请求非法"和"服务端故障"。
+        super(message, 400, code ?? "VALIDATION_ERROR", meta);
+        this.name = "BadRequestError";
+    }
 }
 
 /**
@@ -107,14 +107,14 @@ export class BadRequestError extends AppError {
  * 支持可选 meta 参数携带额外数据（如 USER_BANNED 携带 reason/until）。
  */
 export class ForbiddenError extends AppError {
-  constructor(
-    message: string,
-    code?: string,
-    meta?: Record<string, unknown>,
-  ) {
-    super(message, 403, code, meta);
-    this.name = "ForbiddenError";
-  }
+    constructor(
+        message: string,
+        code?: string,
+        meta?: Record<string, unknown>,
+    ) {
+        super(message, 403, code, meta);
+        this.name = "ForbiddenError";
+    }
 }
 
 /**
@@ -123,10 +123,10 @@ export class ForbiddenError extends AppError {
  * 当前由限流相关 Redis 调用在连接失败时抛出（issue #73 fail-closed）。
  */
 export class ServiceUnavailableError extends AppError {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, 503, "SERVICE_UNAVAILABLE", undefined, options);
-    this.name = "ServiceUnavailableError";
-  }
+    constructor(message: string, options?: ErrorOptions) {
+        super(message, 503, "SERVICE_UNAVAILABLE", undefined, options);
+        this.name = "ServiceUnavailableError";
+    }
 }
 
 /**
@@ -137,24 +137,24 @@ export class ServiceUnavailableError extends AppError {
  * `meta.retry_after` 由 app.ts onError 透传到响应体。
  */
 export class RateLimitedError extends AppError {
-  headers?: Record<string, string>;
+    headers?: Record<string, string>;
 
-  constructor(
-    message: string,
-    retryAfterOrHeaders?: number | Record<string, string>,
-  ) {
-    super(message, 429, "RATE_LIMITED");
-    this.name = "RateLimitedError";
-    if (typeof retryAfterOrHeaders === "number") {
-      this.headers = { "Retry-After": String(retryAfterOrHeaders) };
-      this.meta = { retry_after: retryAfterOrHeaders };
-    } else if (retryAfterOrHeaders) {
-      this.headers = retryAfterOrHeaders;
-      if ("Retry-After" in retryAfterOrHeaders) {
-        this.meta = {
-          retry_after: parseInt(retryAfterOrHeaders["Retry-After"]),
-        };
-      }
+    constructor(
+        message: string,
+        retryAfterOrHeaders?: number | Record<string, string>,
+    ) {
+        super(message, 429, "RATE_LIMITED");
+        this.name = "RateLimitedError";
+        if (typeof retryAfterOrHeaders === "number") {
+            this.headers = { "Retry-After": String(retryAfterOrHeaders) };
+            this.meta = { retry_after: retryAfterOrHeaders };
+        } else if (retryAfterOrHeaders) {
+            this.headers = retryAfterOrHeaders;
+            if ("Retry-After" in retryAfterOrHeaders) {
+                this.meta = {
+                    retry_after: parseInt(retryAfterOrHeaders["Retry-After"]),
+                };
+            }
+        }
     }
-  }
 }

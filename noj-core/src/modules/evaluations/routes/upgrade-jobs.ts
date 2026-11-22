@@ -27,15 +27,15 @@ const router = new Hono<AuthEnv>();
  * GET /api/v1/submission-upgrade-jobs/:id
  */
 router.get("/submission-upgrade-jobs/:id", authMiddleware, async (c) => {
-  const actorId = c.get("userId") as string;
-  const isAdmin = await checkPermission(c, "submission:read_all");
-  const job = await getUpgradeJobForActor(
-    c.req.param("id") as string,
-    actorId,
-    isAdmin,
-  );
-  if (!job) throw new NotFoundError("任务不存在");
-  return c.json({ data: job });
+    const actorId = c.get("userId") as string;
+    const isAdmin = await checkPermission(c, "submission:read_all");
+    const job = await getUpgradeJobForActor(
+        c.req.param("id") as string,
+        actorId,
+        isAdmin,
+    );
+    if (!job) throw new NotFoundError("任务不存在");
+    return c.json({ data: job });
 });
 
 export default router;

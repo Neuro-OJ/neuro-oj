@@ -14,38 +14,42 @@ import { getInstanceResourcePolicy } from "../../platform/contracts/resource-pol
 type LimitsDb = Pick<DbRoot, "select">;
 
 function effectiveStorageLimit(
-  configured: number | null,
-  cap: number | null,
+    configured: number | null,
+    cap: number | null,
 ): number | null {
-  if (configured === null) return cap;
-  if (cap === null) return configured;
-  return Math.min(configured, cap);
+    if (configured === null) return cap;
+    if (cap === null) return configured;
+    return Math.min(configured, cap);
 }
 
 /** 读取当前域存储容量及实例 cap；调用方可传入真实 DbTx。 */
 export async function getDomainEffectiveLimits(
-  domainId: string,
-  db: LimitsDb,
+    domainId: string,
+    db: LimitsDb,
 ) {
-  const [stored] = await db.select().from(domainLimits).where(
-    eq(domainLimits.domain_id, domainId),
-  );
-  if (!stored) {
-    throw new AppError("工作空间配额未初始化", 500, "DOMAIN_LIMITS_MISSING");
-  }
-  const policy = await getInstanceResourcePolicy(db);
-  const storageBytes = effectiveStorageLimit(
-    stored.storage_bytes,
-    policy.limit_caps.storage_bytes,
-  );
-  return {
-    configured: { storage_bytes: stored.storage_bytes },
-    effective: { storage_bytes: storageBytes },
-    caps: { storage_bytes: policy.limit_caps.storage_bytes },
-  };
+    const [stored] = await db.select().from(domainLimits).where(
+        eq(domainLimits.domain_id, domainId),
+    );
+    if (!stored) {
+        throw new AppError(
+            "工作空间配额未初始化",
+            500,
+            "DOMAIN_LIMITS_MISSING",
+        );
+    }
+    const policy = await getInstanceResourcePolicy(db);
+    const storageBytes = effectiveStorageLimit(
+        stored.storage_bytes,
+        policy.limit_caps.storage_bytes,
+    );
+    return {
+        configured: { storage_bytes: stored.storage_bytes },
+        effective: { storage_bytes: storageBytes },
+        caps: { storage_bytes: policy.limit_caps.storage_bytes },
+    };
 }
 
 /** 语义别名，便于原子 helper 显式表达它需要事务。 */
 export function getDomainEffectiveLimitsTx(domainId: string, tx: DbTx) {
-  return getDomainEffectiveLimits(domainId, tx);
+    return getDomainEffectiveLimits(domainId, tx);
 }

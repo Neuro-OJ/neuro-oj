@@ -5,14 +5,14 @@ import type { SubmissionEvaluationDetails } from "./submissions-types.ts";
  * 数据库中以 JSON 字符串存储，解析为对象返回。
  */
 export function parseDetails(
-  raw: string | null,
+    raw: string | null,
 ): SubmissionEvaluationDetails | null {
-  if (raw === null || raw === undefined) return null;
-  try {
-    return JSON.parse(raw) as SubmissionEvaluationDetails;
-  } catch {
-    return null;
-  }
+    if (raw === null || raw === undefined) return null;
+    try {
+        return JSON.parse(raw) as SubmissionEvaluationDetails;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -20,14 +20,14 @@ export function parseDetails(
  * 迁移导入的历史行可能存 JSON 文本；两种形态都收敛为对象或 null。
  */
 export function normalizeAttemptDetails(
-  raw: unknown,
+    raw: unknown,
 ): SubmissionEvaluationDetails | null {
-  if (raw === null || raw === undefined) return null;
-  if (typeof raw === "string") return parseDetails(raw);
-  if (typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as SubmissionEvaluationDetails;
-  }
-  return null;
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === "string") return parseDetails(raw);
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+        return raw as SubmissionEvaluationDetails;
+    }
+    return null;
 }
 
 /**
@@ -35,15 +35,15 @@ export function normalizeAttemptDetails(
  * 旧数据中的 Accepted / WrongAnswer 等按分数制语义映射（兼容历史数据）。
  */
 export function normalizeResultStatus(status: string | null): string | null {
-  if (!status) return null;
-  if (
-    status === "error" || status === "SystemError" ||
-    status === "TimeLimitExceeded" || status === "MemoryLimitExceeded" ||
-    status === "RuntimeError"
-  ) {
-    return "error";
-  }
-  return "finished";
+    if (!status) return null;
+    if (
+        status === "error" || status === "SystemError" ||
+        status === "TimeLimitExceeded" || status === "MemoryLimitExceeded" ||
+        status === "RuntimeError"
+    ) {
+        return "error";
+    }
+    return "finished";
 }
 
 /**
@@ -51,12 +51,12 @@ export function normalizeResultStatus(status: string | null): string | null {
  * 未终结的排队/执行中分别回落到 pending / judging。
  */
 export function attemptDisplayStatus(
-  state: string,
-  resultStatus: string | null,
+    state: string,
+    resultStatus: string | null,
 ): string {
-  const normalized = normalizeResultStatus(resultStatus);
-  if (normalized) return normalized;
-  if (state === "queued") return "pending";
-  if (state === "judging") return "judging";
-  return "error";
+    const normalized = normalizeResultStatus(resultStatus);
+    if (normalized) return normalized;
+    if (state === "queued") return "pending";
+    if (state === "judging") return "judging";
+    return "error";
 }

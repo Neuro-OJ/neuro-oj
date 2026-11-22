@@ -7,31 +7,31 @@ import { defineConfig } from 'vitest/config';
  * Vite 的 define 不支持替换 import.meta.client，因此用 transform 插件实现。
  */
 function nuxtMetaPlugin() {
-  return {
-    name: 'nuxt-meta-replace',
-    transform(code: string) {
-      return code
-        .replaceAll('import.meta.client', 'true')
-        .replaceAll('import.meta.server', 'false')
-        .replaceAll('import.meta.dev', 'true');
-    },
-  };
+    return {
+        name: 'nuxt-meta-replace',
+        transform(code: string) {
+            return code
+                .replaceAll('import.meta.client', 'true')
+                .replaceAll('import.meta.server', 'false')
+                .replaceAll('import.meta.dev', 'true');
+        },
+    };
 }
 
 export default defineConfig({
-  esbuild: { tsconfigRaw: '{}' },
-  resolve: {
-    alias: {
-      '~': fileURLToPath(new URL('.', import.meta.url)),
+    esbuild: { tsconfigRaw: '{}' },
+    resolve: {
+        alias: {
+            '~': fileURLToPath(new URL('.', import.meta.url)),
+        },
     },
-  },
-  plugins: [vue() as never, nuxtMetaPlugin()],
-  test: {
-    // Deno 下默认 fork 池在全部断言通过后仍出现 BrokenPipe，线程池正常退出。
-    pool: 'threads',
-    environment: 'happy-dom',
-    globals: true,
-    setupFiles: ['./tests/vitest-setup.ts'],
-    include: ['tests/**/*.spec.ts'],
-  },
+    plugins: [vue() as never, nuxtMetaPlugin()],
+    test: {
+        // Deno 下默认 fork 池在全部断言通过后仍出现 BrokenPipe，线程池正常退出。
+        pool: 'threads',
+        environment: 'happy-dom',
+        globals: true,
+        setupFiles: ['./tests/vitest-setup.ts'],
+        include: ['tests/**/*.spec.ts'],
+    },
 });

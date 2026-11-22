@@ -9,7 +9,7 @@
  * 事件处理器，只看字符串又会漏掉浏览器解析出的真标签。
  *
  * 覆盖分工（重要）：
- * - **服务端/SSR 分支**：本文件 + `tests/sanitize_test.ts`（Deno）。
+ * - **服务端/SSR 分支**：本文件 + `tests/utils/sanitize_test.ts`（Deno）。
  * - **客户端 DOMPurify 分支**：happy-dom 下 DOMPurify 会剥掉大量标签、并残留
  *   `svg > animate@onbegin` 之类的假象（happy-dom 自身解析缺陷，见
  *   `tests/components/ObjectiveRichText.spec.ts` 的既有注释），因此客户端分支**不**
@@ -24,100 +24,100 @@ import { BENIGN_PAYLOADS, XSS_PAYLOADS } from '../fixtures/xss-corpus';
 
 const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
 const URL_ATTRS = new Set([
-  'href',
-  'src',
-  'action',
-  'formaction',
-  'xlink:href',
+    'href',
+    'src',
+    'action',
+    'formaction',
+    'xlink:href',
 ]);
 
 interface Parsed {
-  handlers: string[];
-  badUrls: string[];
-  tags: string[];
+    handlers: string[];
+    badUrls: string[];
+    tags: string[];
 }
 
 /** 把净化结果真正塞进 DOM，检查处理器属性与可执行 URL。 */
 function inspect(html: string): Parsed {
-  const host = document.createElement('div');
-  host.innerHTML = html;
-  const handlers: string[] = [];
-  const badUrls: string[] = [];
-  const tags: string[] = [];
-  for (const el of Array.from(host.querySelectorAll('*'))) {
-    tags.push(el.tagName.toLowerCase());
-    for (const attr of Array.from(el.attributes)) {
-      const name = attr.name.toLowerCase();
-      if (name.startsWith('on')) handlers.push(`${el.tagName}[${name}]`);
-      if (!URL_ATTRS.has(name)) continue;
-      const value = attr.value.trim();
-      const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
-      if (!scheme) continue;
-      if (!SAFE_SCHEMES.has(scheme)) {
-        badUrls.push(`${el.tagName}[${name}=${value}]`);
-      }
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    const handlers: string[] = [];
+    const badUrls: string[] = [];
+    const tags: string[] = [];
+    for (const el of Array.from(host.querySelectorAll('*'))) {
+        tags.push(el.tagName.toLowerCase());
+        for (const attr of Array.from(el.attributes)) {
+            const name = attr.name.toLowerCase();
+            if (name.startsWith('on')) handlers.push(`${el.tagName}[${name}]`);
+            if (!URL_ATTRS.has(name)) continue;
+            const value = attr.value.trim();
+            const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
+            if (!scheme) continue;
+            if (!SAFE_SCHEMES.has(scheme)) {
+                badUrls.push(`${el.tagName}[${name}=${value}]`);
+            }
+        }
     }
-  }
-  return { handlers, badUrls, tags };
+    return { handlers, badUrls, tags };
 }
 
 beforeAll(() => {
-  // 生产由 Nitro 插件（server/plugins/rich-text-sanitizer.ts）注册；测试注册同一实现。
-  registerServerSanitizer((html, options) => sanitizeHtml(html, options));
+    // 生产由 Nitro 插件（server/plugins/rich-text-sanitizer.ts）注册；测试注册同一实现。
+    registerServerSanitizer((html, options) => sanitizeHtml(html, options));
 });
 
 describe('sanitize(server): XSS 语料解析后不可执行', () => {
-  it.each(XSS_PAYLOADS.map((p) => [p.name, p.html] as const))(
-    '%s',
-    (_name, html) => {
-      const parsed = inspect(sanitizeHtmlSync(html));
-      expect(parsed.handlers).toEqual([]);
-      expect(parsed.badUrls).toEqual([]);
-    },
-  );
+    it.each(XSS_PAYLOADS.map((p) => [p.name, p.html] as const))(
+        '%s',
+        (_name, html) => {
+            const parsed = inspect(sanitizeHtmlSync(html));
+            expect(parsed.handlers).toEqual([]);
+            expect(parsed.badUrls).toEqual([]);
+        },
+    );
 });
 
 describe('sanitize(server): 图片策略', () => {
-  it('站内相对路径保留为图片', () => {
-    const host = document.createElement('div');
-    host.innerHTML = sanitizeHtmlSync('<img src="/local.png" alt="站内">');
-    const img = host.querySelector('img');
-    expect(img?.getAttribute('src')).toBe('/local.png');
-    expect(img?.getAttribute('loading')).toBe('lazy');
-  });
+    it('站内相对路径保留为图片', () => {
+        const host = document.createElement('div');
+        host.innerHTML = sanitizeHtmlSync('<img src="/local.png" alt="站内">');
+        const img = host.querySelector('img');
+        expect(img?.getAttribute('src')).toBe('/local.png');
+        expect(img?.getAttribute('loading')).toBe('lazy');
+    });
 
-  it('默认（不允许外链图片）时 https 外链降级为链接', () => {
-    const host = document.createElement('div');
-    host.innerHTML = sanitizeHtmlSync(
-      '<img src="https://cdn.example/x.png" alt="图">',
-    );
-    expect(host.querySelector('img')).toBeNull();
-    const anchor = host.querySelector('a');
-    expect(anchor?.getAttribute('href')).toBe('https://cdn.example/x.png');
-    expect(anchor?.getAttribute('rel')).toContain('noopener');
-    expect(anchor?.textContent).toBe('图');
-  });
+    it('默认（不允许外链图片）时 https 外链降级为链接', () => {
+        const host = document.createElement('div');
+        host.innerHTML = sanitizeHtmlSync(
+            '<img src="https://cdn.example/x.png" alt="图">',
+        );
+        expect(host.querySelector('img')).toBeNull();
+        const anchor = host.querySelector('a');
+        expect(anchor?.getAttribute('href')).toBe('https://cdn.example/x.png');
+        expect(anchor?.getAttribute('rel')).toContain('noopener');
+        expect(anchor?.textContent).toBe('图');
+    });
 
-  it('允许外链图片时保留 https 图片并加 referrerpolicy', () => {
-    const host = document.createElement('div');
-    host.innerHTML = sanitizeHtmlSync(
-      '<img src="https://cdn.example/x.png" alt="图">',
-      { allowExternalImages: true },
-    );
-    const img = host.querySelector('img');
-    expect(img?.getAttribute('src')).toBe('https://cdn.example/x.png');
-    expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
-  });
+    it('允许外链图片时保留 https 图片并加 referrerpolicy', () => {
+        const host = document.createElement('div');
+        host.innerHTML = sanitizeHtmlSync(
+            '<img src="https://cdn.example/x.png" alt="图">',
+            { allowExternalImages: true },
+        );
+        const img = host.querySelector('img');
+        expect(img?.getAttribute('src')).toBe('https://cdn.example/x.png');
+        expect(img?.getAttribute('referrerpolicy')).toBe('no-referrer');
+    });
 });
 
 describe('sanitize(server): 正常内容不被破坏', () => {
-  it.each(BENIGN_PAYLOADS.map((p) => [p.name, p.html] as const))(
-    '%s 的标签结构保留',
-    (_name, html) => {
-      const parsed = inspect(sanitizeHtmlSync(html));
-      expect(parsed.handlers).toEqual([]);
-      expect(parsed.badUrls).toEqual([]);
-      expect(parsed.tags.length).toBeGreaterThan(0);
-    },
-  );
+    it.each(BENIGN_PAYLOADS.map((p) => [p.name, p.html] as const))(
+        '%s 的标签结构保留',
+        (_name, html) => {
+            const parsed = inspect(sanitizeHtmlSync(html));
+            expect(parsed.handlers).toEqual([]);
+            expect(parsed.badUrls).toEqual([]);
+            expect(parsed.tags.length).toBeGreaterThan(0);
+        },
+    );
 });

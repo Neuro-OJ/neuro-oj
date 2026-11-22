@@ -1,892 +1,940 @@
 <script setup lang="ts">
-
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
-import { useToast } from '~/composables/useToast'
+import { useToast } from '~/composables/useToast';
 
-import { extractApiError } from "~/utils/apiError"
-import { getAvatarUploadError } from "~/utils/avatarUpload"
-import { formatRecoveryCodesFile } from "~/utils/recoveryCodes"
-import { userUrl } from "~/utils/publicIdentifiers"
+import { extractApiError } from '~/utils/server/apiError';
+import { getAvatarUploadError } from '~/utils/auth/avatarUpload';
+import { formatRecoveryCodesFile } from '~/utils/auth/recoveryCodes';
+import { userUrl } from '~/utils/publicIdentifiers';
 
-definePageMeta({ })
+definePageMeta({});
 
-const auth = useAuth()
-const { user, isLoggedIn, loading, fetchUser } = auth
-const router = useRouter()
-const { api } = useApi()
+const auth = useAuth();
+const { user, isLoggedIn, loading, fetchUser } = auth;
+const router = useRouter();
+const { api } = useApi();
 
 const route = useRoute();
 const settingsGroups = [
-  { label: '个人资料', value: 'settings-profile' },
-  { label: '密码与安全', value: 'settings-security' },
-  { label: '第三方账号', value: 'settings-connections' },
-  { label: '数据与隐私', value: 'settings-privacy' },
-  { label: '账号注销', value: 'settings-delete' },
+    { label: '个人资料', value: 'settings-profile' },
+    { label: '密码与安全', value: 'settings-security' },
+    { label: '第三方账号', value: 'settings-connections' },
+    { label: '数据与隐私', value: 'settings-privacy' },
+    { label: '账号注销', value: 'settings-delete' },
 ];
 const currentGroup = computed({
-  get: () => settingsGroups.some(group => `#${group.value}` === route.hash) ? route.hash!.slice(1) : 'settings-profile',
-  set: (value: string) => { void navigateTo({ path: route.path, query: route.query, hash: `#${value}` }); },
+    get: () =>
+        settingsGroups.some((group) => `#${group.value}` === route.hash) ? route.hash!.slice(1) : 'settings-profile',
+    set: (value: string) => {
+        void navigateTo({ path: route.path, query: route.query, hash: `#${value}` });
+    },
 });
 
 // 认证守卫：loading 就绪后检查登录状态
 watch(
-  loading,
-  (loadingVal) => {
-    if (!loadingVal && !isLoggedIn.value) {
-      router.replace("/login")
-    }
-  },
-  { immediate: true },
-)
+    loading,
+    (loadingVal) => {
+        if (!loadingVal && !isLoggedIn.value) {
+            router.replace('/login');
+        }
+    },
+    { immediate: true },
+);
 
 // 评审 P1 修复：进入设置页时从 /auth/me 拉取真实 TFA 状态。
 // session cookie 只在登录时写入，若用户在本次会话中途启用/禁用 TFA，
 // 刷新后 cookie 中的 tfa_enabled 已过期；这里以服务端为准刷新一次，
 // 确保已启用用户能看到禁用/重新生成恢复码入口。
 watch(
-  loading,
-  async (loadingVal) => {
-    if (!loadingVal && isLoggedIn.value) {
-      try {
-        await fetchUser()
-      } catch {
-        // fetchUser 内部已处理 401 登出，其余错误静默保留本地会话
-      }
-    }
-  },
-  { immediate: true },
-)
+    loading,
+    async (loadingVal) => {
+        if (!loadingVal && isLoggedIn.value) {
+            try {
+                await fetchUser();
+            } catch {
+                // fetchUser 内部已处理 401 登出，其余错误静默保留本地会话
+            }
+        }
+    },
+    { immediate: true },
+);
 
 // Bio 编辑
-const bio = ref("")
-const previewMode = ref(false)
-const saving = ref(false)
-const saveSuccess = ref(false)
-const saveError = ref("")
+const bio = ref('');
+const previewMode = ref(false);
+const saving = ref(false);
+const saveSuccess = ref(false);
+const saveError = ref('');
 
 // 头像管理（issue #229）
-const avatarUploading = ref(false)
-const avatarInput = ref<HTMLInputElement | null>(null)
-const avatarPreviewKey = ref(Date.now()) // 上传/删除后破缓存
-const avatarError = ref("") // issue #314：超过 2MB 等校验错误内联展示，避免“没有反应”
-const { dialog } = useDialog()
-const { toast } = useToast()
+const avatarUploading = ref(false);
+const avatarInput = ref<HTMLInputElement | null>(null);
+const avatarPreviewKey = ref(Date.now()); // 上传/删除后破缓存
+const avatarError = ref(''); // issue #314：超过 2MB 等校验错误内联展示，避免“没有反应”
+const { dialog } = useDialog();
+const { toast } = useToast();
 
 // ── 第三方账号绑定（issue #227） ──
-const oauthProviders = ref<Array<{ id: string; name: string }>>([])
-const linkedOAuthAccounts = ref<Array<{
-  id: string
-  provider: string
-  provider_user_id: string
-  provider_username: string | null
-  created_at: string
-}>>([])
-const oauthPassword = ref("")
-const oauthLoading = ref(false)
-const oauthError = ref("")
+const oauthProviders = ref<Array<{ id: string; name: string }>>([]);
+const linkedOAuthAccounts = ref<
+    Array<{
+        id: string;
+        provider: string;
+        provider_user_id: string;
+        provider_username: string | null;
+        created_at: string;
+    }>
+>([]);
+const oauthPassword = ref('');
+const oauthLoading = ref(false);
+const oauthError = ref('');
 
 async function loadOAuthSettings() {
-  try {
-    const [providers, accounts] = await Promise.all([
-      auth.getOAuthProviders(),
-      auth.getLinkedOAuthAccounts(),
-    ])
-    oauthProviders.value = providers
-    linkedOAuthAccounts.value = accounts
-  } catch {
-    oauthProviders.value = []
-    linkedOAuthAccounts.value = []
-  }
+    try {
+        const [providers, accounts] = await Promise.all([
+            auth.getOAuthProviders(),
+            auth.getLinkedOAuthAccounts(),
+        ]);
+        oauthProviders.value = providers;
+        linkedOAuthAccounts.value = accounts;
+    } catch {
+        oauthProviders.value = [];
+        linkedOAuthAccounts.value = [];
+    }
 }
 
 watch(
-  loading,
-  (value) => {
-    if (!value && isLoggedIn.value) void loadOAuthSettings()
-  },
-  { immediate: true },
-)
+    loading,
+    (value) => {
+        if (!value && isLoggedIn.value) void loadOAuthSettings();
+    },
+    { immediate: true },
+);
 
 async function beginOAuthLink(provider: string) {
-  oauthLoading.value = true
-  oauthError.value = ""
-  try {
-    const url = await auth.beginOAuthLink(provider, oauthPassword.value)
-    window.location.assign(url)
-  } catch (err: unknown) {
-    oauthError.value = extractApiError(err).message
-    oauthLoading.value = false
-  }
+    oauthLoading.value = true;
+    oauthError.value = '';
+    try {
+        const url = await auth.beginOAuthLink(provider, oauthPassword.value);
+        window.location.assign(url);
+    } catch (err: unknown) {
+        oauthError.value = extractApiError(err).message;
+        oauthLoading.value = false;
+    }
 }
 
 async function handleOAuthUnlink(accountId: string) {
-  oauthLoading.value = true
-  oauthError.value = ""
-  try {
-    await auth.unlinkOAuthAccount(accountId, oauthPassword.value)
-    linkedOAuthAccounts.value = linkedOAuthAccounts.value.filter((account) => account.id !== accountId)
-    oauthPassword.value = ""
-    toast.success("第三方账号已解绑")
-  } catch (err: unknown) {
-    oauthError.value = extractApiError(err).message
-  } finally {
-    oauthLoading.value = false
-  }
+    oauthLoading.value = true;
+    oauthError.value = '';
+    try {
+        await auth.unlinkOAuthAccount(accountId, oauthPassword.value);
+        linkedOAuthAccounts.value = linkedOAuthAccounts.value.filter((account) => account.id !== accountId);
+        oauthPassword.value = '';
+        toast.success('第三方账号已解绑');
+    } catch (err: unknown) {
+        oauthError.value = extractApiError(err).message;
+    } finally {
+        oauthLoading.value = false;
+    }
 }
 
 // 上传头像（前端预校验类型/大小，与后端阈值一致）
 async function handleAvatarUpload(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  avatarError.value = ""
-  const validationError = getAvatarUploadError(file)
-  if (validationError) {
-    avatarError.value = validationError
-    toast.error(validationError)
-    input.value = ""
-    return
-  }
-  avatarUploading.value = true
-  try {
-    const fd = new FormData()
-    fd.append("file", file)
-    const res = await api.post<{ data: { avatar_url: string } }>(
-      "/api/v1/users/me/avatar",
-      fd,
-      { silent: true },
-    )
-    if (user.value) user.value.avatar_url = res.data.avatar_url
-    avatarPreviewKey.value = Date.now()
-    avatarError.value = ""
-    toast.success("头像已更新")
-  } catch (err: unknown) {
-    avatarError.value = extractApiError(err).message
-    toast.error(extractApiError(err).message)
-  } finally {
-    avatarUploading.value = false
-    input.value = ""
-  }
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    avatarError.value = '';
+    const validationError = getAvatarUploadError(file);
+    if (validationError) {
+        avatarError.value = validationError;
+        toast.error(validationError);
+        input.value = '';
+        return;
+    }
+    avatarUploading.value = true;
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await api.post<{ data: { avatar_url: string } }>(
+            '/api/v1/users/me/avatar',
+            fd,
+            { silent: true },
+        );
+        if (user.value) user.value.avatar_url = res.data.avatar_url;
+        avatarPreviewKey.value = Date.now();
+        avatarError.value = '';
+        toast.success('头像已更新');
+    } catch (err: unknown) {
+        avatarError.value = extractApiError(err).message;
+        toast.error(extractApiError(err).message);
+    } finally {
+        avatarUploading.value = false;
+        input.value = '';
+    }
 }
 
 // 删除头像（弹确认框）
 async function handleAvatarDelete() {
-  const ok = await dialog.confirm("确定删除头像吗？将恢复为默认头像。")
-  if (!ok) return
-  await api.delete("/api/v1/users/me/avatar")
-  if (user.value) user.value.avatar_url = null
-  avatarPreviewKey.value = Date.now()
-  toast.success("头像已删除")
+    const ok = await dialog.confirm('确定删除头像吗？将恢复为默认头像。');
+    if (!ok) return;
+    await api.delete('/api/v1/users/me/avatar');
+    if (user.value) user.value.avatar_url = null;
+    avatarPreviewKey.value = Date.now();
+    toast.success('头像已删除');
 }
 
 // 加载当前用户 bio（等 user 就绪后再请求，避免 fetchUser 未完成）
 watch(
-  user,
-  async (u) => {
-    if (!u?.id) return
-    try {
-      const res = await api.get<{ data: { user: { bio: string } } }>(
-        `/api/v1/users/${u.username}/profile`,
-        { silent: true },
-      )
-      bio.value = res.data.user.bio || ""
-    } catch {
-      // 静默失败
-    }
-  },
-  { immediate: true },
-)
+    user,
+    async (u) => {
+        if (!u?.id) return;
+        try {
+            const res = await api.get<{ data: { user: { bio: string } } }>(
+                `/api/v1/users/${u.username}/profile`,
+                { silent: true },
+            );
+            bio.value = res.data.user.bio || '';
+        } catch {
+            // 静默失败
+        }
+    },
+    { immediate: true },
+);
 
 async function handleSave() {
-  if (!isLoggedIn.value) return
-  saving.value = true
-  saveSuccess.value = false
-  saveError.value = ""
-  try {
-    await api.put("/api/v1/users/me", { bio: bio.value })
-    saveSuccess.value = true
-    setTimeout(() => { saveSuccess.value = false }, 3000)
-  } catch (err: unknown) {
-    saveError.value = extractApiError(err).message
-  } finally {
-    saving.value = false
-  }
+    if (!isLoggedIn.value) return;
+    saving.value = true;
+    saveSuccess.value = false;
+    saveError.value = '';
+    try {
+        await api.put('/api/v1/users/me', { bio: bio.value });
+        saveSuccess.value = true;
+        setTimeout(() => {
+            saveSuccess.value = false;
+        }, 3000);
+    } catch (err: unknown) {
+        saveError.value = extractApiError(err).message;
+    } finally {
+        saving.value = false;
+    }
 }
 
 // ── TFA 管理（issue #228） ──
-const tfaEnabled = ref(user.value?.tfa_enabled ?? false)
-const tfaSetup = ref<{ secret: string; otpauth_url: string } | null>(null)
-const tfaCode = ref("")
-const tfaRecoveryCodes = ref<string[]>([])
-const tfaLoading = ref(false)
-const tfaError = ref("")
-const qrDataUrl = ref("")
-const tfaUserId = ref(user.value?.id ?? null)
+const tfaEnabled = ref(user.value?.tfa_enabled ?? false);
+const tfaSetup = ref<{ secret: string; otpauth_url: string } | null>(null);
+const tfaCode = ref('');
+const tfaRecoveryCodes = ref<string[]>([]);
+const tfaLoading = ref(false);
+const tfaError = ref('');
+const qrDataUrl = ref('');
+const tfaUserId = ref(user.value?.id ?? null);
 
 function resetTfaTransientState() {
-  tfaSetup.value = null
-  tfaCode.value = ""
-  tfaRecoveryCodes.value = []
-  tfaError.value = ""
-  qrDataUrl.value = ""
+    tfaSetup.value = null;
+    tfaCode.value = '';
+    tfaRecoveryCodes.value = [];
+    tfaError.value = '';
+    qrDataUrl.value = '';
 }
 
 watch(
-  user,
-  (u) => {
-    const nextUserId = u?.id ?? null
-    if (nextUserId !== tfaUserId.value) {
-      resetTfaTransientState()
-      tfaUserId.value = nextUserId
-    }
-    tfaEnabled.value = u?.tfa_enabled ?? false
-  },
-  { immediate: true },
-)
+    user,
+    (u) => {
+        const nextUserId = u?.id ?? null;
+        if (nextUserId !== tfaUserId.value) {
+            resetTfaTransientState();
+            tfaUserId.value = nextUserId;
+        }
+        tfaEnabled.value = u?.tfa_enabled ?? false;
+    },
+    { immediate: true },
+);
 
 async function handleTfaSetup() {
-  tfaLoading.value = true
-  tfaError.value = ""
-  try {
-    const res = await api.post<{ data: { secret: string; otpauth_url: string } }>(
-      "/api/v1/auth/tfa/setup",
-      undefined,
-    )
-    tfaSetup.value = res.data
-    tfaCode.value = ""
-    tfaRecoveryCodes.value = []
-    qrDataUrl.value = ""
-    // 前端本地生成二维码，避免 secret 经过额外服务端处理
-    const QRCode = (await import("qrcode")).default
-    qrDataUrl.value = await QRCode.toDataURL(res.data.otpauth_url, {
-      width: 200,
-      margin: 1,
-    })
-  } catch (err: unknown) {
-    tfaError.value = extractApiError(err).message
-  } finally {
-    tfaLoading.value = false
-  }
+    tfaLoading.value = true;
+    tfaError.value = '';
+    try {
+        const res = await api.post<{ data: { secret: string; otpauth_url: string } }>(
+            '/api/v1/auth/tfa/setup',
+            undefined,
+        );
+        tfaSetup.value = res.data;
+        tfaCode.value = '';
+        tfaRecoveryCodes.value = [];
+        qrDataUrl.value = '';
+        // 前端本地生成二维码，避免 secret 经过额外服务端处理
+        const QRCode = (await import('qrcode')).default;
+        qrDataUrl.value = await QRCode.toDataURL(res.data.otpauth_url, {
+            width: 200,
+            margin: 1,
+        });
+    } catch (err: unknown) {
+        tfaError.value = extractApiError(err).message;
+    } finally {
+        tfaLoading.value = false;
+    }
 }
 
 async function handleTfaConfirm() {
-  if (!tfaCode.value.trim()) {
-    tfaError.value = "请输入 6 位验证码"
-    return
-  }
-  tfaLoading.value = true
-  tfaError.value = ""
-  try {
-    const res = await api.post<{ data: { recovery_codes: string[] } }>(
-      "/api/v1/auth/tfa/confirm",
-      { code: tfaCode.value.trim() },
-    )
-    tfaRecoveryCodes.value = res.data.recovery_codes
-    tfaEnabled.value = true
-    tfaSetup.value = null
-    tfaCode.value = ""
-    qrDataUrl.value = ""
-    if (user.value) user.value.tfa_enabled = true
-  } catch (err: unknown) {
-    tfaError.value = extractApiError(err).message
-  } finally {
-    tfaLoading.value = false
-  }
+    if (!tfaCode.value.trim()) {
+        tfaError.value = '请输入 6 位验证码';
+        return;
+    }
+    tfaLoading.value = true;
+    tfaError.value = '';
+    try {
+        const res = await api.post<{ data: { recovery_codes: string[] } }>(
+            '/api/v1/auth/tfa/confirm',
+            { code: tfaCode.value.trim() },
+        );
+        tfaRecoveryCodes.value = res.data.recovery_codes;
+        tfaEnabled.value = true;
+        tfaSetup.value = null;
+        tfaCode.value = '';
+        qrDataUrl.value = '';
+        if (user.value) user.value.tfa_enabled = true;
+    } catch (err: unknown) {
+        tfaError.value = extractApiError(err).message;
+    } finally {
+        tfaLoading.value = false;
+    }
 }
 
 async function handleTfaDisable() {
-  if (!tfaCode.value.trim()) {
-    tfaError.value = "请输入验证码或恢复码"
-    return
-  }
-  tfaLoading.value = true
-  tfaError.value = ""
-  try {
-    await api.post("/api/v1/auth/tfa/disable", { code: tfaCode.value.trim() })
-    tfaEnabled.value = false
-    resetTfaTransientState()
-    if (user.value) user.value.tfa_enabled = false
-    toast.success("两步验证已禁用")
-  } catch (err: unknown) {
-    tfaError.value = extractApiError(err).message
-  } finally {
-    tfaLoading.value = false
-  }
+    if (!tfaCode.value.trim()) {
+        tfaError.value = '请输入验证码或恢复码';
+        return;
+    }
+    tfaLoading.value = true;
+    tfaError.value = '';
+    try {
+        await api.post('/api/v1/auth/tfa/disable', { code: tfaCode.value.trim() });
+        tfaEnabled.value = false;
+        resetTfaTransientState();
+        if (user.value) user.value.tfa_enabled = false;
+        toast.success('两步验证已禁用');
+    } catch (err: unknown) {
+        tfaError.value = extractApiError(err).message;
+    } finally {
+        tfaLoading.value = false;
+    }
 }
 
 async function handleTfaRegenerate() {
-  if (!tfaCode.value.trim()) {
-    tfaError.value = "请输入验证码或恢复码"
-    return
-  }
-  tfaLoading.value = true
-  tfaError.value = ""
-  try {
-    const res = await api.post<{ data: { recovery_codes: string[] } }>(
-      "/api/v1/auth/tfa/recovery-codes/regenerate",
-      { code: tfaCode.value.trim() },
-    )
-    tfaRecoveryCodes.value = res.data.recovery_codes
-    tfaCode.value = ""
-    try {
-      toast.success("恢复码已重新生成")
-    } catch {
-      // toast 异常不影响业务结果，静默忽略
+    if (!tfaCode.value.trim()) {
+        tfaError.value = '请输入验证码或恢复码';
+        return;
     }
-  } catch (err: unknown) {
-    tfaError.value = extractApiError(err).message
-  } finally {
-    tfaLoading.value = false
-  }
+    tfaLoading.value = true;
+    tfaError.value = '';
+    try {
+        const res = await api.post<{ data: { recovery_codes: string[] } }>(
+            '/api/v1/auth/tfa/recovery-codes/regenerate',
+            { code: tfaCode.value.trim() },
+        );
+        tfaRecoveryCodes.value = res.data.recovery_codes;
+        tfaCode.value = '';
+        try {
+            toast.success('恢复码已重新生成');
+        } catch {
+            // toast 异常不影响业务结果，静默忽略
+        }
+    } catch (err: unknown) {
+        tfaError.value = extractApiError(err).message;
+    } finally {
+        tfaLoading.value = false;
+    }
 }
 
 function handleDownloadRecoveryCodes() {
-  if (tfaRecoveryCodes.value.length === 0) return
+    if (tfaRecoveryCodes.value.length === 0) return;
 
-  // 清除上一次遗留的错误提示，避免“下载已成功但仍显示失败”
-  tfaError.value = ""
+    // 清除上一次遗留的错误提示，避免“下载已成功但仍显示失败”
+    tfaError.value = '';
 
-  try {
-    const content = formatRecoveryCodesFile(tfaRecoveryCodes.value)
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.href = url
-    link.download = `neuro-oj-recovery-codes-${new Date().toISOString().slice(0, 10)}.txt`
-    link.style.display = "none"
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    // 稍后释放 URL，避免下载尚未开始时提前回收
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
     try {
-      toast.success("恢复码文件已下载")
+        const content = formatRecoveryCodesFile(tfaRecoveryCodes.value);
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `neuro-oj-recovery-codes-${new Date().toISOString().slice(0, 10)}.txt`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // 稍后释放 URL，避免下载尚未开始时提前回收
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        try {
+            toast.success('恢复码文件已下载');
+        } catch {
+            // toast 异常不影响下载结果，静默忽略
+        }
     } catch {
-      // toast 异常不影响下载结果，静默忽略
+        tfaError.value = '恢复码文件生成失败，请手动复制保存';
     }
-  } catch {
-    tfaError.value = "恢复码文件生成失败，请手动复制保存"
-  }
 }
 
 async function handleCopyRecoveryCodes() {
-  if (tfaRecoveryCodes.value.length === 0) return
+    if (tfaRecoveryCodes.value.length === 0) return;
 
-  try {
-    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable")
-    await navigator.clipboard.writeText(tfaRecoveryCodes.value.join("\n"))
-    toast.success("恢复码已复制")
-  } catch {
-    toast.error("复制失败，请手动复制恢复码")
-  }
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+        await navigator.clipboard.writeText(tfaRecoveryCodes.value.join('\n'));
+        toast.success('恢复码已复制');
+    } catch {
+        toast.error('复制失败，请手动复制恢复码');
+    }
 }
 
 // ── 个人信息与隐私（PIPL：导出 + 删除/更正请求） ──
-const exportingData = ref(false)
-const exportError = ref("")
+const exportingData = ref(false);
+const exportError = ref('');
 
 async function handleExportData() {
-  exportingData.value = true
-  exportError.value = ""
-  try {
-    const res = await api.get<{ data: unknown }>("/api/v1/users/me/data-export", { silent: true })
-    const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: "application/json" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `noj-data-export-${Date.now()}.json`
-    a.click()
-    // 延迟回收，避免下载尚未开始时提前失效（与恢复码下载一致）。
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-    toast.success("数据导出已下载")
-  } catch (error: unknown) {
-    exportError.value = extractApiError(error).message
-  } finally {
-    exportingData.value = false
-  }
+    exportingData.value = true;
+    exportError.value = '';
+    try {
+        const res = await api.get<{ data: unknown }>('/api/v1/users/me/data-export', { silent: true });
+        const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `noj-data-export-${Date.now()}.json`;
+        a.click();
+        // 延迟回收，避免下载尚未开始时提前失效（与恢复码下载一致）。
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast.success('数据导出已下载');
+    } catch (error: unknown) {
+        exportError.value = extractApiError(error).message;
+    } finally {
+        exportingData.value = false;
+    }
 }
 
 const REQUEST_KINDS = [
-  { label: "删除", value: "delete" },
-  { label: "更正", value: "correct" },
-]
+    { label: '删除', value: 'delete' },
+    { label: '更正', value: 'correct' },
+];
 const REQUEST_TARGETS = [
-  { label: "帖子", value: "post" },
-  { label: "评论", value: "comment" },
-  { label: "提交", value: "submission" },
-  { label: "个人资料", value: "profile" },
-  { label: "其他", value: "other" },
-]
+    { label: '帖子', value: 'post' },
+    { label: '评论', value: 'comment' },
+    { label: '提交', value: 'submission' },
+    { label: '个人资料', value: 'profile' },
+    { label: '其他', value: 'other' },
+];
 
 interface MyDataRequest {
-  id: string
-  kind: string
-  target_type: string
-  status: string
-  detail: string
-  resolution: string | null
-  created_at: string
+    id: string;
+    kind: string;
+    target_type: string;
+    status: string;
+    detail: string;
+    resolution: string | null;
+    created_at: string;
 }
 
-const requestKind = ref("delete")
-const requestTarget = ref("post")
-const requestTargetId = ref("")
-const requestDetail = ref("")
-const submittingRequest = ref(false)
-const requestError = ref("")
-const myRequests = ref<MyDataRequest[]>([])
-const requestsLoaded = ref(false)
-const requestsLoadError = ref("")
+const requestKind = ref('delete');
+const requestTarget = ref('post');
+const requestTargetId = ref('');
+const requestDetail = ref('');
+const submittingRequest = ref(false);
+const requestError = ref('');
+const myRequests = ref<MyDataRequest[]>([]);
+const requestsLoaded = ref(false);
+const requestsLoadError = ref('');
 
 function requestStatusLabel(status: string): string {
-  return { pending: "待处理", processing: "处理中", resolved: "已处理", rejected: "已驳回" }[status] ?? status
+    return { pending: '待处理', processing: '处理中', resolved: '已处理', rejected: '已驳回' }[status] ?? status;
 }
-function requestStatusColor(status: string): "warning" | "info" | "success" | "error" | "neutral" {
-  if (status === "resolved") return "success"
-  if (status === "rejected") return "error"
-  if (status === "processing") return "info"
-  if (status === "pending") return "warning"
-  return "neutral"
+function requestStatusColor(status: string): 'warning' | 'info' | 'success' | 'error' | 'neutral' {
+    if (status === 'resolved') return 'success';
+    if (status === 'rejected') return 'error';
+    if (status === 'processing') return 'info';
+    if (status === 'pending') return 'warning';
+    return 'neutral';
 }
 
 async function loadMyRequests() {
-  requestsLoadError.value = ""
-  try {
-    const res = await api.get<{ data: MyDataRequest[] }>("/api/v1/legal/data-requests", { silent: true })
-    myRequests.value = res.data
-  } catch (error: unknown) {
-    // 区分「加载失败」与「确无请求」，避免用户误以为历史请求丢失。
-    requestsLoadError.value = extractApiError(error).message
-  } finally {
-    requestsLoaded.value = true
-  }
+    requestsLoadError.value = '';
+    try {
+        const res = await api.get<{ data: MyDataRequest[] }>('/api/v1/legal/data-requests', { silent: true });
+        myRequests.value = res.data;
+    } catch (error: unknown) {
+        // 区分「加载失败」与「确无请求」，避免用户误以为历史请求丢失。
+        requestsLoadError.value = extractApiError(error).message;
+    } finally {
+        requestsLoaded.value = true;
+    }
 }
 
 async function handleSubmitRequest() {
-  requestError.value = ""
-  if (!requestDetail.value.trim()) {
-    requestError.value = "请填写请求说明"
-    return
-  }
-  submittingRequest.value = true
-  try {
-    await api.post("/api/v1/legal/data-requests", {
-      kind: requestKind.value,
-      target_type: requestTarget.value,
-      target_id: requestTargetId.value.trim() || null,
-      detail: requestDetail.value.trim(),
-    }, { silent: true })
-    requestDetail.value = ""
-    requestTargetId.value = ""
-    toast.success("请求已提交，运营者会尽快处理")
-    await loadMyRequests()
-  } catch (error: unknown) {
-    requestError.value = extractApiError(error).message
-  } finally {
-    submittingRequest.value = false
-  }
+    requestError.value = '';
+    if (!requestDetail.value.trim()) {
+        requestError.value = '请填写请求说明';
+        return;
+    }
+    submittingRequest.value = true;
+    try {
+        await api.post('/api/v1/legal/data-requests', {
+            kind: requestKind.value,
+            target_type: requestTarget.value,
+            target_id: requestTargetId.value.trim() || null,
+            detail: requestDetail.value.trim(),
+        }, { silent: true });
+        requestDetail.value = '';
+        requestTargetId.value = '';
+        toast.success('请求已提交，运营者会尽快处理');
+        await loadMyRequests();
+    } catch (error: unknown) {
+        requestError.value = extractApiError(error).message;
+    } finally {
+        submittingRequest.value = false;
+    }
 }
 
 // ── 注销账户（issue #230） ──
-const deletePassword = ref("")
-const deletingAccount = ref(false)
-const deleteAccountError = ref("")
+const deletePassword = ref('');
+const deletingAccount = ref(false);
+const deleteAccountError = ref('');
 
 onMounted(() => {
-  if (isLoggedIn.value) loadMyRequests()
-})
+    if (isLoggedIn.value) loadMyRequests();
+});
 
 async function handleDeleteAccount() {
-  if (!deletePassword.value) {
-    deleteAccountError.value = "请输入当前密码"
-    return
-  }
-  const confirmed = await dialog.confirm(
-    "注销后将无法恢复登录；公开内容会保留并显示为“已注销用户”。确定继续吗？",
-    { title: "永久注销账户", confirmText: "确认注销", danger: true, dataPolicyLink: true },
-  )
-  if (!confirmed) return
-  deletingAccount.value = true
-  deleteAccountError.value = ""
-  try {
-    await auth.deleteAccount(deletePassword.value)
-    await router.replace("/login?account_deleted=1")
-  } catch (error: unknown) {
-    deleteAccountError.value = extractApiError(error).message
-  } finally {
-    deletingAccount.value = false
-  }
+    if (!deletePassword.value) {
+        deleteAccountError.value = '请输入当前密码';
+        return;
+    }
+    const confirmed = await dialog.confirm(
+        '注销后将无法恢复登录；公开内容会保留并显示为“已注销用户”。确定继续吗？',
+        { title: '永久注销账户', confirmText: '确认注销', danger: true, dataPolicyLink: true },
+    );
+    if (!confirmed) return;
+    deletingAccount.value = true;
+    deleteAccountError.value = '';
+    try {
+        await auth.deleteAccount(deletePassword.value);
+        await router.replace('/login?account_deleted=1');
+    } catch (error: unknown) {
+        deleteAccountError.value = extractApiError(error).message;
+    } finally {
+        deletingAccount.value = false;
+    }
 }
 </script>
 
 <template>
-  <div class="mx-auto max-w-[1120px] px-4 py-6 sm:px-6 sm:py-8">
-    <header class="mb-6"><h1 class="text-2xl font-bold text-text">账号设置</h1><p class="mt-2 text-sm text-text-secondary">管理个人资料、登录安全与关联账号。各项修改分别保存。</p></header>
-    <div class="grid items-start gap-6 lg:grid-cols-[180px_minmax(0,1fr)]">
-      <aside class="hidden lg:sticky lg:top-24 lg:block">
-        <nav aria-label="账号设置分组" class="space-y-1">
-          <NuxtLink v-for="group in settingsGroups" :key="group.value" :to="{ path: route.path, query: route.query, hash: `#${group.value}` }" :aria-current="currentGroup === group.value ? 'location' : undefined" class="block rounded px-3 py-3 text-sm font-medium" :class="currentGroup === group.value ? 'bg-primary-bg text-primary' : 'text-text-secondary hover:bg-primary-hover-bg hover:text-text'">{{ group.label }}</NuxtLink>
-        </nav>
-      </aside>
-      <div class="min-w-0 space-y-6">
-        <div class="sticky top-[var(--header-h)] z-20 border-b border-border bg-bg-page py-3 lg:hidden"><USelect v-model="currentGroup" :items="settingsGroups" aria-label="账号设置分组" class="w-full" /></div>
-    <!--
-      返回个人主页（评审修正）：/settings 在面包屑注册表中是**单层**，
-      而 BreadcrumbNav 对单层不渲染（避免占用首屏）。因此本页若删掉该链接，
-      就会**完全没有返回导航**。单层页面的返回入口与面包屑不构成重复，故保留。
-    -->
-    <NuxtLink
-      v-if="user?.id"
-      :to="userUrl(user?.username ?? '')"
-      class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
-    >
+    <div class="mx-auto max-w-[1120px] px-4 py-6 sm:px-6 sm:py-8">
+        <header class="mb-6">
+            <h1 class="text-2xl font-bold text-text">账号设置</h1>
+            <p class="mt-2 text-sm text-text-secondary">管理个人资料、登录安全与关联账号。各项修改分别保存。</p>
+        </header>
+        <div class="grid items-start gap-6 lg:grid-cols-[180px_minmax(0,1fr)]">
+            <aside class="hidden lg:sticky lg:top-24 lg:block">
+                <nav aria-label="账号设置分组" class="space-y-1">
+                    <NuxtLink v-for="group in settingsGroups" :key="group.value"
+                        :to="{ path: route.path, query: route.query, hash: `#${group.value}` }"
+                        :aria-current="currentGroup === group.value ? 'location' : undefined"
+                        class="block rounded px-3 py-3 text-sm font-medium"
+                        :class="currentGroup === group.value ? 'bg-primary-bg text-primary' : 'text-text-secondary hover:bg-primary-hover-bg hover:text-text'">{{ group.label }}</NuxtLink>
+                </nav>
+            </aside>
+            <div class="min-w-0 space-y-6">
+                <div class="sticky top-[var(--header-h)] z-20 border-b border-border bg-bg-page py-3 lg:hidden">
+                    <USelect v-model="currentGroup" :items="settingsGroups" aria-label="账号设置分组" class="w-full" />
+                </div>
+                <!--
+                  返回个人主页（评审修正）：/settings 在面包屑注册表中是**单层**，
+                  而 BreadcrumbNav 对单层不渲染（避免占用首屏）。因此本页若删掉该链接，
+                  就会**完全没有返回导航**。单层页面的返回入口与面包屑不构成重复，故保留。
+                -->
+                <NuxtLink
+                    v-if="user?.id"
+                    :to="userUrl(user?.username ?? '')"
+                    class="inline-flex items-center gap-1.5 text-sm text-text-secondary no-underline hover:text-primary"
+                >
       <UIcon name="i-lucide-arrow-left" class="size-4" />
       返回个人主页
     </NuxtLink>
 
-    <!-- 标题 -->
-    <section id="settings-profile" aria-labelledby="profile-title" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
-      <div class="px-6 py-5 border-b border-border">
-        <h2 id="profile-title" class="text-lg font-semibold flex items-center gap-2">
+                <!-- 标题 -->
+                <section id="settings-profile" aria-labelledby="profile-title"
+                    class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
+                    <div class="px-6 py-5 border-b border-border">
+                        <h2 id="profile-title" class="text-lg font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-edit-3" class="size-5" />
           个人资料编辑
         </h2>
-      </div>
+                    </div>
 
-      <div class="px-6 py-6 flex flex-col gap-6">
-        <!-- 头像管理（issue #229） -->
-        <div class="flex items-center gap-6 pb-4 border-b border-border">
-          <span class="relative inline-block rounded-full overflow-hidden shrink-0" :style="{ width: '64px', height: '64px' }">
-            <img
-              v-if="user?.avatar_url"
-              :src="`/api/v1/users/${user.username}/avatar?t=${avatarPreviewKey}`"
-              alt="当前头像"
-              class="size-full object-cover"
-            />
-            <span
-              v-else
-              class="size-full flex items-center justify-center text-xl font-bold"
-              :style="{ backgroundColor: 'hsl(0 0% 92%)', color: 'hsl(0 0% 40%)' }"
-            >{{ user?.username?.charAt(0).toUpperCase() || "?" }}</span>
-          </span>
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-3">
-              <UButton color="primary" variant="outline" :loading="avatarUploading" @click="avatarInput?.click()">
+                    <div class="px-6 py-6 flex flex-col gap-6">
+                        <!-- 头像管理（issue #229） -->
+                        <div class="flex items-center gap-6 pb-4 border-b border-border">
+                            <span class="relative inline-block rounded-full overflow-hidden shrink-0"
+                                :style="{ width: '64px', height: '64px' }">
+                                <img
+                                    v-if="user?.avatar_url"
+                                    :src="`/api/v1/users/${user.username}/avatar?t=${avatarPreviewKey}`"
+                                    alt="当前头像"
+                                    class="size-full object-cover"
+                                />
+                                <span
+                                    v-else
+                                    class="size-full flex items-center justify-center text-xl font-bold"
+                                    :style="{ backgroundColor: 'hsl(0 0% 92%)', color: 'hsl(0 0% 40%)' }"
+                                >{{ user?.username?.charAt(0).toUpperCase() || '?' }}</span>
+                            </span>
+                            <div class="flex flex-col gap-2">
+                                <div class="flex items-center gap-3">
+                                    <UButton color="primary" variant="outline" :loading="avatarUploading"
+                                        @click="avatarInput?.click()">
                 <UIcon name="i-lucide-upload" class="size-4" />
                 上传头像
               </UButton>
-              <UButton v-if="user?.avatar_url" color="error" variant="outline" @click="handleAvatarDelete">
+                                    <UButton v-if="user?.avatar_url" color="error" variant="outline"
+                                        @click="handleAvatarDelete">
                 <UIcon name="i-lucide-trash-2" class="size-4" />
                 删除头像
               </UButton>
-              <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="handleAvatarUpload" />
-            </div>
-            <p class="text-xs text-text-muted">支持 png / jpeg / webp，最大 2MB</p>
-            <p v-if="avatarError" class="text-xs text-error-text">{{ avatarError }}</p>
-          </div>
-        </div>
+                                    <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp"
+                                        class="hidden" @change="handleAvatarUpload" />
+                                </div>
+                                <p class="text-xs text-text-muted">支持 png / jpeg / webp，最大 2MB</p>
+                                <p v-if="avatarError" class="text-xs text-error-text">{{ avatarError }}</p>
+                            </div>
+                        </div>
 
-        <!-- 基本信息（只读） -->
-        <div class="flex items-center gap-3 pb-4 border-b border-border">
-          <div class="w-12 h-12 rounded-full bg-primary-bg flex items-center justify-center text-primary text-xl font-bold shrink-0">
-            {{ user?.username?.charAt(0).toUpperCase() || "?" }}
+                        <!-- 基本信息（只读） -->
+                        <div class="flex items-center gap-3 pb-4 border-b border-border">
+                            <div
+                                class="w-12 h-12 rounded-full bg-primary-bg flex items-center justify-center text-primary text-xl font-bold shrink-0">
+            {{ user?.username?.charAt(0).toUpperCase() || '?' }}
           </div>
-          <div class="flex flex-col">
-            <span class="font-semibold text-text">{{ user?.username }}</span>
-            <span class="text-xs text-text-muted">{{ user?.email }}</span>
-          </div>
-        </div>
+                            <div class="flex flex-col">
+                                <span class="font-semibold text-text">{{ user?.username }}</span>
+                                <span class="text-xs text-text-muted">{{ user?.email }}</span>
+                            </div>
+                        </div>
 
-        <!-- Bio 编辑区 -->
-        <div class="flex flex-col gap-3">
-          <div class="flex items-center justify-between">
-            <label class="text-sm font-semibold text-text">个人简介</label>
-            <UButton color="neutral" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5 text-text-secondary border border-border bg-transparent rounded-md cursor-pointer hover:bg-gray-100 hover:text-text transition-colors" @click="previewMode = !previewMode">
+                        <!-- Bio 编辑区 -->
+                        <div class="flex flex-col gap-3">
+                            <div class="flex items-center justify-between">
+                                <label class="text-sm font-semibold text-text">个人简介</label>
+                                <UButton color="neutral" variant="outline"
+                                    class="text-xs px-3 py-1.5 flex items-center gap-1.5 text-text-secondary border border-border bg-transparent rounded-md cursor-pointer hover:bg-gray-100 hover:text-text transition-colors"
+                                    @click="previewMode = !previewMode">
               <UIcon name="i-lucide-eye" class="size-3.5" v-if="!previewMode"/>
               <UIcon name="i-lucide-edit-3" class="size-3.5" v-else/>
-              {{ previewMode ? "编辑" : "预览" }}
+              {{ previewMode ? '编辑' : '预览' }}
             </UButton>
-          </div>
+                            </div>
 
-          <!-- 编辑器 -->
-          <textarea
-            v-if="!previewMode"
-            v-model="bio"
-            class="w-full min-h-[200px] px-4 py-3 border border-border rounded-lg text-sm font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-            placeholder="用 Markdown 介绍自己..."
-            maxlength="5000"
-          />
+                            <!-- 编辑器 -->
+                            <textarea
+                                v-if="!previewMode"
+                                v-model="bio"
+                                class="w-full min-h-[200px] px-4 py-3 border border-border rounded-lg text-sm font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                                placeholder="用 Markdown 介绍自己..."
+                                maxlength="5000"
+                            />
 
-          <!-- 预览（Markdown 渲染） -->
-          <div
-            v-else
-            class="min-h-[200px] px-4 py-3 border border-border rounded-lg bg-white"
-          >
-            <MarkdownRenderer v-if="bio.trim()" :content="bio" />
-            <p v-else class="text-text-muted text-sm italic">暂无个人简介</p>
-          </div>
+                            <!-- 预览（Markdown 渲染） -->
+                            <div
+                                v-else
+                                class="min-h-[200px] px-4 py-3 border border-border rounded-lg bg-white"
+                            >
+                                <MarkdownRenderer v-if="bio.trim()" :content="bio" />
+                                <p v-else class="text-text-muted text-sm italic">暂无个人简介</p>
+                            </div>
 
-          <div class="flex items-center justify-between text-xs text-text-muted">
-            <span>支持 Markdown 格式，最多 5000 字</span>
-            <span>{{ bio.length }} / 5000</span>
-          </div>
-        </div>
+                            <div class="flex items-center justify-between text-xs text-text-muted">
+                                <span>支持 Markdown 格式，最多 5000 字</span>
+                                <span>{{ bio.length }} / 5000</span>
+                            </div>
+                        </div>
 
-        <!-- 保存按钮 -->
-        <UButton color="primary" class="flex items-center justify-center gap-2 py-2.5 px-6 self-start text-sm disabled:opacity-50 disabled:cursor-not-allowed" :disabled="saving"
-          @click="handleSave">
-          <UIcon name="i-lucide-save" class="size-4" />
-          <span>{{ saving ? "保存中..." : "保存" }}</span>
-        </UButton>
-      </div>
-    </section>
+                        <!-- 保存按钮 -->
+                        <UButton color="primary"
+                            class="flex items-center justify-center gap-2 py-2.5 px-6 self-start text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="saving"
+                            @click="handleSave">
+                            <UIcon name="i-lucide-save" class="size-4" />
+                            <span>{{ saving ? '保存中...' : '保存' }}</span>
+                        </UButton>
+                    </div>
+                </section>
 
-    <!-- 第三方账号（issue #227） -->
-    <section id="settings-security" aria-labelledby="security-title" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
-      <div class="px-6 py-5 border-b border-border">
-        <h2 id="security-title" class="text-lg font-semibold flex items-center gap-2">
+                <!-- 第三方账号（issue #227） -->
+                <section id="settings-security" aria-labelledby="security-title"
+                    class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
+                    <div class="px-6 py-5 border-b border-border">
+                        <h2 id="security-title" class="text-lg font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-shield-check" class="size-5" />
           密码与安全
         </h2>
-      </div>
+                    </div>
 
-      <div class="px-6 py-6 flex flex-col gap-4">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4"><div><h3 class="font-medium">登录密码</h3><p class="mt-1 text-sm text-text-secondary">{{ user?.has_local_password ? '使用当前密码验证后更改登录密码。' : '为账号设置本地登录密码。' }}</p></div><UButton :to="user?.has_local_password ? '/change-password' : '/set-password'" variant="outline">{{ user?.has_local_password ? '修改密码' : '设置密码' }}</UButton></div>
-        <h3 class="font-medium">两步验证</h3>
-        <p class="text-sm text-text-secondary">
+                    <div class="px-6 py-6 flex flex-col gap-4">
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                            <div>
+                                <h3 class="font-medium">登录密码</h3>
+                                <p
+                                    class="mt-1 text-sm text-text-secondary">{{ user?.has_local_password ? '使用当前密码验证后更改登录密码。' : '为账号设置本地登录密码。' }}</p>
+                            </div>
+                            <UButton :to="user?.has_local_password ? '/change-password' : '/set-password'"
+                                variant="outline">{{ user?.has_local_password ? '修改密码' : '设置密码' }}</UButton>
+                        </div>
+                        <h3 class="font-medium">两步验证</h3>
+                        <p class="text-sm text-text-secondary">
           启用后登录时需要输入验证器 App 生成的 6 位验证码或恢复码。
         </p>
 
-        <div v-if="!tfaEnabled">
-          <UButton
-            v-if="!tfaSetup"
-            color="primary"
-            :loading="tfaLoading"
-            @click="handleTfaSetup"
-          >
+                        <div v-if="!tfaEnabled">
+                            <UButton
+                                v-if="!tfaSetup"
+                                color="primary"
+                                :loading="tfaLoading"
+                                @click="handleTfaSetup"
+                            >
             <UIcon name="i-lucide-qr-code" class="size-4" />
             启用两步验证
           </UButton>
 
-          <div v-else class="flex flex-col gap-3">
-            <img
-              v-if="qrDataUrl"
-              :src="qrDataUrl"
-              alt="TFA 二维码"
-              class="w-48 h-48 border border-border rounded-lg"
-            />
-            <div>
-              <p class="text-xs text-text-muted">手动输入密钥：</p>
-              <code class="text-sm font-mono break-all">{{ tfaSetup.secret }}</code>
-            </div>
-            <div class="flex items-center gap-2">
-              <UInput
-                v-model="tfaCode"
-                placeholder="6 位验证码"
-                class="max-w-xs"
-              />
-              <UButton color="primary" :loading="tfaLoading" @click="handleTfaConfirm">
+                            <div v-else class="flex flex-col gap-3">
+                                <img
+                                    v-if="qrDataUrl"
+                                    :src="qrDataUrl"
+                                    alt="TFA 二维码"
+                                    class="w-48 h-48 border border-border rounded-lg"
+                                />
+                                <div>
+                                    <p class="text-xs text-text-muted">手动输入密钥：</p>
+                                    <code class="text-sm font-mono break-all">{{ tfaSetup.secret }}</code>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <UInput
+                                        v-model="tfaCode"
+                                        placeholder="6 位验证码"
+                                        class="max-w-xs"
+                                    />
+                                    <UButton color="primary" :loading="tfaLoading" @click="handleTfaConfirm">
                 确认启用
               </UButton>
-            </div>
-          </div>
-        </div>
+                                </div>
+                            </div>
+                        </div>
 
-        <div v-else class="flex flex-col gap-3">
-          <p class="text-sm text-success-text font-semibold">已启用</p>
-          <div class="flex items-center gap-2 flex-wrap">
-            <UInput
-              v-model="tfaCode"
-              placeholder="验证码或恢复码"
-              class="max-w-xs"
-            />
-            <UButton color="error" variant="outline" :loading="tfaLoading" @click="handleTfaDisable">
+                        <div v-else class="flex flex-col gap-3">
+                            <p class="text-sm text-success-text font-semibold">已启用</p>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <UInput
+                                    v-model="tfaCode"
+                                    placeholder="验证码或恢复码"
+                                    class="max-w-xs"
+                                />
+                                <UButton color="error" variant="outline" :loading="tfaLoading"
+                                    @click="handleTfaDisable">
               禁用
             </UButton>
-            <UButton color="neutral" variant="outline" :loading="tfaLoading" @click="handleTfaRegenerate">
+                                <UButton color="neutral" variant="outline" :loading="tfaLoading"
+                                    @click="handleTfaRegenerate">
               重新生成恢复码
             </UButton>
-          </div>
-        </div>
+                            </div>
+                        </div>
 
-        <div
-          v-if="tfaRecoveryCodes.length > 0"
-          class="border border-border rounded-lg p-4 bg-page flex flex-col gap-2"
-        >
-          <p class="text-sm font-semibold">请立即保存以下恢复码，刷新页面后无法找回</p>
-          <div class="grid grid-cols-2 gap-2">
-            <code
-              v-for="c in tfaRecoveryCodes"
-              :key="c"
-              class="font-mono text-sm bg-white border border-border rounded px-2 py-1"
-            >{{ c }}</code>
-          </div>
-          <p class="text-xs text-text-muted">
+                        <div
+                            v-if="tfaRecoveryCodes.length > 0"
+                            class="border border-border rounded-lg p-4 bg-page flex flex-col gap-2"
+                        >
+                            <p class="text-sm font-semibold">请立即保存以下恢复码，刷新页面后无法找回</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <code
+                                    v-for="c in tfaRecoveryCodes"
+                                    :key="c"
+                                    class="font-mono text-sm bg-white border border-border rounded px-2 py-1"
+                                >{{ c }}</code>
+                            </div>
+                            <p class="text-xs text-text-muted">
             每个恢复码只能使用一次；重新生成后，旧恢复码全部失效。
           </p>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              color="primary"
-              variant="outline"
-              size="sm"
-              @click="handleDownloadRecoveryCodes"
-            >
+                            <div class="flex flex-wrap gap-2">
+                                <UButton
+                                    color="primary"
+                                    variant="outline"
+                                    size="sm"
+                                    @click="handleDownloadRecoveryCodes"
+                                >
               <UIcon name="i-lucide-download" class="size-4" />
               下载恢复码文件
             </UButton>
-            <UButton
-              color="neutral"
-              variant="outline"
-              size="sm"
-              @click="handleCopyRecoveryCodes"
-            >
+                                <UButton
+                                    color="neutral"
+                                    variant="outline"
+                                    size="sm"
+                                    @click="handleCopyRecoveryCodes"
+                                >
               <UIcon name="i-lucide-copy" class="size-4" />
               复制全部
             </UButton>
-          </div>
-        </div>
+                            </div>
+                        </div>
 
-        <p v-if="tfaError" class="text-sm text-error-text">{{ tfaError }}</p>
-      </div>
-    </section>
+                        <p v-if="tfaError" class="text-sm text-error-text">{{ tfaError }}</p>
+                    </div>
+                </section>
 
-    <section id="settings-connections" aria-labelledby="connections-title" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
-      <div class="px-6 py-5 border-b border-border">
-        <h2 id="connections-title" class="text-lg font-semibold flex items-center gap-2">
+                <section id="settings-connections" aria-labelledby="connections-title"
+                    class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
+                    <div class="px-6 py-5 border-b border-border">
+                        <h2 id="connections-title" class="text-lg font-semibold flex items-center gap-2">
           <UIcon name="i-lucide-link" class="size-5" />
           第三方账号
         </h2>
-      </div>
-      <div class="px-6 py-6 flex flex-col gap-4">
-        <p class="text-sm text-text-secondary">
+                    </div>
+                    <div class="px-6 py-6 flex flex-col gap-4">
+                        <p class="text-sm text-text-secondary">
           绑定后可以使用第三方账号登录。绑定和解绑需要确认当前密码；没有本地密码的账号不能解绑唯一登录方式。
         </p>
-        <UInput
-          v-if="user?.has_local_password"
-          v-model="oauthPassword"
-          type="password"
-          autocomplete="current-password"
-          placeholder="确认当前密码"
-          class="max-w-sm"
-        />
-        <div v-if="linkedOAuthAccounts.length" class="flex flex-col gap-2">
-          <div
-            v-for="account in linkedOAuthAccounts"
-            :key="account.id"
-            class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-          >
-            <div>
-              <p class="font-semibold">{{ account.provider }}</p>
-              <p class="text-xs text-text-muted">
+                        <UInput
+                            v-if="user?.has_local_password"
+                            v-model="oauthPassword"
+                            type="password"
+                            autocomplete="current-password"
+                            placeholder="确认当前密码"
+                            class="max-w-sm"
+                        />
+                        <div v-if="linkedOAuthAccounts.length" class="flex flex-col gap-2">
+                            <div
+                                v-for="account in linkedOAuthAccounts"
+                                :key="account.id"
+                                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
+                            >
+                                <div>
+                                    <p class="font-semibold">{{ account.provider }}</p>
+                                    <p class="text-xs text-text-muted">
                 {{ account.provider_username || account.provider_user_id }}
               </p>
-            </div>
-            <UButton
-              size="sm"
-              color="error"
-              variant="outline"
-              :loading="oauthLoading"
-              @click="handleOAuthUnlink(account.id)"
-            >解绑</UButton>
-          </div>
-        </div>
-        <div v-if="oauthProviders.length" class="flex flex-wrap gap-2">
-          <UButton
-            v-for="provider in oauthProviders.filter((item) => !linkedOAuthAccounts.some((account) => account.provider === item.id))"
-            :key="provider.id"
-            color="primary"
-            variant="outline"
-            :loading="oauthLoading"
-            @click="beginOAuthLink(provider.id)"
-          >绑定 {{ provider.name }}</UButton>
-        </div>
-        <p v-if="oauthError" class="text-sm text-error-text">{{ oauthError }}</p>
-        <p v-if="!oauthProviders.length && !linkedOAuthAccounts.length" class="text-sm text-text-muted">
+                                </div>
+                                <UButton
+                                    size="sm"
+                                    color="error"
+                                    variant="outline"
+                                    :loading="oauthLoading"
+                                    @click="handleOAuthUnlink(account.id)"
+                                >解绑</UButton>
+                            </div>
+                        </div>
+                        <div v-if="oauthProviders.length" class="flex flex-wrap gap-2">
+                            <UButton
+                                v-for="provider in oauthProviders.filter((item) => !linkedOAuthAccounts.some((account) => account.provider === item.id))"
+                                :key="provider.id"
+                                color="primary"
+                                variant="outline"
+                                :loading="oauthLoading"
+                                @click="beginOAuthLink(provider.id)"
+                            >绑定 {{ provider.name }}</UButton>
+                        </div>
+                        <p v-if="oauthError" class="text-sm text-error-text">{{ oauthError }}</p>
+                        <p v-if="!oauthProviders.length && !linkedOAuthAccounts.length" class="text-sm text-text-muted">
           管理员尚未配置第三方登录。
         </p>
-      </div>
-    </section>
+                    </div>
+                </section>
 
-    <section id="settings-privacy" aria-label="个人信息与隐私" class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
-      <div class="border-b border-border px-6 py-5">
-        <h2 class="flex items-center gap-2 text-xl font-bold text-text">
+                <section id="settings-privacy" aria-label="个人信息与隐私"
+                    class="scroll-mt-32 overflow-hidden rounded border border-border bg-bg-panel">
+                    <div class="border-b border-border px-6 py-5">
+                        <h2 class="flex items-center gap-2 text-xl font-bold text-text">
           <UIcon name="i-lucide-shield-check" class="size-5" />
           个人信息与隐私
         </h2>
-      </div>
-      <div class="flex flex-col gap-4 px-6 py-6">
-        <div class="flex flex-col gap-2">
-          <p class="text-sm text-text-secondary">
+                    </div>
+                    <div class="flex flex-col gap-4 px-6 py-6">
+                        <div class="flex flex-col gap-2">
+                            <p class="text-sm text-text-secondary">
             下载本平台保存的、与你的账户相关的个人信息副本（账户资料、提交记录、社区内容与同意记录）。
           </p>
-          <UButton
-            color="neutral"
-            variant="outline"
-            class="self-start"
-            :loading="exportingData"
-            @click="handleExportData"
-          >
+                            <UButton
+                                color="neutral"
+                                variant="outline"
+                                class="self-start"
+                                :loading="exportingData"
+                                @click="handleExportData"
+                            >
             <UIcon name="i-lucide-download" class="size-4" />
             导出我的数据
           </UButton>
-          <p v-if="exportError" class="text-sm text-error-text">{{ exportError }}</p>
-        </div>
+                            <p v-if="exportError" class="text-sm text-error-text">{{ exportError }}</p>
+                        </div>
 
-        <div class="border-t border-border pt-4 flex flex-col gap-2">
-          <p class="text-sm text-text-secondary">
+                        <div class="border-t border-border pt-4 flex flex-col gap-2">
+                            <p class="text-sm text-text-secondary">
             请求删除或更正你在平台上的内容（帖子、评论、提交等）。账户注销请使用下方「危险区域」。
           </p>
-          <div class="flex flex-wrap gap-2 items-center">
-            <USelect v-model="requestKind" :items="REQUEST_KINDS" class="w-28" />
-            <USelect v-model="requestTarget" :items="REQUEST_TARGETS" class="w-32" />
-            <UInput v-model="requestTargetId" placeholder="对象 ID（可选）" class="max-w-xs" />
-          </div>
-          <UTextarea v-model="requestDetail" :rows="3" placeholder="请说明需要删除或更正的具体内容与原因" />
-          <p v-if="requestError" class="text-sm text-error-text">{{ requestError }}</p>
-          <UButton class="self-start" :loading="submittingRequest" @click="handleSubmitRequest">
+                            <div class="flex flex-wrap gap-2 items-center">
+                                <USelect v-model="requestKind" :items="REQUEST_KINDS" class="w-28" />
+                                <USelect v-model="requestTarget" :items="REQUEST_TARGETS" class="w-32" />
+                                <UInput v-model="requestTargetId" placeholder="对象 ID（可选）" class="max-w-xs" />
+                            </div>
+                            <UTextarea v-model="requestDetail" :rows="3"
+                                placeholder="请说明需要删除或更正的具体内容与原因" />
+                            <p v-if="requestError" class="text-sm text-error-text">{{ requestError }}</p>
+                            <UButton class="self-start" :loading="submittingRequest" @click="handleSubmitRequest">
             提交请求
           </UButton>
-        </div>
+                        </div>
 
-        <div v-if="myRequests.length > 0" class="border-t border-border pt-4">
-          <p class="text-sm font-semibold mb-2">我的请求</p>
-          <div class="flex flex-col gap-2">
-            <div
-              v-for="r in myRequests"
-              :key="r.id"
-              class="flex flex-col gap-1 text-sm border border-border rounded-lg px-3 py-2"
-            >
-              <div class="flex items-center gap-3">
-                <UBadge color="neutral" variant="subtle">{{ r.kind === "delete" ? "删除" : "更正" }}</UBadge>
-                <span class="text-text-muted text-xs tabular-nums">{{ r.created_at.slice(0, 16).replace("T", " ") }}</span>
-                <span class="flex-1 truncate">{{ r.detail }}</span>
-                <UBadge :color="requestStatusColor(r.status)" variant="subtle">{{ requestStatusLabel(r.status) }}</UBadge>
-              </div>
-              <p v-if="r.resolution" class="text-xs text-text-muted pl-1">处理说明：{{ r.resolution }}</p>
-            </div>
-          </div>
-        </div>
-        <p v-else-if="requestsLoadError" class="text-xs text-error-text">{{ requestsLoadError }}</p>
-        <p v-else-if="requestsLoaded" class="text-xs text-text-muted">暂无请求。</p>
-      </div>
-    </section>
+                        <div v-if="myRequests.length > 0" class="border-t border-border pt-4">
+                            <p class="text-sm font-semibold mb-2">我的请求</p>
+                            <div class="flex flex-col gap-2">
+                                <div
+                                    v-for="r in myRequests"
+                                    :key="r.id"
+                                    class="flex flex-col gap-1 text-sm border border-border rounded-lg px-3 py-2"
+                                >
+                                    <div class="flex items-center gap-3">
+                                        <UBadge color="neutral"
+                                            variant="subtle">{{ r.kind === 'delete' ? '删除' : '更正' }}</UBadge>
+                                        <span
+                                            class="text-text-muted text-xs tabular-nums">{{ r.created_at.slice(0, 16).replace('T', ' ') }}</span>
+                                        <span class="flex-1 truncate">{{ r.detail }}</span>
+                                        <UBadge :color="requestStatusColor(r.status)"
+                                            variant="subtle">{{ requestStatusLabel(r.status) }}</UBadge>
+                                    </div>
+                                    <p v-if="r.resolution"
+                                        class="text-xs text-text-muted pl-1">处理说明：{{ r.resolution }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else-if="requestsLoadError" class="text-xs text-error-text">{{ requestsLoadError }}</p>
+                        <p v-else-if="requestsLoaded" class="text-xs text-text-muted">暂无请求。</p>
+                    </div>
+                </section>
 
-    <section id="settings-delete" aria-label="账号注销" class="scroll-mt-32 overflow-hidden rounded border border-error-border bg-bg-panel">
-      <div class="border-b border-error-border px-6 py-5">
-        <h2 class="flex items-center gap-2 text-xl font-bold text-error-text">
+                <section id="settings-delete" aria-label="账号注销"
+                    class="scroll-mt-32 overflow-hidden rounded border border-error-border bg-bg-panel">
+                    <div class="border-b border-error-border px-6 py-5">
+                        <h2 class="flex items-center gap-2 text-xl font-bold text-error-text">
           <UIcon name="i-lucide-triangle-alert" class="size-5" />
           危险区域
         </h2>
-      </div>
-      <div class="flex flex-col gap-3 px-6 py-6">
-        <p class="text-sm text-text-secondary">注销后无法恢复登录。帖子、评论和题解会保留，但作者统一显示为“已注销用户”。</p>
-        <UInput v-model="deletePassword" type="password" autocomplete="current-password" placeholder="输入当前密码确认" class="max-w-sm" />
-        <NuxtLink to="/data-policy" target="_blank" class="text-sm text-primary underline">阅读完整的数据使用、注销保留与反馈说明</NuxtLink>
-        <p v-if="deleteAccountError" class="text-sm text-error-text">{{ deleteAccountError }}</p>
-        <UButton color="error" class="self-start" :loading="deletingAccount" @click="handleDeleteAccount">注销账户</UButton>
-      </div>
-    </section>
-      </div>
+                    </div>
+                    <div class="flex flex-col gap-3 px-6 py-6">
+                        <p
+                            class="text-sm text-text-secondary">注销后无法恢复登录。帖子、评论和题解会保留，但作者统一显示为“已注销用户”。</p>
+                        <UInput v-model="deletePassword" type="password" autocomplete="current-password"
+                            placeholder="输入当前密码确认" class="max-w-sm" />
+                        <NuxtLink to="/data-policy" target="_blank"
+                            class="text-sm text-primary underline">阅读完整的数据使用、注销保留与反馈说明</NuxtLink>
+                        <p v-if="deleteAccountError" class="text-sm text-error-text">{{ deleteAccountError }}</p>
+                        <UButton color="error" class="self-start" :loading="deletingAccount"
+                            @click="handleDeleteAccount">注销账户</UButton>
+                    </div>
+                </section>
+            </div>
+        </div>
     </div>
-  </div>
 </template>

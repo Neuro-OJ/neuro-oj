@@ -11,73 +11,76 @@
  */
 
 import type {
-  ObjectiveAnswerValue,
-  QuestionJudgement,
+    ObjectiveAnswerValue,
+    QuestionJudgement,
 } from "../../../../problems/types/objective.ts";
 import { SCORE_SCALE } from "../../../types/index.ts";
 import type { ObjectiveQuestionSnapshot } from "../../../../problems/types/problem-content.ts";
 
 /** 单题匹配状态。 */
 export type RegradeMatch =
-  | "matched"
-  | "missing_answer"
-  | "incompatible_answer_form";
+    | "matched"
+    | "missing_answer"
+    | "incompatible_answer_form";
 
 /** 重判后的单题详情（在既有判定上增加匹配状态）。 */
 export interface RegradeDetail extends QuestionJudgement {
-  match: RegradeMatch;
-  /** 稳定机读原因码（`MISSING_ANSWER` / `INCOMPATIBLE_ANSWER_FORM`）。 */
-  reason_code?: string;
+    match: RegradeMatch;
+    /** 稳定机读原因码（`MISSING_ANSWER` / `INCOMPATIBLE_ANSWER_FORM`）。 */
+    reason_code?: string;
 }
 
 /** 重判输出。 */
 export interface RegradeOutput {
-  /** ×100 整数卷面分（0-10000）。 */
-  score: number;
-  correct_count: number;
-  total_count: number;
-  matched_count: number;
-  missing_count: number;
-  incompatible_count: number;
-  /** 快照中不存在、被忽略的用户答案键（删除的小题不计分）。 */
-  ignored_keys: string[];
-  details: Record<string, RegradeDetail>;
+    /** ×100 整数卷面分（0-10000）。 */
+    score: number;
+    correct_count: number;
+    total_count: number;
+    matched_count: number;
+    missing_count: number;
+    incompatible_count: number;
+    /** 快照中不存在、被忽略的用户答案键（删除的小题不计分）。 */
+    ignored_keys: string[];
+    details: Record<string, RegradeDetail>;
 }
 
 /** 判断用户答案形式是否被目标题型接受。 */
 function isAnswerFormCompatible(
-  type: ObjectiveQuestionSnapshot["type"],
-  given: readonly ObjectiveAnswerValue[],
+    type: ObjectiveQuestionSnapshot["type"],
+    given: readonly ObjectiveAnswerValue[],
 ): boolean {
-  if (given.length === 0) return false;
-  if (type === "judge") {
-    return given.length === 1 && typeof given[0] === "boolean";
-  }
-  return given.every((value) => typeof value === "string" && value.length > 0);
+    if (given.length === 0) return false;
+    if (type === "judge") {
+        return given.length === 1 && typeof given[0] === "boolean";
+    }
+    return given.every((value) =>
+        typeof value === "string" && value.length > 0
+    );
 }
 
 /** 归一化答案集合：排序后比较（与既有判分规则一致）。 */
 function normalize(value: readonly ObjectiveAnswerValue[]): string[] {
-  return value.map((item) => String(item)).sort();
+    return value.map((item) => String(item)).sort();
 }
 
 /** 集合精确相等判定。 */
 function answersEqual(
-  type: ObjectiveQuestionSnapshot["type"],
-  expected: readonly ObjectiveAnswerValue[],
-  given: readonly ObjectiveAnswerValue[],
+    type: ObjectiveQuestionSnapshot["type"],
+    expected: readonly ObjectiveAnswerValue[],
+    given: readonly ObjectiveAnswerValue[],
 ): boolean {
-  if (type === "judge") {
-    return expected.length === given.length &&
-      expected.every((value, index) =>
-        typeof value === "boolean" && typeof given[index] === "boolean" &&
-        value === given[index]
-      );
-  }
-  const left = normalize(expected);
-  const right = normalize(given);
-  return left.length === right.length &&
-    left.every((value, index) => value === right[index]);
+    if (type === "judge") {
+        return expected.length === given.length &&
+            expected.every((value, index) =>
+                typeof value === "boolean" &&
+                typeof given[index] === "boolean" &&
+                value === given[index]
+            );
+    }
+    const left = normalize(expected);
+    const right = normalize(given);
+    return left.length === right.length &&
+        left.every((value, index) => value === right[index]);
 }
 
 /**
@@ -87,66 +90,66 @@ function answersEqual(
  * 删除小题会把分母变小（旧答案不再计分）。
  */
 export function regradeAgainstSnapshot(
-  answers: Readonly<Record<string, ObjectiveAnswerValue[]>>,
-  questions: readonly ObjectiveQuestionSnapshot[],
+    answers: Readonly<Record<string, ObjectiveAnswerValue[]>>,
+    questions: readonly ObjectiveQuestionSnapshot[],
 ): RegradeOutput {
-  const details: Record<string, RegradeDetail> = {};
-  let correctCount = 0;
-  let matchedCount = 0;
-  let missingCount = 0;
-  let incompatibleCount = 0;
+    const details: Record<string, RegradeDetail> = {};
+    let correctCount = 0;
+    let matchedCount = 0;
+    let missingCount = 0;
+    let incompatibleCount = 0;
 
-  for (const question of questions) {
-    const given = answers[question.key];
-    if (given === undefined || given.length === 0) {
-      details[question.key] = {
-        correct: false,
-        expected: [...question.answer],
-        given: [],
-        match: "missing_answer",
-        reason_code: "MISSING_ANSWER",
-      };
-      missingCount += 1;
-      continue;
+    for (const question of questions) {
+        const given = answers[question.key];
+        if (given === undefined || given.length === 0) {
+            details[question.key] = {
+                correct: false,
+                expected: [...question.answer],
+                given: [],
+                match: "missing_answer",
+                reason_code: "MISSING_ANSWER",
+            };
+            missingCount += 1;
+            continue;
+        }
+        if (!isAnswerFormCompatible(question.type, given)) {
+            details[question.key] = {
+                correct: false,
+                expected: [...question.answer],
+                given: [...given],
+                match: "incompatible_answer_form",
+                reason_code: "INCOMPATIBLE_ANSWER_FORM",
+            };
+            incompatibleCount += 1;
+            continue;
+        }
+        const correct = answersEqual(question.type, question.answer, given);
+        details[question.key] = {
+            correct,
+            expected: [...question.answer],
+            given: [...given],
+            match: "matched",
+        };
+        matchedCount += 1;
+        if (correct) correctCount += 1;
     }
-    if (!isAnswerFormCompatible(question.type, given)) {
-      details[question.key] = {
-        correct: false,
-        expected: [...question.answer],
-        given: [...given],
-        match: "incompatible_answer_form",
-        reason_code: "INCOMPATIBLE_ANSWER_FORM",
-      };
-      incompatibleCount += 1;
-      continue;
-    }
-    const correct = answersEqual(question.type, question.answer, given);
-    details[question.key] = {
-      correct,
-      expected: [...question.answer],
-      given: [...given],
-      match: "matched",
+
+    const questionKeys = new Set(questions.map((question) => question.key));
+    const ignoredKeys = Object.keys(answers).filter((key) =>
+        !questionKeys.has(key)
+    );
+
+    const total = questions.length;
+    return {
+        score: total === 0
+            ? 0
+            : Math.round((correctCount / total) * 100 * SCORE_SCALE),
+        correct_count: correctCount,
+        total_count: total,
+        matched_count: matchedCount,
+        missing_count: missingCount,
+        incompatible_count: incompatibleCount,
+        ignored_keys: ignoredKeys,
+        details,
     };
-    matchedCount += 1;
-    if (correct) correctCount += 1;
-  }
-
-  const questionKeys = new Set(questions.map((question) => question.key));
-  const ignoredKeys = Object.keys(answers).filter((key) =>
-    !questionKeys.has(key)
-  );
-
-  const total = questions.length;
-  return {
-    score: total === 0
-      ? 0
-      : Math.round((correctCount / total) * 100 * SCORE_SCALE),
-    correct_count: correctCount,
-    total_count: total,
-    matched_count: matchedCount,
-    missing_count: missingCount,
-    incompatible_count: incompatibleCount,
-    ignored_keys: ignoredKeys,
-    details,
-  };
 }

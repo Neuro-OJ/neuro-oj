@@ -27,177 +27,216 @@ const siteUrl = process.env.NUXT_SITE_URL ?? '';
  * 未知值统一用空串表示，展示层（`utils/buildInfo.ts`）把空串映射为 `unknown`。
  */
 function resolveBuildInfo(): {
-  version: string;
-  commit: string;
-  builtAt: string;
+    version: string;
+    commit: string;
+    builtAt: string;
 } {
-  /** 执行 git 并返回标准输出；无 git / 非仓库 / 出错一律返回 null。 */
-  const git = (args: string): string | null => {
+    /** 执行 git 并返回标准输出；无 git / 非仓库 / 出错一律返回 null。 */
+    const git = (args: string): string | null => {
+        try {
+            return execSync(`git ${args}`, {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+            }).trim();
+        } catch {
+            return null;
+        }
+    };
+
+    const envVersion = process.env.NOJ_BUILD_VERSION?.trim();
+    const envCommit = process.env.NOJ_BUILD_COMMIT?.trim();
+    const envBuiltAt = process.env.NOJ_BUILD_TIME?.trim();
+
+    let pkgVersion = 'unknown';
     try {
-      return execSync(`git ${args}`, {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-      }).trim();
+        pkgVersion = String(
+            (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
+                version?: string;
+            }).version ?? 'unknown',
+        );
     } catch {
-      return null;
+        // package.json 不可读：保持 unknown
     }
-  };
 
-  const envVersion = process.env.NOJ_BUILD_VERSION?.trim();
-  const envCommit = process.env.NOJ_BUILD_COMMIT?.trim();
-  const envBuiltAt = process.env.NOJ_BUILD_TIME?.trim();
+    let commit = envCommit ?? '';
+    if (!commit) {
+        const head = git('rev-parse --short HEAD');
+        if (head) commit = git('status --porcelain') ? `${head}-dirty` : head;
+    }
 
-  let pkgVersion = 'unknown';
-  try {
-    pkgVersion = String(
-      (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
-        version?: string;
-      }).version ?? 'unknown',
-    );
-  } catch {
-    // package.json 不可读：保持 unknown
-  }
-
-  let commit = envCommit ?? '';
-  if (!commit) {
-    const head = git('rev-parse --short HEAD');
-    if (head) commit = git('status --porcelain') ? `${head}-dirty` : head;
-  }
-
-  return {
-    version: envVersion || pkgVersion,
-    commit,
-    builtAt: envBuiltAt || new Date().toISOString(),
-  };
+    return {
+        version: envVersion || pkgVersion,
+        commit,
+        builtAt: envBuiltAt || new Date().toISOString(),
+    };
 }
 
 export default defineNuxtConfig({
-  compatibilityDate: '2026-06-26',
-  devtools: { enabled: true },
-  modules: ['@nuxt/ui'],
-  css: ['~/assets/css/main.css'],
+    compatibilityDate: '2026-06-26',
+    devtools: { enabled: true },
+    modules: ['@nuxt/ui'],
+    css: ['~/assets/css/main.css'],
 
-  // 关闭 Nuxt UI 内置的 @nuxtjs/color-mode：站点目前只有亮色主题
-  // （--c-* 仅在编辑器 .editor-dark 内切换，大量组件硬编码 bg-white），
-  // 而 color-mode 默认跟随系统给 <html> 加 .dark，触发 Nuxt UI body 上的
-  // dark:scheme-dark，使原生复选框/单选框在白底卡片上渲染成黑块，
-  // --ui-text-inverted 等变量也会半切换成暗色。正式支持全站暗色前保持关闭。
-  ui: {
-    colorMode: false,
-  },
-
-  // @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
-  // scan 的默认扫描不包括 TS，动态空间导航的图标在客户端明确打包。
-  icon: {
-    serverBundle: 'local',
-    clientBundle: {
-      scan: true,
-      icons: [
-        'lucide:chart-no-axes-column-increasing',
-        'lucide:library-big',
-        'lucide:bot',
-        'lucide:user-round-cog',
-      ],
+    // 关闭 Nuxt UI 内置的 @nuxtjs/color-mode：站点目前只有亮色主题
+    // （--c-* 仅在编辑器 .editor-dark 内切换，大量组件硬编码 bg-white），
+    // 而 color-mode 默认跟随系统给 <html> 加 .dark，触发 Nuxt UI body 上的
+    // dark:scheme-dark，使原生复选框/单选框在白底卡片上渲染成黑块，
+    // --ui-text-inverted 等变量也会半切换成暗色。正式支持全站暗色前保持关闭。
+    ui: {
+        colorMode: false,
     },
-  },
 
-  // @nuxt/fonts：仅保留本地 provider（fonts.google.com 元数据 API 在大陆网络不可达，
-  // 远程 provider 会导致 SSR 模块加载挂起；字体回退到系统字体栈）
-  fonts: {
-    providers: {
-      google: false,
-      googleicons: false,
-      bunny: false,
-      adobe: false,
-      fontshare: false,
-    },
-  },
-
-  // 运行时配置（服务端私有，不暴露给浏览器）
-  runtimeConfig: {
-    apiBase,
-    siteUrl,
-    bffRedisUrl: '',
-    bffCachePrefix: 'noj:ui:bff:v1',
-    // 前端构建身份：`public` 段会随 SSR payload 下发到浏览器，页脚据此渲染。
-    // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
-    public: {
-      authCookiePrefix: 'noj',
-      buildInfo: resolveBuildInfo(),
-    },
-  },
-
-  // 子目录组件不添加路径前缀（feature/LatestSubmissions.vue → <LatestSubmissions>）
-  components: {
-    dirs: [{ path: '~/components', pathPrefix: false }],
-  },
-
-  // API 请求由 server/api/[...slug].ts 代理到 noj-core
-
-  app: {
-    head: {
-      // 页面语言声明（WCAG 3.1.1）：缺失时屏幕阅读器无法确定朗读语言
-      htmlAttrs: {
-        lang: 'zh-CN',
-      },
-      title: 'Neuro OJ',
-      meta: [
-        { charset: 'utf-8' },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },
-        { property: 'og:title', content: 'Neuro OJ' },
-        {
-          property: 'og:description',
-          content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台',
+    // @nuxt/icon：lucide 集合本地打包，SSR/单二进制离线渲染图标
+    // scan 的默认扫描不包括 TS，动态空间导航的图标在客户端明确打包。
+    icon: {
+        serverBundle: 'local',
+        clientBundle: {
+            scan: true,
+            icons: [
+                'lucide:chart-no-axes-column-increasing',
+                'lucide:library-big',
+                'lucide:bot',
+                'lucide:user-round-cog',
+            ],
         },
-        { property: 'og:type', content: 'website' },
-      ],
     },
-  },
 
-  // Deno Compile 用，删了没法编译
-  hooks: {
-    close: () => {
-      // 仅在编译产物（deno compile 单二进制）中主动退出；
-      // nuxt dev 的配置变更重启也会触发 close，直接退出会杀掉整个开发服务器
-      // （管理后台创建竞赛时前端报「网络连接失败，请检查网络」的根因）。
-      if (!process.argv.includes('dev')) {
-        process.exit(0);
-      }
+    // @nuxt/fonts：仅保留本地 provider（fonts.google.com 元数据 API 在大陆网络不可达，
+    // 远程 provider 会导致 SSR 模块加载挂起；字体回退到系统字体栈）
+    fonts: {
+        providers: {
+            google: false,
+            googleicons: false,
+            bunny: false,
+            adobe: false,
+            fontshare: false,
+        },
     },
-  },
 
-  // 通用 API 代理不在 Nitro 层启用 SWR：代理响应可能是上游 Node 响应对象，无法安全
-  // 序列化；同时同一路径下存在按用户鉴权/个性化的接口（例如 U 型题列表），缓存会
-  // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
-  // 应在明确的、非个性化 server handler 中单独实现。
-  routeRules: {
-    ...Object.fromEntries(CLIENT_ONLY_ROUTES.map((path) => [path, { ssr: false }])),
-    '/api/bff/**': { headers: { 'cache-control': 'private, no-store' } },
-    '/workspaces': { headers: { 'cache-control': 'no-store' } },
-    '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
-    '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
-    '/d/**': { headers: { 'cache-control': 'private, no-store' } },
-    '/d/*/members': { ssr: false },
-    '/d/*/settings': { ssr: false },
-    '/d/*/editor/**': { ssr: false },
-    '/d/*/problems/new': { ssr: false },
-    '/d/*/problem-bindings': { ssr: false },
-    '/d/*/trainings/new': { ssr: false },
-    '/d/*/trainings/*/edit': { ssr: false },
-    '/d/*/classrooms/*/contest-remediation': { ssr: false },
-    '/d/*/submission-jobs/**': { ssr: false },
-    '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
-    '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/instance/queue/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/auth/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/community/**': { headers: { 'cache-control': 'no-store' } },
-    '/api/v1/users/me/**': { headers: { 'cache-control': 'no-store' } },
-  },
+    // 运行时配置（服务端私有，不暴露给浏览器）
+    runtimeConfig: {
+        apiBase,
+        siteUrl,
+        bffRedisUrl: '',
+        bffCachePrefix: 'noj:ui:bff:v1',
+        // 前端构建身份：`public` 段会随 SSR payload 下发到浏览器，页脚据此渲染。
+        // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
+        public: {
+            authCookiePrefix: 'noj',
+            buildInfo: resolveBuildInfo(),
+        },
+    },
 
-  nitro: {
-    preset: 'deno-server',
-  },
+    // 组件按领域分目录，目录不参与组件名（pathPrefix: false），新目录必须登记。
+    // Nuxt 递归扫描每个登记目录，problem/objective、problem/ui 不用单列；legacy/ 故意不登记。
+    components: {
+        dirs: [
+            '~/components/base',
+            '~/components/shared',
+            '~/components/layout',
+            '~/components/home',
+            '~/components/problem',
+            '~/components/submission',
+            '~/components/contest',
+            '~/components/training',
+            '~/components/community',
+            '~/components/ranking',
+            '~/components/search',
+            '~/components/auth',
+            '~/components/legal',
+            '~/components/editor',
+            '~/components/admin',
+            '~/components/education',
+            '~/components/knowledge',
+            '~/components/workspace',
+            '~/components/announcements',
+        ].map((path) => ({ path, pathPrefix: false })),
+    },
+
+    // 自动导入只扫 composables/ 与 utils/ 的顶层，子目录要显式登记（同 components.dirs）。
+    // utils 按领域分子目录后，新增子目录必须在此登记，否则该目录下的工具不会被自动导入。
+    imports: {
+        dirs: [
+            'utils/auth',
+            'utils/server',
+            'utils/domain/problem',
+            'utils/domain/contest',
+            'utils/domain/submission',
+            'utils/domain/education',
+            'utils/domain/workspace',
+            'utils/domain/community',
+        ],
+    },
+
+    // API 请求由 server/api/[...slug].ts 代理到 noj-core
+
+    app: {
+        head: {
+            // 页面语言声明（WCAG 3.1.1）：缺失时屏幕阅读器无法确定朗读语言
+            htmlAttrs: {
+                lang: 'zh-CN',
+            },
+            title: 'Neuro OJ',
+            meta: [
+                { charset: 'utf-8' },
+                { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+                {
+                    name: 'description',
+                    content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台',
+                },
+                { property: 'og:title', content: 'Neuro OJ' },
+                {
+                    property: 'og:description',
+                    content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台',
+                },
+                { property: 'og:type', content: 'website' },
+            ],
+        },
+    },
+
+    // Deno Compile 用，删了没法编译
+    hooks: {
+        close: () => {
+            // 仅在编译产物（deno compile 单二进制）中主动退出；
+            // nuxt dev 的配置变更重启也会触发 close，直接退出会杀掉整个开发服务器
+            // （管理后台创建竞赛时前端报「网络连接失败，请检查网络」的根因）。
+            if (!process.argv.includes('dev')) {
+                process.exit(0);
+            }
+        },
+    },
+
+    // 通用 API 代理不在 Nitro 层启用 SWR：代理响应可能是上游 Node 响应对象，无法安全
+    // 序列化；同时同一路径下存在按用户鉴权/个性化的接口（例如 U 型题列表），缓存会
+    // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
+    // 应在明确的、非个性化 server handler 中单独实现。
+    routeRules: {
+        ...Object.fromEntries(CLIENT_ONLY_ROUTES.map((path) => [path, { ssr: false }])),
+        '/api/bff/**': { headers: { 'cache-control': 'private, no-store' } },
+        '/workspaces': { headers: { 'cache-control': 'no-store' } },
+        '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
+        '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
+        '/d/**': { headers: { 'cache-control': 'private, no-store' } },
+        '/d/*/members': { ssr: false },
+        '/d/*/settings': { ssr: false },
+        '/d/*/editor/**': { ssr: false },
+        '/d/*/problems/new': { ssr: false },
+        '/d/*/problem-bindings': { ssr: false },
+        '/d/*/trainings/new': { ssr: false },
+        '/d/*/trainings/*/edit': { ssr: false },
+        '/d/*/classrooms/*/contest-remediation': { ssr: false },
+        '/d/*/submission-jobs/**': { ssr: false },
+        '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
+        '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
+        '/api/v1/instance/queue/**': { headers: { 'cache-control': 'no-store' } },
+        '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },
+        '/api/v1/auth/**': { headers: { 'cache-control': 'no-store' } },
+        '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
+        '/api/v1/community/**': { headers: { 'cache-control': 'no-store' } },
+        '/api/v1/users/me/**': { headers: { 'cache-control': 'no-store' } },
+    },
+
+    nitro: {
+        preset: 'deno-server',
+    },
 });

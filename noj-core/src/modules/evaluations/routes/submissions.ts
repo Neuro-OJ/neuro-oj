@@ -2,47 +2,47 @@ import { type Context, Hono } from "hono";
 import busboy from "busboy";
 import { Readable } from "node:stream";
 import {
-  getEvaluationTodayStats,
-  getEvaluationTotalStats,
+    getEvaluationTodayStats,
+    getEvaluationTotalStats,
 } from "../../application/evaluations.ts";
 import {
-  getSubmission,
-  listSubmissions,
-  resolveSubmissionId,
+    getSubmission,
+    listSubmissions,
+    resolveSubmissionId,
 } from "../services/submissions/submissions.ts";
 import { applySubmissionProjection } from "../services/submissions/submission-projection.ts";
 import { versionRequired } from "../services/versioning/submission-version.ts";
 import { verifyContestAccess } from "../../contests/contracts/cross-module/services_contest-access.ts";
 import { getSubmissionQueueStatus } from "../services/queue.ts";
 import {
-  authMiddleware,
-  optionalAuthMiddleware,
+    authMiddleware,
+    optionalAuthMiddleware,
 } from "../../access/identity/middleware/auth.ts";
 import { checkPermission } from "../../access/contracts/cross-module/identity_services_security_permissions.ts";
 import { rateLimit } from "../../platform/system/middleware/rate-limit.ts";
 import { BadRequestError, NotFoundError } from "../../../shared/base/errors.ts";
 import { createFileStream } from "../../../shared/http/file-stream.ts";
 import {
-  buildPaginationMeta,
-  parsePagination,
+    buildPaginationMeta,
+    parsePagination,
 } from "../../../shared/http/pagination.ts";
 import { SUBMISSION_STATUSES } from "../types/index.ts";
 
 // 扩展 Hono 类型，使 c.get("userId") 返回 string | undefined
 // （optionalAuthMiddleware 注入时可能为 undefined；authMiddleware 注入时一定有值）
 type Env = {
-  Variables: {
-    userId?: string;
-    userRole?: string;
-  };
+    Variables: {
+        userId?: string;
+        userRole?: string;
+    };
 };
 
 const router = new Hono<Env>();
 
 /** 解析布尔筛选参数：`1` / `true` 为真，其余（含缺省）为假。 */
 function parseFlag(value: string | undefined): boolean | undefined {
-  if (value === undefined || value === "") return undefined;
-  return value === "1" || value === "true";
+    if (value === undefined || value === "") return undefined;
+    return value === "1" || value === "true";
 }
 
 /**
@@ -51,67 +51,67 @@ function parseFlag(value: string | undefined): boolean | undefined {
  * 返回当前认证用户的提交记录，支持按 problem_id、language、status、日期范围筛选。
  */
 router.get("/", authMiddleware, async (c) => {
-  const userId = c.var.userId as string;
+    const userId = c.var.userId as string;
 
-  // PR-6 评审修订：使用 parsePagination helper 替换 6 行样板
-  const { page, perPage } = parsePagination(c, {
-    defaultPerPage: 20,
-    maxPerPage: 100,
-  });
+    // PR-6 评审修订：使用 parsePagination helper 替换 6 行样板
+    const { page, perPage } = parsePagination(c, {
+        defaultPerPage: 20,
+        maxPerPage: 100,
+    });
 
-  // 解析筛选参数
-  const problemId = c.req.query("problem_id") || undefined;
-  const problemSearch = c.req.query("problem_search") || undefined;
-  const submissionId = c.req.query("submission_id") || undefined;
-  const language = c.req.query("language") || undefined;
-  const status = c.req.query("status") || undefined;
-  const from = c.req.query("from") || undefined;
-  const to = c.req.query("to") || undefined;
-  const versionId = c.req.query("version_id") || undefined;
-  const versionOrigin = c.req.query("version_origin") || undefined;
-  const validOnly = parseFlag(c.req.query("valid_only"));
-  const acceptedOnly = parseFlag(c.req.query("accepted_only"));
-  const upgradable = parseFlag(c.req.query("upgradable"));
+    // 解析筛选参数
+    const problemId = c.req.query("problem_id") || undefined;
+    const problemSearch = c.req.query("problem_search") || undefined;
+    const submissionId = c.req.query("submission_id") || undefined;
+    const language = c.req.query("language") || undefined;
+    const status = c.req.query("status") || undefined;
+    const from = c.req.query("from") || undefined;
+    const to = c.req.query("to") || undefined;
+    const versionId = c.req.query("version_id") || undefined;
+    const versionOrigin = c.req.query("version_origin") || undefined;
+    const validOnly = parseFlag(c.req.query("valid_only"));
+    const acceptedOnly = parseFlag(c.req.query("accepted_only"));
+    const upgradable = parseFlag(c.req.query("upgradable"));
 
-  // status 参数校验
-  const validStatuses = SUBMISSION_STATUSES;
-  if (status && !(validStatuses as readonly string[]).includes(status)) {
-    throw new BadRequestError(
-      `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
-    );
-  }
-  // 版本来源筛选（Handbook §4.4）：只允许两个已知取值
-  if (
-    versionOrigin && versionOrigin !== "known" &&
-    versionOrigin !== "legacy_unknown"
-  ) {
-    throw new BadRequestError(
-      `无效的版本来源：${versionOrigin}，有效值：known、legacy_unknown`,
-    );
-  }
+    // status 参数校验
+    const validStatuses = SUBMISSION_STATUSES;
+    if (status && !(validStatuses as readonly string[]).includes(status)) {
+        throw new BadRequestError(
+            `无效的状态值：${status}，有效值：${validStatuses.join("、")}`,
+        );
+    }
+    // 版本来源筛选（Handbook §4.4）：只允许两个已知取值
+    if (
+        versionOrigin && versionOrigin !== "known" &&
+        versionOrigin !== "legacy_unknown"
+    ) {
+        throw new BadRequestError(
+            `无效的版本来源：${versionOrigin}，有效值：known、legacy_unknown`,
+        );
+    }
 
-  const result = await listSubmissions({
-    userId,
-    problemId,
-    problemSearch,
-    submissionId,
-    language,
-    status,
-    from,
-    to,
-    versionId,
-    versionOrigin: versionOrigin as "known" | "legacy_unknown" | undefined,
-    validOnly,
-    acceptedOnly,
-    upgradable,
-    page,
-    perPage,
-  });
+    const result = await listSubmissions({
+        userId,
+        problemId,
+        problemSearch,
+        submissionId,
+        language,
+        status,
+        from,
+        to,
+        versionId,
+        versionOrigin: versionOrigin as "known" | "legacy_unknown" | undefined,
+        validOnly,
+        acceptedOnly,
+        upgradable,
+        page,
+        perPage,
+    });
 
-  return c.json({
-    data: result.data,
-    pagination: buildPaginationMeta(page, perPage, result.total),
-  });
+    return c.json({
+        data: result.data,
+        pagination: buildPaginationMeta(page, perPage, result.total),
+    });
 });
 
 /**
@@ -122,80 +122,86 @@ router.get("/", authMiddleware, async (c) => {
  * 由服务层马上消费文件流，从而避免 busboy 因文件缓冲满而暂停输入导致死锁。
  */
 export function parseArtifactMultipart(
-  c: Context,
-  problemField: "problem_id" | "problem_ref" = "problem_id",
-  pathProblemReference?: string,
+    c: Context,
+    problemField: "problem_id" | "problem_ref" = "problem_id",
+    pathProblemReference?: string,
 ): Promise<{
-  problem_id: string;
-  file_name: string;
-  file_stream: ReadableStream<Uint8Array>;
-  version_id: string;
+    problem_id: string;
+    file_name: string;
+    file_stream: ReadableStream<Uint8Array>;
+    version_id: string;
 }> {
-  return new Promise((resolve, reject) => {
-    const contentType = c.req.header("content-type");
-    if (!contentType) {
-      reject(new BadRequestError("缺少 Content-Type"));
-      return;
-    }
-    const bb = busboy({ headers: { "content-type": contentType } });
-    let problemId = pathProblemReference ?? "";
-    let fileName = "";
-    let versionId = "";
-    let fileStream: ReadableStream<Uint8Array> | null = null;
-    let resolved = false;
+    return new Promise((resolve, reject) => {
+        const contentType = c.req.header("content-type");
+        if (!contentType) {
+            reject(new BadRequestError("缺少 Content-Type"));
+            return;
+        }
+        const bb = busboy({ headers: { "content-type": contentType } });
+        let problemId = pathProblemReference ?? "";
+        let fileName = "";
+        let versionId = "";
+        let fileStream: ReadableStream<Uint8Array> | null = null;
+        let resolved = false;
 
-    /**
-     * 当 problem_id、file_name 与 file_stream 均已就绪时，立即 resolve 解析结果。
-     * 幂等：已 resolve 后再次调用直接返回，避免重复触发。
-     */
-    function maybeResolve() {
-      if (resolved) return;
-      // `version_id` 也是必需字段（Handbook §4.2）：必须等它到达再消费文件流，
-      // 否则先到的文件会让我们在不知道版本的情况下开始上传。
-      if (problemId && versionId && fileName && fileStream) {
-        resolved = true;
-        resolve({
-          problem_id: problemId,
-          file_name: fileName,
-          file_stream: fileStream,
-          version_id: versionId,
+        /**
+         * 当 problem_id、file_name 与 file_stream 均已就绪时，立即 resolve 解析结果。
+         * 幂等：已 resolve 后再次调用直接返回，避免重复触发。
+         */
+        function maybeResolve() {
+            if (resolved) return;
+            // `version_id` 也是必需字段（Handbook §4.2）：必须等它到达再消费文件流，
+            // 否则先到的文件会让我们在不知道版本的情况下开始上传。
+            if (problemId && versionId && fileName && fileStream) {
+                resolved = true;
+                resolve({
+                    problem_id: problemId,
+                    file_name: fileName,
+                    file_stream: fileStream,
+                    version_id: versionId,
+                });
+            }
+        }
+
+        bb.on("field", (name: string, val: string) => {
+            if (name === problemField && !pathProblemReference) problemId = val;
+            if (name === "version_id") versionId = val;
+            maybeResolve();
         });
-      }
-    }
+        bb.on(
+            "file",
+            (name: string, file: unknown, info: { filename: string }) => {
+                if (name === "file") {
+                    fileName = info.filename;
+                    fileStream = createFileStream(
+                        file as import("node:stream").Readable,
+                    );
+                    maybeResolve();
+                } else {
+                    (file as import("node:stream").Readable).resume();
+                }
+            },
+        );
+        bb.on("error", (err: unknown) => {
+            if (!resolved) reject(err);
+        });
+        bb.on("close", () => {
+            if (resolved) return;
+            // 已收到文件但缺版本：明确要求升级客户端，不静默绑定最新版。
+            // 未消费的文件流必须主动取消，否则连接会一直挂着。
+            if (fileStream) void fileStream.cancel().catch(() => {});
+            if (!versionId) {
+                reject(versionRequired());
+                return;
+            }
+            reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
+        });
 
-    bb.on("field", (name: string, val: string) => {
-      if (name === problemField && !pathProblemReference) problemId = val;
-      if (name === "version_id") versionId = val;
-      maybeResolve();
+        Readable.fromWeb(
+            c.req.raw
+                .body as unknown as import("node:stream/web").ReadableStream,
+        ).pipe(bb);
     });
-    bb.on("file", (name: string, file: unknown, info: { filename: string }) => {
-      if (name === "file") {
-        fileName = info.filename;
-        fileStream = createFileStream(file as import("node:stream").Readable);
-        maybeResolve();
-      } else {
-        (file as import("node:stream").Readable).resume();
-      }
-    });
-    bb.on("error", (err: unknown) => {
-      if (!resolved) reject(err);
-    });
-    bb.on("close", () => {
-      if (resolved) return;
-      // 已收到文件但缺版本：明确要求升级客户端，不静默绑定最新版。
-      // 未消费的文件流必须主动取消，否则连接会一直挂着。
-      if (fileStream) void fileStream.cancel().catch(() => {});
-      if (!versionId) {
-        reject(versionRequired());
-        return;
-      }
-      reject(new BadRequestError("缺少必填字段：problem_id 或 file"));
-    });
-
-    Readable.fromWeb(
-      c.req.raw.body as unknown as import("node:stream/web").ReadableStream,
-    ).pipe(bb);
-  });
 }
 
 /**
@@ -209,24 +215,24 @@ export function parseArtifactMultipart(
  * 注意：注册顺序必须在 `/:id` 之前，避免被动态段吞掉。
  */
 router.get(
-  "/public/recent",
-  optionalAuthMiddleware,
-  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
-  async (c) => {
-    const isLoggedIn = !!c.var.userId;
-    // PR-6 评审修订：使用 parsePagination，根据登录态动态调整上下限
-    const { perPage } = parsePagination(c, {
-      defaultPerPage: isLoggedIn ? 20 : 10,
-      maxPerPage: isLoggedIn ? 100 : 50,
-    });
+    "/public/recent",
+    optionalAuthMiddleware,
+    rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+    async (c) => {
+        const isLoggedIn = !!c.var.userId;
+        // PR-6 评审修订：使用 parsePagination，根据登录态动态调整上下限
+        const { perPage } = parsePagination(c, {
+            defaultPerPage: isLoggedIn ? 20 : 10,
+            maxPerPage: isLoggedIn ? 100 : 50,
+        });
 
-    const result = await listSubmissions({
-      page: 1,
-      perPage,
-      excludeContest: true,
-    });
-    return c.json({ data: result.data });
-  },
+        const result = await listSubmissions({
+            page: 1,
+            perPage,
+            excludeContest: true,
+        });
+        return c.json({ data: result.data });
+    },
 );
 
 /**
@@ -235,17 +241,19 @@ router.get(
  * 必须在 /:id 之前注册，避免被动态段吞掉。
  */
 router.get(
-  "/today-stats",
-  optionalAuthMiddleware,
-  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
-  async (c) => {
-    // 未登录用户返回空统计，避免匿名泄露全局提交量
-    if (!c.var.userId) {
-      return c.json({ data: { total: 0, full_score: 0, not_full_score: 0 } });
-    }
-    const stats = await getEvaluationTodayStats(c.var.userId);
-    return c.json({ data: stats });
-  },
+    "/today-stats",
+    optionalAuthMiddleware,
+    rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+    async (c) => {
+        // 未登录用户返回空统计，避免匿名泄露全局提交量
+        if (!c.var.userId) {
+            return c.json({
+                data: { total: 0, full_score: 0, not_full_score: 0 },
+            });
+        }
+        const stats = await getEvaluationTodayStats(c.var.userId);
+        return c.json({ data: stats });
+    },
 );
 
 /**
@@ -254,12 +262,12 @@ router.get(
  * 必须在 /:id 之前注册，避免被动态段吞掉。
  */
 router.get(
-  "/total-stats",
-  rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
-  async (c) => {
-    const stats = await getEvaluationTotalStats();
-    return c.json({ data: stats });
-  },
+    "/total-stats",
+    rateLimit({ loggedInIntervalMs: 1000, loggedOutIntervalMs: 5000 }),
+    async (c) => {
+        const stats = await getEvaluationTotalStats();
+        return c.json({ data: stats });
+    },
 );
 
 /**
@@ -269,42 +277,42 @@ router.get(
  * 服务层 `getSubmission` 根据 viewerId/viewerRole 自动裁剪字段。
  */
 router.get("/:id", optionalAuthMiddleware, async (c) => {
-  const id = await resolveSubmissionId(c.req.param("id") as string);
-  const viewerId = c.var.userId ?? null;
+    const id = await resolveSubmissionId(c.req.param("id") as string);
+    const viewerId = c.var.userId ?? null;
 
-  const result = await getSubmission(
-    id,
-    viewerId,
-    undefined,
-    c,
-  );
-
-  let data = result;
-  if (result.contest_id) {
-    const isAdmin = viewerId
-      ? await checkPermission(c, "admin:full_access")
-      : false;
-    const contestAccess = await verifyContestAccess(
-      viewerId,
-      result.contest_id,
-      result.problem_id,
-    );
-    data = applySubmissionProjection(
-      result as unknown as Record<string, unknown>,
-      {
+    const result = await getSubmission(
+        id,
         viewerId,
-        isAdmin,
-        isOwner: viewerId !== null && result.user_id === viewerId,
-        contest: {
-          running: contestAccess.running,
-          participant: contestAccess.allowed,
-          type: contestAccess.type,
-          organizer: contestAccess.organizer,
-        },
-      },
-    ) as unknown as typeof result;
-  }
-  return c.json({ data });
+        undefined,
+        c,
+    );
+
+    let data = result;
+    if (result.contest_id) {
+        const isAdmin = viewerId
+            ? await checkPermission(c, "admin:full_access")
+            : false;
+        const contestAccess = await verifyContestAccess(
+            viewerId,
+            result.contest_id,
+            result.problem_id,
+        );
+        data = applySubmissionProjection(
+            result as unknown as Record<string, unknown>,
+            {
+                viewerId,
+                isAdmin,
+                isOwner: viewerId !== null && result.user_id === viewerId,
+                contest: {
+                    running: contestAccess.running,
+                    participant: contestAccess.allowed,
+                    type: contestAccess.type,
+                    organizer: contestAccess.organizer,
+                },
+            },
+        ) as unknown as typeof result;
+    }
+    return c.json({ data });
 });
 
 /**
@@ -313,23 +321,23 @@ router.get("/:id", optionalAuthMiddleware, async (c) => {
  * 任意已登录用户均可查看，不限制提交所有者身份。
  */
 router.get(
-  "/:id/status",
-  authMiddleware,
-  async (c) => {
-    const id = await resolveSubmissionId(c.req.param("id") as string);
-    const userId = c.var.userId as string;
-    // NOJ-049：仅提交所有者或实时 RBAC 的 submission:read_all 可查看队列状态。
-    const isAdmin = await checkPermission(c, "submission:read_all");
-    const result = await getSubmissionQueueStatus(
-      id,
-      userId,
-      isAdmin ? "admin" : undefined,
-    );
-    if (!result) {
-      throw new NotFoundError("提交不存在");
-    }
-    return c.json(result);
-  },
+    "/:id/status",
+    authMiddleware,
+    async (c) => {
+        const id = await resolveSubmissionId(c.req.param("id") as string);
+        const userId = c.var.userId as string;
+        // NOJ-049：仅提交所有者或实时 RBAC 的 submission:read_all 可查看队列状态。
+        const isAdmin = await checkPermission(c, "submission:read_all");
+        const result = await getSubmissionQueueStatus(
+            id,
+            userId,
+            isAdmin ? "admin" : undefined,
+        );
+        if (!result) {
+            throw new NotFoundError("提交不存在");
+        }
+        return c.json(result);
+    },
 );
 
 export default router;

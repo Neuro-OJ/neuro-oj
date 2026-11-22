@@ -11,8 +11,8 @@
  */
 
 import type {
-  SendEmail,
-  SendPasswordResetEmail,
+    SendEmail,
+    SendPasswordResetEmail,
 } from "./email-providers/types.ts";
 import { buildEmailVerificationHtml } from "./email-providers/common.ts";
 import { getSetting } from "../../services/system-settings.ts";
@@ -24,15 +24,15 @@ import { observability as metrics } from "../../observability/write.ts";
 
 /** 在加载 Provider 及记录发送指标之前跳过保留域名，不暴露收件人。 */
 function skipInvalidRecipient(email: string): boolean {
-  if (!isInvalidEmailAddress(email)) return false;
-  logger.debug("跳过保留 invalid 域名的邮件");
-  return true;
+    if (!isInvalidEmailAddress(email)) return false;
+    logger.debug("跳过保留 invalid 域名的邮件");
+    return true;
 }
 
 /** 每个 Provider 模块必须实现的最小接口。 */
 interface EmailProviderModule {
-  sendPasswordResetEmail: SendPasswordResetEmail;
-  sendEmail: SendEmail;
+    sendPasswordResetEmail: SendPasswordResetEmail;
+    sendEmail: SendEmail;
 }
 
 /**
@@ -48,18 +48,18 @@ interface EmailProviderModule {
  * 回归门禁：`scripts/verify-compile-safe-imports.ts`。
  */
 const PROVIDER_LOADERS: Record<
-  string,
-  () => Promise<EmailProviderModule>
+    string,
+    () => Promise<EmailProviderModule>
 > = {
-  disabled: () => import("./email-providers/disabled.ts"),
-  mock: () => import("./email-providers/mock.ts"),
-  aliyun: () => import("./email-providers/aliyun.ts"),
-  tencent: () => import("./email-providers/tencent.ts"),
+    disabled: () => import("./email-providers/disabled.ts"),
+    mock: () => import("./email-providers/mock.ts"),
+    aliyun: () => import("./email-providers/aliyun.ts"),
+    tencent: () => import("./email-providers/tencent.ts"),
 };
 
 /** 当前生效的 Provider 名称（配置读取链：DB → env → 默认值 mock）。 */
 function currentProvider(): string {
-  return String(getSetting("email_provider")?.value ?? "mock");
+    return String(getSetting("email_provider")?.value ?? "mock");
 }
 
 /** 已缓存的 send 函数引用 */
@@ -73,32 +73,32 @@ let sendEmailFn: SendEmail | null = null;
  * 通过 setEmailProvider() 覆盖 provider 选择（例如降级时）。
  */
 async function loadSendFn(): Promise<SendPasswordResetEmail> {
-  if (sendFn) return sendFn;
+    if (sendFn) return sendFn;
 
-  const provider = currentProvider();
+    const provider = currentProvider();
 
-  if (
-    Deno.env.get("NOJ_ENV") === "production" &&
-    (provider === "mock" || !PROVIDER_LOADERS[provider])
-  ) {
-    throw new Error(
-      "生产环境禁止使用 mock 邮件 Provider；请配置 email_provider=aliyun、tencent 或 disabled",
-    );
-  }
+    if (
+        Deno.env.get("NOJ_ENV") === "production" &&
+        (provider === "mock" || !PROVIDER_LOADERS[provider])
+    ) {
+        throw new Error(
+            "生产环境禁止使用 mock 邮件 Provider；请配置 email_provider=aliyun、tencent 或 disabled",
+        );
+    }
 
-  const load = PROVIDER_LOADERS[provider];
+    const load = PROVIDER_LOADERS[provider];
 
-  if (!load) {
-    logger.warn("未知的 EMAIL_PROVIDER，使用 mock 替代", { provider });
-    Deno.env.set("EMAIL_PROVIDER", "mock");
-    const mod = await PROVIDER_LOADERS.mock();
+    if (!load) {
+        logger.warn("未知的 EMAIL_PROVIDER，使用 mock 替代", { provider });
+        Deno.env.set("EMAIL_PROVIDER", "mock");
+        const mod = await PROVIDER_LOADERS.mock();
+        sendFn = mod.sendPasswordResetEmail;
+        return sendFn;
+    }
+
+    const mod = await load();
     sendFn = mod.sendPasswordResetEmail;
     return sendFn;
-  }
-
-  const mod = await load();
-  sendFn = mod.sendPasswordResetEmail;
-  return sendFn;
 }
 
 /**
@@ -107,23 +107,23 @@ async function loadSendFn(): Promise<SendPasswordResetEmail> {
  * 用于 main.ts 降级时强制重新加载。
  */
 export function resetEmailProvider(): void {
-  sendFn = null;
-  sendEmailFn = null;
+    sendFn = null;
+    sendEmailFn = null;
 }
 
 async function loadGenericSendFn(): Promise<SendEmail> {
-  if (sendEmailFn) return sendEmailFn;
-  const provider = currentProvider();
-  const load = PROVIDER_LOADERS[provider];
-  if (!load) {
-    throw new Error(`未知的 EMAIL_PROVIDER：${provider}`);
-  }
-  if (Deno.env.get("NOJ_ENV") === "production" && provider === "mock") {
-    throw new Error("生产环境禁止使用 mock 邮件 Provider");
-  }
-  const mod = await load();
-  sendEmailFn = mod.sendEmail;
-  return sendEmailFn;
+    if (sendEmailFn) return sendEmailFn;
+    const provider = currentProvider();
+    const load = PROVIDER_LOADERS[provider];
+    if (!load) {
+        throw new Error(`未知的 EMAIL_PROVIDER：${provider}`);
+    }
+    if (Deno.env.get("NOJ_ENV") === "production" && provider === "mock") {
+        throw new Error("生产环境禁止使用 mock 邮件 Provider");
+    }
+    const mod = await load();
+    sendEmailFn = mod.sendEmail;
+    return sendEmailFn;
 }
 
 /**
@@ -136,36 +136,36 @@ async function loadGenericSendFn(): Promise<SendEmail> {
  * @param expiresInMinutes - 过期时间（分钟）
  */
 export async function sendPasswordResetEmail(
-  email: string,
-  resetLink: string,
-  expiresInMinutes = 15,
+    email: string,
+    resetLink: string,
+    expiresInMinutes = 15,
 ): Promise<void> {
-  if (skipInvalidRecipient(email)) return;
-  metrics.inc("noj_email_send_attempts_total", {
-    provider: currentProvider(),
-    message_type: "password_reset",
-  });
-  const fn = await loadSendFn();
-  await fn(email, resetLink, expiresInMinutes);
+    if (skipInvalidRecipient(email)) return;
+    metrics.inc("noj_email_send_attempts_total", {
+        provider: currentProvider(),
+        message_type: "password_reset",
+    });
+    const fn = await loadSendFn();
+    await fn(email, resetLink, expiresInMinutes);
 }
 
 /** 发送邮箱验证邮件。 */
 export async function sendEmailVerificationEmail(
-  email: string,
-  verifyLink: string,
-  expiresInMinutes = 30,
+    email: string,
+    verifyLink: string,
+    expiresInMinutes = 30,
 ): Promise<boolean> {
-  if (skipInvalidRecipient(email)) return false;
-  metrics.inc("noj_email_send_attempts_total", {
-    provider: currentProvider(),
-    message_type: "verification",
-  });
-  const fn = await loadGenericSendFn();
-  return await fn(
-    email,
-    "验证您的 Neuro OJ 邮箱",
-    buildEmailVerificationHtml(verifyLink, expiresInMinutes),
-  );
+    if (skipInvalidRecipient(email)) return false;
+    metrics.inc("noj_email_send_attempts_total", {
+        provider: currentProvider(),
+        message_type: "verification",
+    });
+    const fn = await loadGenericSendFn();
+    return await fn(
+        email,
+        "验证您的 Neuro OJ 邮箱",
+        buildEmailVerificationHtml(verifyLink, expiresInMinutes),
+    );
 }
 
 /**
@@ -175,30 +175,30 @@ export async function sendEmailVerificationEmail(
  * disabled Provider 会返回 false，临时故障由调用方捕获并反馈。
  */
 export async function sendTestEmail(to: string): Promise<boolean> {
-  if (skipInvalidRecipient(to)) return false;
-  metrics.inc("noj_email_send_attempts_total", {
-    provider: currentProvider(),
-    message_type: "test",
-  });
-  const fn = await loadGenericSendFn();
-  return await fn(
-    to,
-    "Neuro OJ 测试邮件",
-    "<p>这是一封来自 Neuro OJ 管理后台的测试邮件。</p>" +
-      "<p>收到此邮件说明当前邮件服务配置可用，可以开放公开注册。</p>",
-  );
+    if (skipInvalidRecipient(to)) return false;
+    metrics.inc("noj_email_send_attempts_total", {
+        provider: currentProvider(),
+        message_type: "test",
+    });
+    const fn = await loadGenericSendFn();
+    return await fn(
+        to,
+        "Neuro OJ 测试邮件",
+        "<p>这是一封来自 Neuro OJ 管理后台的测试邮件。</p>" +
+            "<p>收到此邮件说明当前邮件服务配置可用，可以开放公开注册。</p>",
+    );
 }
 
 /** 业务通知使用现有 Provider；正文由调用模块在当前授权后生成。 */
 export async function sendNotificationEmail(
-  to: string,
-  subject: string,
-  html: string,
+    to: string,
+    subject: string,
+    html: string,
 ): Promise<boolean> {
-  if (skipInvalidRecipient(to)) return false;
-  metrics.inc("noj_email_send_attempts_total", {
-    provider: currentProvider(),
-    message_type: "notification",
-  });
-  return await (await loadGenericSendFn())(to, subject, html);
+    if (skipInvalidRecipient(to)) return false;
+    metrics.inc("noj_email_send_attempts_total", {
+        provider: currentProvider(),
+        message_type: "notification",
+    });
+    return await (await loadGenericSendFn())(to, subject, html);
 }
