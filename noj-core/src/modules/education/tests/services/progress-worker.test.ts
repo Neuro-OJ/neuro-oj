@@ -11,6 +11,7 @@ import {
 import { createAssignment, publishAssignment } from "../../index.ts";
 import {
   claimEducationTasks,
+  drainEducationTasks,
   educationOnlyHandlers,
   listEducationTasks,
   processEducationBatch,
@@ -170,7 +171,9 @@ Deno.test("教学事件：并发领取不重复，过期租约回收，旧租约
   assertEquals(fresh.leaseToken !== old.leaseToken, true);
   assertEquals(await runEducationTask(old), false);
   assertEquals(await runEducationTask(fresh), true);
-  await processEducationBatch();
+  // 另一条任务仍持有自己的租约，必须由持有者处理；否则进度是否写入取决于领取顺序。
+  assertEquals(await runEducationTask(groups.flat()[1]), true);
+  await drainEducationTasks();
   assertEquals((await f.db.select().from(assignmentProgress)).length, 2);
 });
 
