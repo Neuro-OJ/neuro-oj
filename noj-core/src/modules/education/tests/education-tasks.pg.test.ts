@@ -318,38 +318,31 @@ type LockedTable = "assignment_recipients" | "query_projection_revisions";
 async function holdTableLock(
   table: LockedTable,
   timeoutMs = 5_000,
-): Promise<{ release: () => Promise<void> }> {
-  let locked!: () => void;
+): Promise<{ pid: number; release: () => Promise<void> }> {
+  let locked!: (pid: number) => void;
   let unlock!: () => void;
-  const ready = new Promise<void>((resolve) => (locked = resolve));
+  const ready = new Promise<number>((resolve) => (locked = resolve));
   const unlocked = new Promise<void>((resolve) => (unlock = resolve));
+  const lockTimeout = `${timeoutMs}ms`;
   const holder = db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('lock_timeout', ${lockTimeout}, true)`,
+    );
     await tx.execute(sql.raw(`LOCK TABLE ${table} IN ACCESS EXCLUSIVE MODE`));
-    locked();
+    const [{ pid }] = unwrapRows<{ pid: number }>(
+      await tx.execute(sql`SELECT pg_backend_pid() AS pid`) as never,
+    );
+    locked(pid);
     await unlocked;
   });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      ready,
-      holder.then(() => {
-        throw new Error(`持锁事务提前结束：${table}`);
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`取锁超时：${table}`)),
-          timeoutMs,
-        );
-      }),
-    ]);
-  } catch (error) {
-    unlock();
-    await holder.catch(() => {});
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+  const pid = await Promise.race([
+    ready,
+    holder.then(() => {
+      throw new Error(`持锁事务提前结束：${table}`);
+    }),
+  ]);
   return {
+    pid,
     release: async () => {
       unlock();
       await holder;
@@ -357,12 +350,17 @@ async function holdTableLock(
   };
 }
 
-/** 是否已有其他会话在等待该表的锁（即处理器已到达等待点）。 */
-async function hasLockWaiter(table: LockedTable): Promise<boolean> {
+/** 只接受被本次持锁事务阻塞的当前库会话。 */
+async function hasLockWaiter(
+  table: LockedTable,
+  holderPid: number,
+): Promise<boolean> {
   return unwrapRows<{ waiting: boolean }>(
     await db.execute(sql`SELECT EXISTS (
       SELECT 1 FROM pg_locks
       WHERE NOT granted AND relation = to_regclass(${table})
+        AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+        AND ${holderPid}::int = ANY(pg_blocking_pids(pid))
     ) AS waiting`) as never,
   )[0].waiting;
 }
@@ -396,12 +394,13 @@ Deno.test({
     // 租约足够长，保证处理器在租约内到达等待点；之后由数据库时钟判定到期再放锁。
     const task = await claimOne(5_000);
     const lock = await holdTableLock("query_projection_revisions");
+    const running = processEducationTask(task, new AbortController().signal);
+    const settled = Promise.allSettled([running]);
     let result: unknown;
     try {
-      const running = processEducationTask(task, new AbortController().signal);
       await waitFor(
         "处理器等待投影版本表锁",
-        () => hasLockWaiter("query_projection_revisions"),
+        () => hasLockWaiter("query_projection_revisions", lock.pid),
       );
       // 标记已在租约内清除（持有任务行锁），此时租约应仍有效。
       assertEquals(await dbClockPassed(task.leaseExpiry), false);
@@ -413,7 +412,11 @@ Deno.test({
       await lock.release();
       result = await running;
     } finally {
-      await lock.release();
+      try {
+        await lock.release();
+      } finally {
+        await settled;
+      }
     }
     assertEquals((result as Record<string, unknown>).skipped, "lease_lost");
     assertEquals(await domainRevision(f.domainId), before + 1);
@@ -528,29 +531,38 @@ Deno.test({
       })
     );
 
-    const leaseMs = 300;
-    const task = await claimOne(leaseMs);
-    // 另一连接锁住收件人表：处理器到达等待点后，等原租约在数据库时钟上到期再放锁，
-    // 本页处理时间确定地超过原租期，只能靠续租保住租约。
+    const leaseMs = 1_000;
+    // 先取锁再开始计租；放锁前确认处理器仍在等待，且至少成功续租三次。
     const lock = await holdTableLock("assignment_recipients");
+    let task: ClaimedTask;
     let renewing = true, renewals = 0;
-    const renewer = (async () => {
-      while (renewing) {
-        if (await renewTaskLease(task.id, task.leaseToken, leaseMs, db)) {
-          renewals++;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    })();
+    let renewer: Promise<void> | undefined;
+    let settled: Promise<unknown> | undefined;
     try {
-      const running = processEducationTask(task, new AbortController().signal);
+      const claimed = await claimOne(leaseMs);
+      task = claimed;
+      renewer = (async () => {
+        while (renewing) {
+          if (
+            await renewTaskLease(claimed.id, claimed.leaseToken, leaseMs, db)
+          ) {
+            renewals++;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      })();
+      const running = processEducationTask(
+        claimed,
+        new AbortController().signal,
+      );
+      settled = Promise.allSettled([running, renewer]);
       await waitFor(
         "处理器等待收件人表锁",
-        () => hasLockWaiter("assignment_recipients"),
+        () => hasLockWaiter("assignment_recipients", lock.pid),
       );
       await waitFor(
-        "原租约到期",
-        () => dbClockPassed(task.leaseExpiry),
+        "原租约到期且至少成功续租三次",
+        async () => renewals >= 3 && await dbClockPassed(claimed.leaseExpiry),
         10_000,
       );
       await lock.release();
@@ -558,10 +570,13 @@ Deno.test({
       assert(isTaskRescheduleResult(step), "满页应推进游标并重新调度");
     } finally {
       renewing = false;
-      await renewer;
-      await lock.release();
+      try {
+        await lock.release();
+      } finally {
+        await settled;
+      }
     }
-    assert(renewals >= 3, `处理期间续租应持续成功，实际 ${renewals} 次`);
+    await renewer;
     const data = (await getTaskById(task.id, db))?.payload.data as Record<
       string,
       unknown

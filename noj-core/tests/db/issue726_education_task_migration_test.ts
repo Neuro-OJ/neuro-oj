@@ -17,6 +17,7 @@ import { getDb } from "../../src/shared/db/connection.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
 import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 import { enqueueEducationRefreshTx } from "../../src/modules/education/contracts/facts.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 
 const MIGRATION_PATH = resolve(
   dirname(fromFileUrl(import.meta.url)),
@@ -124,10 +125,11 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
+    await resetDbForTest();
     const db = getDb();
     await db.execute(sql`DELETE FROM background_tasks`);
-    await recreateLegacyOutbox();
     try {
+      await recreateLegacyOutbox();
       // 未处理 + 已有 v1 任务（带分页游标、延迟失效标记，到期时间在未来）
       await insertOutbox({
         id: "o-pending",

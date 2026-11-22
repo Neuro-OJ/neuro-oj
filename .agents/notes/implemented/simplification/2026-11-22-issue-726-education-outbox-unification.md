@@ -70,3 +70,6 @@ outbox 不能直接删除，因为它还承担：
   `startEducationEmailWorker` 不受影响。
 - E2E `education_outbox_recovery.test.ts` 改名为
   `education_task_recovery.test.ts`， 直接重放 v2 任务验证重启恢复。
+- 租约集成测试以 PostgreSQL 的锁等待和数据库时钟协调并发，取锁由数据库限时；
+  失败时先释放锁，再等待处理器和续租任务结束。0145 测试先走标准数据库重置，
+  并在旧表夹具部分初始化失败时也执行清理。
