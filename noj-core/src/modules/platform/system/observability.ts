@@ -8,41 +8,41 @@
 import type { ObservabilityRegistry } from "../../../shared/observability/contracts.ts";
 
 export function registerSystemEmailMetrics(
-    registry: ObservabilityRegistry,
+  registry: ObservabilityRegistry,
 ): void {
-    registry.registerBusinessMetric({
-        name: "noj_email_send_attempts_total",
-        help: "邮件发送尝试总数",
-        type: "counter",
-        owner: "system",
-        labels: ["provider", "message_type"],
-    });
-    registry.registerBusinessMetric({
-        name: "noj_email_delivery_events_total",
-        help: "邮件送达事件总数",
-        type: "counter",
-        owner: "system",
-        labels: ["provider", "event_type"],
-    });
-    registry.registerBusinessMetric({
-        name: "noj_email_delivery_events_duplicate_total",
-        help: "重复邮件送达事件总数",
-        type: "counter",
-        owner: "system",
-        labels: ["provider"],
-    });
-    registry.registerBusinessMetric({
-        name: "noj_email_temporary_failures_total",
-        help: "邮件临时失败总数",
-        type: "counter",
-        owner: "system",
-        labels: ["provider"],
-    });
-    registry.registerBusinessMetric({
-        name: "noj_email_suppressions_total",
-        help: "邮件永久抑制总数",
-        type: "counter",
-        owner: "system",
-        labels: ["provider", "reason"],
-    });
+  registry.registerBusinessMetric({
+    name: "noj_email_send_attempts_total",
+    help: "邮件发送尝试总数",
+    type: "counter",
+    owner: "system",
+    labels: ["provider", "message_type"],
+  });
+  registry.registerBusinessMetric({
+    name: "noj_email_delivery_events_total",
+    help: "邮件送达事件总数",
+    type: "counter",
+    owner: "system",
+    labels: ["provider", "event_type"],
+  });
+  registry.registerBusinessMetric({
+    name: "noj_email_delivery_events_duplicate_total",
+    help: "重复邮件送达事件总数",
+    type: "counter",
+    owner: "system",
+    labels: ["provider"],
+  });
+  registry.registerBusinessMetric({
+    name: "noj_email_temporary_failures_total",
+    help: "邮件临时失败总数",
+    type: "counter",
+    owner: "system",
+    labels: ["provider"],
+  });
+  registry.registerBusinessMetric({
+    name: "noj_email_suppressions_total",
+    help: "邮件永久抑制总数",
+    type: "counter",
+    owner: "system",
+    labels: ["provider", "reason"],
+  });
 }

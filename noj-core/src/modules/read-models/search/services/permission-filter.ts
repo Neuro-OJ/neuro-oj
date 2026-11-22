@@ -3,32 +3,32 @@ import { searchEntries } from "../../../../shared/db/schema.ts";
 import { unendedPublicContestForProblem } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
-    domainProblemAvailableWhere,
-    domainProblemBindingAvailableWhere,
+  domainProblemAvailableWhere,
+  domainProblemBindingAvailableWhere,
 } from "../../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
 import { currentTeacherSubmissionAccessWhere } from "../../../education/contracts/cross-module/services_submission-access-sql.ts";
 import { submissionQueryVisibility } from "../../queries/services/domain-query.ts";
 
 export interface SearchPermissionContext {
-    userId?: string;
-    isAdmin: boolean;
-    guestReadEnabled: boolean;
-    /** 社区功能是否可用；缺省视为可用，避免未传该字段的测试/调用方行为变化。 */
-    communityEnabled?: boolean;
-    domainId?: string;
-    member?: boolean;
-    communityModerator?: boolean;
-    problemWriteAny?: boolean;
-    problemWriteOwn?: boolean;
-    contestManageAny?: boolean;
-    contestManageOwn?: boolean;
-    submissionReadAll?: boolean;
-    accountEntities?: boolean;
+  userId?: string;
+  isAdmin: boolean;
+  guestReadEnabled: boolean;
+  /** 社区功能是否可用；缺省视为可用，避免未传该字段的测试/调用方行为变化。 */
+  communityEnabled?: boolean;
+  domainId?: string;
+  member?: boolean;
+  communityModerator?: boolean;
+  problemWriteAny?: boolean;
+  problemWriteOwn?: boolean;
+  contestManageAny?: boolean;
+  contestManageOwn?: boolean;
+  submissionReadAll?: boolean;
+  accountEntities?: boolean;
 }
 
 export function permissionWhere(ctx: SearchPermissionContext) {
-    const userId = ctx.userId ?? "";
-    return sql`(
+  const userId = ctx.userId ?? "";
+  return sql`(
     ${searchEntries.is_public} = true
     OR ${searchEntries.entity_type} IN ('problem','community_post','community_comment','contest','submission')
     OR ${searchEntries.owner_id} = ${userId}
@@ -38,13 +38,13 @@ export function permissionWhere(ctx: SearchPermissionContext) {
 }
 
 export function communityVisibilityWhere(ctx: SearchPermissionContext) {
-    if (
-        !ctx.userId && !ctx.guestReadEnabled ||
-        ctx.communityEnabled === false
-    ) {
-        return sql`${searchEntries.entity_type} NOT IN ('community_post', 'community_comment')`;
-    }
-    return sql`true`;
+  if (
+    !ctx.userId && !ctx.guestReadEnabled ||
+    ctx.communityEnabled === false
+  ) {
+    return sql`${searchEntries.entity_type} NOT IN ('community_post', 'community_comment')`;
+  }
+  return sql`true`;
 }
 
 /**
@@ -58,19 +58,19 @@ export function communityVisibilityWhere(ctx: SearchPermissionContext) {
  * 也不泄露赛题），与列表路径一致。
  */
 export function contestSecrecyProblemWhere(ctx: SearchPermissionContext) {
-    if (ctx.isAdmin || ctx.problemWriteAny) return sql`true`;
-    const userId = ctx.userId ?? "";
-    return sql`NOT (
+  if (ctx.isAdmin || ctx.problemWriteAny) return sql`true`;
+  const userId = ctx.userId ?? "";
+  return sql`NOT (
     ${searchEntries.entity_type} = 'problem'
     AND ${
-        unendedPublicContestForProblem(
-            searchEntries.entity_id,
-            sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
-        )
-    }
+    unendedPublicContestForProblem(
+      searchEntries.entity_id,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
+    )
+  }
     AND NOT (${
-        ctx.domainId === undefined || ctx.problemWriteOwn === true
-    } AND EXISTS (
+    ctx.domainId === undefined || ctx.problemWriteOwn === true
+  } AND EXISTS (
       SELECT 1 FROM problems current_owner WHERE current_owner.id=${searchEntries.entity_id} AND current_owner.owner_id=${userId}))
   )`;
 }
@@ -100,18 +100,18 @@ export function contestSecrecyProblemWhere(ctx: SearchPermissionContext) {
  * 使 `NOT (... AND NULL)` 整体为 NULL 而**永久排除**该行（对普通帖子是误杀）。
  */
 export function notGatedContestContentWhere(ctx: SearchPermissionContext) {
-    if (ctx.communityModerator ?? ctx.isAdmin) return sql`true`;
-    return sql`NOT (
+  if (ctx.communityModerator ?? ctx.isAdmin) return sql`true`;
+  return sql`NOT (
     (
       ${searchEntries.entity_type} = 'community_post'
       AND ${searchEntries.metadata}->>'post_type' IN ('solution', 'discussion')
       AND ${searchEntries.metadata}->>'problem_id' IS NOT NULL
       AND ${
-        unendedPublicContestForProblem(
-            sql`(${searchEntries.metadata}->>'problem_id')`,
-            sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
-        )
-    }
+    unendedPublicContestForProblem(
+      sql`(${searchEntries.metadata}->>'problem_id')`,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
+    )
+  }
     )
     OR (
       ${searchEntries.entity_type} = 'community_comment'
@@ -121,11 +121,11 @@ export function notGatedContestContentWhere(ctx: SearchPermissionContext) {
           AND p.type IN ('solution', 'discussion')
           AND p.problem_id IS NOT NULL
           AND ${
-        unendedPublicContestForProblem(
-            sql`p.problem_id`,
-            sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
-        )
-    }
+    unendedPublicContestForProblem(
+      sql`p.problem_id`,
+      sql`${ctx.domainId ?? DEFAULT_DOMAIN_ID}`,
+    )
+  }
       )
     )
   )`;
@@ -140,32 +140,32 @@ export const runningContestSolutionWhere = notGatedContestContentWhere;
 
 /** 索引只提供候选；实际域、成员、资源状态与授权必须在分页前读取源事实。 */
 export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
-    const domainId = ctx.domainId ?? DEFAULT_DOMAIN_ID,
-        userId = ctx.userId ?? "",
-        member = ctx.member ?? false;
-    const postVisible =
-        sql`coalesce(search_post.domain_id,${DEFAULT_DOMAIN_ID})=${domainId}
+  const domainId = ctx.domainId ?? DEFAULT_DOMAIN_ID,
+    userId = ctx.userId ?? "",
+    member = ctx.member ?? false;
+  const postVisible =
+    sql`coalesce(search_post.domain_id,${DEFAULT_DOMAIN_ID})=${domainId}
     AND (search_post.status='published' OR (${
-            ctx.communityModerator ?? ctx.isAdmin
-        } AND search_post.status<>'deleted'))
+      ctx.communityModerator ?? ctx.isAdmin
+    } AND search_post.status<>'deleted'))
     AND (search_post.problem_id IS NULL OR (search_post.domain_id IS NULL AND ${
-            domainId === DEFAULT_DOMAIN_ID
-        })
+      domainId === DEFAULT_DOMAIN_ID
+    })
       OR ${
-            domainProblemBindingAvailableWhere(
-                sql`search_post.domain_problem_binding_id`,
-                sql`${domainId}`,
-                { member },
-            )
-        })`;
-    return sql`CASE ${searchEntries.entity_type}
+      domainProblemBindingAvailableWhere(
+        sql`search_post.domain_problem_binding_id`,
+        sql`${domainId}`,
+        { member },
+      )
+    })`;
+  return sql`CASE ${searchEntries.entity_type}
     WHEN 'problem' THEN ${
-        domainProblemAvailableWhere(
-            searchEntries.entity_id,
-            sql`${domainId}`,
-            { member },
-        )
-    }
+    domainProblemAvailableWhere(
+      searchEntries.entity_id,
+      sql`${domainId}`,
+      { member },
+    )
+  }
     WHEN 'community_post' THEN EXISTS (SELECT 1 FROM community_posts search_post
       WHERE search_post.id=${searchEntries.entity_id} AND ${postVisible})
     WHEN 'community_comment' THEN EXISTS (SELECT 1 FROM community_comments comment
@@ -176,25 +176,25 @@ export function currentSearchResourceWhere(ctx: SearchPermissionContext) {
        )
     WHEN 'submission' THEN EXISTS (SELECT 1 FROM submissions s WHERE s.id=${searchEntries.entity_id}
       AND ${
-        submissionQueryVisibility({ domainId, member }, {
-            domainId: sql`s.domain_id`,
-            bindingId: sql`s.domain_problem_binding_id`,
-            contestId: sql`s.contest_id`,
-        })
-    }
+    submissionQueryVisibility({ domainId, member }, {
+      domainId: sql`s.domain_id`,
+      bindingId: sql`s.domain_problem_binding_id`,
+      contestId: sql`s.contest_id`,
+    })
+  }
       AND (s.user_id=${userId} OR ${ctx.isAdmin} OR ${
-        ctx.submissionReadAll ?? false
-    }
+    ctx.submissionReadAll ?? false
+  }
         OR ${
-        currentTeacherSubmissionAccessWhere(
-            sql`s.user_id`,
-            sql`${domainId}`,
-            userId,
-        )
-    }))
+    currentTeacherSubmissionAccessWhere(
+      sql`s.user_id`,
+      sql`${domainId}`,
+      userId,
+    )
+  }))
     WHEN 'user' THEN ${
-        ctx.accountEntities ?? ctx.domainId === undefined
-    } AND ${ctx.isAdmin}
+    ctx.accountEntities ?? ctx.domainId === undefined
+  } AND ${ctx.isAdmin}
       AND EXISTS (SELECT 1 FROM users u WHERE u.id=${searchEntries.entity_id} AND u.deleted_at IS NULL)
     WHEN 'announcement' THEN EXISTS (SELECT 1 FROM announcements a WHERE a.id=${searchEntries.entity_id} AND a.is_active
       AND (a.domain_id IS NULL OR a.domain_id=${domainId}))

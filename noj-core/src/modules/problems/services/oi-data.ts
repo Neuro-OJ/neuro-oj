@@ -10,9 +10,9 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 
 /** 数据路径不能逃逸题包根目录。 */
 export function validateOiDataPath(path: string): void {
-    if (
-        !path || path.startsWith("/") || path.includes("\\") ||
-        path.includes("\0") || /^[A-Za-z]:/.test(path) ||
-        path.split("/").some((part) => !part || part === "." || part === "..")
-    ) throw new BadRequestError("数据文件路径非法");
+  if (
+    !path || path.startsWith("/") || path.includes("\\") ||
+    path.includes("\0") || /^[A-Za-z]:/.test(path) ||
+    path.split("/").some((part) => !part || part === "." || part === "..")
+  ) throw new BadRequestError("数据文件路径非法");
 }

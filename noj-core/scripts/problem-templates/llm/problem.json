@@ -1,11 +1,11 @@
 {
-    "format_version": 3,
-    "kind": "ai",
-    "title": "模板：LLM 工程题（提示词构造）",
-    "difficulty": "easy",
-    "llm": { "max_calls": 12, "max_tokens": 6000 },
-    "runtime_config": {
-        "evaluator": { "time_limit_ms": 120000, "memory_limit_mb": 256 },
-        "solution": { "call_timeout_ms": 2000, "memory_limit_mb": 256 }
-    }
+  "format_version": 3,
+  "kind": "ai",
+  "title": "模板：LLM 工程题（提示词构造）",
+  "difficulty": "easy",
+  "llm": { "max_calls": 12, "max_tokens": 6000 },
+  "runtime_config": {
+    "evaluator": { "time_limit_ms": 120000, "memory_limit_mb": 256 },
+    "solution": { "call_timeout_ms": 2000, "memory_limit_mb": 256 }
+  }
 }

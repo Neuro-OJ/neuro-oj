@@ -1,76 +1,72 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const get = vi.fn(), navigate = vi.fn();
 beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubGlobal('defineNuxtRouteMiddleware', (handler: unknown) => handler);
-    vi.stubGlobal('useApi', () => ({ api: { get } }));
-    vi.stubGlobal('navigateTo', navigate);
-    vi.stubGlobal(
-        'createError',
-        (input: { statusCode: number; statusMessage: string }) =>
-            Object.assign(new Error(input.statusMessage), { statusCode: input.statusCode }),
-    );
+  vi.clearAllMocks();
+  vi.stubGlobal('defineNuxtRouteMiddleware', (handler: unknown) => handler);
+  vi.stubGlobal('useApi', () => ({ api: { get } }));
+  vi.stubGlobal('navigateTo', navigate);
+  vi.stubGlobal(
+    'createError',
+    (input: { statusCode: number; statusMessage: string }) =>
+      Object.assign(new Error(input.statusMessage), { statusCode: input.statusCode }),
+  );
 });
 async function enter(path: string, query: Record<string, string> = {}) {
-    const { default: redirect } = await import('~/middleware/default-workspace.global');
-    return redirect({ path, query, hash: '' } as never, {} as never);
+  const { default: redirect } = await import('~/middleware/default-workspace.global');
+  return redirect({ path, query, hash: '' } as never, {} as never);
 }
 describe('旧业务入口的默认域兼容', () => {
-    it('P号不读取账号偏好、不查询旧题库，旧题库类别从回跳参数移除', async () => {
-        await enter('/problems/P1001', { type: 'U', keyword: 'A+B' });
-        expect(get).not.toHaveBeenCalled();
-        expect(navigate).toHaveBeenCalledWith({ path: '/d/main/problems/1001', query: { keyword: 'A+B' }, hash: '' }, {
-            redirectCode: 301,
-            replace: true,
-        });
+  it('P号不读取账号偏好、不查询旧题库，旧题库类别从回跳参数移除', async () => {
+    await enter('/problems/P1001', { type: 'U', keyword: 'A+B' });
+    expect(get).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith({ path: '/d/main/problems/1001', query: { keyword: 'A+B' }, hash: '' }, {
+      redirectCode: 301,
+      replace: true,
     });
-    it('旧UUID仅用main兼容只读门面定位，解析失败不能跳到其他域或猜数字', async () => {
-        get.mockResolvedValue({ data: { number: 1001 } });
-        await enter('/editor/legacy-uuid');
-        expect(get).toHaveBeenCalledWith('/api/v1/problems/legacy-uuid', { silent: true });
-        expect(navigate.mock.calls[0]![0].path).toBe('/d/main/solve/1001');
-        get.mockRejectedValue({ statusCode: 404 });
-        navigate.mockClear();
-        await expect(enter('/problems/foreign-uuid')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });
-        await expect(enter('/editor/NOEXIST')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });
-        const forbidden = { statusCode: 403, message: 'Forbidden' };
-        get.mockRejectedValue(forbidden);
-        await expect(enter('/editor/restricted-uuid')).rejects.toBe(forbidden);
-        expect(navigate).not.toHaveBeenCalled();
+  });
+  it('旧UUID仅用main兼容只读门面定位，解析失败不能跳到其他域或猜数字', async () => {
+    get.mockResolvedValue({ data: { number: 1001 } });
+    await enter('/editor/legacy-uuid');
+    expect(get).toHaveBeenCalledWith('/api/v1/problems/legacy-uuid', { silent: true });
+    expect(navigate.mock.calls[0]![0].path).toBe('/d/main/solve/1001');
+    get.mockRejectedValue({ statusCode: 404 });
+    navigate.mockClear();
+    await expect(enter('/problems/foreign-uuid')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });
+    await expect(enter('/editor/NOEXIST')).rejects.toMatchObject({ statusCode: 404, message: '题目不存在' });
+    const forbidden = { statusCode: 403, message: 'Forbidden' };
+    get.mockRejectedValue(forbidden);
+    await expect(enter('/editor/restricted-uuid')).rejects.toBe(forbidden);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+  it('U题旧地址不映射同号main题；题单公开ID直接交给域内题单页', async () => {
+    await expect(enter('/problems/U1001')).rejects.toMatchObject({ statusCode: 404 });
+    expect(get).not.toHaveBeenCalled();
+    await enter('/trainings/tr-old', { tab: 'problems' });
+    // 无域 `/api/v1/trainings/:id` 已删除，中间件不再预解析，交由域内页面按 public_id 读取。
+    expect(get).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith({ path: '/d/main/trainings/tr-old', query: { tab: 'problems' }, hash: '' }, {
+      redirectCode: 301,
+      replace: true,
     });
-    it('U题旧地址不映射同号main题；题单公开ID直接交给域内题单页', async () => {
-        await expect(enter('/problems/U1001')).rejects.toMatchObject({ statusCode: 404 });
-        expect(get).not.toHaveBeenCalled();
-        await enter('/trainings/tr-old', { tab: 'problems' });
-        // 无域 `/api/v1/trainings/:id` 已删除，中间件不再预解析，交由域内页面按 public_id 读取。
-        expect(get).not.toHaveBeenCalled();
-        expect(navigate).toHaveBeenCalledWith({
-            path: '/d/main/trainings/tr-old',
-            query: { tab: 'problems' },
-            hash: '',
-        }, {
-            redirectCode: 301,
-            replace: true,
-        });
+  });
+  it('旧 UUID 的赛题保护拒绝保持 403，不退化为不存在或跳转其他域', async () => {
+    get.mockRejectedValue({
+      data: {
+        code: 'CONTEST_PROBLEM_RESTRICTED',
+        contests: [
+          { contestId: 'contest-id', publicId: 'ct-abc123', title: '保护中的比赛' },
+        ],
+      },
     });
-    it('旧 UUID 的赛题保护拒绝保持 403，不退化为不存在或跳转其他域', async () => {
-        get.mockRejectedValue({
-            data: {
-                code: 'CONTEST_PROBLEM_RESTRICTED',
-                contests: [
-                    { contestId: 'contest-id', publicId: 'ct-abc123', title: '保护中的比赛' },
-                ],
-            },
-        });
-        await expect(enter('/problems/protected-uuid')).rejects.toMatchObject({
-            statusCode: 403,
-            message: '赛题正在保护中',
-        });
-        expect(navigate).not.toHaveBeenCalled();
+    await expect(enter('/problems/protected-uuid')).rejects.toMatchObject({
+      statusCode: 403,
+      message: '赛题正在保护中',
     });
-    it('已经显式指定其他域的资源完全保留路径', async () => {
-        await enter('/d/school/problems/main:1001');
-        expect(get).not.toHaveBeenCalled();
-        expect(navigate).not.toHaveBeenCalled();
-    });
+    expect(navigate).not.toHaveBeenCalled();
+  });
+  it('已经显式指定其他域的资源完全保留路径', async () => {
+    await enter('/d/school/problems/main:1001');
+    expect(get).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });

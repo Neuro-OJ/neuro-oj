@@ -1,38 +1,39 @@
 <script setup lang="ts">
-import BanBanner from '~/components/layout/BanBanner.vue';
-import BreadcrumbNav from '~/components/layout/BreadcrumbNav.vue';
-import LegalConsentModal from '~/components/legal/LegalConsentModal.vue';
-import { useBanStatus } from '~/composables/useBanStatus';
-import { collectPendingConsents } from '~/utils/auth/legalConsent';
-import { workspacePath } from '~/utils/domain/workspace/workspace';
+import BanBanner from "~/components/BanBanner.vue"
+import BreadcrumbNav from "~/components/layout/BreadcrumbNav.vue"
+import LegalConsentModal from "~/components/legal/LegalConsentModal.vue";
+import { useBanStatus } from "~/composables/useBanStatus"
+import { collectPendingConsents } from "~/utils/legalConsent"
+import { workspacePath } from "~/utils/workspace"
 
-const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus();
+const { ipBanned, ipBanInfo, userBanned, userBanInfo } = useBanStatus()
 
 // 政策重大变更同意弹窗（PIPL）：登录用户存在未同意的重大版本时展示
-const { user } = useAuth();
-const pendingConsents = computed(() => user.value ? collectPendingConsents(user.value.legal) : []);
+const { user } = useAuth()
+const pendingConsents = computed(() =>
+    user.value ? collectPendingConsents(user.value.legal) : []
+)
 
 const slug = useNavigationDomain();
 
 function onGlobalKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         void navigateTo(workspacePath(slug.value, 'search'));
     }
 }
 
 onMounted(() => {
-    window.addEventListener('keydown', onGlobalKeydown);
+    window.addEventListener("keydown", onGlobalKeydown);
 });
 
 onUnmounted(() => {
-    window.removeEventListener('keydown', onGlobalKeydown);
+    window.removeEventListener("keydown", onGlobalKeydown);
 });
 </script>
 <template>
     <div class="flex flex-col min-h-screen w-full overflow-x-hidden bg-bg-page bg-tech-grid">
-        <a href="#main"
-            class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
+        <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
             跳转到主要内容
         </a>
         <Navbar />
@@ -54,33 +55,23 @@ onUnmounted(() => {
 <style>
 /* 动画关键帧 —— Tailwind animate-* 无法覆盖的自定义动画 */
 @keyframes gradientShift {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
 }
 
 @keyframes glow {
-    from {
-        text-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
-    }
-    to {
-        text-shadow: 0 0 20px rgba(59, 130, 246, 0.7);
-    }
+    from { text-shadow: 0 0 8px rgba(59, 130, 246, 0.3); }
+    to { text-shadow: 0 0 20px rgba(59, 130, 246, 0.7); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes float {
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-10px);
-    }
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
 }
 </style>

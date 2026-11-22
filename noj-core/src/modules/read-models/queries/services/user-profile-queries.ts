@@ -3,60 +3,60 @@ import { and, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import {
-    communityPosts,
-    evaluationAttempts,
-    problems,
-    submissions,
-    users,
+  communityPosts,
+  evaluationAttempts,
+  problems,
+  submissions,
+  users,
 } from "../../../../shared/db/schema.ts";
 import { endedWindowCondition } from "../../../contests/contracts/cross-module/services_contest-window.ts";
 import { unendedPublicContestForProblem } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import type {
-    ProfileCommunityStatsRow,
-    ProfileCreatedProblemRow,
-    ProfileCreatedProblemView,
-    ProfileRecentSubmissionRow,
-    ProfileSolutionRow,
-    ProfileSolvedProblemRow,
-    ProfileStatsRow,
-    ProfileUserRow,
+  ProfileCommunityStatsRow,
+  ProfileCreatedProblemRow,
+  ProfileCreatedProblemView,
+  ProfileRecentSubmissionRow,
+  ProfileSolutionRow,
+  ProfileSolvedProblemRow,
+  ProfileStatsRow,
+  ProfileUserRow,
 } from "./user-profile-types.ts";
 import {
-    PUBLIC_DEFAULT_QUERY_SCOPE,
-    submissionQueryVisibility,
+  PUBLIC_DEFAULT_QUERY_SCOPE,
+  submissionQueryVisibility,
 } from "../../contracts/cross-module/queries_services_domain-query.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { domainProblemBindingAvailableWhere } from "../../../problems/contracts/cross-module/services_workspace_binding-availability.ts";
 
 type Db = ReturnType<typeof getDb>;
 function publicSubmissionCondition() {
-    return submissionQueryVisibility(PUBLIC_DEFAULT_QUERY_SCOPE, {
-        domainId: submissions.domain_id,
-        bindingId: submissions.domain_problem_binding_id,
-        contestId: submissions.contest_id,
-    });
+  return submissionQueryVisibility(PUBLIC_DEFAULT_QUERY_SCOPE, {
+    domainId: submissions.domain_id,
+    bindingId: submissions.domain_problem_binding_id,
+    contestId: submissions.contest_id,
+  });
 }
 function publicCommunityCondition() {
-    return sql`coalesce(${communityPosts.domain_id},${DEFAULT_DOMAIN_ID})=${DEFAULT_DOMAIN_ID}
+  return sql`coalesce(${communityPosts.domain_id},${DEFAULT_DOMAIN_ID})=${DEFAULT_DOMAIN_ID}
     AND (${communityPosts.domain_id} IS NULL OR EXISTS (SELECT 1 FROM domains profile_domain
       WHERE profile_domain.id=${DEFAULT_DOMAIN_ID} AND profile_domain.status<>'suspended'
         AND profile_domain.configuration->>'access'='public'))
     AND (${communityPosts.problem_id} IS NULL OR ${communityPosts.domain_id} IS NULL
       OR ${
-        domainProblemBindingAvailableWhere(
-            communityPosts.domain_problem_binding_id,
-            sql`${DEFAULT_DOMAIN_ID}`,
-            { member: false },
-        )
-    })`;
+    domainProblemBindingAvailableWhere(
+      communityPosts.domain_problem_binding_id,
+      sql`${DEFAULT_DOMAIN_ID}`,
+      { member: false },
+    )
+  })`;
 }
 
 /** 个人主页查看者上下文（用于公开赛题目隐藏判定，审计 VULN-07）。 */
 export interface ProfileViewerContext {
-    /** 查看者 id；匿名/缺省视为非特权 */
-    viewerId?: string;
-    /** 查看者是否管理员 */
-    isAdmin?: boolean;
+  /** 查看者 id；匿名/缺省视为非特权 */
+  viewerId?: string;
+  /** 查看者是否管理员 */
+  isAdmin?: boolean;
 }
 
 /**
@@ -67,15 +67,15 @@ export interface ProfileViewerContext {
  * 判据复用 contest 域单一真相源；`viewer` 缺省按非特权处理（fail-closed）。
  */
 function contestSecrecyCondition(
-    viewer: ProfileViewerContext,
-    profileUserId: string,
+  viewer: ProfileViewerContext,
+  profileUserId: string,
 ): SQL | null {
-    if (viewer.isAdmin) return null;
-    if (viewer.viewerId !== undefined && viewer.viewerId === profileUserId) {
-        return null;
-    }
-    // 赛中数据隔离（决策 3 / DL-02）：非特权查看者彻底排除未结束竞赛提交与受保密公开赛收编的题目
-    return sql`(
+  if (viewer.isAdmin) return null;
+  if (viewer.viewerId !== undefined && viewer.viewerId === profileUserId) {
+    return null;
+  }
+  // 赛中数据隔离（决策 3 / DL-02）：非特权查看者彻底排除未结束竞赛提交与受保密公开赛收编的题目
+  return sql`(
     (
       ${submissions.contest_id} IS NULL OR EXISTS (
         SELECT 1 FROM contests c_sec
@@ -86,11 +86,11 @@ function contestSecrecyCondition(
     )
     AND (
       NOT (${
-        unendedPublicContestForProblem(
-            submissions.problem_id,
-            sql`${DEFAULT_DOMAIN_ID}`,
-        )
-    })
+    unendedPublicContestForProblem(
+      submissions.problem_id,
+      sql`${DEFAULT_DOMAIN_ID}`,
+    )
+  })
       OR ${problems.owner_id} = ${viewer.viewerId ?? null}
     )
   )`;
@@ -98,59 +98,59 @@ function contestSecrecyCondition(
 
 /** 1. 验证用户存在（同时取基础信息）。 */
 export function queryProfileUser(
-    db: Db,
-    userId: string,
+  db: Db,
+  userId: string,
 ): Promise<ProfileUserRow | undefined> {
-    return db.select({
-        id: users.id,
-        username: users.username,
-        bio: users.bio,
-        avatar_url: users.avatar_url,
-        created_at: users.created_at,
-    })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1)
-        .then((rows) => rows[0]);
+  return db.select({
+    id: users.id,
+    username: users.username,
+    bio: users.bio,
+    avatar_url: users.avatar_url,
+    created_at: users.created_at,
+  })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1)
+    .then((rows) => rows[0]);
 }
 
 /** 2. 统计查询：总提交数、通过数、解题数。 */
 export function queryProfileStats(
-    db: Db,
-    userId: string,
-    viewer: ProfileViewerContext = {},
+  db: Db,
+  userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileStatsRow | undefined> {
-    // 计数必须与列表（{@link querySolvedProblems} / {@link queryRecentSubmissions}）
-    // **同口径**（面 1.4 审计 F-04a）：否则"solved_count=5 而列表只有 4 行"这一差额本身
-    // 就泄露"存在一道被未结束公开赛收编的题目且该用户已通过"，比直接显示该行更隐蔽。
-    // 特权查看者（管理员 / 主页本人 / 题目 owner）不受过滤——与列表行为一致。
-    const secrecy = contestSecrecyCondition(viewer, userId);
-    return db.select({
-        total_submissions: sql<number>`count(*)::int`,
-        valid_submissions: sql<
-            number
-        >`count(*) FILTER (WHERE ${submissions.is_valid})::int`,
-        // 通过口径：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
-        accepted: sql<
-            number
-        >`count(*) filter (where ${submissions.is_accepted})::int`,
-        solved_count: sql<
-            number
-        >`count(distinct ${submissions.problem_id}) filter (where ${submissions.is_accepted})::int`,
-    })
-        .from(unifiedSubmissionSources)
-        // 关联 problems 以复用 `contestSecrecyCondition`（其题目 owner 分支需要该列）；
-        // problem_id 为 NOT NULL 外键，inner join 不会丢行。
-        .innerJoin(problems, eq(submissions.problem_id, problems.id))
-        .where(
-            and(
-                publicSubmissionCondition(),
-                secrecy
-                    ? and(eq(submissions.user_id, userId), secrecy)
-                    : eq(submissions.user_id, userId),
-            ),
-        )
-        .then((rows) => rows[0]);
+  // 计数必须与列表（{@link querySolvedProblems} / {@link queryRecentSubmissions}）
+  // **同口径**（面 1.4 审计 F-04a）：否则"solved_count=5 而列表只有 4 行"这一差额本身
+  // 就泄露"存在一道被未结束公开赛收编的题目且该用户已通过"，比直接显示该行更隐蔽。
+  // 特权查看者（管理员 / 主页本人 / 题目 owner）不受过滤——与列表行为一致。
+  const secrecy = contestSecrecyCondition(viewer, userId);
+  return db.select({
+    total_submissions: sql<number>`count(*)::int`,
+    valid_submissions: sql<
+      number
+    >`count(*) FILTER (WHERE ${submissions.is_valid})::int`,
+    // 通过口径：读有效成绩投影（版本化后由唯一投影服务维护；存量由 0103 回填）
+    accepted: sql<
+      number
+    >`count(*) filter (where ${submissions.is_accepted})::int`,
+    solved_count: sql<
+      number
+    >`count(distinct ${submissions.problem_id}) filter (where ${submissions.is_accepted})::int`,
+  })
+    .from(unifiedSubmissionSources)
+    // 关联 problems 以复用 `contestSecrecyCondition`（其题目 owner 分支需要该列）；
+    // problem_id 为 NOT NULL 外键，inner join 不会丢行。
+    .innerJoin(problems, eq(submissions.problem_id, problems.id))
+    .where(
+      and(
+        publicSubmissionCondition(),
+        secrecy
+          ? and(eq(submissions.user_id, userId), secrecy)
+          : eq(submissions.user_id, userId),
+      ),
+    )
+    .then((rows) => rows[0]);
 }
 
 /**
@@ -162,45 +162,45 @@ export function queryProfileStats(
  * 这类行；`viewer` 缺省视为非特权（fail-closed）。
  */
 export function querySolvedProblems(
-    db: Db,
-    userId: string,
-    viewer: ProfileViewerContext = {},
+  db: Db,
+  userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileSolvedProblemRow[]> {
-    const secrecy = contestSecrecyCondition(viewer, userId);
-    return db.select({
-        problem_id: sql<string>`${submissions.problem_id}`,
-        problem_title: problems.title,
-        difficulty: problems.difficulty,
-        accepted_at: sql<string>`min(${submissions.created_at})`,
-        // 特权查看者（管理员 / 主页本人 / 题目 owner）才可能看到这类行，
-        // 标记出来供前端做"已被公开赛收编"的视觉提示（审计 VULN-07）
-        is_contest_hidden: sql<boolean>`${
-            unendedPublicContestForProblem(
-                submissions.problem_id,
-                sql`${DEFAULT_DOMAIN_ID}`,
-            )
-        }`
-            .as("is_contest_hidden"),
-    })
-        .from(unifiedSubmissionSources)
-        .innerJoin(problems, eq(submissions.problem_id, problems.id))
-        .where(
-            and(
-                publicSubmissionCondition(),
-                secrecy
-                    ? and(
-                        eq(submissions.user_id, userId),
-                        eq(submissions.is_accepted, true),
-                        secrecy,
-                    )
-                    : and(
-                        eq(submissions.user_id, userId),
-                        eq(submissions.is_accepted, true),
-                    ),
-            ),
-        )
-        .groupBy(submissions.problem_id, problems.title, problems.difficulty)
-        .orderBy(sql`min(${submissions.created_at}) DESC`);
+  const secrecy = contestSecrecyCondition(viewer, userId);
+  return db.select({
+    problem_id: sql<string>`${submissions.problem_id}`,
+    problem_title: problems.title,
+    difficulty: problems.difficulty,
+    accepted_at: sql<string>`min(${submissions.created_at})`,
+    // 特权查看者（管理员 / 主页本人 / 题目 owner）才可能看到这类行，
+    // 标记出来供前端做"已被公开赛收编"的视觉提示（审计 VULN-07）
+    is_contest_hidden: sql<boolean>`${
+      unendedPublicContestForProblem(
+        submissions.problem_id,
+        sql`${DEFAULT_DOMAIN_ID}`,
+      )
+    }`
+      .as("is_contest_hidden"),
+  })
+    .from(unifiedSubmissionSources)
+    .innerJoin(problems, eq(submissions.problem_id, problems.id))
+    .where(
+      and(
+        publicSubmissionCondition(),
+        secrecy
+          ? and(
+            eq(submissions.user_id, userId),
+            eq(submissions.is_accepted, true),
+            secrecy,
+          )
+          : and(
+            eq(submissions.user_id, userId),
+            eq(submissions.is_accepted, true),
+          ),
+      ),
+    )
+    .groupBy(submissions.problem_id, problems.title, problems.difficulty)
+    .orderBy(sql`min(${submissions.created_at}) DESC`);
 }
 
 /**
@@ -210,42 +210,42 @@ export function querySolvedProblems(
  * （否则"最近提交"列表会实时暴露赛题标题与评测状态）。
  */
 export function queryRecentSubmissions(
-    db: Db,
-    userId: string,
-    viewer: ProfileViewerContext = {},
+  db: Db,
+  userId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileRecentSubmissionRow[]> {
-    const secrecy = contestSecrecyCondition(viewer, userId);
-    return db.select({
-        id: sql<string>`${submissions.id}`,
-        problem_id: sql<string>`${submissions.problem_id}`,
-        problem_title: problems.title,
-        language: sql<string>`${submissions.language}`,
-        status: sql<string>`${submissions.status}`,
-        // 最近一次运行的判定：优先最近终态尝试，存量行回退到有效成绩指针
-        // （两套成绩事实并存期结束前，这里不再读 evaluation_results）
-        result_status: evaluationAttempts.result_status,
-        result_score: evaluationAttempts.score,
-        created_at: sql<string>`${submissions.created_at}`,
-    })
-        .from(unifiedSubmissionSources)
-        .leftJoin(problems, eq(submissions.problem_id, problems.id))
-        .leftJoin(
-            evaluationAttempts,
-            eq(
-                evaluationAttempts.id,
-                sql`coalesce(${submissions.latest_attempt_id}, ${submissions.effective_attempt_id})`,
-            ),
-        )
-        .where(
-            and(
-                publicSubmissionCondition(),
-                secrecy
-                    ? and(eq(submissions.user_id, userId), secrecy)
-                    : eq(submissions.user_id, userId),
-            ),
-        )
-        .orderBy(sql`${submissions.created_at} DESC`)
-        .limit(10);
+  const secrecy = contestSecrecyCondition(viewer, userId);
+  return db.select({
+    id: sql<string>`${submissions.id}`,
+    problem_id: sql<string>`${submissions.problem_id}`,
+    problem_title: problems.title,
+    language: sql<string>`${submissions.language}`,
+    status: sql<string>`${submissions.status}`,
+    // 最近一次运行的判定：优先最近终态尝试，存量行回退到有效成绩指针
+    // （两套成绩事实并存期结束前，这里不再读 evaluation_results）
+    result_status: evaluationAttempts.result_status,
+    result_score: evaluationAttempts.score,
+    created_at: sql<string>`${submissions.created_at}`,
+  })
+    .from(unifiedSubmissionSources)
+    .leftJoin(problems, eq(submissions.problem_id, problems.id))
+    .leftJoin(
+      evaluationAttempts,
+      eq(
+        evaluationAttempts.id,
+        sql`coalesce(${submissions.latest_attempt_id}, ${submissions.effective_attempt_id})`,
+      ),
+    )
+    .where(
+      and(
+        publicSubmissionCondition(),
+        secrecy
+          ? and(eq(submissions.user_id, userId), secrecy)
+          : eq(submissions.user_id, userId),
+      ),
+    )
+    .orderBy(sql`${submissions.created_at} DESC`)
+    .limit(10);
 }
 
 /**
@@ -260,28 +260,28 @@ export function queryRecentSubmissions(
  * @param moderator 审核员视图（免赛期门控）。
  */
 export function queryProfileCommunityStats(
-    db: Db,
-    userId: string,
-    moderator = false,
+  db: Db,
+  userId: string,
+  moderator = false,
 ): Promise<ProfileCommunityStatsRow | undefined> {
-    // 门控谓词只作用于题解计数；动态计数不受竞赛影响
-    // 口径必须是 **unended**（含 pending 赛前筹备期），不能用 running：
-    // 个人主页匿名可读，用 running 会让"已被未开始公开赛收编"的题解在赛前就可见
-    //（面 1.4 审计 F-01）。
-    const solutionGate = and(
-        publicCommunityCondition(),
-        moderator ? sql`true` : sql`NOT ${
-            unendedPublicContestForProblem(
-                communityPosts.problem_id,
-                sql`${DEFAULT_DOMAIN_ID}`,
-            )
-        }`,
-    )!;
-    return db.select({
-        solution_count: sql<
-            number
-        >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
-    }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
+  // 门控谓词只作用于题解计数；动态计数不受竞赛影响
+  // 口径必须是 **unended**（含 pending 赛前筹备期），不能用 running：
+  // 个人主页匿名可读，用 running 会让"已被未开始公开赛收编"的题解在赛前就可见
+  //（面 1.4 审计 F-01）。
+  const solutionGate = and(
+    publicCommunityCondition(),
+    moderator ? sql`true` : sql`NOT ${
+      unendedPublicContestForProblem(
+        communityPosts.problem_id,
+        sql`${DEFAULT_DOMAIN_ID}`,
+      )
+    }`,
+  )!;
+  return db.select({
+    solution_count: sql<
+      number
+    >`(select count(*) from community_posts where author_id = ${userId} and type = 'solution' and status = 'published' and ${solutionGate})::int`,
+  }).from(users).where(eq(users.id, userId)).limit(1).then((rows) => rows[0]);
 }
 
 /**
@@ -296,38 +296,38 @@ export function queryProfileCommunityStats(
  * @param moderator 审核员视图（免赛期门控）。
  */
 export function queryProfileSolutions(
-    db: Db,
-    userId: string,
-    moderator = false,
+  db: Db,
+  userId: string,
+  moderator = false,
 ): Promise<ProfileSolutionRow[]> {
-    const conditions = [
-        eq(communityPosts.author_id, userId),
-        eq(communityPosts.type, "solution"),
-        eq(communityPosts.status, "published"),
-        publicCommunityCondition(),
-    ];
-    // 直接用 contest 域的共享谓词而非 community 域的 notGatedSolution()：
-    // 本查询已固定 type='solution'，无需重复该判断，同时避免 identity → community 反向依赖
-    // 口径与 `queryProfileCommunityStats` 一致：**unended**（含 pending），
-    // 否则"计数 3、列表 2 条"本身就是侧信道，且赛前窗口会漏（面 1.4 审计 F-01）。
-    if (!moderator) {
-        conditions.push(
-            sql`NOT ${
-                unendedPublicContestForProblem(
-                    communityPosts.problem_id,
-                    sql`${DEFAULT_DOMAIN_ID}`,
-                )
-            }`,
-        );
-    }
-    return db.select({
-        id: communityPosts.id,
-        title: communityPosts.title,
-        created_at: communityPosts.created_at,
-    })
-        .from(communityPosts).where(
-            and(...conditions),
-        ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
+  const conditions = [
+    eq(communityPosts.author_id, userId),
+    eq(communityPosts.type, "solution"),
+    eq(communityPosts.status, "published"),
+    publicCommunityCondition(),
+  ];
+  // 直接用 contest 域的共享谓词而非 community 域的 notGatedSolution()：
+  // 本查询已固定 type='solution'，无需重复该判断，同时避免 identity → community 反向依赖
+  // 口径与 `queryProfileCommunityStats` 一致：**unended**（含 pending），
+  // 否则"计数 3、列表 2 条"本身就是侧信道，且赛前窗口会漏（面 1.4 审计 F-01）。
+  if (!moderator) {
+    conditions.push(
+      sql`NOT ${
+        unendedPublicContestForProblem(
+          communityPosts.problem_id,
+          sql`${DEFAULT_DOMAIN_ID}`,
+        )
+      }`,
+    );
+  }
+  return db.select({
+    id: communityPosts.id,
+    title: communityPosts.title,
+    created_at: communityPosts.created_at,
+  })
+    .from(communityPosts).where(
+      and(...conditions),
+    ).orderBy(sql`${communityPosts.created_at} DESC`).limit(10);
 }
 
 /**
@@ -346,19 +346,19 @@ export function queryProfileSolutions(
  * （不再假设所有题目都在默认域）。
  */
 export function queryProfileCreatedProblems(
-    db: Db,
-    profileUserId: string,
-    viewer: ProfileViewerContext = {},
+  db: Db,
+  profileUserId: string,
+  viewer: ProfileViewerContext = {},
 ): Promise<ProfileCreatedProblemView[]> {
-    const viewerId = viewer.viewerId ?? null;
-    const privileged = viewer.isAdmin === true ||
-        (viewerId !== null && viewerId === profileUserId);
-    const secrecy = privileged
-        ? sql`true`
-        : sql`NOT (${
-            unendedPublicContestForProblem(sql`p.id`, sql`${DEFAULT_DOMAIN_ID}`)
-        })`;
-    return db.execute(sql`
+  const viewerId = viewer.viewerId ?? null;
+  const privileged = viewer.isAdmin === true ||
+    (viewerId !== null && viewerId === profileUserId);
+  const secrecy = privileged
+    ? sql`true`
+    : sql`NOT (${
+      unendedPublicContestForProblem(sql`p.id`, sql`${DEFAULT_DOMAIN_ID}`)
+    })`;
+  return db.execute(sql`
     SELECT DISTINCT ON (p.id)
       p.id            AS id,
       p.title         AS title,
@@ -393,14 +393,14 @@ export function queryProfileCreatedProblems(
     ORDER BY p.id, p.created_at DESC
     LIMIT 50
   `).then((rows: unknown) =>
-            unwrapRows<ProfileCreatedProblemRow>(rows as never)
-                .sort((a, b) => b.created_at.localeCompare(a.created_at))
-                .map((row) => ({
-                    id: row.id,
-                    title: row.title,
-                    difficulty: row.difficulty,
-                    created_at: row.created_at,
-                    display_id: `${row.domain_slug}:${row.number}`,
-                }))
-        );
+    unwrapRows<ProfileCreatedProblemRow>(rows as never)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        difficulty: row.difficulty,
+        created_at: row.created_at,
+        display_id: `${row.domain_slug}:${row.number}`,
+      }))
+  );
 }

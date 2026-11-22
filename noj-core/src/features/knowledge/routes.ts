@@ -28,83 +28,83 @@
 import { Hono } from "hono";
 import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
 import {
-    authMiddleware,
-    loadWorkspace,
-    optionalAuthMiddleware,
+  authMiddleware,
+  loadWorkspace,
+  optionalAuthMiddleware,
 } from "../../modules/access/index.ts";
 import { isUserAdmin } from "../../modules/access/contracts/cross-module/identity_services_security_permissions.ts";
 import {
-    assertClassroomCoach,
-    loadClassroom,
+  assertClassroomCoach,
+  loadClassroom,
 } from "../../modules/education/index.ts";
 import {
-    enforceRateLimit,
-    getClientIp,
-    getSetting,
+  enforceRateLimit,
+  getClientIp,
+  getSetting,
 } from "../../modules/platform/index.ts";
 import {
-    AppError,
-    BadRequestError,
-    ForbiddenError,
-    NotFoundError,
-    UnauthorizedError,
+  AppError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
 } from "../../shared/base/errors.ts";
 import type { AuthEnv } from "../../shared/http/hono-env.ts";
 import { parsePagination } from "../../shared/http/pagination.ts";
 import { parseJsonBody } from "../../shared/http/request.ts";
 import { readKnowledgeGraph, readKnowledgeNode } from "./graph.ts";
 import {
-    loadNodeProblemCounts,
-    readNextForProblem,
-    readNodeLadder,
-    readProblemDifficulty,
-    resolveAccessibleDomain,
+  loadNodeProblemCounts,
+  readNextForProblem,
+  readNodeLadder,
+  readProblemDifficulty,
+  resolveAccessibleDomain,
 } from "./difficulty.ts";
 import {
-    type ClassMasteryView,
-    PICK_DEFAULT_COUNT,
-    PICK_MAX_COUNT,
-    readClassMastery,
-    readKnowledgePick,
+  type ClassMasteryView,
+  PICK_DEFAULT_COUNT,
+  PICK_MAX_COUNT,
+  readClassMastery,
+  readKnowledgePick,
 } from "./coach.ts";
 import { setPassRatioOverride } from "./pass-ratio.ts";
 import {
-    type CoverageView,
-    diagnoseNode,
-    readCoverage,
-    readMyMastery,
-    readMyRecommendations,
-    RECOMMENDATIONS_MAX_LIMIT,
+  type CoverageView,
+  diagnoseNode,
+  readCoverage,
+  readMyMastery,
+  readMyRecommendations,
+  RECOMMENDATIONS_MAX_LIMIT,
 } from "./mastery.ts";
 import {
-    backfillKnowledgeTags,
-    estimateBackfill,
-    readTagUsage,
-    requireTagAdmin,
+  backfillKnowledgeTags,
+  estimateBackfill,
+  readTagUsage,
+  requireTagAdmin,
 } from "./tagging.ts";
 import {
-    listPendingMappings,
-    type MappingDecision,
-    parseProblemId,
-    readProblemKnowledge,
-    reviewMapping,
-    setProblemKnowledgeManually,
+  listPendingMappings,
+  type MappingDecision,
+  parseProblemId,
+  readProblemKnowledge,
+  reviewMapping,
+  setProblemKnowledgeManually,
 } from "./mappings.ts";
 
 export const knowledgeRouter = new Hono<AuthEnv>();
 
 /** 关闭提示：与 NotFoundError 同状态码，但使用专用错误码便于前端区分。 */
 class KnowledgeDisabledError extends AppError {
-    constructor() {
-        super("知识图谱功能已关闭", 404, "KNOWLEDGE_DISABLED");
-        this.name = "KnowledgeDisabledError";
-    }
+  constructor() {
+    super("知识图谱功能已关闭", 404, "KNOWLEDGE_DISABLED");
+    this.name = "KnowledgeDisabledError";
+  }
 }
 
 function assertEnabled(): void {
-    if (getSetting("knowledge_enabled")?.value !== true) {
-        throw new KnowledgeDisabledError();
-    }
+  if (getSetting("knowledge_enabled")?.value !== true) {
+    throw new KnowledgeDisabledError();
+  }
 }
 
 /**
@@ -112,38 +112,38 @@ function assertEnabled(): void {
  * （该域当前用户可访问的已发布题目数，供「只显示有题的知识点」）。
  */
 knowledgeRouter.get("/knowledge/graph", optionalAuthMiddleware, async (c) => {
-    assertEnabled();
-    const graph = await readKnowledgeGraph();
-    const slug = c.req.query("domain");
-    if (!slug) return c.json({ data: graph });
-    const userId = c.get("userId") ?? null;
-    const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
-    const domain = await resolveAccessibleDomain(slug, viewer);
-    if (!domain) throw new NotFoundError("工作空间不存在");
-    const counts = await loadNodeProblemCounts(
-        graph.nodes.map((node) => node.id),
-        domain.id,
-        viewer,
-        { is_admin: await isViewerAdmin(userId) },
-    );
-    return c.json({
-        data: {
-            ...graph,
-            nodes: graph.nodes.map((node) => ({
-                ...node,
-                problem_count: counts.get(node.id) ?? 0,
-            })),
-        },
-    });
+  assertEnabled();
+  const graph = await readKnowledgeGraph();
+  const slug = c.req.query("domain");
+  if (!slug) return c.json({ data: graph });
+  const userId = c.get("userId") ?? null;
+  const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+  const domain = await resolveAccessibleDomain(slug, viewer);
+  if (!domain) throw new NotFoundError("工作空间不存在");
+  const counts = await loadNodeProblemCounts(
+    graph.nodes.map((node) => node.id),
+    domain.id,
+    viewer,
+    { is_admin: await isViewerAdmin(userId) },
+  );
+  return c.json({
+    data: {
+      ...graph,
+      nodes: graph.nodes.map((node) => ({
+        ...node,
+        problem_count: counts.get(node.id) ?? 0,
+      })),
+    },
+  });
 });
 
 knowledgeRouter.get(
-    "/knowledge/nodes/:id",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        return c.json({ data: await readKnowledgeNode(c.req.param("id")!) });
-    },
+  "/knowledge/nodes/:id",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    return c.json({ data: await readKnowledgeNode(c.req.param("id")!) });
+  },
 );
 
 /**
@@ -152,37 +152,37 @@ knowledgeRouter.get(
  * 取第一题；域不可访问 → 404。
  */
 knowledgeRouter.get(
-    "/knowledge/nodes/:id/ladder",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        const slug = c.req.query("domain");
-        if (!slug) throw new BadRequestError("缺少 domain 参数");
-        const userId = c.get("userId") ?? null;
-        const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
-        const ladder = await readNodeLadder(
-            c.req.param("id")!,
-            slug,
-            viewer,
-            { is_admin: await isViewerAdmin(userId) },
-        );
-        if (!ladder) throw new NotFoundError("知识点或工作空间不存在");
-        return c.json({ data: ladder });
-    },
+  "/knowledge/nodes/:id/ladder",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const slug = c.req.query("domain");
+    if (!slug) throw new BadRequestError("缺少 domain 参数");
+    const userId = c.get("userId") ?? null;
+    const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+    const ladder = await readNodeLadder(
+      c.req.param("id")!,
+      slug,
+      viewer,
+      { is_admin: await isViewerAdmin(userId) },
+    );
+    if (!ladder) throw new NotFoundError("知识点或工作空间不存在");
+    return c.json({ data: ladder });
+  },
 );
 
 /** 题目页「下一题」：该题主知识点阶梯中难度更高、用户未达标的第一题。 */
 knowledgeRouter.get(
-    "/knowledge/problems/:problemId/next",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        const problemId = parseProblemId(c.req.param("problemId"));
-        const userId = c.get("userId") ?? null;
-        const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
-        const next = await readNextForProblem(problemId, viewer);
-        return c.json({ data: next });
-    },
+  "/knowledge/problems/:problemId/next",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const problemId = parseProblemId(c.req.param("problemId"));
+    const userId = c.get("userId") ?? null;
+    const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+    const next = await readNextForProblem(problemId, viewer);
+    return c.json({ data: next });
+  },
 );
 
 /** 读接口的查看者：未登录时为 null。 */
@@ -191,134 +191,125 @@ knowledgeRouter.get(
  * 同一口径）。功能路由不经 admin 聚合中间件，这里显式断言。
  */
 async function requireInstanceAdmin(userId: string): Promise<void> {
-    if (!(await isUserAdmin(userId))) {
-        throw new ForbiddenError("需要管理员权限");
-    }
+  if (!(await isUserAdmin(userId))) {
+    throw new ForbiddenError("需要管理员权限");
+  }
 }
 
 function viewerOf(c: { get: (key: "userId") => string | undefined }) {
-    return { userId: c.get("userId") ?? null };
+  return { userId: c.get("userId") ?? null };
 }
 
 /** 查看者是否实例管理员（阶梯可达性口径用；未登录为 false）。 */
 async function isViewerAdmin(userId: string | null): Promise<boolean> {
-    if (!userId) return false;
-    try {
-        return await isUserAdmin(userId);
-    } catch {
-        return false;
-    }
+  if (!userId) return false;
+  try {
+    return await isUserAdmin(userId);
+  } catch {
+    return false;
+  }
 }
 
 knowledgeRouter.get(
-    "/knowledge/problems/:problemId",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        const problemId = parseProblemId(c.req.param("problemId"));
-        // 实例管理员可见保护期题目的挂载（与题目管理口径一致）。
-        const isAdminViewer = await isViewerAdmin(c.get("userId") ?? null);
-        const view = await readProblemKnowledge(problemId, {
-            ...viewerOf(c),
-            is_admin: isAdminViewer,
-        });
-        // 保护期内的题目对非编辑者与「不存在」不可区分。
-        if (!view) throw new NotFoundError("题目不存在");
-        return c.json({
-            data: {
-                ...view,
-                difficulty: await readProblemDifficulty(problemId),
-            },
-        });
-    },
+  "/knowledge/problems/:problemId",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const problemId = parseProblemId(c.req.param("problemId"));
+    // 实例管理员可见保护期题目的挂载（与题目管理口径一致）。
+    const isAdminViewer = await isViewerAdmin(c.get("userId") ?? null);
+    const view = await readProblemKnowledge(problemId, {
+      ...viewerOf(c),
+      is_admin: isAdminViewer,
+    });
+    // 保护期内的题目对非编辑者与「不存在」不可区分。
+    if (!view) throw new NotFoundError("题目不存在");
+    return c.json({
+      data: {
+        ...view,
+        difficulty: await readProblemDifficulty(problemId),
+      },
+    });
+  },
 );
 
 knowledgeRouter.put(
-    "/knowledge/problems/:problemId",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        const problemId = parseProblemId(c.req.param("problemId"));
-        // 写路由限流：人工挂载是低频管理动作，按用户限流防止脚本刷写。
-        await enforceRateLimit(
-            `knowledge-mapping:user:${c.get("userId") as string}`,
-            { windowSec: 60, max: 30 },
-        );
-        const body = await parseJsonBody<
-            {
-                primary?: unknown;
-                secondary?: unknown;
-                pass_ratio_override?: unknown;
-            }
-        >(
-            c,
-        );
-        const actor = userActorFromAuthenticatedId(c.get("userId")!);
-        // 出题人按题覆盖及格线：与挂载分开校验/落库，缺省不改动。
-        if ("pass_ratio_override" in body) {
-            await setPassRatioOverride(
-                actor,
-                problemId,
-                body.pass_ratio_override,
-                {
-                    ipAddress: getClientIp(c),
-                },
-            );
-        }
-        const view = await setProblemKnowledgeManually(
-            actor,
-            problemId,
-            body,
-            { ipAddress: getClientIp(c) },
-        );
-        return c.json({
-            data: {
-                ...view,
-                difficulty: await readProblemDifficulty(problemId),
-            },
-        });
-    },
+  "/knowledge/problems/:problemId",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const problemId = parseProblemId(c.req.param("problemId"));
+    // 写路由限流：人工挂载是低频管理动作，按用户限流防止脚本刷写。
+    await enforceRateLimit(
+      `knowledge-mapping:user:${c.get("userId") as string}`,
+      { windowSec: 60, max: 30 },
+    );
+    const body = await parseJsonBody<
+      { primary?: unknown; secondary?: unknown; pass_ratio_override?: unknown }
+    >(
+      c,
+    );
+    const actor = userActorFromAuthenticatedId(c.get("userId")!);
+    // 出题人按题覆盖及格线：与挂载分开校验/落库，缺省不改动。
+    if ("pass_ratio_override" in body) {
+      await setPassRatioOverride(actor, problemId, body.pass_ratio_override, {
+        ipAddress: getClientIp(c),
+      });
+    }
+    const view = await setProblemKnowledgeManually(
+      actor,
+      problemId,
+      body,
+      { ipAddress: getClientIp(c) },
+    );
+    return c.json({
+      data: {
+        ...view,
+        difficulty: await readProblemDifficulty(problemId),
+      },
+    });
+  },
 );
 
 /** 审核队列（实例管理员）。 */
 knowledgeRouter.get(
-    "/admin/knowledge/reviews",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        await requireInstanceAdmin(c.get("userId")!);
-        const { page, perPage } = parsePagination(c, { defaultPerPage: 20 });
-        return c.json({
-            data: await listPendingMappings({ page, limit: perPage }),
-        });
-    },
+  "/admin/knowledge/reviews",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    await requireInstanceAdmin(c.get("userId")!);
+    const { page, perPage } = parsePagination(c, { defaultPerPage: 20 });
+    return c.json({
+      data: await listPendingMappings({ page, limit: perPage }),
+    });
+  },
 );
 
 /** 审核决定：`{ decision: "accept" | "reject" }` 或 `{ primary, secondary }`。 */
 knowledgeRouter.post(
-    "/admin/knowledge/reviews/:problemId",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        await requireInstanceAdmin(c.get("userId")!);
-        await enforceRateLimit(
-            `knowledge-review:user:${c.get("userId") as string}`,
-            { windowSec: 60, max: 60 },
-        );
-        const problemId = parseProblemId(c.req.param("problemId"));
-        const body = await parseJsonBody<Record<string, unknown>>(c);
-        const decision: MappingDecision = body.decision === "accept" ||
-                body.decision === "reject"
-            ? body.decision as "accept" | "reject"
-            : (body as unknown as { primary: string; secondary: string[] });
-        const view = await reviewMapping(
-            userActorFromAuthenticatedId(c.get("userId")!),
-            problemId,
-            decision,
-            { ipAddress: getClientIp(c) },
-        );
-        return c.json({ data: view });
-    },
+  "/admin/knowledge/reviews/:problemId",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    await requireInstanceAdmin(c.get("userId")!);
+    await enforceRateLimit(
+      `knowledge-review:user:${c.get("userId") as string}`,
+      { windowSec: 60, max: 60 },
+    );
+    const problemId = parseProblemId(c.req.param("problemId"));
+    const body = await parseJsonBody<Record<string, unknown>>(c);
+    const decision: MappingDecision = body.decision === "accept" ||
+        body.decision === "reject"
+      ? body.decision as "accept" | "reject"
+      : (body as unknown as { primary: string; secondary: string[] });
+    const view = await reviewMapping(
+      userActorFromAuthenticatedId(c.get("userId")!),
+      problemId,
+      decision,
+      { ipAddress: getClientIp(c) },
+    );
+    return c.json({ data: view });
+  },
 );
 
 // ── AI 打标管理（实例管理员）────────────────────────────
@@ -326,24 +317,24 @@ knowledgeRouter.post(
 
 /** 本月用量：token、请求数、预算与剩余、开关与别名配置状态。 */
 knowledgeRouter.get(
-    "/admin/knowledge/tagging/usage",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        await requireTagAdmin(c.get("userId")!);
-        return c.json({ data: await readTagUsage() });
-    },
+  "/admin/knowledge/tagging/usage",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    await requireTagAdmin(c.get("userId")!);
+    return c.json({ data: await readTagUsage() });
+  },
 );
 
 /** 回填预估：待打标题目数、token 与费用估算。 */
 knowledgeRouter.get(
-    "/admin/knowledge/tagging/estimate",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        await requireTagAdmin(c.get("userId")!);
-        return c.json({ data: await estimateBackfill() });
-    },
+  "/admin/knowledge/tagging/estimate",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    await requireTagAdmin(c.get("userId")!);
+    return c.json({ data: await estimateBackfill() });
+  },
 );
 
 /**
@@ -351,25 +342,25 @@ knowledgeRouter.get(
  * 超过 10% → 409 要求重新预估。按题目去重投递，写审计。
  */
 knowledgeRouter.post(
-    "/admin/knowledge/tagging/backfill",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        const userId = c.get("userId")!;
-        await requireTagAdmin(userId);
-        await enforceRateLimit(`knowledge-backfill:user:${userId}`, {
-            windowSec: 60,
-            max: 3,
-        });
-        const body = await parseJsonBody<Record<string, unknown>>(c);
-        return c.json({
-            data: await backfillKnowledgeTags(
-                userActorFromAuthenticatedId(userId),
-                body,
-                { ipAddress: getClientIp(c) },
-            ),
-        });
-    },
+  "/admin/knowledge/tagging/backfill",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    await requireTagAdmin(userId);
+    await enforceRateLimit(`knowledge-backfill:user:${userId}`, {
+      windowSec: 60,
+      max: 3,
+    });
+    const body = await parseJsonBody<Record<string, unknown>>(c);
+    return c.json({
+      data: await backfillKnowledgeTags(
+        userActorFromAuthenticatedId(userId),
+        body,
+        { ipAddress: getClientIp(c) },
+      ),
+    });
+  },
 );
 
 // ── 掌握度、推荐与根因诊断（P3）──────────────────────────
@@ -377,49 +368,49 @@ knowledgeRouter.post(
 
 /** 读取 `?domain=<slug>` 并解析为当前用户可访问的域；缺省返回 null。 */
 async function resolveDomainQuery(
-    c: {
-        req: { query: (key: string) => string | undefined };
-        get: (k: "userId") => string | undefined;
-    },
+  c: {
+    req: { query: (key: string) => string | undefined };
+    get: (k: "userId") => string | undefined;
+  },
 ): Promise<{ id: string; slug: string } | null> {
-    const slug = c.req.query("domain");
-    if (!slug) return null;
-    const userId = c.get("userId") ?? null;
-    const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
-    const domain = await resolveAccessibleDomain(slug, viewer);
-    if (!domain) throw new NotFoundError("工作空间不存在");
-    return domain;
+  const slug = c.req.query("domain");
+  if (!slug) return null;
+  const userId = c.get("userId") ?? null;
+  const viewer = userId ? userActorFromAuthenticatedId(userId) : null;
+  const domain = await resolveAccessibleDomain(slug, viewer);
+  if (!domain) throw new NotFoundError("工作空间不存在");
+  return domain;
 }
 
 /** 我的掌握度（按域可选）：每节点状态与题量 + 领域汇总。 */
 knowledgeRouter.get(
-    "/knowledge/me/mastery",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        const userId = c.get("userId")!;
-        const domain = await resolveDomainQuery(c);
-        return c.json({ data: await readMyMastery(userId, domain) });
-    },
+  "/knowledge/me/mastery",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const domain = await resolveDomainQuery(c);
+    return c.json({ data: await readMyMastery(userId, domain) });
+  },
 );
 
 /** 我的推荐（前沿节点 + 根因提示）：`?domain=<slug>&limit=5`。 */
 knowledgeRouter.get(
-    "/knowledge/me/recommendations",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        const userId = c.get("userId")!;
-        const domain = await resolveDomainQuery(c);
-        if (!domain) throw new BadRequestError("缺少 domain 参数");
-        const rawLimit = Number(c.req.query("limit") ?? "5");
-        const limit = Number.isInteger(rawLimit) && rawLimit > 0
-            ? Math.min(RECOMMENDATIONS_MAX_LIMIT, rawLimit)
-            : 5;
-        return c.json({
-            data: await readMyRecommendations(userId, domain, limit),
-        });
-    },
+  "/knowledge/me/recommendations",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const domain = await resolveDomainQuery(c);
+    if (!domain) throw new BadRequestError("缺少 domain 参数");
+    const rawLimit = Number(c.req.query("limit") ?? "5");
+    const limit = Number.isInteger(rawLimit) && rawLimit > 0
+      ? Math.min(RECOMMENDATIONS_MAX_LIMIT, rawLimit)
+      : 5;
+    return c.json({
+      data: await readMyRecommendations(userId, domain, limit),
+    });
+  },
 );
 
 /**
@@ -428,27 +419,27 @@ knowledgeRouter.get(
  * 未登录返回空链（不暴露个人掌握情况）；节点不存在或已废弃 → 404。
  */
 knowledgeRouter.get(
-    "/knowledge/nodes/:id/diagnosis",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        const nodeId = c.req.param("id")!;
-        await resolveDomainQuery(c);
-        const userId = c.get("userId") ?? null;
-        if (!userId) {
-            return c.json({
-                data: {
-                    node_id: nodeId,
-                    state: "none",
-                    missing_prerequisites: [],
-                    chain: [],
-                },
-            });
-        }
-        const view = await diagnoseNode(userId, nodeId);
-        if (!view) throw new NotFoundError("知识点不存在");
-        return c.json({ data: view });
-    },
+  "/knowledge/nodes/:id/diagnosis",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const nodeId = c.req.param("id")!;
+    await resolveDomainQuery(c);
+    const userId = c.get("userId") ?? null;
+    if (!userId) {
+      return c.json({
+        data: {
+          node_id: nodeId,
+          state: "none",
+          missing_prerequisites: [],
+          chain: [],
+        },
+      });
+    }
+    const view = await diagnoseNode(userId, nodeId);
+    if (!view) throw new NotFoundError("知识点不存在");
+    return c.json({ data: view });
+  },
 );
 
 /**
@@ -458,35 +449,35 @@ knowledgeRouter.get(
  * 本域。`?domain=` 缺省时仅实例管理员可见全实例汇总。
  */
 knowledgeRouter.get(
-    "/admin/knowledge/coverage",
-    authMiddleware,
-    async (c) => {
-        assertEnabled();
-        const userId = c.get("userId")!;
-        const slug = c.req.query("domain");
-        let view: CoverageView;
-        if (slug) {
-            // 域管理员走 loadWorkspace 的能力判断（不是该域成员 → 访问异常即 403/404）。
-            const workspace = await loadWorkspace(
-                slug,
-                userActorFromAuthenticatedId(userId),
-            );
-            if (
-                !workspace.platformAdmin &&
-                !workspace.context.domainPermissions.has("problem:write_any")
-            ) {
-                throw new ForbiddenError("需要实例管理员或本域管理员权限");
-            }
-            view = await readCoverage({
-                id: workspace.domain.id,
-                slug,
-            });
-        } else {
-            await requireInstanceAdmin(userId);
-            view = await readCoverage(null);
-        }
-        return c.json({ data: view });
-    },
+  "/admin/knowledge/coverage",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const slug = c.req.query("domain");
+    let view: CoverageView;
+    if (slug) {
+      // 域管理员走 loadWorkspace 的能力判断（不是该域成员 → 访问异常即 403/404）。
+      const workspace = await loadWorkspace(
+        slug,
+        userActorFromAuthenticatedId(userId),
+      );
+      if (
+        !workspace.platformAdmin &&
+        !workspace.context.domainPermissions.has("problem:write_any")
+      ) {
+        throw new ForbiddenError("需要实例管理员或本域管理员权限");
+      }
+      view = await readCoverage({
+        id: workspace.domain.id,
+        slug,
+      });
+    } else {
+      await requireInstanceAdmin(userId);
+      view = await readCoverage(null);
+    }
+    return c.json({ data: view });
+  },
 );
 
 // ── 教练视角（P4）：班级掌握矩阵与按知识点挑题 ─────────────
@@ -497,72 +488,71 @@ knowledgeRouter.get(
 
 /** 解析班级访问：未登录 401；不可见 404；无教练身份 403（教学域判定）。 */
 async function loadCoachClassroom(c: {
-    req: { param: (key: string) => string | undefined };
-    get: (k: "userId") => string | undefined;
+  req: { param: (key: string) => string | undefined };
+  get: (k: "userId") => string | undefined;
 }): Promise<{
-    slug: string;
-    classroomId: string;
-    domain: { id: string; slug: string };
+  slug: string;
+  classroomId: string;
+  domain: { id: string; slug: string };
 }> {
-    const userId = c.get("userId");
-    if (!userId) throw new UnauthorizedError("未提供认证令牌");
-    const slug = c.req.param("slug")!;
-    const classroomId = c.req.param("id")!;
-    const access = await loadClassroom(slug, classroomId, userId, {
-        historicalStudent: true,
-    });
-    assertClassroomCoach(access);
-    return {
-        slug: access.domain.slug,
-        classroomId: access.classroom.id,
-        domain: { id: access.domain.id, slug: access.domain.slug },
-    };
+  const userId = c.get("userId");
+  if (!userId) throw new UnauthorizedError("未提供认证令牌");
+  const slug = c.req.param("slug")!;
+  const classroomId = c.req.param("id")!;
+  const access = await loadClassroom(slug, classroomId, userId, {
+    historicalStudent: true,
+  });
+  assertClassroomCoach(access);
+  return {
+    slug: access.domain.slug,
+    classroomId: access.classroom.id,
+    domain: { id: access.domain.id, slug: access.domain.slug },
+  };
 }
 
 /** 班级掌握矩阵（学生 × 知识点；cells 稀疏，counts 三项之和 = 学生数）。 */
 knowledgeRouter.get(
-    "/domains/:slug/classrooms/:id/knowledge-mastery",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        const target = await loadCoachClassroom(c);
-        const view: ClassMasteryView = await readClassMastery(
-            target.classroomId,
-            target.domain,
-        );
-        return c.json({ data: view });
-    },
+  "/domains/:slug/classrooms/:id/knowledge-mastery",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const target = await loadCoachClassroom(c);
+    const view: ClassMasteryView = await readClassMastery(
+      target.classroomId,
+      target.domain,
+    );
+    return c.json({ data: view });
+  },
 );
 
 /** 按知识点挑题：`?node=<id>&count=1-20`（默认 5），均匀抽样，不建作业。 */
 knowledgeRouter.get(
-    "/domains/:slug/classrooms/:id/knowledge-pick",
-    optionalAuthMiddleware,
-    async (c) => {
-        assertEnabled();
-        const nodeId = c.req.query("node");
-        if (!nodeId) throw new BadRequestError("缺少 node 参数");
-        const rawCount = c.req.query("count");
-        let count = PICK_DEFAULT_COUNT;
-        if (rawCount !== undefined) {
-            const parsed = Number(rawCount);
-            if (
-                !Number.isInteger(parsed) || parsed < 1 ||
-                parsed > PICK_MAX_COUNT
-            ) {
-                throw new BadRequestError(
-                    `count 必须在 1–${PICK_MAX_COUNT} 之间`,
-                );
-            }
-            count = parsed;
-        }
-        const target = await loadCoachClassroom(c);
-        const view = await readKnowledgePick({
-            nodeId,
-            count,
-            domain: target.domain,
-        });
-        if (!view) throw new NotFoundError("知识点不存在");
-        return c.json({ data: view });
-    },
+  "/domains/:slug/classrooms/:id/knowledge-pick",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const nodeId = c.req.query("node");
+    if (!nodeId) throw new BadRequestError("缺少 node 参数");
+    const rawCount = c.req.query("count");
+    let count = PICK_DEFAULT_COUNT;
+    if (rawCount !== undefined) {
+      const parsed = Number(rawCount);
+      if (
+        !Number.isInteger(parsed) || parsed < 1 || parsed > PICK_MAX_COUNT
+      ) {
+        throw new BadRequestError(
+          `count 必须在 1–${PICK_MAX_COUNT} 之间`,
+        );
+      }
+      count = parsed;
+    }
+    const target = await loadCoachClassroom(c);
+    const view = await readKnowledgePick({
+      nodeId,
+      count,
+      domain: target.domain,
+    });
+    if (!view) throw new NotFoundError("知识点不存在");
+    return c.json({ data: view });
+  },
 );

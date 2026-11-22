@@ -2,16 +2,16 @@
  * 用户注册请求体。
  */
 export interface RegisterInput {
-    username: string;
-    email: string;
-    password: string;
-    /**
-     * 是否已同意服务条款与隐私政策（PIPL 合规硬门槛）。
-     * 非 true 时注册端点返回 400。
-     */
-    accepted_legal?: boolean;
-    /** 可选的绑定邮箱域邀请；由注册事务原子消费。 */
-    invitation_token?: string;
+  username: string;
+  email: string;
+  password: string;
+  /**
+   * 是否已同意服务条款与隐私政策（PIPL 合规硬门槛）。
+   * 非 true 时注册端点返回 400。
+   */
+  accepted_legal?: boolean;
+  /** 可选的绑定邮箱域邀请；由注册事务原子消费。 */
+  invitation_token?: string;
 }
 
 /**
@@ -19,12 +19,12 @@ export interface RegisterInput {
  * login 可以是用户名或邮箱地址。
  */
 export interface LoginInput {
-    login: string;
-    password: string;
-    /** TFA 验证码或恢复码；用户已启用 TFA 时必填 */
-    code?: string;
-    /** 「记住我」：为 true 时签发长有效期 token（jwt_remember_expires_in） */
-    remember?: boolean;
+  login: string;
+  password: string;
+  /** TFA 验证码或恢复码；用户已启用 TFA 时必填 */
+  code?: string;
+  /** 「记住我」：为 true 时签发长有效期 token（jwt_remember_expires_in） */
+  remember?: boolean;
 }
 
 import type { PlatformRole } from "../../../../shared/access/roles.ts";
@@ -36,8 +36,8 @@ export type Role = PlatformRole;
  * 角色名称常量。
  */
 export const ROLES = {
-    ADMIN: "admin",
-    USER: "user",
+  ADMIN: "admin",
+  USER: "user",
 } as const;
 
 /**
@@ -51,48 +51,48 @@ export const ROLES = {
  * 从 user_bans 表计算（unbanned_at IS NULL）。null = 未封禁。
  */
 export interface UserResponse {
-    id: string;
-    username: string;
-    email: string;
-    /** 平台角色；只有 user / admin 两种取值。 */
-    role: PlatformRole;
-    is_admin: boolean;
-    /** 是否已设置本地密码；OAuth 新用户初始为 false */
-    has_local_password: boolean;
-    must_change_password: boolean;
-    /** 是否已完成邮箱验证。 */
-    email_verified: boolean;
-    active_ban: {
-        reason: string;
-        banned_until: string | null;
-        scope?: "platform" | "social" | null;
-        /** 活跃封禁记录的乐观锁版本（管理端解封时用于 If-Match） */
-        updated_at?: string | null;
-    } | null;
-    /** 用户头像存储 URL（`noj-storage://`），null = 未设置 */
-    avatar_url: string | null;
-    /** 是否已启用 TFA 二次验证 */
-    tfa_enabled: boolean;
-    created_at: string;
-    updated_at: string;
-    /** 仅管理端列表使用；非空表示账户已注销。 */
-    deleted_at?: string | null;
+  id: string;
+  username: string;
+  email: string;
+  /** 平台角色；只有 user / admin 两种取值。 */
+  role: PlatformRole;
+  is_admin: boolean;
+  /** 是否已设置本地密码；OAuth 新用户初始为 false */
+  has_local_password: boolean;
+  must_change_password: boolean;
+  /** 是否已完成邮箱验证。 */
+  email_verified: boolean;
+  active_ban: {
+    reason: string;
+    banned_until: string | null;
+    scope?: "platform" | "social" | null;
+    /** 活跃封禁记录的乐观锁版本（管理端解封时用于 If-Match） */
+    updated_at?: string | null;
+  } | null;
+  /** 用户头像存储 URL（`noj-storage://`），null = 未设置 */
+  avatar_url: string | null;
+  /** 是否已启用 TFA 二次验证 */
+  tfa_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+  /** 仅管理端列表使用；非空表示账户已注销。 */
+  deleted_at?: string | null;
 }
 
 /**
  * 修改密码请求体（issue #75）。
  */
 export interface ChangePasswordInput {
-    old_password: string;
-    new_password: string;
+  old_password: string;
+  new_password: string;
 }
 
 /**
  * 登录成功后返回的认证令牌响应。
  */
 export interface AuthTokenResponse {
-    user: UserResponse;
-    token: string;
+  user: UserResponse;
+  token: string;
 }
 
 /**
@@ -102,7 +102,7 @@ export interface AuthTokenResponse {
  * 防枚举说明：服务端不区分邮箱是否存在，统一返 200。
  */
 export interface ForgotPasswordInput {
-    email: string;
+  email: string;
 }
 
 /**
@@ -110,6 +110,6 @@ export interface ForgotPasswordInput {
  * token 来自邮件 URL 中的查询参数，new_password 是新密码。
  */
 export interface ResetPasswordInput {
-    token: string;
-    new_password: string;
+  token: string;
+  new_password: string;
 }

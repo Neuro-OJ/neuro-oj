@@ -18,18 +18,18 @@ import { ServiceUnavailableError } from "../base/errors.ts";
 
 /** 时间窗口（秒） */
 export interface RateLimitConfig {
-    windowSec: number;
-    /** 窗口内最大允许请求数 */
-    max: number;
+  windowSec: number;
+  /** 窗口内最大允许请求数 */
+  max: number;
 }
 
 export interface RateLimitResult {
-    allowed: boolean;
-    remaining: number;
-    /** 时间戳（秒） */
-    resetAt: number;
-    /** 距离下次允许的秒数（0 表示已允许） */
-    retryAfter: number;
+  allowed: boolean;
+  remaining: number;
+  /** 时间戳（秒） */
+  resetAt: number;
+  /** 距离下次允许的秒数（0 表示已允许） */
+  retryAfter: number;
 }
 
 const PREFIX = "ratelimit";
@@ -41,59 +41,59 @@ const PREFIX = "ratelimit";
  * Redis 调用失败时抛 ServiceUnavailableError（fail-closed）。
  */
 export async function checkRateLimit(
-    key: string,
-    cfg: RateLimitConfig,
+  key: string,
+  cfg: RateLimitConfig,
 ): Promise<RateLimitResult> {
-    const redis = getRedis();
-    const fullKey = `${PREFIX}:${key}`;
-    const now = Date.now();
-    const windowMs = cfg.windowSec * 1000;
+  const redis = getRedis();
+  const fullKey = `${PREFIX}:${key}`;
+  const now = Date.now();
+  const windowMs = cfg.windowSec * 1000;
 
-    let count: number;
-    let ttlMs: number;
-    try {
-        const pipe = redis.pipeline();
-        pipe.incr(fullKey);
-        pipe.pttl(fullKey);
-        const results = await pipe.exec();
-        // ioredis pipeline exec 返回 [err, value] 元组数组
-        const incrErr = results[0]?.[0];
-        if (incrErr) throw incrErr;
-        count = results[0][1] as number;
-        ttlMs = (results[1]?.[1] as number) ?? -1;
+  let count: number;
+  let ttlMs: number;
+  try {
+    const pipe = redis.pipeline();
+    pipe.incr(fullKey);
+    pipe.pttl(fullKey);
+    const results = await pipe.exec();
+    // ioredis pipeline exec 返回 [err, value] 元组数组
+    const incrErr = results[0]?.[0];
+    if (incrErr) throw incrErr;
+    count = results[0][1] as number;
+    ttlMs = (results[1]?.[1] as number) ?? -1;
 
-        // 首次 INCR（count=1）且无 TTL：设过期
-        if (count === 1 || ttlMs < 0) {
-            await redis.pexpire(fullKey, windowMs);
-            ttlMs = windowMs;
-        }
-    } catch {
-        // getRedis() 抛错（未初始化/已失败）或 pipeline 失败
-        throw new ServiceUnavailableError("限流服务暂时不可用");
+    // 首次 INCR（count=1）且无 TTL：设过期
+    if (count === 1 || ttlMs < 0) {
+      await redis.pexpire(fullKey, windowMs);
+      ttlMs = windowMs;
     }
+  } catch {
+    // getRedis() 抛错（未初始化/已失败）或 pipeline 失败
+    throw new ServiceUnavailableError("限流服务暂时不可用");
+  }
 
-    const allowed = count <= cfg.max;
-    const resetAt = Math.floor((now + ttlMs) / 1000);
+  const allowed = count <= cfg.max;
+  const resetAt = Math.floor((now + ttlMs) / 1000);
 
-    return {
-        allowed,
-        remaining: Math.max(0, cfg.max - count),
-        resetAt,
-        retryAfter: allowed ? 0 : Math.ceil(ttlMs / 1000),
-    };
+  return {
+    allowed,
+    remaining: Math.max(0, cfg.max - count),
+    resetAt,
+    retryAfter: allowed ? 0 : Math.ceil(ttlMs / 1000),
+  };
 }
 
 /**
  * 标准 429 响应头。
  */
 export function rateLimitHeaders(
-    cfg: RateLimitConfig,
-    result: RateLimitResult,
+  cfg: RateLimitConfig,
+  result: RateLimitResult,
 ): Record<string, string> {
-    return {
-        "X-RateLimit-Limit": String(cfg.max),
-        "X-RateLimit-Remaining": String(result.remaining),
-        "X-RateLimit-Reset": String(result.resetAt),
-        "Retry-After": String(result.retryAfter),
-    };
+  return {
+    "X-RateLimit-Limit": String(cfg.max),
+    "X-RateLimit-Remaining": String(result.remaining),
+    "X-RateLimit-Reset": String(result.resetAt),
+    "Retry-After": String(result.retryAfter),
+  };
 }

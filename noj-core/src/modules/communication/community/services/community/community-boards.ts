@@ -3,10 +3,10 @@ import { communityBoards } from "../../../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../../../shared/base/errors.ts";
 import { nowIso } from "../../../../../shared/base/dates.ts";
 import {
-    communityDb,
-    communityDomainId,
-    communityDomainWhere,
-    type CommunityScope,
+  communityDb,
+  communityDomainId,
+  communityDomainWhere,
+  type CommunityScope,
 } from "./community-scope.ts";
 
 /**
@@ -15,17 +15,15 @@ import {
  * @returns 按 sort_order、created_at 排序的板块列表。
  */
 export function listBoards(includeArchived = false, scope?: CommunityScope) {
-    const db = communityDb(scope);
-    return db.select().from(communityBoards)
-        .where(
-            and(
-                communityDomainWhere(communityBoards.domain_id, scope),
-                includeArchived
-                    ? undefined
-                    : eq(communityBoards.is_archived, false),
-            ),
-        )
-        .orderBy(communityBoards.sort_order, communityBoards.created_at);
+  const db = communityDb(scope);
+  return db.select().from(communityBoards)
+    .where(
+      and(
+        communityDomainWhere(communityBoards.domain_id, scope),
+        includeArchived ? undefined : eq(communityBoards.is_archived, false),
+      ),
+    )
+    .orderBy(communityBoards.sort_order, communityBoards.created_at);
 }
 
 /**
@@ -34,30 +32,30 @@ export function listBoards(includeArchived = false, scope?: CommunityScope) {
  * @returns 新建的板块记录。
  */
 export async function createBoard(
-    input: {
-        slug: string;
-        name: string;
-        description?: string;
-        sort_order?: number;
-    },
-    scope?: CommunityScope,
+  input: {
+    slug: string;
+    name: string;
+    description?: string;
+    sort_order?: number;
+  },
+  scope?: CommunityScope,
 ) {
-    const db = communityDb(scope);
-    const createdAt = nowIso();
-    const board = {
-        id: crypto.randomUUID(),
-        domain_id: communityDomainId(scope),
-        revision: 0,
-        slug: input.slug,
-        name: input.name,
-        description: input.description ?? "",
-        sort_order: input.sort_order ?? 0,
-        is_archived: false,
-        created_at: createdAt,
-        updated_at: createdAt,
-    };
-    await db.insert(communityBoards).values(board);
-    return board;
+  const db = communityDb(scope);
+  const createdAt = nowIso();
+  const board = {
+    id: crypto.randomUUID(),
+    domain_id: communityDomainId(scope),
+    revision: 0,
+    slug: input.slug,
+    name: input.name,
+    description: input.description ?? "",
+    sort_order: input.sort_order ?? 0,
+    is_archived: false,
+    created_at: createdAt,
+    updated_at: createdAt,
+  };
+  await db.insert(communityBoards).values(board);
+  return board;
 }
 
 /**
@@ -68,27 +66,27 @@ export async function createBoard(
  * @throws {NotFoundError} 板块不存在时抛出。
  */
 export async function updateBoard(
-    id: string,
-    input: Partial<
-        {
-            name: string;
-            description: string;
-            sort_order: number;
-            is_archived: boolean;
-        }
-    >,
-    scope?: CommunityScope,
+  id: string,
+  input: Partial<
+    {
+      name: string;
+      description: string;
+      sort_order: number;
+      is_archived: boolean;
+    }
+  >,
+  scope?: CommunityScope,
 ) {
-    const db = communityDb(scope);
-    const rows = await db.update(communityBoards).set({
-        ...input,
-        updated_at: nowIso(),
-    }).where(
-        and(
-            eq(communityBoards.id, id),
-            communityDomainWhere(communityBoards.domain_id, scope),
-        ),
-    ).returning();
-    if (!rows[0]) throw new NotFoundError("板块不存在");
-    return rows[0];
+  const db = communityDb(scope);
+  const rows = await db.update(communityBoards).set({
+    ...input,
+    updated_at: nowIso(),
+  }).where(
+    and(
+      eq(communityBoards.id, id),
+      communityDomainWhere(communityBoards.domain_id, scope),
+    ),
+  ).returning();
+  if (!rows[0]) throw new NotFoundError("板块不存在");
+  return rows[0];
 }

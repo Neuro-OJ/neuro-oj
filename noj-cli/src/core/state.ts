@@ -7,27 +7,27 @@
 
 /** 部署状态机的所有合法状态。 */
 export type DeployState =
-    | "uninitialized"
-    | "stopped"
-    | "running"
-    | "partial"
-    | "error";
+  | "uninitialized"
+  | "stopped"
+  | "running"
+  | "partial"
+  | "error";
 
 /** 部署动作：状态机的唯一输入。 */
 export type DeployAction = "init" | "up" | "down" | "restart" | "reset";
 
 /** 状态迁移结果。 */
 export interface TransitionResult {
-    state: DeployState;
-    /** 状态是否发生变化；false 表示 no-op（如 running 时再 up）。 */
-    changed: boolean;
-    message: string;
+  state: DeployState;
+  /** 状态是否发生变化；false 表示 no-op（如 running 时再 up）。 */
+  changed: boolean;
+  message: string;
 }
 
 /** no-op 时的固定提示语。 */
 const NO_OP_MSG: Record<string, string> = {
-    up: "已处于 running，无需重复启动",
-    down: "已处于 stopped，无需重复关闭",
+  up: "已处于 running，无需重复启动",
+  down: "已处于 stopped，无需重复关闭",
 };
 
 /**
@@ -40,57 +40,57 @@ const NO_OP_MSG: Record<string, string> = {
  * - restart 一律进入 running。
  */
 export function transition(
-    state: DeployState,
-    action: DeployAction,
+  state: DeployState,
+  action: DeployAction,
 ): TransitionResult {
-    let next: DeployState;
-    let changed = true;
+  let next: DeployState;
+  let changed = true;
 
-    switch (action) {
-        case "init":
-            next = "stopped";
-            break;
-        case "up":
-            if (state === "running") {
-                next = "running";
-                changed = false;
-            } else {
-                next = "running";
-            }
-            break;
-        case "down":
-            if (state === "stopped") {
-                next = "stopped";
-                changed = false;
-            } else {
-                next = "stopped";
-            }
-            break;
-        case "restart":
-            next = "running";
-            break;
-        case "reset":
-            next = "stopped";
-            break;
-    }
+  switch (action) {
+    case "init":
+      next = "stopped";
+      break;
+    case "up":
+      if (state === "running") {
+        next = "running";
+        changed = false;
+      } else {
+        next = "running";
+      }
+      break;
+    case "down":
+      if (state === "stopped") {
+        next = "stopped";
+        changed = false;
+      } else {
+        next = "stopped";
+      }
+      break;
+    case "restart":
+      next = "running";
+      break;
+    case "reset":
+      next = "stopped";
+      break;
+  }
 
-    return {
-        state: next,
-        changed,
-        message: changed
-            ? `状态从 ${state} 转换为 ${next}`
-            : (NO_OP_MSG[action] ?? `状态保持 ${next}`),
-    };
+  return {
+    state: next,
+    changed,
+    message: changed
+      ? `状态从 ${state} 转换为 ${next}`
+      : (NO_OP_MSG[action] ?? `状态保持 ${next}`),
+  };
 }
 
 /** 当前状态是否 running（up 应 no-op）。 */
 export function upIsNoOp(state: DeployState): boolean {
-    return transition(state, "up").changed === false;
+  return transition(state, "up").changed === false;
 }
 
 /** 当前状态是否 stopped（down 应 no-op）。 */
 export function downIsNoOp(state: DeployState): boolean {
-    return transition(state, "down").changed === false;
+  return transition(state, "down").changed === false;
 }
 
 // ---------------- prodState：从 docker compose ps 推断状态 ----------------
@@ -116,54 +116,52 @@ export function downIsNoOp(state: DeployState): boolean {
  * 注意：Restarting 不以 Up 开头，按「状态以 Up 开头即 running」的规则视为非运行。
  */
 export function prodState(composePsOutput: string): DeployState {
-    const lines = splitPsLines(composePsOutput).filter((l) =>
-        !isWarningLine(l)
-    );
-    let statusOffset = -1;
-    let headerIndex = -1;
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line === undefined) continue;
-        const offset = findStatusColumn(line);
-        if (offset >= 0) {
-            statusOffset = offset;
-            headerIndex = i;
-            break;
-        }
+  const lines = splitPsLines(composePsOutput).filter((l) => !isWarningLine(l));
+  let statusOffset = -1;
+  let headerIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    const offset = findStatusColumn(line);
+    if (offset >= 0) {
+      statusOffset = offset;
+      headerIndex = i;
+      break;
     }
+  }
 
-    let running = 0;
-    let notRunning = 0;
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line === undefined || i === headerIndex || isSeparatorLine(line)) {
-            continue;
-        }
-        const verdict = classifyRow(line, statusOffset);
-        if (verdict === null) continue;
-        if (verdict) running++;
-        else notRunning++;
+  let running = 0;
+  let notRunning = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined || i === headerIndex || isSeparatorLine(line)) {
+      continue;
     }
+    const verdict = classifyRow(line, statusOffset);
+    if (verdict === null) continue;
+    if (verdict) running++;
+    else notRunning++;
+  }
 
-    if (running === 0) return "stopped";
-    return notRunning === 0 ? "running" : "partial";
+  if (running === 0) return "stopped";
+  return notRunning === 0 ? "running" : "partial";
 }
 
 /** 按 LF 切行并剥掉行尾 CR（兼容 CRLF）；保留行首空白以维持列对齐。 */
 function splitPsLines(text: string): string[] {
-    return text.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
+  return text.split("\n").map((l) => (l.endsWith("\r") ? l.slice(0, -1) : l));
 }
 
 /** docker 输出到 stderr 的警告行（可能混入 stdout），不参与状态判定。 */
 function isWarningLine(line: string): boolean {
-    const t = line.trim();
-    return /^WARN[[(]/i.test(t) || /^time=.*level=warning/i.test(t);
+  const t = line.trim();
+  return /^WARN[[(]/i.test(t) || /^time=.*level=warning/i.test(t);
 }
 
 /** 分隔线：整行只由 - = ─ 与空白组成（v1 表头下方会打印）。 */
 function isSeparatorLine(line: string): boolean {
-    const t = line.trim();
-    return t.length > 0 && /^[-=─\s]+$/.test(t);
+  const t = line.trim();
+  return t.length > 0 && /^[-=─\s]+$/.test(t);
 }
 
 /** 表头旁证词：用于避免把含 state/status 的容器行误判为表头。 */
@@ -176,37 +174,37 @@ const HEADER_HINT_RE = /^(name|image|command|service|ports|created)$/i;
  * （v2：name/image/command/service/created/ports；v1：name/command/ports）。
  */
 function findStatusColumn(line: string): number {
-    const words = [...line.matchAll(/\S+/g)];
-    const lower = words.map((m) => (m[0] ?? "").toLowerCase());
-    const statusIdx = lower.findIndex((w) => w === "status" || w === "state");
-    if (statusIdx < 0) return -1;
-    const hints = lower.filter((w) => HEADER_HINT_RE.test(w)).length;
-    if (hints < 1) return -1;
-    return words[statusIdx]?.index ?? -1;
+  const words = [...line.matchAll(/\S+/g)];
+  const lower = words.map((m) => (m[0] ?? "").toLowerCase());
+  const statusIdx = lower.findIndex((w) => w === "status" || w === "state");
+  if (statusIdx < 0) return -1;
+  const hints = lower.filter((w) => HEADER_HINT_RE.test(w)).length;
+  if (hints < 1) return -1;
+  return words[statusIdx]?.index ?? -1;
 }
 
 /** 非运行状态词（小写比较）；不含 Up。 */
 const NON_RUNNING = new Set([
-    "exited",
-    "exit",
-    "created",
-    "restarting",
-    "dead",
-    "paused",
-    "removing",
-    "stopped",
-    "down",
+  "exited",
+  "exit",
+  "created",
+  "restarting",
+  "dead",
+  "paused",
+  "removing",
+  "stopped",
+  "down",
 ]);
 
 /** 状态词的整行回退匹配（词边界，避免命中 upstream 之类）。 */
 const ROW_RUNNING_RE = /(^|\s)Up(\s|$)/;
 const ROW_NON_RUNNING_RE =
-    /(^|\s)(Exited|Exit|Created|Restarting|Dead|Paused|Removing|Stopped|Down)(\s|$)/i;
+  /(^|\s)(Exited|Exit|Created|Restarting|Dead|Paused|Removing|Stopped|Down)(\s|$)/i;
 
 /** 取状态段的首个词；取不到返回空串。 */
 function firstWord(segment: string): string {
-    const token = segment.trim().split(/\s+/)[0];
-    return token ?? "";
+  const token = segment.trim().split(/\s+/)[0];
+  return token ?? "";
 }
 
 /**
@@ -214,12 +212,12 @@ function firstWord(segment: string): string {
  * 先按表头列位取状态段，无法判定时回退整行扫描。
  */
 function classifyRow(row: string, statusOffset: number): boolean | null {
-    if (statusOffset >= 0 && statusOffset < row.length) {
-        const word = firstWord(row.slice(statusOffset));
-        if (/^Up\b/.test(word)) return true;
-        if (NON_RUNNING.has(word.toLowerCase())) return false;
-    }
-    if (ROW_RUNNING_RE.test(row)) return true;
-    if (ROW_NON_RUNNING_RE.test(row)) return false;
-    return null;
+  if (statusOffset >= 0 && statusOffset < row.length) {
+    const word = firstWord(row.slice(statusOffset));
+    if (/^Up\b/.test(word)) return true;
+    if (NON_RUNNING.has(word.toLowerCase())) return false;
+  }
+  if (ROW_RUNNING_RE.test(row)) return true;
+  if (ROW_NON_RUNNING_RE.test(row)) return false;
+  return null;
 }

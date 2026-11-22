@@ -12,13 +12,13 @@ import type { Executor } from "../../../shared/db/executor.ts";
  * @throws {NotFoundError} 竞赛不存在时
  */
 export async function findContestRow(id: string, executor: Executor = getDb()) {
-    const db = executor;
-    const [row] = await db.select().from(contests).where(eq(contests.id, id))
-        .limit(
-            1,
-        );
-    if (!row) {
-        throw new NotFoundError("竞赛不存在");
-    }
-    return row;
+  const db = executor;
+  const [row] = await db.select().from(contests).where(eq(contests.id, id))
+    .limit(
+      1,
+    );
+  if (!row) {
+    throw new NotFoundError("竞赛不存在");
+  }
+  return row;
 }

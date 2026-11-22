@@ -9,44 +9,44 @@ import { getSetting } from "../../../services/system-settings.ts";
  * @throws {Error} 未配置时
  */
 export function getSettingOrThrow(key: string, label: string): string {
-    const val = getSetting(key);
-    const str = typeof val?.value === "string" ? val.value : "";
-    if (!str) {
-        throw new Error(
-            `[email] ${label} 未配置，请通过系统设置或环境变量配置`,
-        );
-    }
-    return str;
+  const val = getSetting(key);
+  const str = typeof val?.value === "string" ? val.value : "";
+  if (!str) {
+    throw new Error(
+      `[email] ${label} 未配置，请通过系统设置或环境变量配置`,
+    );
+  }
+  return str;
 }
 
 /** 转义插入 HTML 文本或属性值的字符串。 */
 function escapeHtml(value: string): string {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 /** 带单个行动按钮的事务邮件内容（文案均为可信常量，不做转义）。 */
 interface ActionEmailContent {
-    /** `<title>` 与收件箱标题 */
-    title: string;
-    /** 收件箱列表中的预览摘要 */
-    preheader: string;
-    /** 正文大标题 */
-    heading: string;
-    /** 正文段落 */
-    paragraphs: string[];
-    /** 按钮文案 */
-    buttonText: string;
-    /** 按钮链接（会被转义） */
-    link: string;
-    /** 链接有效期（分钟） */
-    expiresInMinutes: number;
-    /** 页脚“非本人操作”提示 */
-    ignoreNotice: string;
+  /** `<title>` 与收件箱标题 */
+  title: string;
+  /** 收件箱列表中的预览摘要 */
+  preheader: string;
+  /** 正文大标题 */
+  heading: string;
+  /** 正文段落 */
+  paragraphs: string[];
+  /** 按钮文案 */
+  buttonText: string;
+  /** 按钮链接（会被转义） */
+  link: string;
+  /** 链接有效期（分钟） */
+  expiresInMinutes: number;
+  /** 页脚“非本人操作”提示 */
+  ignoreNotice: string;
 }
 
 /**
@@ -57,16 +57,16 @@ interface ActionEmailContent {
  * （dev-docs/design/noj-design-tokens.md）。
  */
 function renderActionEmailHtml(content: ActionEmailContent): string {
-    const link = escapeHtml(content.link);
-    const minutes = content.expiresInMinutes;
-    const font =
-        "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Helvetica,Arial,sans-serif";
-    const paragraphs = content.paragraphs.map((text, i) =>
-        `<p style="margin:0 0 ${
-            i === content.paragraphs.length - 1 ? 28 : 12
-        }px 0;font-size:15px;line-height:1.7;color:#334155;">${text}</p>`
-    ).join("\n            ");
-    return `<!DOCTYPE html>
+  const link = escapeHtml(content.link);
+  const minutes = content.expiresInMinutes;
+  const font =
+    "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Helvetica,Arial,sans-serif";
+  const paragraphs = content.paragraphs.map((text, i) =>
+    `<p style="margin:0 0 ${
+      i === content.paragraphs.length - 1 ? 28 : 12
+    }px 0;font-size:15px;line-height:1.7;color:#334155;">${text}</p>`
+  ).join("\n            ");
+  return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -132,23 +132,22 @@ function renderActionEmailHtml(content: ActionEmailContent): string {
  * @returns HTML 字符串
  */
 export function buildResetPasswordHtml(
-    resetLink: string,
-    expiresInMinutes: number,
+  resetLink: string,
+  expiresInMinutes: number,
 ): string {
-    return renderActionEmailHtml({
-        title: "重置您的 Neuro OJ 密码",
-        preheader: `点击按钮重置密码，链接 ${expiresInMinutes} 分钟内有效。`,
-        heading: "重置您的密码",
-        paragraphs: [
-            "您好，我们收到了重置您 Neuro OJ 账号密码的请求。",
-            "请点击下方按钮设置新密码。",
-        ],
-        buttonText: "重置密码",
-        link: resetLink,
-        expiresInMinutes,
-        ignoreNotice:
-            "如果这不是您本人的操作，请忽略此邮件，您的密码不会被修改。",
-    });
+  return renderActionEmailHtml({
+    title: "重置您的 Neuro OJ 密码",
+    preheader: `点击按钮重置密码，链接 ${expiresInMinutes} 分钟内有效。`,
+    heading: "重置您的密码",
+    paragraphs: [
+      "您好，我们收到了重置您 Neuro OJ 账号密码的请求。",
+      "请点击下方按钮设置新密码。",
+    ],
+    buttonText: "重置密码",
+    link: resetLink,
+    expiresInMinutes,
+    ignoreNotice: "如果这不是您本人的操作，请忽略此邮件，您的密码不会被修改。",
+  });
 }
 
 /**
@@ -159,22 +158,21 @@ export function buildResetPasswordHtml(
  * @returns HTML 字符串
  */
 export function buildEmailVerificationHtml(
-    verifyLink: string,
-    expiresInMinutes: number,
+  verifyLink: string,
+  expiresInMinutes: number,
 ): string {
-    return renderActionEmailHtml({
-        title: "验证您的 Neuro OJ 邮箱",
-        preheader:
-            `点击按钮完成邮箱验证，链接 ${expiresInMinutes} 分钟内有效。`,
-        heading: "验证您的邮箱地址",
-        paragraphs: [
-            "您好，欢迎注册 Neuro OJ！",
-            "请点击下方按钮完成邮箱验证，以激活您的账号并解锁提交评测等功能。",
-        ],
-        buttonText: "验证邮箱",
-        link: verifyLink,
-        expiresInMinutes,
-        ignoreNotice:
-            "如果这不是您本人的操作，请忽略此邮件，您的邮箱不会被绑定到任何账号。",
-    });
+  return renderActionEmailHtml({
+    title: "验证您的 Neuro OJ 邮箱",
+    preheader: `点击按钮完成邮箱验证，链接 ${expiresInMinutes} 分钟内有效。`,
+    heading: "验证您的邮箱地址",
+    paragraphs: [
+      "您好，欢迎注册 Neuro OJ！",
+      "请点击下方按钮完成邮箱验证，以激活您的账号并解锁提交评测等功能。",
+    ],
+    buttonText: "验证邮箱",
+    link: verifyLink,
+    expiresInMinutes,
+    ignoreNotice:
+      "如果这不是您本人的操作，请忽略此邮件，您的邮箱不会被绑定到任何账号。",
+  });
 }

@@ -15,24 +15,24 @@
 
 /** 判定输入（来自可信结果封套）。 */
 export interface AcceptanceInput {
-    status: string;
-    /** ×100 整数分。 */
-    score: number;
-    /** 结构化详情（`details`，对象形态）。 */
-    details: unknown;
+  status: string;
+  /** ×100 整数分。 */
+  score: number;
+  /** 结构化详情（`details`，对象形态）。 */
+  details: unknown;
 }
 
 /** 判断一次正式判定是否通过。 */
 export function isAcceptedResult(input: AcceptanceInput): boolean {
-    if (input.status !== "finished") return false;
-    const details = input.details && typeof input.details === "object"
-        ? input.details as Record<string, unknown>
-        : null;
-    const oi = details?.oi;
-    if (oi && typeof oi === "object" && !Array.isArray(oi)) {
-        return (oi as Record<string, unknown>).verdict === "AC";
-    }
-    return input.score > 0;
+  if (input.status !== "finished") return false;
+  const details = input.details && typeof input.details === "object"
+    ? input.details as Record<string, unknown>
+    : null;
+  const oi = details?.oi;
+  if (oi && typeof oi === "object" && !Array.isArray(oi)) {
+    return (oi as Record<string, unknown>).verdict === "AC";
+  }
+  return input.score > 0;
 }
 
 /**
@@ -43,16 +43,14 @@ export function isAcceptedResult(input: AcceptanceInput): boolean {
  * 新协议下 judge 必须显式给出 `result_kind`，本表只服务旧协议过渡。
  */
 export const PLATFORM_ERROR_STATUSES: readonly string[] = [
-    "error",
-    "SystemError",
-    "SE",
-    "FE",
-    "cancelled",
+  "error",
+  "SystemError",
+  "SE",
+  "FE",
+  "cancelled",
 ];
 
 /** 旧协议兜底：由结果状态推导判定类别。 */
 export function deriveResultKind(status: string): "graded" | "platform_error" {
-    return PLATFORM_ERROR_STATUSES.includes(status)
-        ? "platform_error"
-        : "graded";
+  return PLATFORM_ERROR_STATUSES.includes(status) ? "platform_error" : "graded";
 }

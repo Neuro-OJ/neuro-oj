@@ -9,13 +9,13 @@
 
 import { getLogger } from "@logtape/logtape";
 import {
-    RateLimitedError,
-    ServiceUnavailableError,
+  RateLimitedError,
+  ServiceUnavailableError,
 } from "../../../../shared/base/errors.ts";
 import {
-    checkRateLimit,
-    type RateLimitConfig,
-    rateLimitHeaders,
+  checkRateLimit,
+  type RateLimitConfig,
+  rateLimitHeaders,
 } from "../../../../shared/rate-limit/rate-limit.ts";
 import { getClientIp, isRateLimitEnabled } from "./rate-limit-env.ts";
 import type { Context } from "hono";
@@ -32,53 +32,53 @@ const logger = getLogger(["noj", "system"]);
 export const SHARED_IP_SEATS = 60;
 
 export const REGISTER_LIMIT: RateLimitConfig = {
-    windowSec: 3600,
-    max: 100,
+  windowSec: 3600,
+  max: 100,
 };
 
 export const PASSWORD_RESET_IP_LIMIT: RateLimitConfig = {
-    windowSec: 3600,
-    max: 30,
+  windowSec: 3600,
+  max: 30,
 };
 
 export const PASSWORD_RESET_EMAIL_LIMIT: RateLimitConfig = {
-    windowSec: 3600,
-    max: 10,
+  windowSec: 3600,
+  max: 10,
 };
 
 export const EMAIL_VERIFICATION_RESEND_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 1,
+  windowSec: 60,
+  max: 1,
 };
 
 export const SUBMISSION_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 120,
+  windowSec: 60,
+  max: 120,
 };
 
 export const SUBMISSION_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: SUBMISSION_USER_LIMIT.max * SHARED_IP_SEATS,
+  windowSec: 60,
+  max: SUBMISSION_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 export const SELF_TEST_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 4,
+  windowSec: 60,
+  max: 4,
 };
 
 export const SELF_TEST_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: SELF_TEST_USER_LIMIT.max * SHARED_IP_SEATS,
+  windowSec: 60,
+  max: SELF_TEST_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 export const CONTEST_SUBMISSION_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 120,
+  windowSec: 60,
+  max: 120,
 };
 
 export const CONTEST_SUBMISSION_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: CONTEST_SUBMISSION_USER_LIMIT.max * SHARED_IP_SEATS,
+  windowSec: 60,
+  max: CONTEST_SUBMISSION_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 /**
@@ -86,48 +86,48 @@ export const CONTEST_SUBMISSION_IP_LIMIT: RateLimitConfig = {
  * （Handbook §4.4：升级仍执行正常提交速率限制）。
  */
 export const UPGRADE_JOB_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 10,
+  windowSec: 60,
+  max: 10,
 };
 
 export const UPGRADE_JOB_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 3,
+  windowSec: 60,
+  max: 3,
 };
 
 export const OBJECTIVE_SUBMIT_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 60,
+  windowSec: 60,
+  max: 60,
 };
 
 export const OBJECTIVE_SUBMIT_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: OBJECTIVE_SUBMIT_USER_LIMIT.max * SHARED_IP_SEATS,
+  windowSec: 60,
+  max: OBJECTIVE_SUBMIT_USER_LIMIT.max * SHARED_IP_SEATS,
 };
 
 export const PROBLEM_CREATE_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 30,
+  windowSec: 60,
+  max: 30,
 };
 
 export const PROBLEM_CREATE_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 30,
+  windowSec: 60,
+  max: 30,
 };
 
 export const PROBLEM_IMPORT_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 10,
+  windowSec: 60,
+  max: 10,
 };
 
 export const PROBLEM_IMPORT_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 10,
+  windowSec: 60,
+  max: 10,
 };
 
 export const REPORT_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 30,
+  windowSec: 60,
+  max: 30,
 };
 
 /**
@@ -138,8 +138,8 @@ export const REPORT_USER_LIMIT: RateLimitConfig = {
  * 一天点一次不会触发，连续重试也不会被误伤。
  */
 export const CHECKIN_USER_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 10,
+  windowSec: 60,
+  max: 10,
 };
 
 /**
@@ -150,12 +150,12 @@ export const CHECKIN_USER_LIMIT: RateLimitConfig = {
  * 追送回执，因此窗口放到 60s/120，远高于单次回调频率。
  */
 export const EMAIL_DELIVERY_EVENT_IP_LIMIT: RateLimitConfig = {
-    windowSec: 60,
-    max: 120,
+  windowSec: 60,
+  max: 120,
 };
 
 function normalizeLimitKey(value: string): string {
-    return value.trim().toLowerCase().slice(0, 128);
+  return value.trim().toLowerCase().slice(0, 128);
 }
 
 /**
@@ -185,18 +185,18 @@ export type SubmissionQuotaBucket = "code" | "contest_code" | "objective";
  * （2026-10-11 复审问题 6）。
  */
 export const SUBMISSION_QUOTA_BUCKETS: Record<
-    SubmissionQuotaBucket,
-    { keyPrefix: string; limit: RateLimitConfig }
+  SubmissionQuotaBucket,
+  { keyPrefix: string; limit: RateLimitConfig }
 > = {
-    code: { keyPrefix: "submission:user:", limit: SUBMISSION_USER_LIMIT },
-    contest_code: {
-        keyPrefix: "contest-submission:user:",
-        limit: CONTEST_SUBMISSION_USER_LIMIT,
-    },
-    objective: {
-        keyPrefix: "objective-submit:user:",
-        limit: OBJECTIVE_SUBMIT_USER_LIMIT,
-    },
+  code: { keyPrefix: "submission:user:", limit: SUBMISSION_USER_LIMIT },
+  contest_code: {
+    keyPrefix: "contest-submission:user:",
+    limit: CONTEST_SUBMISSION_USER_LIMIT,
+  },
+  objective: {
+    keyPrefix: "objective-submit:user:",
+    limit: OBJECTIVE_SUBMIT_USER_LIMIT,
+  },
 };
 
 /**
@@ -210,13 +210,13 @@ export const SUBMISSION_QUOTA_BUCKETS: Record<
  * @returns 完整 Redis 键，例如 `ratelimit:hardening:submission:user:<uuid>`
  */
 export function submissionQuotaRedisKey(
-    bucket: SubmissionQuotaBucket,
-    userId: string,
+  bucket: SubmissionQuotaBucket,
+  userId: string,
 ): string {
-    const { keyPrefix } = SUBMISSION_QUOTA_BUCKETS[bucket];
-    return `${SHARED_RATE_LIMIT_KEY_PREFIX}:hardening:${
-        normalizeLimitKey(`${keyPrefix}${userId}`)
-    }`;
+  const { keyPrefix } = SUBMISSION_QUOTA_BUCKETS[bucket];
+  return `${SHARED_RATE_LIMIT_KEY_PREFIX}:hardening:${
+    normalizeLimitKey(`${keyPrefix}${userId}`)
+  }`;
 }
 
 /**
@@ -226,7 +226,7 @@ export function submissionQuotaRedisKey(
  * @returns 完整 Redis 键 `ratelimit:hardening:submission:user:<uuid>`
  */
 export function submissionUserQuotaRedisKey(userId: string): string {
-    return submissionQuotaRedisKey("code", userId);
+  return submissionQuotaRedisKey("code", userId);
 }
 
 /**
@@ -248,19 +248,13 @@ export type RateLimitUnavailablePolicy = "reject" | "allow";
  * @param onUnavailable Redis 不可用时的处理策略，默认 `reject`
  */
 export async function enforceRateLimit(
-    key: string,
-    cfg: RateLimitConfig,
-    message = "请求过于频繁，请稍后重试",
-    onUnavailable: RateLimitUnavailablePolicy = "reject",
+  key: string,
+  cfg: RateLimitConfig,
+  message = "请求过于频繁，请稍后重试",
+  onUnavailable: RateLimitUnavailablePolicy = "reject",
 ): Promise<void> {
-    if (!isRateLimitEnabled()) return;
-    await enforceRateLimitWith(
-        checkRateLimit,
-        key,
-        cfg,
-        message,
-        onUnavailable,
-    );
+  if (!isRateLimitEnabled()) return;
+  await enforceRateLimitWith(checkRateLimit, key, cfg, message, onUnavailable);
 }
 
 /**
@@ -269,30 +263,28 @@ export async function enforceRateLimit(
  * @internal 仅供本文件与测试使用，不经模块门面导出。
  */
 export async function enforceRateLimitWith(
-    check: typeof checkRateLimit,
-    key: string,
-    cfg: RateLimitConfig,
-    message: string,
-    onUnavailable: RateLimitUnavailablePolicy,
+  check: typeof checkRateLimit,
+  key: string,
+  cfg: RateLimitConfig,
+  message: string,
+  onUnavailable: RateLimitUnavailablePolicy,
 ): Promise<void> {
-    const normalized = `hardening:${normalizeLimitKey(key)}`;
-    let result;
-    try {
-        result = await check(normalized, cfg);
-    } catch (err) {
-        if (
-            onUnavailable === "allow" && err instanceof ServiceUnavailableError
-        ) {
-            logger.warn("限流服务不可用，低风险写入按放行策略处理", {
-                limit_key: normalized.split(":").slice(0, 3).join(":"),
-            });
-            return;
-        }
-        throw err;
+  const normalized = `hardening:${normalizeLimitKey(key)}`;
+  let result;
+  try {
+    result = await check(normalized, cfg);
+  } catch (err) {
+    if (onUnavailable === "allow" && err instanceof ServiceUnavailableError) {
+      logger.warn("限流服务不可用，低风险写入按放行策略处理", {
+        limit_key: normalized.split(":").slice(0, 3).join(":"),
+      });
+      return;
     }
-    if (!result.allowed) {
-        throw new RateLimitedError(message, rateLimitHeaders(cfg, result));
-    }
+    throw err;
+  }
+  if (!result.allowed) {
+    throw new RateLimitedError(message, rateLimitHeaders(cfg, result));
+  }
 }
 
 /** 教学写窗口按使用域和账号共享，允许正常批量教学操作。 */
@@ -300,15 +292,15 @@ export const EDUCATION_WRITE_LIMIT = { windowSec: 60, max: 120 } as const;
 
 /** system 公开门面：教学写路由调用现有 Redis 固定窗口，不影响读取。 */
 export async function enforceEducationWriteRateLimit(
-    domainSlug: string,
-    actorId: string,
+  domainSlug: string,
+  actorId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `education-write:${domainSlug}:${actorId}`,
-        EDUCATION_WRITE_LIMIT,
-        "教学操作过于频繁，请稍后重试",
-        "allow",
-    );
+  await enforceRateLimit(
+    `education-write:${domainSlug}:${actorId}`,
+    EDUCATION_WRITE_LIMIT,
+    "教学操作过于频繁，请稍后重试",
+    "allow",
+  );
 }
 
 /**
@@ -330,144 +322,144 @@ export async function enforceEducationWriteRateLimit(
  * @returns `allowed=false` 时 `retryAfterMs` 为距窗口重置的建议等待时长
  */
 export async function tryConsumeRateLimit(
-    key: string,
-    cfg: RateLimitConfig,
+  key: string,
+  cfg: RateLimitConfig,
 ): Promise<{ allowed: boolean; retryAfterMs: number }> {
-    if (!isRateLimitEnabled()) return { allowed: true, retryAfterMs: 0 };
-    try {
-        const result = await checkRateLimit(
-            `hardening:${normalizeLimitKey(key)}`,
-            cfg,
-        );
-        return {
-            allowed: result.allowed,
-            retryAfterMs: result.allowed
-                ? 0
-                : Math.max(1000, result.retryAfter * 1000),
-        };
-    } catch {
-        // fail-closed：限流服务不可用时按额度不足处理（调用方延期重试）
-        return {
-            allowed: false,
-            retryAfterMs: Math.max(1000, cfg.windowSec * 1000),
-        };
-    }
+  if (!isRateLimitEnabled()) return { allowed: true, retryAfterMs: 0 };
+  try {
+    const result = await checkRateLimit(
+      `hardening:${normalizeLimitKey(key)}`,
+      cfg,
+    );
+    return {
+      allowed: result.allowed,
+      retryAfterMs: result.allowed
+        ? 0
+        : Math.max(1000, result.retryAfter * 1000),
+    };
+  } catch {
+    // fail-closed：限流服务不可用时按额度不足处理（调用方延期重试）
+    return {
+      allowed: false,
+      retryAfterMs: Math.max(1000, cfg.windowSec * 1000),
+    };
+  }
 }
 
 /** 注册端点：按客户端 IP 限流。 */
 export async function enforceRegisterRateLimit(c: Context): Promise<void> {
-    await enforceRateLimit(
-        `register:ip:${getClientIp(c)}`,
-        REGISTER_LIMIT,
-        "注册过于频繁，请稍后重试",
-    );
+  await enforceRateLimit(
+    `register:ip:${getClientIp(c)}`,
+    REGISTER_LIMIT,
+    "注册过于频繁，请稍后重试",
+  );
 }
 
 /** 竞赛注册：IP+竞赛维度限流（F-13）。 */
 export async function enforceContestRegisterRateLimit(
-    c: Context,
-    contestId: string,
+  c: Context,
+  contestId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `contest-register:ip:${getClientIp(c)}:c:${contestId}`,
-        { windowSec: 30, max: 5 },
-        "注册过于频繁，请稍后重试",
-    );
+  await enforceRateLimit(
+    `contest-register:ip:${getClientIp(c)}:c:${contestId}`,
+    { windowSec: 30, max: 5 },
+    "注册过于频繁，请稍后重试",
+  );
 }
 
 /** 忘记/重置密码：IP 维度。 */
 export async function enforcePasswordResetIpRateLimit(
-    c: Context,
+  c: Context,
 ): Promise<void> {
-    await enforceRateLimit(
-        `password-reset:ip:${getClientIp(c)}`,
-        PASSWORD_RESET_IP_LIMIT,
-    );
+  await enforceRateLimit(
+    `password-reset:ip:${getClientIp(c)}`,
+    PASSWORD_RESET_IP_LIMIT,
+  );
 }
 
 /** 忘记/重置密码：邮箱维度（防止对单个邮箱轰炸）。 */
 export async function enforcePasswordResetEmailRateLimit(
-    email: string,
+  email: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `password-reset:email:${email}`,
-        PASSWORD_RESET_EMAIL_LIMIT,
-    );
+  await enforceRateLimit(
+    `password-reset:email:${email}`,
+    PASSWORD_RESET_EMAIL_LIMIT,
+  );
 }
 
 /** 验证邮件重发：IP 与用户双维度，且无论账号状态都先计数以防枚举。 */
 export async function enforceEmailVerificationResendRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `email-verification:ip:${getClientIp(c)}`,
-        EMAIL_VERIFICATION_RESEND_LIMIT,
-    );
-    await enforceRateLimit(
-        `email-verification:user:${userId}`,
-        EMAIL_VERIFICATION_RESEND_LIMIT,
-    );
+  await enforceRateLimit(
+    `email-verification:ip:${getClientIp(c)}`,
+    EMAIL_VERIFICATION_RESEND_LIMIT,
+  );
+  await enforceRateLimit(
+    `email-verification:user:${userId}`,
+    EMAIL_VERIFICATION_RESEND_LIMIT,
+  );
 }
 
 /** 提交创建：IP + 用户双维度。 */
 export async function enforceSubmissionRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `submission:ip:${getClientIp(c)}`,
-        SUBMISSION_IP_LIMIT,
-    );
-    await enforceRateLimit(
-        `submission:user:${userId}`,
-        SUBMISSION_USER_LIMIT,
-    );
+  await enforceRateLimit(
+    `submission:ip:${getClientIp(c)}`,
+    SUBMISSION_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `submission:user:${userId}`,
+    SUBMISSION_USER_LIMIT,
+  );
 }
 
 /** 自测创建：IP + 用户双维度，阈值比正式提交更严格（默认每用户 60s 4 次）。 */
 export async function enforceSelfTestRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `self-test:ip:${getClientIp(c)}`,
-        SELF_TEST_IP_LIMIT,
-    );
-    await enforceRateLimit(
-        `self-test:user:${userId}`,
-        SELF_TEST_USER_LIMIT,
-    );
+  await enforceRateLimit(
+    `self-test:ip:${getClientIp(c)}`,
+    SELF_TEST_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `self-test:user:${userId}`,
+    SELF_TEST_USER_LIMIT,
+  );
 }
 
 /** 竞赛提交：IP + 用户双维度，与普通提交阈值一致但独立计数。 */
 export async function enforceContestSubmissionRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `contest-submission:ip:${getClientIp(c)}`,
-        CONTEST_SUBMISSION_IP_LIMIT,
-    );
-    await enforceRateLimit(
-        `contest-submission:user:${userId}`,
-        CONTEST_SUBMISSION_USER_LIMIT,
-    );
+  await enforceRateLimit(
+    `contest-submission:ip:${getClientIp(c)}`,
+    CONTEST_SUBMISSION_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `contest-submission:user:${userId}`,
+    CONTEST_SUBMISSION_USER_LIMIT,
+  );
 }
 
 /** 客观题提交：IP + 用户双维度。 */
 export async function enforceObjectiveSubmitRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `objective-submit:ip:${getClientIp(c)}`,
-        OBJECTIVE_SUBMIT_IP_LIMIT,
-    );
-    await enforceRateLimit(
-        `objective-submit:user:${userId}`,
-        OBJECTIVE_SUBMIT_USER_LIMIT,
-    );
+  await enforceRateLimit(
+    `objective-submit:ip:${getClientIp(c)}`,
+    OBJECTIVE_SUBMIT_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `objective-submit:user:${userId}`,
+    OBJECTIVE_SUBMIT_USER_LIMIT,
+  );
 }
 
 /**
@@ -477,51 +469,51 @@ export async function enforceObjectiveSubmitRateLimit(
  * 每用户 60s 3 次、每 IP 60s 10 次，防止「批量升级」被当作评测放大器滥用。
  */
 export async function enforceUpgradeJobRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `upgrade-job:ip:${getClientIp(c)}`,
-        UPGRADE_JOB_IP_LIMIT,
-    );
-    await enforceRateLimit(
-        `upgrade-job:user:${userId}`,
-        UPGRADE_JOB_USER_LIMIT,
-    );
+  await enforceRateLimit(
+    `upgrade-job:ip:${getClientIp(c)}`,
+    UPGRADE_JOB_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `upgrade-job:user:${userId}`,
+    UPGRADE_JOB_USER_LIMIT,
+  );
 }
 
 /** 题目创建：IP + 用户双维度。 */
 export async function enforceProblemCreateRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `problem-create:ip:${getClientIp(c)}`,
-        PROBLEM_CREATE_IP_LIMIT,
-        undefined,
-        "allow",
-    );
-    await enforceRateLimit(
-        `problem-create:user:${userId}`,
-        PROBLEM_CREATE_USER_LIMIT,
-        undefined,
-        "allow",
-    );
+  await enforceRateLimit(
+    `problem-create:ip:${getClientIp(c)}`,
+    PROBLEM_CREATE_IP_LIMIT,
+    undefined,
+    "allow",
+  );
+  await enforceRateLimit(
+    `problem-create:user:${userId}`,
+    PROBLEM_CREATE_USER_LIMIT,
+    undefined,
+    "allow",
+  );
 }
 
 /** 题目导入：IP + 用户双维度，阈值更严格（大包上传）。 */
 export async function enforceProblemImportRateLimit(
-    c: Context,
-    userId: string,
+  c: Context,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `problem-import:ip:${getClientIp(c)}`,
-        PROBLEM_IMPORT_IP_LIMIT,
-    );
-    await enforceRateLimit(
-        `problem-import:user:${userId}`,
-        PROBLEM_IMPORT_USER_LIMIT,
-    );
+  await enforceRateLimit(
+    `problem-import:ip:${getClientIp(c)}`,
+    PROBLEM_IMPORT_IP_LIMIT,
+  );
+  await enforceRateLimit(
+    `problem-import:user:${userId}`,
+    PROBLEM_IMPORT_USER_LIMIT,
+  );
 }
 
 /**
@@ -531,14 +523,14 @@ export async function enforceProblemImportRateLimit(
  * 维度，避免机房 NAT 下同班同学互相顶掉额度。
  */
 export async function enforceReportRateLimit(
-    userId: string,
+  userId: string,
 ): Promise<void> {
-    await enforceRateLimit(
-        `report:user:${userId}`,
-        REPORT_USER_LIMIT,
-        undefined,
-        "allow",
-    );
+  await enforceRateLimit(
+    `report:user:${userId}`,
+    REPORT_USER_LIMIT,
+    undefined,
+    "allow",
+  );
 }
 
 /**
@@ -548,12 +540,12 @@ export async function enforceReportRateLimit(
  * 同班同学互相顶掉签到。
  */
 export async function enforceCheckinRateLimit(userId: string): Promise<void> {
-    await enforceRateLimit(
-        `checkin:user:${userId}`,
-        CHECKIN_USER_LIMIT,
-        "签到请求过于频繁，请稍后再试",
-        "allow",
-    );
+  await enforceRateLimit(
+    `checkin:user:${userId}`,
+    CHECKIN_USER_LIMIT,
+    "签到请求过于频繁，请稍后再试",
+    "allow",
+  );
 }
 
 /**
@@ -563,11 +555,11 @@ export async function enforceCheckinRateLimit(userId: string): Promise<void> {
  * 限流不替代验签。
  */
 export async function enforceEmailDeliveryEventRateLimit(
-    c: Context,
+  c: Context,
 ): Promise<void> {
-    await enforceRateLimit(
-        `email-delivery:ip:${getClientIp(c)}`,
-        EMAIL_DELIVERY_EVENT_IP_LIMIT,
-        "邮件回执请求过于频繁，请稍后重试",
-    );
+  await enforceRateLimit(
+    `email-delivery:ip:${getClientIp(c)}`,
+    EMAIL_DELIVERY_EVENT_IP_LIMIT,
+    "邮件回执请求过于频繁，请稍后重试",
+  );
 }

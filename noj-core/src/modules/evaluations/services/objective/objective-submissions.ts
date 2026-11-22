@@ -12,8 +12,8 @@
 /** 门面：仅重新导出原有对外符号，实现按职责拆分到兄弟文件。 */
 export { submitObjectivePaper } from "./objective-submission-create.ts";
 export {
-    getObjectiveSubmission,
-    getObjectiveSubmissionForActor,
-    listObjectiveSubmissions,
-    listObjectiveSubmissionsForActor,
+  getObjectiveSubmission,
+  getObjectiveSubmissionForActor,
+  listObjectiveSubmissions,
+  listObjectiveSubmissionsForActor,
 } from "./objective-submission-read.ts";

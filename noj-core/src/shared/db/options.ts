@@ -15,9 +15,9 @@
  * @returns postgres.js 的 connection 选项；无参数时为 undefined
  */
 export function buildConnectionOptions(
-    jitDisabled: boolean,
+  jitDisabled: boolean,
 ): { options: string } | undefined {
-    const opts: string[] = [];
-    if (jitDisabled) opts.push("-cjit=off");
-    return opts.length > 0 ? { options: opts.join(" ") } : undefined;
+  const opts: string[] = [];
+  if (jitDisabled) opts.push("-cjit=off");
+  return opts.length > 0 ? { options: opts.join(" ") } : undefined;
 }

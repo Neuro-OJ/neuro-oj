@@ -2,113 +2,113 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, problemTags } from "../../../../shared/db/schema.ts";
 import {
-    createTag,
-    mergeTags,
-    type TagWriteContext,
+  createTag,
+  mergeTags,
+  type TagWriteContext,
 } from "../../../../features/tags/index.ts";
 import { createProblem } from "../../services/problems/problems-crud.ts";
 import { assertSearchEventPublished } from "../../../../../tests/helper/search-events.ts";
 import { connectRedis } from "../../../../shared/mq/connection.ts";
 
 try {
-    await connectRedis();
+  await connectRedis();
 } catch (e) {
-    if (!String(e).includes("already connecting/connected")) {
-        console.warn("[setup] Redis 连接失败:", e);
-    }
+  if (!String(e).includes("already connecting/connected")) {
+    console.warn("[setup] Redis 连接失败:", e);
+  }
 }
 
 await resetDbForTest();
 
 const tagCtx: TagWriteContext = {
-    actor: { kind: "system", purpose: "background_task" } as const,
-    auditMeta: { ipAddress: "127.0.0.1" },
+  actor: { kind: "system", purpose: "background_task" } as const,
+  auditMeta: { ipAddress: "127.0.0.1" },
 };
 
 const VALID_RUNTIME_CONFIG = {
-    evaluator: {
-        image: "noj-evaluator-python",
-        command: "python3 /workspace/evaluate.py",
-        time_limit_ms: 5000,
-        memory_limit_mb: 512,
-    },
-    solution: {
-        image: "noj-solution-python",
-        call_timeout_ms: 2000,
-        memory_limit_mb: 512,
-    },
+  evaluator: {
+    image: "noj-evaluator-python",
+    command: "python3 /workspace/evaluate.py",
+    time_limit_ms: 5000,
+    memory_limit_mb: 512,
+  },
+  solution: {
+    image: "noj-solution-python",
+    call_timeout_ms: 2000,
+    memory_limit_mb: 512,
+  },
 };
 
 Deno.test({
-    name: "catalog search event: 创建题目发布 upsert",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const created = await createProblem({
-            title: "事件测试题",
-            description: "desc",
-            difficulty: "easy",
-            runtime_config: VALID_RUNTIME_CONFIG,
-        });
-        await assertSearchEventPublished("problem", created.id, "upsert");
-    },
+  name: "catalog search event: 创建题目发布 upsert",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const created = await createProblem({
+      title: "事件测试题",
+      description: "desc",
+      difficulty: "easy",
+      runtime_config: VALID_RUNTIME_CONFIG,
+    });
+    await assertSearchEventPublished("problem", created.id, "upsert");
+  },
 });
 
 Deno.test({
-    name: "catalog search event: mergeTags 为受影响题目发布 upsert",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const db = getDb();
-        const now = new Date().toISOString();
-        const ts = Date.now();
-        const source = await createTag(tagCtx, {
-            name: `事件合并源-${ts}`,
-            kind: "algorithm",
-        });
-        const target = await createTag(tagCtx, {
-            name: `事件合并目标-${ts}`,
-            kind: "algorithm",
-        });
-        const problemA = crypto.randomUUID();
-        const problemB = crypto.randomUUID();
-        await db.insert(problems).values([
-            {
-                domain_id: DEFAULT_DOMAIN_ID,
-                id: problemA,
-                title: "合并事件题A",
-                description: "描述",
-                difficulty: "easy",
-                runtime_config: null,
-                number: 940000 + (ts % 10000),
-                owner_id: "0",
-                created_at: now,
-                updated_at: now,
-            },
-            {
-                domain_id: DEFAULT_DOMAIN_ID,
-                id: problemB,
-                title: "合并事件题B",
-                description: "描述",
-                difficulty: "easy",
-                runtime_config: null,
-                number: 950000 + (ts % 10000),
-                owner_id: "0",
-                created_at: now,
-                updated_at: now,
-            },
-        ]);
-        await db.insert(problemTags).values([
-            { problem_id: problemA, tag_id: source.id },
-            { problem_id: problemB, tag_id: source.id },
-            { problem_id: problemB, tag_id: target.id },
-        ]);
-        await mergeTags(tagCtx, source.id, target.id);
-        await assertSearchEventPublished("problem", problemA, "upsert");
-        await assertSearchEventPublished("problem", problemB, "upsert");
-    },
+  name: "catalog search event: mergeTags 为受影响题目发布 upsert",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const db = getDb();
+    const now = new Date().toISOString();
+    const ts = Date.now();
+    const source = await createTag(tagCtx, {
+      name: `事件合并源-${ts}`,
+      kind: "algorithm",
+    });
+    const target = await createTag(tagCtx, {
+      name: `事件合并目标-${ts}`,
+      kind: "algorithm",
+    });
+    const problemA = crypto.randomUUID();
+    const problemB = crypto.randomUUID();
+    await db.insert(problems).values([
+      {
+        domain_id: DEFAULT_DOMAIN_ID,
+        id: problemA,
+        title: "合并事件题A",
+        description: "描述",
+        difficulty: "easy",
+        runtime_config: null,
+        number: 940000 + (ts % 10000),
+        owner_id: "0",
+        created_at: now,
+        updated_at: now,
+      },
+      {
+        domain_id: DEFAULT_DOMAIN_ID,
+        id: problemB,
+        title: "合并事件题B",
+        description: "描述",
+        difficulty: "easy",
+        runtime_config: null,
+        number: 950000 + (ts % 10000),
+        owner_id: "0",
+        created_at: now,
+        updated_at: now,
+      },
+    ]);
+    await db.insert(problemTags).values([
+      { problem_id: problemA, tag_id: source.id },
+      { problem_id: problemB, tag_id: source.id },
+      { problem_id: problemB, tag_id: target.id },
+    ]);
+    await mergeTags(tagCtx, source.id, target.id);
+    await assertSearchEventPublished("problem", problemA, "upsert");
+    await assertSearchEventPublished("problem", problemB, "upsert");
+  },
 });
 
 import { resetDbForTest } from "../default-fixture.ts";

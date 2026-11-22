@@ -8,15 +8,15 @@
  */
 
 import {
-    apiGet,
-    CODE_SAMPLES,
-    e2eTest,
-    getAdminToken,
-    isE2E,
-    pollSubmission,
-    registerUser,
-    submitCode,
-    TEST_PASSWORD,
+  apiGet,
+  CODE_SAMPLES,
+  e2eTest,
+  getAdminToken,
+  isE2E,
+  pollSubmission,
+  registerUser,
+  submitCode,
+  TEST_PASSWORD,
 } from "../helper.ts";
 import { createCodingProblemFixture } from "../../fixtures/coding-problem.ts";
 
@@ -31,76 +31,76 @@ const QUEUE = "noj:judge:queue:medium";
  * 不指定 DB 会把毒消息推入 DB 0，judge 永远消费不到，用例退化为空断言。
  */
 async function redisCli(
-    ...args: string[]
+  ...args: string[]
 ): Promise<string> {
-    const password = Deno.env.get("E2E_REDIS_PASSWORD");
-    const cmd = new Deno.Command("docker", {
-        args: [
-            "exec",
-            REDIS_CONTAINER,
-            "redis-cli",
-            ...(password ? ["-a", password] : []),
-            "-n",
-            REDIS_DB,
-            ...args,
-        ],
-    });
-    const { stdout, stderr, success } = await cmd.output();
-    if (!success) {
-        throw new Error(
-            `docker exec ${REDIS_CONTAINER} 失败: ${
-                new TextDecoder().decode(stderr)
-            }`,
-        );
-    }
-    return new TextDecoder().decode(stdout);
+  const password = Deno.env.get("E2E_REDIS_PASSWORD");
+  const cmd = new Deno.Command("docker", {
+    args: [
+      "exec",
+      REDIS_CONTAINER,
+      "redis-cli",
+      ...(password ? ["-a", password] : []),
+      "-n",
+      REDIS_DB,
+      ...args,
+    ],
+  });
+  const { stdout, stderr, success } = await cmd.output();
+  if (!success) {
+    throw new Error(
+      `docker exec ${REDIS_CONTAINER} 失败: ${
+        new TextDecoder().decode(stderr)
+      }`,
+    );
+  }
+  return new TextDecoder().decode(stdout);
 }
 
 e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", async () => {
-    if (!isE2E) return;
+  if (!isE2E) return;
 
-    await redisCli("LPUSH", QUEUE, "not-json");
+  await redisCli("LPUSH", QUEUE, "not-json");
 
-    // 1) 正常提交仍能完成（消费者未因毒消息卡死）
-    const ts = Date.now().toString(36);
-    const token = await registerUser(
-        `mq_${ts}`,
-        `mq_${ts}@test.com`,
-        TEST_PASSWORD,
-    );
-    const problemId = await createCodingProblemFixture();
-    // 必须提交能通过加法 evaluator 的代码：`print(1)` 未定义 solve，
-    // 会被评测器判为运行期错误（status=error），无法验证“消费者未卡死”。
-    const submissionId = await submitCode(
-        token,
-        problemId,
-        CODE_SAMPLES.accepted,
-    );
-    const result = await pollSubmission(token, submissionId, 60, 2000, true);
-    if (result.status !== "finished") {
-        throw new Error(`正常提交应评测完成，实际 ${result.status}`);
-    }
+  // 1) 正常提交仍能完成（消费者未因毒消息卡死）
+  const ts = Date.now().toString(36);
+  const token = await registerUser(
+    `mq_${ts}`,
+    `mq_${ts}@test.com`,
+    TEST_PASSWORD,
+  );
+  const problemId = await createCodingProblemFixture();
+  // 必须提交能通过加法 evaluator 的代码：`print(1)` 未定义 solve，
+  // 会被评测器判为运行期错误（status=error），无法验证“消费者未卡死”。
+  const submissionId = await submitCode(
+    token,
+    problemId,
+    CODE_SAMPLES.accepted,
+  );
+  const result = await pollSubmission(token, submissionId, 60, 2000, true);
+  if (result.status !== "finished") {
+    throw new Error(`正常提交应评测完成，实际 ${result.status}`);
+  }
 
-    // 2) 非法消息最终不在 processing 中（最多等 15s，给 judge 拉取处理的时间）
-    const deadline = Date.now() + 15_000;
-    let processing = "";
-    while (Date.now() < deadline) {
-        processing = await redisCli("LRANGE", `${QUEUE}:processing`, "0", "-1");
-        if (!processing.includes("not-json")) break;
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    if (processing.includes("not-json")) {
-        throw new Error("非法消息仍留在 processing，消费者未处理毒消息");
-    }
+  // 2) 非法消息最终不在 processing 中（最多等 15s，给 judge 拉取处理的时间）
+  const deadline = Date.now() + 15_000;
+  let processing = "";
+  while (Date.now() < deadline) {
+    processing = await redisCli("LRANGE", `${QUEUE}:processing`, "0", "-1");
+    if (!processing.includes("not-json")) break;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (processing.includes("not-json")) {
+    throw new Error("非法消息仍留在 processing，消费者未处理毒消息");
+  }
 
-    // 3) 队列接口仍可用
-    const adminToken = await getAdminToken();
-    const { status, body } = await apiGet("/api/v1/instance/queue", adminToken);
-    if (status !== 200) {
-        throw new Error(`队列接口应仍可用，实际 ${status}`);
-    }
-    const d = body as { stats?: { pending_count?: number } };
-    if (typeof d.stats?.pending_count !== "number") {
-        throw new Error("队列统计应仍返回数值");
-    }
+  // 3) 队列接口仍可用
+  const adminToken = await getAdminToken();
+  const { status, body } = await apiGet("/api/v1/instance/queue", adminToken);
+  if (status !== 200) {
+    throw new Error(`队列接口应仍可用，实际 ${status}`);
+  }
+  const d = body as { stats?: { pending_count?: number } };
+  if (typeof d.stats?.pending_count !== "number") {
+    throw new Error("队列统计应仍返回数值");
+  }
 });

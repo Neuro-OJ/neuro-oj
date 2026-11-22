@@ -11,66 +11,66 @@ import type { ObservabilityRegistry } from "../observability/contracts.ts";
  * 因此定义本地接口仅声明实际使用的方法。
  */
 export interface RedisClient {
-    connect(): Promise<void>;
-    /** ioredis 的 disconnect 是同步 void；测试 fake 也允许返回 Promise。 */
-    disconnect(): void | Promise<void>;
-    ping(): Promise<string>;
-    /** Redis 进程身份用于恢复后拒绝旧快照中的 ready 标记。 */
-    info?(section: string): Promise<string>;
-    quit(): Promise<string>;
-    status: string;
-    lpush(...args: (string | number)[]): Promise<number>;
-    rpush(...args: (string | number)[]): Promise<number>;
-    publish(channel: string, message: string): Promise<number>;
-    get(key: string): Promise<string | null>;
-    mget(...keys: string[]): Promise<(string | null)[]>;
-    scan(
-        cursor: string | number,
-        ...args: (string | number)[]
-    ): Promise<[string, string[]]>;
-    subscribe(...channels: string[]): Promise<unknown>;
-    psubscribe(...patterns: string[]): Promise<unknown>;
-    brpop(...args: (string | number)[]): Promise<[string, string] | null>;
-    brpoplpush(
-        source: string,
-        destination: string,
-        timeout: number,
-    ): Promise<string | null>;
-    /** 非阻塞搬运：消费者启动期把本队列 `:processing` 残留消息重投回主队列时使用 */
-    rpoplpush(source: string, destination: string): Promise<string | null>;
-    lrange(...args: (string | number)[]): Promise<string[]>;
-    llen(...args: (string | number)[]): Promise<number>;
-    eval(
-        script: string,
-        numKeys: number,
-        ...args: (string | number)[]
-    ): Promise<number>;
-    lrem(key: string, count: number, value: string): Promise<number>;
-    on(event: string, handler: (...args: unknown[]) => void): void;
-    off(event: string, handler: (...args: unknown[]) => void): void;
-    // 限流/计数（issue #73）
-    incr(key: string): Promise<number>;
-    pexpire(key: string, ms: number): Promise<number>;
-    expire(key: string, seconds: number): Promise<number>;
-    ttl(key: string): Promise<number>;
-    pttl(key: string): Promise<number>;
-    del(...keys: string[]): Promise<number>;
-    exists(...keys: string[]): Promise<number>;
-    set(
-        key: string,
-        value: string,
-        mode?: "EX" | "PX" | "NX" | "XX",
-        ttl?: number,
-        condition?: "NX" | "XX",
-    ): Promise<unknown>;
-    pipeline(): RedisPipeline;
+  connect(): Promise<void>;
+  /** ioredis 的 disconnect 是同步 void；测试 fake 也允许返回 Promise。 */
+  disconnect(): void | Promise<void>;
+  ping(): Promise<string>;
+  /** Redis 进程身份用于恢复后拒绝旧快照中的 ready 标记。 */
+  info?(section: string): Promise<string>;
+  quit(): Promise<string>;
+  status: string;
+  lpush(...args: (string | number)[]): Promise<number>;
+  rpush(...args: (string | number)[]): Promise<number>;
+  publish(channel: string, message: string): Promise<number>;
+  get(key: string): Promise<string | null>;
+  mget(...keys: string[]): Promise<(string | null)[]>;
+  scan(
+    cursor: string | number,
+    ...args: (string | number)[]
+  ): Promise<[string, string[]]>;
+  subscribe(...channels: string[]): Promise<unknown>;
+  psubscribe(...patterns: string[]): Promise<unknown>;
+  brpop(...args: (string | number)[]): Promise<[string, string] | null>;
+  brpoplpush(
+    source: string,
+    destination: string,
+    timeout: number,
+  ): Promise<string | null>;
+  /** 非阻塞搬运：消费者启动期把本队列 `:processing` 残留消息重投回主队列时使用 */
+  rpoplpush(source: string, destination: string): Promise<string | null>;
+  lrange(...args: (string | number)[]): Promise<string[]>;
+  llen(...args: (string | number)[]): Promise<number>;
+  eval(
+    script: string,
+    numKeys: number,
+    ...args: (string | number)[]
+  ): Promise<number>;
+  lrem(key: string, count: number, value: string): Promise<number>;
+  on(event: string, handler: (...args: unknown[]) => void): void;
+  off(event: string, handler: (...args: unknown[]) => void): void;
+  // 限流/计数（issue #73）
+  incr(key: string): Promise<number>;
+  pexpire(key: string, ms: number): Promise<number>;
+  expire(key: string, seconds: number): Promise<number>;
+  ttl(key: string): Promise<number>;
+  pttl(key: string): Promise<number>;
+  del(...keys: string[]): Promise<number>;
+  exists(...keys: string[]): Promise<number>;
+  set(
+    key: string,
+    value: string,
+    mode?: "EX" | "PX" | "NX" | "XX",
+    ttl?: number,
+    condition?: "NX" | "XX",
+  ): Promise<unknown>;
+  pipeline(): RedisPipeline;
 }
 
 interface RedisPipeline {
-    incr(key: string): RedisPipeline;
-    pttl(key: string): RedisPipeline;
-    pexpire(key: string, ms: number): RedisPipeline;
-    exec(): Promise<[Error | null, unknown][]>;
+  incr(key: string): RedisPipeline;
+  pttl(key: string): RedisPipeline;
+  pexpire(key: string, ms: number): RedisPipeline;
+  exec(): Promise<[Error | null, unknown][]>;
 }
 
 let _redis: RedisClient | null = null;
@@ -90,25 +90,25 @@ let _clearErrorOnReady: (() => void) | null = null;
  * 因此需要独立的连接实例，不与 pushJudgeTask（LPUSH）共享。
  */
 export function createConsumerRedis(): RedisClient {
-    const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
-    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
-    const redis = new IORedis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        enableOfflineQueue: false,
-        retryStrategy(times: number) {
-            // 指数退避：100ms → 200ms → 400ms → ... → 上限 30s
-            // 永不返回 null，确保连接断开时持续尝试重连
-            return Math.min(Math.pow(2, times) * 100, 30000);
-        },
-        lazyConnect: true,
-    });
+  const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(redisUrl, {
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+    retryStrategy(times: number) {
+      // 指数退避：100ms → 200ms → 400ms → ... → 上限 30s
+      // 永不返回 null，确保连接断开时持续尝试重连
+      return Math.min(Math.pow(2, times) * 100, 30000);
+    },
+    lazyConnect: true,
+  });
 
-    redis.on("error", (...args: unknown[]) => {
-        const err = args[0];
-        logger.error("消费者 Redis 连接错误", { err });
-    });
+  redis.on("error", (...args: unknown[]) => {
+    const err = args[0];
+    logger.error("消费者 Redis 连接错误", { err });
+  });
 
-    return redis;
+  return redis;
 }
 
 /**
@@ -119,25 +119,25 @@ export function createConsumerRedis(): RedisClient {
  * 配置无限重试，确保事件订阅的持久性。
  */
 export function createPubSubRedis(): RedisClient {
-    const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
-    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
-    const redis = new IORedis(redisUrl, {
-        maxRetriesPerRequest: 3,
-        enableOfflineQueue: false,
-        retryStrategy(times: number) {
-            // 指数退避：100ms → 200ms → 400ms → ... → 上限 30s
-            // 永不返回 null，确保 Pub/Sub 订阅持久连接
-            return Math.min(Math.pow(2, times) * 100, 30000);
-        },
-        lazyConnect: true,
-    });
+  const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(redisUrl, {
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+    retryStrategy(times: number) {
+      // 指数退避：100ms → 200ms → 400ms → ... → 上限 30s
+      // 永不返回 null，确保 Pub/Sub 订阅持久连接
+      return Math.min(Math.pow(2, times) * 100, 30000);
+    },
+    lazyConnect: true,
+  });
 
-    redis.on("error", (...args: unknown[]) => {
-        const err = args[0];
-        logger.error("Pub/Sub Redis 连接错误", { err });
-    });
+  redis.on("error", (...args: unknown[]) => {
+    const err = args[0];
+    logger.error("Pub/Sub Redis 连接错误", { err });
+  });
 
-    return redis;
+  return redis;
 }
 
 /**
@@ -150,84 +150,84 @@ export function createPubSubRedis(): RedisClient {
  * 单文件必过）。本函数让测试无需再污染全局 env。
  */
 export function createRedisClientForUrl(url: string): RedisClient {
-    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
-    const redis = new IORedis(url, {
-        maxRetriesPerRequest: 3,
-        enableOfflineQueue: false,
-        lazyConnect: true,
-    });
-    redis.on("error", (...args: unknown[]) => {
-        logger.error("测试 Redis 连接错误", { err: args[0] });
-    });
-    return redis as unknown as RedisClient;
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(url, {
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: false,
+    lazyConnect: true,
+  });
+  redis.on("error", (...args: unknown[]) => {
+    logger.error("测试 Redis 连接错误", { err: args[0] });
+  });
+  return redis as unknown as RedisClient;
 }
 
 export function getRedis(): RedisClient {
-    // PR-8：自愈逻辑（不主动 disconnect，保留 ioredis 内部重连能力）
-    if (_redis) {
-        if ((_redis.status as string) === "ready") {
-            // 客户端可用：清掉 stale error（双重保险）+ 返回
-            if (_error) _error = null;
-            return _redis;
-        }
-        // 客户端处于 connecting/reconnecting 等过渡态：直接返回，
-        // 让 ioredis 内部 retryStrategy 处理（不抢断它）。
-        // 同时清 _error 防止后续 getRedis() 立即抛错
-        if (_error) _error = null;
-        return _redis;
+  // PR-8：自愈逻辑（不主动 disconnect，保留 ioredis 内部重连能力）
+  if (_redis) {
+    if ((_redis.status as string) === "ready") {
+      // 客户端可用：清掉 stale error（双重保险）+ 返回
+      if (_error) _error = null;
+      return _redis;
     }
-    // _redis 为 null（首次调用或被显式置空）
-    // _error 若残留则清掉，走下方创建路径
+    // 客户端处于 connecting/reconnecting 等过渡态：直接返回，
+    // 让 ioredis 内部 retryStrategy 处理（不抢断它）。
+    // 同时清 _error 防止后续 getRedis() 立即抛错
     if (_error) _error = null;
+    return _redis;
+  }
+  // _redis 为 null（首次调用或被显式置空）
+  // _error 若残留则清掉，走下方创建路径
+  if (_error) _error = null;
 
-    try {
-        const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
-        // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
-        _redis = new IORedis(redisUrl, {
-            maxRetriesPerRequest: 20,
-            enableOfflineQueue: true, // 允许重连窗口期内命令缓冲，避免测试间状态切换时立即失败
-            retryStrategy(times: number) {
-                // 最多重试 20 次（约 30s），确保并行测试间短暂的断开能恢复
-                return Math.min(times * 200, 2000);
-            },
-            lazyConnect: true, // 延迟连接，手动调用 connect()
-        });
+  try {
+    const redisUrl = Deno.env.get("REDIS_URL") || "redis://127.0.0.1:6379/";
+    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+    _redis = new IORedis(redisUrl, {
+      maxRetriesPerRequest: 20,
+      enableOfflineQueue: true, // 允许重连窗口期内命令缓冲，避免测试间状态切换时立即失败
+      retryStrategy(times: number) {
+        // 最多重试 20 次（约 30s），确保并行测试间短暂的断开能恢复
+        return Math.min(times * 200, 2000);
+      },
+      lazyConnect: true, // 延迟连接，手动调用 connect()
+    });
 
-        // PR-8：错误处理改为"瞬态 vs 持久"分离
-        // - error 事件：仅在客户端尚未 ready 时记 _error（避免断连重连期间的 stale error 永久缓存）
-        // - ready 事件：连接真正可用时立即清空 _error，下次 getRedis() 不会因历史错误而抛
-        _redis!.on("error", (...args: unknown[]) => {
-            const err = args[0];
-            logger.error("Redis 连接错误", { err });
-            // 仅在客户端尚未进入 ready 状态时累积错误（避免重连过程中误判）
-            if ((_redis?.status as string) !== "ready") {
-                _error = err instanceof Error ? err : new Error(String(err));
-            }
-        });
-
-        _redis!.on("reconnecting", () => {
-            logger.info("Redis 正在重连...");
-        });
-
-        _redis!.on("connect", () => {
-            logger.info("Redis 连接已建立");
-        });
-
-        // PR-8：核心修复 —— ready 事件触发时清空 _error
-        // 之前 _error 仅在 connect 事件清空，但 lazyConnect 模式下初次 connect 不触发 ready
-        // 必须监听 ready 才能正确反映"连接可用"
-        _clearErrorOnReady = () => {
-            _error = null;
-            logger.info("Redis ready 状态确认，清空历史错误");
-        };
-        _redis!.on("ready", _clearErrorOnReady);
-
-        return _redis!;
-    } catch (err) {
+    // PR-8：错误处理改为"瞬态 vs 持久"分离
+    // - error 事件：仅在客户端尚未 ready 时记 _error（避免断连重连期间的 stale error 永久缓存）
+    // - ready 事件：连接真正可用时立即清空 _error，下次 getRedis() 不会因历史错误而抛
+    _redis!.on("error", (...args: unknown[]) => {
+      const err = args[0];
+      logger.error("Redis 连接错误", { err });
+      // 仅在客户端尚未进入 ready 状态时累积错误（避免重连过程中误判）
+      if ((_redis?.status as string) !== "ready") {
         _error = err instanceof Error ? err : new Error(String(err));
-        logger.error("Redis 初始化失败", { err: _error });
-        throw _error;
-    }
+      }
+    });
+
+    _redis!.on("reconnecting", () => {
+      logger.info("Redis 正在重连...");
+    });
+
+    _redis!.on("connect", () => {
+      logger.info("Redis 连接已建立");
+    });
+
+    // PR-8：核心修复 —— ready 事件触发时清空 _error
+    // 之前 _error 仅在 connect 事件清空，但 lazyConnect 模式下初次 connect 不触发 ready
+    // 必须监听 ready 才能正确反映"连接可用"
+    _clearErrorOnReady = () => {
+      _error = null;
+      logger.info("Redis ready 状态确认，清空历史错误");
+    };
+    _redis!.on("ready", _clearErrorOnReady);
+
+    return _redis!;
+  } catch (err) {
+    _error = err instanceof Error ? err : new Error(String(err));
+    logger.error("Redis 初始化失败", { err: _error });
+    throw _error;
+  }
 }
 
 /**
@@ -240,52 +240,52 @@ export function getRedis(): RedisClient {
  * - 未连接 / disconnected：触发新连接
  */
 export async function connectRedis(): Promise<void> {
-    try {
-        const redis = getRedis();
+  try {
+    const redis = getRedis();
 
-        // 幂等：已 ready 直接返回（每次都 PING 会浪费一次 RTT，但确保 PONG 语义）
-        if ((redis.status as string) === "ready") {
-            const pong = await redis.ping();
-            if (pong !== "PONG") {
-                throw new Error(`Redis PING 返回异常: ${pong}`);
-            }
-            logger.info("Redis 连接验证通过（复用现有连接）");
-            return;
-        }
-
-        // 正在 connecting：等就绪，避免重复 connect() 抛错
-        if (
-            (redis.status as string) === "connecting" ||
-            (redis.status as string) === "connect"
-        ) {
-            // 等到 ready 或 5s 超时
-            const deadline = Date.now() + 5000;
-            while (Date.now() < deadline) {
-                await new Promise((r) => setTimeout(r, 50));
-                if ((redis.status as string) === "ready") break;
-                if (
-                    (redis.status as string) === "end" ||
-                    (redis.status as string) === "close"
-                ) break;
-            }
-            if ((redis.status as string) !== "ready") {
-                throw new Error(`Redis 连接等待超时（status=${redis.status}）`);
-            }
-            logger.info("Redis 连接验证通过（等待已有连接）");
-            return;
-        }
-
-        // 其他状态（disconnected/end）：触发新连接
-        await redis.connect();
-        const pong = await redis.ping();
-        if (pong !== "PONG") {
-            throw new Error(`Redis PING 返回异常: ${pong}`);
-        }
-        logger.info("Redis 连接验证通过");
-    } catch (err) {
-        logger.error("Redis 连接失败", { err });
-        throw err;
+    // 幂等：已 ready 直接返回（每次都 PING 会浪费一次 RTT，但确保 PONG 语义）
+    if ((redis.status as string) === "ready") {
+      const pong = await redis.ping();
+      if (pong !== "PONG") {
+        throw new Error(`Redis PING 返回异常: ${pong}`);
+      }
+      logger.info("Redis 连接验证通过（复用现有连接）");
+      return;
     }
+
+    // 正在 connecting：等就绪，避免重复 connect() 抛错
+    if (
+      (redis.status as string) === "connecting" ||
+      (redis.status as string) === "connect"
+    ) {
+      // 等到 ready 或 5s 超时
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 50));
+        if ((redis.status as string) === "ready") break;
+        if (
+          (redis.status as string) === "end" ||
+          (redis.status as string) === "close"
+        ) break;
+      }
+      if ((redis.status as string) !== "ready") {
+        throw new Error(`Redis 连接等待超时（status=${redis.status}）`);
+      }
+      logger.info("Redis 连接验证通过（等待已有连接）");
+      return;
+    }
+
+    // 其他状态（disconnected/end）：触发新连接
+    await redis.connect();
+    const pong = await redis.ping();
+    if (pong !== "PONG") {
+      throw new Error(`Redis PING 返回异常: ${pong}`);
+    }
+    logger.info("Redis 连接验证通过");
+  } catch (err) {
+    logger.error("Redis 连接失败", { err });
+    throw err;
+  }
 }
 
 /**
@@ -294,33 +294,33 @@ export async function connectRedis(): Promise<void> {
  * 返回 { ok: true } 或 { ok: false, error: string }。
  */
 export async function checkRedisHealth(): Promise<
-    { ok: boolean; error?: string }
+  { ok: boolean; error?: string }
 > {
-    const result = (ok: boolean, error?: string) => {
-        metrics.inc("noj_redis_health_checks_total");
-        if (!ok) metrics.inc("noj_redis_health_check_errors_total");
-        return error ? { ok, error } : { ok };
-    };
-    if (_error) {
-        return result(false, _error.message);
-    }
-    if (!_redis || (_redis.status as string) !== "ready") {
-        return result(
-            false,
-            `连接状态: ${(_redis?.status as string) ?? "未初始化"}`,
-        );
-    }
+  const result = (ok: boolean, error?: string) => {
+    metrics.inc("noj_redis_health_checks_total");
+    if (!ok) metrics.inc("noj_redis_health_check_errors_total");
+    return error ? { ok, error } : { ok };
+  };
+  if (_error) {
+    return result(false, _error.message);
+  }
+  if (!_redis || (_redis.status as string) !== "ready") {
+    return result(
+      false,
+      `连接状态: ${(_redis?.status as string) ?? "未初始化"}`,
+    );
+  }
 
-    try {
-        const pong = await _redis.ping();
-        if (pong !== "PONG") {
-            return result(false, `PING 返回异常: ${pong}`);
-        }
-        return result(true);
-    } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return result(false, message);
+  try {
+    const pong = await _redis.ping();
+    if (pong !== "PONG") {
+      return result(false, `PING 返回异常: ${pong}`);
     }
+    return result(true);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return result(false, message);
+  }
 }
 
 /**
@@ -329,22 +329,22 @@ export async function checkRedisHealth(): Promise<
  * 由 application 组合根调用；shared/mq 不依赖 modules/platform/observability。
  */
 export function registerRedisHealthProbe(
-    registry: ObservabilityRegistry,
+  registry: ObservabilityRegistry,
 ): void {
-    registry.registerHealthProbe({
-        name: "redis",
-        critical: true,
-        timeoutMs: 1000,
-        check: async () => {
-            const started = performance.now();
-            const health = await checkRedisHealth();
-            return {
-                status: health.ok ? "up" : "down",
-                latency_ms: Math.round(performance.now() - started),
-                error: health.error,
-            };
-        },
-    });
+  registry.registerHealthProbe({
+    name: "redis",
+    critical: true,
+    timeoutMs: 1000,
+    check: async () => {
+      const started = performance.now();
+      const health = await checkRedisHealth();
+      return {
+        status: health.ok ? "up" : "down",
+        latency_ms: Math.round(performance.now() - started),
+        error: health.error,
+      };
+    },
+  });
 }
 
 /**
@@ -364,32 +364,32 @@ export function registerRedisHealthProbe(
  * - 测试仅切换状态：成功（`_redis=null` 让 getRedis 走正常创建逻辑）
  */
 export function resetRedisForTest() {
-    if (_clearErrorOnReady) {
-        _clearErrorOnReady = null;
-    }
-    // 清空引用：让下次 getRedis() 按当前 REDIS_URL 重建
-    _redis = null;
-    _error = null;
+  if (_clearErrorOnReady) {
+    _clearErrorOnReady = null;
+  }
+  // 清空引用：让下次 getRedis() 按当前 REDIS_URL 重建
+  _redis = null;
+  _error = null;
 }
 
 /** Redis 关闭阶段的最小客户端；只要求实际使用的方法。 */
 export interface RedisShutdownClient {
-    quit(): Promise<unknown> | unknown;
-    /** ioredis 为同步 void；测试 fake 可返回 Promise。 */
-    disconnect(): void | Promise<void>;
-    off?(
-        event: string,
-        handler: (...args: unknown[]) => void,
-    ): void;
+  quit(): Promise<unknown> | unknown;
+  /** ioredis 为同步 void；测试 fake 可返回 Promise。 */
+  disconnect(): void | Promise<void>;
+  off?(
+    event: string,
+    handler: (...args: unknown[]) => void,
+  ): void;
 }
 
 /** 关闭路径的告警日志：日志设施异常不得阻断 quit/disconnect。 */
 function warnRedisShutdown(message: string, error: unknown): void {
-    try {
-        logger.warn(message, { err: error });
-    } catch {
-        // 日志失败时继续关闭流程。
-    }
+  try {
+    logger.warn(message, { err: error });
+  } catch {
+    // 日志失败时继续关闭流程。
+  }
 }
 
 /**
@@ -408,43 +408,43 @@ function warnRedisShutdown(message: string, error: unknown): void {
  * @param readyHandler 可选的 ready 监听器引用
  */
 export async function closeRedisClientForShutdown(
-    redis: RedisShutdownClient,
-    readyHandler: (() => void) | null = null,
+  redis: RedisShutdownClient,
+  readyHandler: (() => void) | null = null,
 ): Promise<void> {
-    if (readyHandler !== null && typeof redis.off === "function") {
-        try {
-            redis.off("ready", readyHandler);
-        } catch (error) {
-            // 监听器移除失败不改变连接是否已关闭的事实，但必须可诊断。
-            warnRedisShutdown("Redis ready 监听器移除失败", error);
-        }
-    }
-
-    let quitError: unknown;
+  if (readyHandler !== null && typeof redis.off === "function") {
     try {
-        await redis.quit();
-        return;
+      redis.off("ready", readyHandler);
     } catch (error) {
-        quitError = error;
+      // 监听器移除失败不改变连接是否已关闭的事实，但必须可诊断。
+      warnRedisShutdown("Redis ready 监听器移除失败", error);
     }
+  }
 
-    try {
-        await Promise.resolve(redis.disconnect());
-    } catch (disconnectError) {
-        throw new AggregateError(
-            [quitError, disconnectError],
-            `Redis 关闭失败：quit: ${describeRedisError(quitError)}；` +
-                `disconnect: ${describeRedisError(disconnectError)}`,
-        );
-    }
+  let quitError: unknown;
+  try {
+    await redis.quit();
+    return;
+  } catch (error) {
+    quitError = error;
+  }
 
-    // quit 失败但 disconnect 成功：按明确的兜底语义视为已完成关闭。
-    warnRedisShutdown("Redis quit 失败，已通过 disconnect 兜底关闭", quitError);
+  try {
+    await Promise.resolve(redis.disconnect());
+  } catch (disconnectError) {
+    throw new AggregateError(
+      [quitError, disconnectError],
+      `Redis 关闭失败：quit: ${describeRedisError(quitError)}；` +
+        `disconnect: ${describeRedisError(disconnectError)}`,
+    );
+  }
+
+  // quit 失败但 disconnect 成功：按明确的兜底语义视为已完成关闭。
+  warnRedisShutdown("Redis quit 失败，已通过 disconnect 兜底关闭", quitError);
 }
 
 function describeRedisError(error: unknown): string {
-    if (error instanceof Error) return error.message || error.name;
-    return String(error);
+  if (error instanceof Error) return error.message || error.name;
+  return String(error);
 }
 
 /**
@@ -454,11 +454,11 @@ function describeRedisError(error: unknown): string {
  * `AggregateError`，由 `performShutdown()` 记为资源关闭问题。
  */
 export async function closeRedisForShutdown(): Promise<void> {
-    const redis = _redis;
-    const readyHandler = _clearErrorOnReady;
-    _redis = null;
-    _error = null;
-    _clearErrorOnReady = null;
-    if (!redis) return;
-    await closeRedisClientForShutdown(redis, readyHandler);
+  const redis = _redis;
+  const readyHandler = _clearErrorOnReady;
+  _redis = null;
+  _error = null;
+  _clearErrorOnReady = null;
+  if (!redis) return;
+  await closeRedisClientForShutdown(redis, readyHandler);
 }

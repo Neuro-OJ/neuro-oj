@@ -34,40 +34,40 @@ const DELETED_STATES = new Set(["deleting", "deleted"]);
  * @throws {AppError} 400 摘要为空；409 未登记或已进入删除流程
  */
 export async function updateStorageObjectSha256Tx(
-    tx: DbTx,
-    storageUrl: string,
-    sha256: string,
+  tx: DbTx,
+  storageUrl: string,
+  sha256: string,
 ): Promise<string> {
-    if (typeof storageUrl !== "string" || storageUrl.trim() === "") {
-        throw new AppError("存储对象定位不能为空", 400, "STORAGE_URL_REQUIRED");
-    }
-    const normalized = sha256.trim();
-    if (normalized === "") {
-        throw new AppError("内容摘要不能为空", 400, "INVALID_SHA256");
-    }
-    const [record] = await tx.select({
-        state: storageObjects.state,
-        sha256: storageObjects.sha256,
-    }).from(storageObjects).where(
-        eq(storageObjects.storage_url, storageUrl),
-    ).for("update");
-    if (!record) {
-        throw new AppError(
-            `存储对象未登记：${storageUrl}`,
-            409,
-            "STORAGE_OBJECT_NOT_REGISTERED",
-        );
-    }
-    if (DELETED_STATES.has(record.state)) {
-        throw new AppError(
-            `存储对象已进入删除流程，不能补齐摘要：${storageUrl}`,
-            409,
-            "STORAGE_OBJECT_DELETED",
-        );
-    }
-    if (record.sha256 === normalized) return normalized;
-    await tx.update(storageObjects).set({ sha256: normalized }).where(
-        eq(storageObjects.storage_url, storageUrl),
+  if (typeof storageUrl !== "string" || storageUrl.trim() === "") {
+    throw new AppError("存储对象定位不能为空", 400, "STORAGE_URL_REQUIRED");
+  }
+  const normalized = sha256.trim();
+  if (normalized === "") {
+    throw new AppError("内容摘要不能为空", 400, "INVALID_SHA256");
+  }
+  const [record] = await tx.select({
+    state: storageObjects.state,
+    sha256: storageObjects.sha256,
+  }).from(storageObjects).where(
+    eq(storageObjects.storage_url, storageUrl),
+  ).for("update");
+  if (!record) {
+    throw new AppError(
+      `存储对象未登记：${storageUrl}`,
+      409,
+      "STORAGE_OBJECT_NOT_REGISTERED",
     );
-    return normalized;
+  }
+  if (DELETED_STATES.has(record.state)) {
+    throw new AppError(
+      `存储对象已进入删除流程，不能补齐摘要：${storageUrl}`,
+      409,
+      "STORAGE_OBJECT_DELETED",
+    );
+  }
+  if (record.sha256 === normalized) return normalized;
+  await tx.update(storageObjects).set({ sha256: normalized }).where(
+    eq(storageObjects.storage_url, storageUrl),
+  );
+  return normalized;
 }

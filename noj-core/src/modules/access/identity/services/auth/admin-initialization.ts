@@ -4,8 +4,8 @@ import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts"
 import { systemSettings, users } from "../../../../../shared/db/schema.ts";
 import { ROOT_USER_ID } from "../../../../../shared/base/constants.ts";
 import {
-    BadRequestError,
-    ConflictError,
+  BadRequestError,
+  ConflictError,
 } from "../../../../../shared/base/errors.ts";
 import { ADMIN_INITIALIZATION_KEY } from "../../../../../shared/security/admin-initialization.ts";
 import { hashPassword } from "../security/password.ts";
@@ -16,16 +16,16 @@ import { ensureDefaultWorkspaceTx } from "../../../domains.ts";
 
 /** 升级已有站点时永久关闭首次初始化；不改变任何用户权限。 */
 export async function sealExistingSiteAdminInitialization(): Promise<void> {
-    const db = getDb();
-    const [existing] = await db.select({ id: users.id }).from(users)
-        .where(ne(users.id, ROOT_USER_ID)).limit(1);
-    if (existing) {
-        await db.insert(systemSettings).values({
-            key: ADMIN_INITIALIZATION_KEY,
-            value: "true",
-            updated_at: new Date().toISOString(),
-        }).onConflictDoNothing();
-    }
+  const db = getDb();
+  const [existing] = await db.select({ id: users.id }).from(users)
+    .where(ne(users.id, ROOT_USER_ID)).limit(1);
+  if (existing) {
+    await db.insert(systemSettings).values({
+      key: ADMIN_INITIALIZATION_KEY,
+      value: "true",
+      updated_at: new Date().toISOString(),
+    }).onConflictDoNothing();
+  }
 }
 
 /**
@@ -34,53 +34,53 @@ export async function sealExistingSiteAdminInitialization(): Promise<void> {
  * 已有用户时只提交关闭标记，不创建或提升用户。密码不写入日志。
  */
 export async function initializeFirstAdmin(
-    input: RegisterInput,
-    systemActor: SystemActor,
+  input: RegisterInput,
+  systemActor: SystemActor,
 ): Promise<void> {
-    if (!/^[a-zA-Z0-9_]{3,30}$/.test(input.username)) {
-        throw new BadRequestError("用户名仅允许字母、数字和下划线，长度 3-30");
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
-        throw new BadRequestError("邮箱格式不正确");
-    }
-    validatePasswordStrength(input.password, input.username, input.email);
-    const passwordHash = await hashPassword(input.password);
-    const db = getDb();
-    let createdUserId: string | undefined;
-    const initialized = await db.transaction(async (tx) => {
-        const now = new Date().toISOString();
-        const claimed = await tx.insert(systemSettings).values({
-            key: ADMIN_INITIALIZATION_KEY,
-            value: "true",
-            updated_at: now,
-        }).onConflictDoNothing().returning({ key: systemSettings.key });
-        if (claimed.length === 0) return false;
-        const [existing] = await tx.select({ id: users.id }).from(users)
-            .where(ne(users.id, ROOT_USER_ID)).limit(1);
-        if (existing) return false;
-        const id = crypto.randomUUID();
-        await tx.insert(users).values({
-            id,
-            username: input.username,
-            email: input.email,
-            password_hash: passwordHash,
-            email_verified: false,
-            must_change_password: true,
-            // 首次管理员直接写平台角色，不再依赖可编辑角色表。
-            role: "admin",
-            created_at: now,
-            updated_at: now,
-        });
-        await ensureDefaultWorkspaceTx(tx, systemActor);
-        createdUserId = id;
-        return true;
+  if (!/^[a-zA-Z0-9_]{3,30}$/.test(input.username)) {
+    throw new BadRequestError("用户名仅允许字母、数字和下划线，长度 3-30");
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
+    throw new BadRequestError("邮箱格式不正确");
+  }
+  validatePasswordStrength(input.password, input.username, input.email);
+  const passwordHash = await hashPassword(input.password);
+  const db = getDb();
+  let createdUserId: string | undefined;
+  const initialized = await db.transaction(async (tx) => {
+    const now = new Date().toISOString();
+    const claimed = await tx.insert(systemSettings).values({
+      key: ADMIN_INITIALIZATION_KEY,
+      value: "true",
+      updated_at: now,
+    }).onConflictDoNothing().returning({ key: systemSettings.key });
+    if (claimed.length === 0) return false;
+    const [existing] = await tx.select({ id: users.id }).from(users)
+      .where(ne(users.id, ROOT_USER_ID)).limit(1);
+    if (existing) return false;
+    const id = crypto.randomUUID();
+    await tx.insert(users).values({
+      id,
+      username: input.username,
+      email: input.email,
+      password_hash: passwordHash,
+      email_verified: false,
+      must_change_password: true,
+      // 首次管理员直接写平台角色，不再依赖可编辑角色表。
+      role: "admin",
+      created_at: now,
+      updated_at: now,
     });
-    if (!initialized) {
-        throw new ConflictError(
-            "首次管理员初始化已关闭：站点已有用户或已完成初始化",
-        );
-    }
-    if (createdUserId) {
-        await enqueueSearchIndexTask("user", createdUserId, "upsert");
-    }
+    await ensureDefaultWorkspaceTx(tx, systemActor);
+    createdUserId = id;
+    return true;
+  });
+  if (!initialized) {
+    throw new ConflictError(
+      "首次管理员初始化已关闭：站点已有用户或已完成初始化",
+    );
+  }
+  if (createdUserId) {
+    await enqueueSearchIndexTask("user", createdUserId, "upsert");
+  }
 }

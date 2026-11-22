@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
-    authMiddleware,
-    userActorFromAuthenticatedId,
+  authMiddleware,
+  userActorFromAuthenticatedId,
 } from "../../modules/access/index.ts";
 import { getClientIp } from "../../modules/platform/index.ts";
 import { requirePermission } from "../../modules/access/contracts/cross-module/identity_services_security_permissions.ts";
@@ -10,15 +10,15 @@ import { type AuthEnv } from "../../shared/http/hono-env.ts";
 import { parseJsonBody } from "../../shared/http/request.ts";
 import { ValidationError } from "../../shared/base/errors.ts";
 import {
-    createTag,
-    type CreateTagInput,
-    deleteTag,
-    listTags,
-    mergeTags,
-    type TagResponse,
-    type TagWriteContext,
-    updateTag,
-    type UpdateTagInput,
+  createTag,
+  type CreateTagInput,
+  deleteTag,
+  listTags,
+  mergeTags,
+  type TagResponse,
+  type TagWriteContext,
+  updateTag,
+  type UpdateTagInput,
 } from "./service.ts";
 
 /**
@@ -26,10 +26,10 @@ import {
  * （遵循 TRUSTED_PROXIES，不能直接读可伪造的 `X-Forwarded-For`）。
  */
 export function tagWriteContext(c: Context<AuthEnv>): TagWriteContext {
-    return {
-        actor: userActorFromAuthenticatedId(c.var.userId),
-        auditMeta: { ipAddress: getClientIp(c) },
-    };
+  return {
+    actor: userActorFromAuthenticatedId(c.var.userId),
+    auditMeta: { ipAddress: getClientIp(c) },
+  };
 }
 
 /** 标签管理路由，挂在 `/api/v1` 下（原 `catalogRouter.route("/tags", …)`）。 */
@@ -41,8 +41,8 @@ const prefix = "/tags";
  * GET /api/v1/tags
  */
 tagsRouter.get(prefix, async (c) => {
-    const data: TagResponse[] = await listTags();
-    return c.json({ data });
+  const data: TagResponse[] = await listTags();
+  return c.json({ data });
 });
 
 /**
@@ -50,17 +50,17 @@ tagsRouter.get(prefix, async (c) => {
  * POST /api/v1/tags
  */
 tagsRouter.post(
-    prefix,
-    authMiddleware,
-    requirePermission("tag:manage"),
-    async (c) => {
-        const body = await parseJsonBody<CreateTagInput>(c);
-        if (!body.name || !body.kind) {
-            throw new ValidationError("缺少必填字段：name, kind");
-        }
-        const tag = await createTag(tagWriteContext(c), body);
-        return c.json({ data: tag }, 201);
-    },
+  prefix,
+  authMiddleware,
+  requirePermission("tag:manage"),
+  async (c) => {
+    const body = await parseJsonBody<CreateTagInput>(c);
+    if (!body.name || !body.kind) {
+      throw new ValidationError("缺少必填字段：name, kind");
+    }
+    const tag = await createTag(tagWriteContext(c), body);
+    return c.json({ data: tag }, 201);
+  },
 );
 
 /**
@@ -68,18 +68,14 @@ tagsRouter.post(
  * PUT /api/v1/tags/:id
  */
 tagsRouter.put(
-    `${prefix}/:id`,
-    authMiddleware,
-    requirePermission("tag:manage"),
-    async (c) => {
-        const body = await parseJsonBody<UpdateTagInput>(c);
-        const tag = await updateTag(
-            tagWriteContext(c),
-            c.req.param("id"),
-            body,
-        );
-        return c.json({ data: tag });
-    },
+  `${prefix}/:id`,
+  authMiddleware,
+  requirePermission("tag:manage"),
+  async (c) => {
+    const body = await parseJsonBody<UpdateTagInput>(c);
+    const tag = await updateTag(tagWriteContext(c), c.req.param("id"), body);
+    return c.json({ data: tag });
+  },
 );
 
 /**
@@ -87,13 +83,13 @@ tagsRouter.put(
  * DELETE /api/v1/tags/:id
  */
 tagsRouter.delete(
-    `${prefix}/:id`,
-    authMiddleware,
-    requirePermission("tag:manage"),
-    async (c) => {
-        await deleteTag(tagWriteContext(c), c.req.param("id"));
-        return c.body(null, 204);
-    },
+  `${prefix}/:id`,
+  authMiddleware,
+  requirePermission("tag:manage"),
+  async (c) => {
+    await deleteTag(tagWriteContext(c), c.req.param("id"));
+    return c.body(null, 204);
+  },
 );
 
 /**
@@ -101,15 +97,15 @@ tagsRouter.delete(
  * POST /api/v1/tags/:id/merge
  */
 tagsRouter.post(
-    `${prefix}/:id/merge`,
-    authMiddleware,
-    requirePermission("tag:manage"),
-    async (c) => {
-        const body = await parseJsonBody<{ target_id?: string }>(c);
-        if (!body.target_id) {
-            throw new ValidationError("缺少必填字段：target_id");
-        }
-        await mergeTags(tagWriteContext(c), c.req.param("id"), body.target_id);
-        return c.body(null, 204);
-    },
+  `${prefix}/:id/merge`,
+  authMiddleware,
+  requirePermission("tag:manage"),
+  async (c) => {
+    const body = await parseJsonBody<{ target_id?: string }>(c);
+    if (!body.target_id) {
+      throw new ValidationError("缺少必填字段：target_id");
+    }
+    await mergeTags(tagWriteContext(c), c.req.param("id"), body.target_id);
+    return c.body(null, 204);
+  },
 );

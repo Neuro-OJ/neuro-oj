@@ -7,19 +7,19 @@
  */
 
 import {
-    type CurrentVersionResult,
-    type EffectiveSelection,
-    type EffectiveVersionPolicy,
-    EMPTY_EFFECTIVE_SELECTION,
+  type CurrentVersionResult,
+  type EffectiveSelection,
+  type EffectiveVersionPolicy,
+  EMPTY_EFFECTIVE_SELECTION,
 } from "./types.ts";
 
 /** 候选是否可参与选择：必须是已完成的正式判定。 */
 export function isSelectableResult(result: CurrentVersionResult): boolean {
-    if (result.result_kind != null && result.result_kind !== "graded") {
-        return false;
-    }
-    if (result.state != null && result.state !== "finished") return false;
-    return true;
+  if (result.result_kind != null && result.result_kind !== "graded") {
+    return false;
+  }
+  if (result.state != null && result.state !== "finished") return false;
+  return true;
 }
 
 /**
@@ -29,11 +29,11 @@ export function isSelectableResult(result: CurrentVersionResult): boolean {
  * `problem_version_id = X`，未知成绩不匹配。
  */
 export function policyAcceptsVersion(
-    policy: EffectiveVersionPolicy,
-    problemVersionId: string | null,
+  policy: EffectiveVersionPolicy,
+  problemVersionId: string | null,
 ): boolean {
-    if (policy.mode === "any") return true;
-    return problemVersionId != null && problemVersionId === policy.version_id;
+  if (policy.mode === "any") return true;
+  return problemVersionId != null && problemVersionId === policy.version_id;
 }
 
 /**
@@ -43,16 +43,12 @@ export function policyAcceptsVersion(
  * 保证同一输入集合在任何调用点得到同一指针（避免投影抖动）。
  */
 function compareCandidates(
-    a: CurrentVersionResult,
-    b: CurrentVersionResult,
+  a: CurrentVersionResult,
+  b: CurrentVersionResult,
 ): number {
-    if (a.score !== b.score) return b.score - a.score;
-    if (a.sequence !== b.sequence) return a.sequence - b.sequence;
-    return a.attempt_id < b.attempt_id
-        ? -1
-        : a.attempt_id > b.attempt_id
-        ? 1
-        : 0;
+  if (a.score !== b.score) return b.score - a.score;
+  if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+  return a.attempt_id < b.attempt_id ? -1 : a.attempt_id > b.attempt_id ? 1 : 0;
 }
 
 /**
@@ -62,15 +58,11 @@ function compareCandidates(
  * 而通过指针可能来自分数更低的另一次尝试（Handbook §3.2 第 7 条）。
  */
 function compareAcceptedCandidates(
-    a: CurrentVersionResult,
-    b: CurrentVersionResult,
+  a: CurrentVersionResult,
+  b: CurrentVersionResult,
 ): number {
-    if (a.sequence !== b.sequence) return a.sequence - b.sequence;
-    return a.attempt_id < b.attempt_id
-        ? -1
-        : a.attempt_id > b.attempt_id
-        ? 1
-        : 0;
+  if (a.sequence !== b.sequence) return a.sequence - b.sequence;
+  return a.attempt_id < b.attempt_id ? -1 : a.attempt_id > b.attempt_id ? 1 : 0;
 }
 
 /**
@@ -86,43 +78,41 @@ function compareAcceptedCandidates(
  * 7. 无候选时两个布尔为 false、两个指针为空。
  */
 export function selectEffectiveResults(
-    currentResults: readonly CurrentVersionResult[],
-    policy: EffectiveVersionPolicy,
+  currentResults: readonly CurrentVersionResult[],
+  policy: EffectiveVersionPolicy,
 ): EffectiveSelection {
-    const candidates = currentResults.filter((result) =>
-        isSelectableResult(result) &&
-        policyAcceptsVersion(policy, result.problem_version_id)
-    );
-    if (candidates.length === 0) return { ...EMPTY_EFFECTIVE_SELECTION };
+  const candidates = currentResults.filter((result) =>
+    isSelectableResult(result) &&
+    policyAcceptsVersion(policy, result.problem_version_id)
+  );
+  if (candidates.length === 0) return { ...EMPTY_EFFECTIVE_SELECTION };
 
-    const sorted = [...candidates].sort(compareCandidates);
-    const accepted = candidates
-        .filter((result) => result.accepted)
-        .sort(compareAcceptedCandidates);
+  const sorted = [...candidates].sort(compareCandidates);
+  const accepted = candidates
+    .filter((result) => result.accepted)
+    .sort(compareAcceptedCandidates);
 
-    return {
-        is_valid: true,
-        is_accepted: accepted.length > 0,
-        effective_attempt_id: sorted[0].attempt_id,
-        accepted_attempt_id: accepted.length > 0
-            ? accepted[0].attempt_id
-            : null,
-    };
+  return {
+    is_valid: true,
+    is_accepted: accepted.length > 0,
+    effective_attempt_id: sorted[0].attempt_id,
+    accepted_attempt_id: accepted.length > 0 ? accepted[0].attempt_id : null,
+  };
 }
 
 /** 有效成绩指针指向的分数（竞赛计分用）；无候选返回 `null`。 */
 export function effectiveScore(
-    currentResults: readonly CurrentVersionResult[],
-    policy: EffectiveVersionPolicy,
+  currentResults: readonly CurrentVersionResult[],
+  policy: EffectiveVersionPolicy,
 ): number | null {
-    const selection = selectEffectiveResults(currentResults, policy);
-    if (!selection.is_valid || selection.effective_attempt_id == null) {
-        return null;
-    }
-    const candidate = currentResults.find(
-        (result) => result.attempt_id === selection.effective_attempt_id,
-    );
-    return candidate ? candidate.score : null;
+  const selection = selectEffectiveResults(currentResults, policy);
+  if (!selection.is_valid || selection.effective_attempt_id == null) {
+    return null;
+  }
+  const candidate = currentResults.find(
+    (result) => result.attempt_id === selection.effective_attempt_id,
+  );
+  return candidate ? candidate.score : null;
 }
 
 /**
@@ -131,26 +121,26 @@ export function effectiveScore(
  * 独立作用域：题库策略与竞赛策略分别计算，互不推导。
  */
 export function mergeSubmissionProjection(
-    globalSelection: EffectiveSelection,
-    contestSelection: EffectiveSelection,
+  globalSelection: EffectiveSelection,
+  contestSelection: EffectiveSelection,
 ): {
-    is_valid: boolean;
-    is_accepted: boolean;
-    effective_attempt_id: string | null;
-    accepted_attempt_id: string | null;
-    is_contest_valid: boolean;
-    is_contest_accepted: boolean;
-    contest_effective_attempt_id: string | null;
-    contest_accepted_attempt_id: string | null;
+  is_valid: boolean;
+  is_accepted: boolean;
+  effective_attempt_id: string | null;
+  accepted_attempt_id: string | null;
+  is_contest_valid: boolean;
+  is_contest_accepted: boolean;
+  contest_effective_attempt_id: string | null;
+  contest_accepted_attempt_id: string | null;
 } {
-    return {
-        is_valid: globalSelection.is_valid,
-        is_accepted: globalSelection.is_accepted,
-        effective_attempt_id: globalSelection.effective_attempt_id,
-        accepted_attempt_id: globalSelection.accepted_attempt_id,
-        is_contest_valid: contestSelection.is_valid,
-        is_contest_accepted: contestSelection.is_accepted,
-        contest_effective_attempt_id: contestSelection.effective_attempt_id,
-        contest_accepted_attempt_id: contestSelection.accepted_attempt_id,
-    };
+  return {
+    is_valid: globalSelection.is_valid,
+    is_accepted: globalSelection.is_accepted,
+    effective_attempt_id: globalSelection.effective_attempt_id,
+    accepted_attempt_id: globalSelection.accepted_attempt_id,
+    is_contest_valid: contestSelection.is_valid,
+    is_contest_accepted: contestSelection.is_accepted,
+    contest_effective_attempt_id: contestSelection.effective_attempt_id,
+    contest_accepted_attempt_id: contestSelection.accepted_attempt_id,
+  };
 }

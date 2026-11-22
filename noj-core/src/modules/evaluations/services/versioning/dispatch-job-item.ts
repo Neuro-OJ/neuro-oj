@@ -18,14 +18,14 @@
 
 // 门面导出：保持原有对外符号集合与导入路径不变
 export type {
-    DispatchOutcome,
-    DispatchSource,
-    JobUpgradeContext,
+  DispatchOutcome,
+  DispatchSource,
+  JobUpgradeContext,
 } from "./dispatch-types.ts";
 export {
-    runSubmissionJobWorkerOnce,
-    startSubmissionJobWorker,
-    stopSubmissionJobWorker,
-    SUBMISSION_JOB_WORKER_INTERVAL_MS,
+  runSubmissionJobWorkerOnce,
+  startSubmissionJobWorker,
+  stopSubmissionJobWorker,
+  SUBMISSION_JOB_WORKER_INTERVAL_MS,
 } from "./dispatch-worker.ts";
 export { dispatchJobItem } from "./dispatch-item.ts";

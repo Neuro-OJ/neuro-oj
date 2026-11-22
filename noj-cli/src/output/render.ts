@@ -21,33 +21,33 @@ import { createTheme, STATUS_SYMBOL, type StatusKind } from "./theme.ts";
 
 /** 输出汇聚点：测试用它捕获，生产环境缺省直达真实进程流。 */
 export interface RenderIO {
-    /** stdout 汇聚点；缺省直达 `Deno.stdout`。 */
-    stdout?: (s: string) => void;
-    /**
-     * stderr 汇聚点；缺省直达 `Deno.stderr`。
-     *
-     * brief 的签名只写了 `stdout`，这里**追加**该可选字段：JSON 模式下
-     * `emitHuman` 的改道目标必须可观测，否则"未污染 stdout"只测了一半
-     * （人类文本究竟去了哪里无从断言）。传入 `{ stdout }` 仍完全兼容。
-     */
-    stderr?: (s: string) => void;
-    /**
-     * 是否处于 JSON 模式。
-     *
-     * 由调用方传入而非本模块记忆——正是为了不引入模块级可变状态。
-     * 缺省 `false`（人类可读输出）。
-     */
-    jsonMode?: boolean;
+  /** stdout 汇聚点；缺省直达 `Deno.stdout`。 */
+  stdout?: (s: string) => void;
+  /**
+   * stderr 汇聚点；缺省直达 `Deno.stderr`。
+   *
+   * brief 的签名只写了 `stdout`，这里**追加**该可选字段：JSON 模式下
+   * `emitHuman` 的改道目标必须可观测，否则"未污染 stdout"只测了一半
+   * （人类文本究竟去了哪里无从断言）。传入 `{ stdout }` 仍完全兼容。
+   */
+  stderr?: (s: string) => void;
+  /**
+   * 是否处于 JSON 模式。
+   *
+   * 由调用方传入而非本模块记忆——正是为了不引入模块级可变状态。
+   * 缺省 `false`（人类可读输出）。
+   */
+  jsonMode?: boolean;
 }
 
 /** 真实 stdout 写入：每次现算，避免模块级可变单例。 */
 function writeStdout(s: string): void {
-    Deno.stdout.writeSync(new TextEncoder().encode(s));
+  Deno.stdout.writeSync(new TextEncoder().encode(s));
 }
 
 /** 真实 stderr 写入：每次现算，避免模块级可变单例。 */
 function writeStderr(s: string): void {
-    Deno.stderr.writeSync(new TextEncoder().encode(s));
+  Deno.stderr.writeSync(new TextEncoder().encode(s));
 }
 
 /**
@@ -58,8 +58,8 @@ function writeStderr(s: string): void {
  * `undefined`，此时退化为字面量 `null`，保证 stdout 仍是合法 JSON。
  */
 export function emitJson(value: unknown, io?: RenderIO): void {
-    const sink = io?.stdout ?? writeStdout;
-    sink((JSON.stringify(value, null, 2) ?? "null") + "\n");
+  const sink = io?.stdout ?? writeStdout;
+  sink((JSON.stringify(value, null, 2) ?? "null") + "\n");
 }
 
 /**
@@ -69,11 +69,11 @@ export function emitJson(value: unknown, io?: RenderIO): void {
  * （与 `maintain/drill.ts` 既有做法同一语义）。
  */
 export function emitHuman(text: string, io?: RenderIO): void {
-    const jsonMode = io?.jsonMode === true;
-    const sink = jsonMode
-        ? (io?.stderr ?? writeStderr)
-        : (io?.stdout ?? writeStdout);
-    sink(text);
+  const jsonMode = io?.jsonMode === true;
+  const sink = jsonMode
+    ? (io?.stderr ?? writeStderr)
+    : (io?.stdout ?? writeStdout);
+  sink(text);
 }
 
 /**
@@ -85,7 +85,7 @@ export function emitHuman(text: string, io?: RenderIO): void {
  * `--JSON` 同样不算命中（大小写敏感、非前缀匹配）。
  */
 export function isJsonMode(args: string[]): boolean {
-    return args.includes("--json");
+  return args.includes("--json");
 }
 
 // ---------- Task 8：品牌排版（语义色 / 状态符号 / 表格） ----------
@@ -104,35 +104,35 @@ const ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
 
 /** 单个码点是否为 East Asian Wide / Fullwidth（终端占 2 列）。 */
 function isWideCodePoint(cp: number): boolean {
-    return (
-        (cp >= 0x1100 && cp <= 0x115f) || // 韩文字母
-        (cp >= 0x2e80 && cp <= 0x303e) || // CJK 部首与符号（`。` U+3002 在内）
-        (cp >= 0x3041 && cp <= 0x33ff) || // 假名 / CJK 兼容
-        (cp >= 0x3400 && cp <= 0x4dbf) || // CJK 扩展 A
-        (cp >= 0x4e00 && cp <= 0x9fff) || // CJK 统一表意
-        (cp >= 0xa000 && cp <= 0xa4cf) || // 彝文
-        (cp >= 0xac00 && cp <= 0xd7a3) || // 韩文音节
-        (cp >= 0xf900 && cp <= 0xfaff) || // CJK 兼容表意
-        (cp >= 0xfe30 && cp <= 0xfe4f) || // CJK 兼容形式
-        (cp >= 0xff00 && cp <= 0xff60) || // 全角 ASCII（`，` `！` 在内）
-        (cp >= 0xffe0 && cp <= 0xffe6) || // 全角符号
-        (cp >= 0x20000 && cp <= 0x3fffd) // CJK 扩展 B 及以上（代理对）
-    );
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) || // 韩文字母
+    (cp >= 0x2e80 && cp <= 0x303e) || // CJK 部首与符号（`。` U+3002 在内）
+    (cp >= 0x3041 && cp <= 0x33ff) || // 假名 / CJK 兼容
+    (cp >= 0x3400 && cp <= 0x4dbf) || // CJK 扩展 A
+    (cp >= 0x4e00 && cp <= 0x9fff) || // CJK 统一表意
+    (cp >= 0xa000 && cp <= 0xa4cf) || // 彝文
+    (cp >= 0xac00 && cp <= 0xd7a3) || // 韩文音节
+    (cp >= 0xf900 && cp <= 0xfaff) || // CJK 兼容表意
+    (cp >= 0xfe30 && cp <= 0xfe4f) || // CJK 兼容形式
+    (cp >= 0xff00 && cp <= 0xff60) || // 全角 ASCII（`，` `！` 在内）
+    (cp >= 0xffe0 && cp <= 0xffe6) || // 全角符号
+    (cp >= 0x20000 && cp <= 0x3fffd) // CJK 扩展 B 及以上（代理对）
+  );
 }
 
 /** 单个码点的显示列数：组合记号/变体选择符/控制符 0 列，CJK 全角 2 列，其余 1 列。 */
 function codePointWidth(cp: number): number {
-    // 组合变音符、零宽连接符、变体选择符不占列。
-    if (
-        cp === 0x200d ||
-        (cp >= 0x0300 && cp <= 0x036f) ||
-        (cp >= 0xfe00 && cp <= 0xfe0f)
-    ) {
-        return 0;
-    }
-    // 控制字符（含换行）不占列；调用方已先按 \n 切分。
-    if (cp < 0x20 || cp === 0x7f) return 0;
-    return isWideCodePoint(cp) ? 2 : 1;
+  // 组合变音符、零宽连接符、变体选择符不占列。
+  if (
+    cp === 0x200d ||
+    (cp >= 0x0300 && cp <= 0x036f) ||
+    (cp >= 0xfe00 && cp <= 0xfe0f)
+  ) {
+    return 0;
+  }
+  // 控制字符（含换行）不占列；调用方已先按 \n 切分。
+  if (cp < 0x20 || cp === 0x7f) return 0;
+  return isWideCodePoint(cp) ? 2 : 1;
 }
 
 /**
@@ -142,34 +142,34 @@ function codePointWidth(cp: number): number {
  * 用 `String.length`（UTF-16 码元）对齐会让中文表格整体错位。
  */
 export function displayWidth(text: string): number {
-    let width = 0;
-    for (const ch of text.replace(ANSI_SGR_RE, "")) {
-        width += codePointWidth(ch.codePointAt(0) ?? 0);
-    }
-    return width;
+  let width = 0;
+  for (const ch of text.replace(ANSI_SGR_RE, "")) {
+    width += codePointWidth(ch.codePointAt(0) ?? 0);
+  }
+  return width;
 }
 
 /** 按显示宽度截断，超宽时以 `…` 标记（保证结果 ≤ width）。 */
 function truncateToWidth(text: string, width: number): string {
-    if (width <= 0) return "";
-    if (displayWidth(text) <= width) return text;
-    const clean = text.replace(ANSI_SGR_RE, "");
-    const target = width - 1; // 留 1 列给省略号
-    let out = "";
-    let used = 0;
-    for (const ch of clean) {
-        const cw = codePointWidth(ch.codePointAt(0) ?? 0);
-        if (used + cw > target) break;
-        out += ch;
-        used += cw;
-    }
-    return out + "…";
+  if (width <= 0) return "";
+  if (displayWidth(text) <= width) return text;
+  const clean = text.replace(ANSI_SGR_RE, "");
+  const target = width - 1; // 留 1 列给省略号
+  let out = "";
+  let used = 0;
+  for (const ch of clean) {
+    const cw = codePointWidth(ch.codePointAt(0) ?? 0);
+    if (used + cw > target) break;
+    out += ch;
+    used += cw;
+  }
+  return out + "…";
 }
 
 /** 按显示宽度右侧补空格（超出时原样返回，绝不产生超宽行）。 */
 function padToWidth(text: string, width: number): string {
-    const pad = width - displayWidth(text);
-    return pad > 0 ? text + " ".repeat(pad) : text;
+  const pad = width - displayWidth(text);
+  return pad > 0 ? text + " ".repeat(pad) : text;
 }
 
 /** 列间距（固定 2 列）。 */
@@ -185,39 +185,39 @@ const COLUMN_GAP = "  ";
  *    调用方随后对整行硬截断，最终仍保证 ≤ maxWidth。
  */
 function fitColumnWidths(
-    natural: readonly number[],
-    maxWidth: number,
+  natural: readonly number[],
+  maxWidth: number,
 ): number[] {
-    const count = natural.length;
-    const budget = maxWidth - COLUMN_GAP.length * (count - 1);
-    const cols = natural.map((w) => Math.max(1, w));
-    if (budget < count) return cols;
-    let total = cols.reduce((a, b) => a + b, 0);
-    while (total > budget) {
-        let widest = 0;
-        for (let i = 1; i < count; i++) {
-            if (cols[i]! > cols[widest]!) widest = i;
-        }
-        if (cols[widest]! <= 1) break; // 已全部压到最窄
-        cols[widest]!--;
-        total--;
+  const count = natural.length;
+  const budget = maxWidth - COLUMN_GAP.length * (count - 1);
+  const cols = natural.map((w) => Math.max(1, w));
+  if (budget < count) return cols;
+  let total = cols.reduce((a, b) => a + b, 0);
+  while (total > budget) {
+    let widest = 0;
+    for (let i = 1; i < count; i++) {
+      if (cols[i]! > cols[widest]!) widest = i;
     }
-    return cols;
+    if (cols[widest]! <= 1) break; // 已全部压到最窄
+    cols[widest]!--;
+    total--;
+  }
+  return cols;
 }
 
 /** `renderTable` 的选项。 */
 export interface TableOptions {
-    /**
-     * 最大总显示宽度（列数）。给定后**每一行**的显示宽度都 ≤ 该值：
-     * 先均匀收缩最宽列，超宽单元格以 `…` 截断；极窄时再对整行硬截断。
-     * 省略则按内容自然宽渲染。
-     */
-    maxWidth?: number;
-    /**
-     * 输出汇聚点；`jsonMode: true` 时表格改道 stderr（表格是人类输出，
-     * 不得污染 `--json` 的 stdout）。
-     */
-    io?: RenderIO;
+  /**
+   * 最大总显示宽度（列数）。给定后**每一行**的显示宽度都 ≤ 该值：
+   * 先均匀收缩最宽列，超宽单元格以 `…` 截断；极窄时再对整行硬截断。
+   * 省略则按内容自然宽渲染。
+   */
+  maxWidth?: number;
+  /**
+   * 输出汇聚点；`jsonMode: true` 时表格改道 stderr（表格是人类输出，
+   * 不得污染 `--json` 的 stdout）。
+   */
+  io?: RenderIO;
 }
 
 /**
@@ -236,54 +236,54 @@ export interface TableOptions {
  * - 返回渲染文本，同时经 `emitHuman` 写往 stdout（JSON 模式为 stderr）。
  */
 export function renderTable(
-    rows: readonly (readonly string[])[],
-    opts: TableOptions = {},
+  rows: readonly (readonly string[])[],
+  opts: TableOptions = {},
 ): string {
-    const columnCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
-    if (columnCount === 0) return ""; // 空表：不抛错、不写流
-    // 展开单元格内换行为物理行；缺列补空串（行长不齐不抛错）。
-    const physical: string[][] = [];
-    for (const row of rows) {
-        const cells = Array.from(
-            { length: columnCount },
-            (_, i) => String(row[i] ?? "").split("\n"),
-        );
-        const height = Math.max(1, ...cells.map((c) => c.length));
-        for (let line = 0; line < height; line++) {
-            physical.push(cells.map((c) => c[line] ?? ""));
-        }
-    }
-    const natural = Array.from(
-        { length: columnCount },
-        (_, i) =>
-            physical.reduce((m, r) => Math.max(m, displayWidth(r[i] ?? "")), 0),
+  const columnCount = rows.reduce((m, r) => Math.max(m, r.length), 0);
+  if (columnCount === 0) return ""; // 空表：不抛错、不写流
+  // 展开单元格内换行为物理行；缺列补空串（行长不齐不抛错）。
+  const physical: string[][] = [];
+  for (const row of rows) {
+    const cells = Array.from(
+      { length: columnCount },
+      (_, i) => String(row[i] ?? "").split("\n"),
     );
-    const { maxWidth } = opts;
-    const cols = maxWidth === undefined
-        ? natural.map((w) => Math.max(1, w))
-        : fitColumnWidths(natural, maxWidth);
-    let lines = physical.map((cells) =>
-        cells.map((cell, i) =>
-            padToWidth(truncateToWidth(cell, cols[i]!), cols[i]!)
-        ).join(COLUMN_GAP)
-    );
-    if (maxWidth !== undefined) {
-        // 极窄布局（每列保底 1 列仍超宽）的最后一道闸：整行硬截断。
-        lines = lines.map((line) => truncateToWidth(line, maxWidth));
+    const height = Math.max(1, ...cells.map((c) => c.length));
+    for (let line = 0; line < height; line++) {
+      physical.push(cells.map((c) => c[line] ?? ""));
     }
-    const text = lines.join("\n") + "\n";
-    emitHuman(text, opts.io);
-    return text;
+  }
+  const natural = Array.from(
+    { length: columnCount },
+    (_, i) =>
+      physical.reduce((m, r) => Math.max(m, displayWidth(r[i] ?? "")), 0),
+  );
+  const { maxWidth } = opts;
+  const cols = maxWidth === undefined
+    ? natural.map((w) => Math.max(1, w))
+    : fitColumnWidths(natural, maxWidth);
+  let lines = physical.map((cells) =>
+    cells.map((cell, i) =>
+      padToWidth(truncateToWidth(cell, cols[i]!), cols[i]!)
+    ).join(COLUMN_GAP)
+  );
+  if (maxWidth !== undefined) {
+    // 极窄布局（每列保底 1 列仍超宽）的最后一道闸：整行硬截断。
+    lines = lines.map((line) => truncateToWidth(line, maxWidth));
+  }
+  const text = lines.join("\n") + "\n";
+  emitHuman(text, opts.io);
+  return text;
 }
 
 /** `renderStatus` 的选项。 */
 export interface StatusOptions {
-    /** 颜色模式（`--color`）；默认 `auto`。 */
-    color?: ColorMode;
-    /** 目标流；决定 `auto` 模式的 TTY 探测与主题开关。默认 stdout。 */
-    stream?: "stdout" | "stderr";
-    /** 输出汇聚点；`jsonMode: true` 时状态行改道 stderr。 */
-    io?: RenderIO;
+  /** 颜色模式（`--color`）；默认 `auto`。 */
+  color?: ColorMode;
+  /** 目标流；决定 `auto` 模式的 TTY 探测与主题开关。默认 stdout。 */
+  stream?: "stdout" | "stderr";
+  /** 输出汇聚点；`jsonMode: true` 时状态行改道 stderr。 */
+  io?: RenderIO;
 }
 
 /**
@@ -299,17 +299,17 @@ export interface StatusOptions {
  * 计算反而会人为引入偏差。表格里的短状态列建议同样只放符号。
  */
 export function renderStatus(
-    kind: StatusKind,
-    text: string,
-    opts: StatusOptions = {},
+  kind: StatusKind,
+  text: string,
+  opts: StatusOptions = {},
 ): string {
-    // 复用同一套主题/开关判定；不在此重复 NO_COLOR/TTY 判断。
-    const theme = createTheme(opts.color ?? "auto", opts.stream ?? "stdout");
-    const [first = "", ...rest] = text.split("\n");
-    const out = [
-        `${theme.color(kind, STATUS_SYMBOL[kind])} ${first}`,
-        ...rest.map((line) => `  ${line}`),
-    ].join("\n") + "\n";
-    emitHuman(out, opts.io);
-    return out;
+  // 复用同一套主题/开关判定；不在此重复 NO_COLOR/TTY 判断。
+  const theme = createTheme(opts.color ?? "auto", opts.stream ?? "stdout");
+  const [first = "", ...rest] = text.split("\n");
+  const out = [
+    `${theme.color(kind, STATUS_SYMBOL[kind])} ${first}`,
+    ...rest.map((line) => `  ${line}`),
+  ].join("\n") + "\n";
+  emitHuman(out, opts.io);
+  return out;
 }

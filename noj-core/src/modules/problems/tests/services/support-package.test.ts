@@ -9,15 +9,15 @@ import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import { eq } from "drizzle-orm";
 import {
-    deleteSupportPackageForActor,
-    getSupportPackageBytes,
+  deleteSupportPackageForActor,
+  getSupportPackageBytes,
 } from "../../index.ts";
 import { getProblemDraft } from "../../services/versioning/draft.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
-    getStorageProvider,
-    resetStorageProvider,
+  getStorageProvider,
+  resetStorageProvider,
 } from "../../../assets/storage/mod.ts";
 
 const ts = Date.now();
@@ -33,258 +33,257 @@ let currentProblemId = "";
  * 创建测试用户（确保 FK 约束满足）。
  */
 async function createTestUser(id: string): Promise<void> {
-    const db = getDb();
-    const now = new Date().toISOString();
-    await db.insert(users).values({
-        id,
-        username: `tuser-${id}`,
-        email: `tuser-${id}@test.com`,
-        password_hash: "not-used",
-        created_at: now,
-        updated_at: now,
-    });
+  const db = getDb();
+  const now = new Date().toISOString();
+  await db.insert(users).values({
+    id,
+    username: `tuser-${id}`,
+    email: `tuser-${id}@test.com`,
+    password_hash: "not-used",
+    created_at: now,
+    updated_at: now,
+  });
 }
 
 /**
  * 创建测试题目（直接 DB 插入，绕过 whitelist 校验）。自动使用独立 ID 避免 PK 冲突。
  */
 async function createTestProblem(
-    ownerId: string = OWNER_ID,
+  ownerId: string = OWNER_ID,
 ): Promise<string> {
-    const db = getDb();
-    currentProblemId = `test-sp-problem-${ts}-${++problemSeq}`;
-    // 确保 owner 用户存在（FK 约束）
-    const existingOwner = await db.select().from(users).where(
-        eq(users.id, ownerId),
-    ).limit(1);
-    if (existingOwner.length === 0) {
-        await createTestUser(ownerId);
-    }
-    await grantDefaultCatalogRole(ownerId, "educator");
-    const now = new Date().toISOString();
-    await db.insert(problems).values({
-        domain_id: "00000000-0000-4000-8000-000000000001",
-        id: currentProblemId,
-        title: `支持包测试题目 ${ts}`,
-        description: "测试描述",
-        difficulty: "easy",
-        runtime_config: {
-            evaluator: {
-                image: "noj-evaluator-python",
-                command: "python3 /workspace/evaluate.py",
-                time_limit_ms: 5000,
-                memory_limit_mb: 512,
-            },
+  const db = getDb();
+  currentProblemId = `test-sp-problem-${ts}-${++problemSeq}`;
+  // 确保 owner 用户存在（FK 约束）
+  const existingOwner = await db.select().from(users).where(
+    eq(users.id, ownerId),
+  ).limit(1);
+  if (existingOwner.length === 0) {
+    await createTestUser(ownerId);
+  }
+  await grantDefaultCatalogRole(ownerId, "educator");
+  const now = new Date().toISOString();
+  await db.insert(problems).values({
+    domain_id: "00000000-0000-4000-8000-000000000001",
+    id: currentProblemId,
+    title: `支持包测试题目 ${ts}`,
+    description: "测试描述",
+    difficulty: "easy",
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        command: "python3 /workspace/evaluate.py",
+        time_limit_ms: 5000,
+        memory_limit_mb: 512,
+      },
 
-            solution: {
-                image: "noj-solution-python",
-                call_timeout_ms: 2000,
-                memory_limit_mb: 512,
-            },
-        },
-        number: TEST_NUMBER + problemSeq,
-        owner_id: ownerId,
-        created_at: now,
-        updated_at: now,
-    });
-    return currentProblemId;
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: 2000,
+        memory_limit_mb: 512,
+      },
+    },
+    number: TEST_NUMBER + problemSeq,
+    owner_id: ownerId,
+    created_at: now,
+    updated_at: now,
+  });
+  return currentProblemId;
 }
 
 Deno.test({
-    name: "support-package service: deleteSupportPackageForActor 删除成功",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        await createTestProblem();
+  name: "support-package service: deleteSupportPackageForActor 删除成功",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    await createTestProblem();
 
-        // 直接设置评测包 URL（saveSupportPackage 已随上传端点废弃）
-        const db0 = getDb();
-        await db0
-            .update(problems)
-            .set({
-                support_package_storage_url:
-                    "noj-storage://local/dGVzdA?checksum_sha256=abc",
-                updated_at: new Date().toISOString(),
-            })
-            .where(eq(problems.id, currentProblemId));
+    // 直接设置评测包 URL（saveSupportPackage 已随上传端点废弃）
+    const db0 = getDb();
+    await db0
+      .update(problems)
+      .set({
+        support_package_storage_url:
+          "noj-storage://local/dGVzdA?checksum_sha256=abc",
+        updated_at: new Date().toISOString(),
+      })
+      .where(eq(problems.id, currentProblemId));
 
-        // 再删除
-        const draft = await getProblemDraft(currentProblemId);
-        await deleteSupportPackageForActor(
-            currentProblemId,
-            userActorFromAuthenticatedId(OWNER_ID),
-            draft.revision,
-        );
+    // 再删除
+    const draft = await getProblemDraft(currentProblemId);
+    await deleteSupportPackageForActor(
+      currentProblemId,
+      userActorFromAuthenticatedId(OWNER_ID),
+      draft.revision,
+    );
 
-        // 验证 DB 已清空
-        const db = getDb();
-        const [row] = await db
-            .select({ url: problems.support_package_storage_url })
-            .from(problems)
-            .where(eq(problems.id, currentProblemId))
-            .limit(1);
-        assertEquals(row?.url, null);
-    },
+    // 验证 DB 已清空
+    const db = getDb();
+    const [row] = await db
+      .select({ url: problems.support_package_storage_url })
+      .from(problems)
+      .where(eq(problems.id, currentProblemId))
+      .limit(1);
+    assertEquals(row?.url, null);
+  },
 });
 
 Deno.test({
-    name:
-        "support-package service: deleteSupportPackageForActor 幂等：无文件时也成功",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        await createTestProblem();
-        const actor = userActorFromAuthenticatedId(OWNER_ID);
+  name:
+    "support-package service: deleteSupportPackageForActor 幂等：无文件时也成功",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    await createTestProblem();
+    const actor = userActorFromAuthenticatedId(OWNER_ID);
 
-        // 删除不存在的支持包应幂等
-        await deleteSupportPackageForActor(
-            currentProblemId,
-            actor,
-            (await getProblemDraft(currentProblemId)).revision,
-        );
-        // 再次删除仍应成功
-        await deleteSupportPackageForActor(
-            currentProblemId,
-            actor,
-            (await getProblemDraft(currentProblemId)).revision,
-        );
-    },
+    // 删除不存在的支持包应幂等
+    await deleteSupportPackageForActor(
+      currentProblemId,
+      actor,
+      (await getProblemDraft(currentProblemId)).revision,
+    );
+    // 再次删除仍应成功
+    await deleteSupportPackageForActor(
+      currentProblemId,
+      actor,
+      (await getProblemDraft(currentProblemId)).revision,
+    );
+  },
 });
 
 Deno.test({
-    name:
-        "support-package service: deleteSupportPackageForActor 非 owner 返回 403",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        await createTestProblem();
+  name:
+    "support-package service: deleteSupportPackageForActor 非 owner 返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    await createTestProblem();
 
-        await createTestUser("other-user");
-        const draft = await getProblemDraft(currentProblemId);
-        await assertRejects(
-            () =>
-                deleteSupportPackageForActor(
-                    currentProblemId,
-                    userActorFromAuthenticatedId("other-user"),
-                    draft.revision,
-                ),
-            ForbiddenError,
-        );
-    },
+    await createTestUser("other-user");
+    const draft = await getProblemDraft(currentProblemId);
+    await assertRejects(
+      () =>
+        deleteSupportPackageForActor(
+          currentProblemId,
+          userActorFromAuthenticatedId("other-user"),
+          draft.revision,
+        ),
+      ForbiddenError,
+    );
+  },
 });
 
 Deno.test({
-    name:
-        "support-package service: deleteSupportPackageForActor 不存在的题目返回 404",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        // 走新入口后不存在题目的错误由 loadProblemIdentity 抛出（404 AppError）
-        const error = await assertRejects(
-            () =>
-                deleteSupportPackageForActor(
-                    "nonexistent",
-                    userActorFromAuthenticatedId(ADMIN_ID),
-                    0,
-                ),
-            AppError,
-        );
-        assertEquals(error.statusCode, 404);
-    },
+  name:
+    "support-package service: deleteSupportPackageForActor 不存在的题目返回 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    // 走新入口后不存在题目的错误由 loadProblemIdentity 抛出（404 AppError）
+    const error = await assertRejects(
+      () =>
+        deleteSupportPackageForActor(
+          "nonexistent",
+          userActorFromAuthenticatedId(ADMIN_ID),
+          0,
+        ),
+      AppError,
+    );
+    assertEquals(error.statusCode, 404);
+  },
 });
 
 Deno.test({
-    name: "support-package service: getSupportPackageBytes 返回存储的数据",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        await createTestProblem();
+  name: "support-package service: getSupportPackageBytes 返回存储的数据",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    await createTestProblem();
 
-        const zipData = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
-        // 通过 storage.put 写入真实对象，获得可读的 noj-storage:// URL
-        const storage = await getStorageProvider();
-        const url = await storage.put("test-key", zipData, "application/zip");
-        const db0 = getDb();
-        await db0
-            .update(problems)
-            .set({
-                support_package_storage_url: url,
-                updated_at: new Date().toISOString(),
-            })
-            .where(eq(problems.id, currentProblemId));
+    const zipData = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
+    // 通过 storage.put 写入真实对象，获得可读的 noj-storage:// URL
+    const storage = await getStorageProvider();
+    const url = await storage.put("test-key", zipData, "application/zip");
+    const db0 = getDb();
+    await db0
+      .update(problems)
+      .set({
+        support_package_storage_url: url,
+        updated_at: new Date().toISOString(),
+      })
+      .where(eq(problems.id, currentProblemId));
 
-        const bytes = await getSupportPackageBytes(
-            currentProblemId,
-            OWNER_ID,
-            "user",
-        );
-        assertEquals(bytes !== null, true);
-        if (bytes) {
-            assertEquals(bytes.length, zipData.length);
-        }
-    },
+    const bytes = await getSupportPackageBytes(
+      currentProblemId,
+      OWNER_ID,
+      "user",
+    );
+    assertEquals(bytes !== null, true);
+    if (bytes) {
+      assertEquals(bytes.length, zipData.length);
+    }
+  },
 });
 
 Deno.test({
-    name: "support-package service: getSupportPackageBytes 无支持包返回 null",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        await createTestProblem();
+  name: "support-package service: getSupportPackageBytes 无支持包返回 null",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    await createTestProblem();
 
-        const bytes = await getSupportPackageBytes(
-            currentProblemId,
-            OWNER_ID,
-            "user",
-        );
-        assertEquals(bytes, null);
-    },
+    const bytes = await getSupportPackageBytes(
+      currentProblemId,
+      OWNER_ID,
+      "user",
+    );
+    assertEquals(bytes, null);
+  },
 });
 
 Deno.test({
-    name: "support-package service: getSupportPackageBytes 非 owner 返回 403",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        resetStorageProvider();
-        await createTestProblem();
+  name: "support-package service: getSupportPackageBytes 非 owner 返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    resetStorageProvider();
+    await createTestProblem();
 
-        await createTestUser("other-user");
-        await assertRejects(
-            () =>
-                getSupportPackageBytes(currentProblemId, "other-user", "user"),
-            ForbiddenError,
-        );
-    },
+    await createTestUser("other-user");
+    await assertRejects(
+      () => getSupportPackageBytes(currentProblemId, "other-user", "user"),
+      ForbiddenError,
+    );
+  },
 });
 
 // 清理
 Deno.test({
-    name: "support-package service: cleanup",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        try {
-            const db = getDb();
-            await db.delete(problems).where(eq(problems.id, currentProblemId));
-            await db.delete(users).where(eq(users.id, OWNER_ID));
-        } catch {
-            // ignore
-        }
-    },
+  name: "support-package service: cleanup",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    try {
+      const db = getDb();
+      await db.delete(problems).where(eq(problems.id, currentProblemId));
+      await db.delete(users).where(eq(users.id, OWNER_ID));
+    } catch {
+      // ignore
+    }
+  },
 });
 
 import { resetDbForTest } from "../default-fixture.ts";

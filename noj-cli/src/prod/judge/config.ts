@@ -35,8 +35,8 @@
  */
 
 import {
-    assertSchedulingEnv,
-    SCHEDULING_ENV_DEFAULTS,
+  assertSchedulingEnv,
+  SCHEDULING_ENV_DEFAULTS,
 } from "./scheduling-env.ts";
 import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { dirname, isAbsolute, join, normalize } from "@std/path";
@@ -77,8 +77,8 @@ export const JUDGE_SOCKET_CONTAINER_PATH = "/run/noj-judge/docker.sock";
  * 就能绕过字面比较。
  */
 export const FORBIDDEN_SOCKET_PATHS: readonly string[] = [
-    "/var/run/docker.sock",
-    "/run/docker.sock",
+  "/var/run/docker.sock",
+  "/run/docker.sock",
 ];
 
 /**
@@ -88,68 +88,68 @@ export const FORBIDDEN_SOCKET_PATHS: readonly string[] = [
  * `judge_test.ts` 的对应断言转红。
  */
 export const FORBIDDEN_HOST_COMMANDS: readonly string[] = [
-    "systemctl",
-    "service",
-    "apt",
-    "apt-get",
-    "yum",
-    "dnf",
-    "apk",
-    "dockerd",
-    "containerd",
-    "usermod",
-    "groupmod",
-    "chown",
+  "systemctl",
+  "service",
+  "apt",
+  "apt-get",
+  "yum",
+  "dnf",
+  "apk",
+  "dockerd",
+  "containerd",
+  "usermod",
+  "groupmod",
+  "chown",
 ];
 
 /** 必须配置的键。 */
 export const JUDGE_REQUIRED_KEYS: readonly string[] = [
-    "NOJ_VERSION",
-    "REDIS_URL",
-    "JUDGE_QUEUE",
-    "RESULT_QUEUE",
-    "WORK_DIR",
+  "NOJ_VERSION",
+  "REDIS_URL",
+  "JUDGE_QUEUE",
+  "RESULT_QUEUE",
+  "WORK_DIR",
 
-    "JUDGE_IMAGE_PREFIX",
-    "JUDGE_IMAGE_REGISTRY",
-    "JUDGE_DOCKER_SOCKET",
-    "JUDGE_DOCKER_SOCKET_GID",
-    "JUDGE_UID",
-    "JUDGE_GID",
+  "JUDGE_IMAGE_PREFIX",
+  "JUDGE_IMAGE_REGISTRY",
+  "JUDGE_DOCKER_SOCKET",
+  "JUDGE_DOCKER_SOCKET_GID",
+  "JUDGE_UID",
+  "JUDGE_GID",
 ];
 
 /** 首装写入的键与默认值。 */
 export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
-    ...OI_ENV_DEFAULTS,
-    ...SCHEDULING_ENV_DEFAULTS,
-    JUDGE_QUEUE: "noj:judge:queue",
-    RESULT_QUEUE: "noj:judge:results",
-    JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
-    WORK_DIR: "/tmp/noj-judge",
+  ...OI_ENV_DEFAULTS,
+  ...SCHEDULING_ENV_DEFAULTS,
+  JUDGE_QUEUE: "noj:judge:queue",
+  RESULT_QUEUE: "noj:judge:results",
+  JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
+  WORK_DIR: "/tmp/noj-judge",
 
-    JUDGE_IMAGE_PREFIX: "noj-",
-    JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
-    JUDGE_DOCKER_SOCKET: JUDGE_SOCKET_CONTAINER_PATH,
-    JUDGE_DOCKER_SOCKET_GID: "10001",
-    JUDGE_DOCKER_HOST: "unix://" + JUDGE_SOCKET_CONTAINER_PATH,
-    JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
-    JUDGE_UID: "10001",
-    JUDGE_GID: "10001",
-    JUDGE_CPU_LIMIT_MILLICORES: "1000",
-    JUDGE_MAX_EVALUATOR_TIME_MS: "300000",
-    JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
-    JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
-    JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
-    // 审计 VULN-20：评测隔离网络。此前默认 "bridge"（Docker 默认桥），会让
-    // Evaluator 沙箱经网关 IP 触达宿主机与同宿主机上的其他容器网络；noj-judge 的
-    // 生产启动校验现已**拒绝** bridge/host，故默认值改为专用隔离网络名。
-    // 该网络由渲染出的 docker-compose.judge.yml 声明并创建（见 compose.ts）。
-    JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
-    JUDGE_ALLOW_HTTP_S3: "false",
-    SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
-    SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",
-    SUPPORT_CACHE_MAX_ITEMS: "500",
-    SUPPORT_CACHE_MAX_MB: "2048",
+  JUDGE_IMAGE_PREFIX: "noj-",
+  JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
+  JUDGE_DOCKER_SOCKET: JUDGE_SOCKET_CONTAINER_PATH,
+  JUDGE_DOCKER_SOCKET_GID: "10001",
+  JUDGE_DOCKER_HOST: "unix://" + JUDGE_SOCKET_CONTAINER_PATH,
+  JUDGE_REQUIRE_ISOLATED_DOCKER: "true",
+  JUDGE_UID: "10001",
+  JUDGE_GID: "10001",
+  JUDGE_CPU_LIMIT_MILLICORES: "1000",
+  JUDGE_MAX_EVALUATOR_TIME_MS: "300000",
+  JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS: "60000",
+  JUDGE_COMMAND_WHITELIST: "python3,deno,node,bash,sh",
+  JUDGE_ALLOW_EVALUATOR_NETWORK: "false",
+  // 审计 VULN-20：评测隔离网络。此前默认 "bridge"（Docker 默认桥），会让
+  // Evaluator 沙箱经网关 IP 触达宿主机与同宿主机上的其他容器网络；noj-judge 的
+  // 生产启动校验现已**拒绝** bridge/host，故默认值改为专用隔离网络名。
+  // 该网络由渲染出的 docker-compose.judge.yml 声明并创建（见 compose.ts）。
+  JUDGE_EVALUATOR_NETWORK: "noj-eval-net",
+  JUDGE_ALLOW_HTTP_S3: "false",
+  SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT: "60",
+  SUPPORT_CACHE_DIR: "/tmp/noj-judge/support-cache",
+  SUPPORT_CACHE_MAX_ITEMS: "500",
+  SUPPORT_CACHE_MAX_MB: "2048",
 };
 
 /** 不可变 Release 标签（`v?N.N.N`，允许 `-rc` 后缀）。 */
@@ -157,12 +157,12 @@ const VERSION_RE = /^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
 
 /** `JUDGE_VERSION` 校验（`v0.1.0` / `0.8.0-rc.1` 通过；`main` / `latest` 拒绝）。 */
 export function assertJudgeVersion(version: string): void {
-    if (!VERSION_RE.test(version.trim())) {
-        throw new UsageError(
-            `NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.8.0-rc.1），` +
-                `不能填写 main / latest：收到 "${version}"`,
-        );
-    }
+  if (!VERSION_RE.test(version.trim())) {
+    throw new UsageError(
+      `NOJ_VERSION 必须是不可变 Release 标签（如 v0.1.0 或 0.8.0-rc.1），` +
+        `不能填写 main / latest：收到 "${version}"`,
+    );
+  }
 }
 
 /**
@@ -181,71 +181,71 @@ export function assertJudgeVersion(version: string): void {
  *   以模拟符号链接而不必真的建链接。
  */
 export function assertDedicatedSocket(
-    socketPath: string,
-    realPath: (path: string) => string = defaultRealPath,
+  socketPath: string,
+  realPath: (path: string) => string = defaultRealPath,
 ): void {
-    const raw = socketPath.trim();
-    if (raw === "") {
-        throw new UsageError("JUDGE_DOCKER_SOCKET 不能为空");
-    }
-    if (!isAbsolute(raw)) {
-        throw new UsageError(`JUDGE_DOCKER_SOCKET 必须是绝对路径：${raw}`);
-    }
-    if (raw.includes(":")) {
-        throw new UsageError(
-            `JUDGE_DOCKER_SOCKET 必须是本机 Unix socket 路径：${raw}`,
-        );
-    }
+  const raw = socketPath.trim();
+  if (raw === "") {
+    throw new UsageError("JUDGE_DOCKER_SOCKET 不能为空");
+  }
+  if (!isAbsolute(raw)) {
+    throw new UsageError(`JUDGE_DOCKER_SOCKET 必须是绝对路径：${raw}`);
+  }
+  if (raw.includes(":")) {
+    throw new UsageError(
+      `JUDGE_DOCKER_SOCKET 必须是本机 Unix socket 路径：${raw}`,
+    );
+  }
 
-    // **归一化是必需的**：仅比较字面量会漏掉一切等价写法。
-    // 实测被放行的形态：`/var/run/docker.sock/`（尾部斜杠）、`…/docker.sock/.`、
-    // `/run/docker.sock/./`。它们指向同一个宿主 socket——且真实 Docker 对
-    // 尾部斜杠的 bind 源同样会挂载该路径，所以一个手误的斜杠就能把宿主 socket
-    // 交给 Judge，正是本模块要防的容器逃逸面。
-    //
-    // `realPath` 之所以不够：`Deno.realPathSync("/var/run/docker.sock/")` 抛
-    // `NotADirectory`（socket 不是目录），旧实现把"抛错"当成"路径不存在"跳过，
-    // 于是归一化完全没发生。
-    const candidates = new Set<string>();
-    const add = (path: string): void => {
-        if (path === "") return;
-        candidates.add(path);
-        candidates.add(collapseSlashes(path));
-        // **真正的路径归一化**：`normalize` 解决 `.`/`..`/重复斜杠，
-        // 但它**保留尾部斜杠**（实测 `/a/b/` → `/a/b/`），故再剥一次。
-        // 手写正则做不到这点：`/var/run/docker.sock/..//docker.sock`
-        // 归一化后正是被禁路径，而简单的去尾斜杠看不出来。
-        const normalized = normalize(path).replace(/\/+$/, "");
-        if (normalized !== "" && normalized !== path) {
-            candidates.add(normalized);
-            candidates.add(collapseSlashes(normalized));
-        }
-        // 父目录也纳入：socket 常被软链到"更整洁"的路径。
-        const parent = dirname(normalized === "" ? path : normalized);
-        if (parent !== "" && parent !== "/") {
-            candidates.add(parent);
-            const realParent = safeRealPath(realPath, parent);
-            if (realParent !== "") {
-                candidates.add(realParent);
-                candidates.add(collapseSlashes(realParent));
-            }
-        }
-    };
-    add(raw);
-    // realpath 只在路径**存在**时有意义（不存在/非目录时回退字面值）。
-    const resolved = safeRealPath(realPath, raw);
-    add(resolved);
-    // 对**父目录**再取一次 realpath：socket 常被软链到"更整洁"的路径，
-    // 而针对 socket 本身取 realpath 在部分平台会失败。
-    add(safeRealPath(realPath, dirname(raw.replace(/\/+$/, ""))));
-    for (const candidate of candidates) {
-        if (FORBIDDEN_SOCKET_PATHS.includes(candidate)) {
-            throw new UsageError(
-                `禁止使用应用宿主机 Docker socket：${socketPath}；` +
-                    `请准备只服务于 Judge 的 rootless socket（例如 /run/noj-judge/docker.sock）`,
-            );
-        }
+  // **归一化是必需的**：仅比较字面量会漏掉一切等价写法。
+  // 实测被放行的形态：`/var/run/docker.sock/`（尾部斜杠）、`…/docker.sock/.`、
+  // `/run/docker.sock/./`。它们指向同一个宿主 socket——且真实 Docker 对
+  // 尾部斜杠的 bind 源同样会挂载该路径，所以一个手误的斜杠就能把宿主 socket
+  // 交给 Judge，正是本模块要防的容器逃逸面。
+  //
+  // `realPath` 之所以不够：`Deno.realPathSync("/var/run/docker.sock/")` 抛
+  // `NotADirectory`（socket 不是目录），旧实现把"抛错"当成"路径不存在"跳过，
+  // 于是归一化完全没发生。
+  const candidates = new Set<string>();
+  const add = (path: string): void => {
+    if (path === "") return;
+    candidates.add(path);
+    candidates.add(collapseSlashes(path));
+    // **真正的路径归一化**：`normalize` 解决 `.`/`..`/重复斜杠，
+    // 但它**保留尾部斜杠**（实测 `/a/b/` → `/a/b/`），故再剥一次。
+    // 手写正则做不到这点：`/var/run/docker.sock/..//docker.sock`
+    // 归一化后正是被禁路径，而简单的去尾斜杠看不出来。
+    const normalized = normalize(path).replace(/\/+$/, "");
+    if (normalized !== "" && normalized !== path) {
+      candidates.add(normalized);
+      candidates.add(collapseSlashes(normalized));
     }
+    // 父目录也纳入：socket 常被软链到"更整洁"的路径。
+    const parent = dirname(normalized === "" ? path : normalized);
+    if (parent !== "" && parent !== "/") {
+      candidates.add(parent);
+      const realParent = safeRealPath(realPath, parent);
+      if (realParent !== "") {
+        candidates.add(realParent);
+        candidates.add(collapseSlashes(realParent));
+      }
+    }
+  };
+  add(raw);
+  // realpath 只在路径**存在**时有意义（不存在/非目录时回退字面值）。
+  const resolved = safeRealPath(realPath, raw);
+  add(resolved);
+  // 对**父目录**再取一次 realpath：socket 常被软链到"更整洁"的路径，
+  // 而针对 socket 本身取 realpath 在部分平台会失败。
+  add(safeRealPath(realPath, dirname(raw.replace(/\/+$/, ""))));
+  for (const candidate of candidates) {
+    if (FORBIDDEN_SOCKET_PATHS.includes(candidate)) {
+      throw new UsageError(
+        `禁止使用应用宿主机 Docker socket：${socketPath}；` +
+          `请准备只服务于 Judge 的 rootless socket（例如 /run/noj-judge/docker.sock）`,
+      );
+    }
+  }
 }
 
 /**
@@ -257,29 +257,29 @@ export function assertDedicatedSocket(
  * 字面量/去尾斜杠/父目录的归一化仍在。
  */
 function safeRealPath(
-    realPath: (path: string) => string,
-    path: string,
+  realPath: (path: string) => string,
+  path: string,
 ): string {
-    if (path === "") return "";
-    try {
-        return realPath(path);
-    } catch {
-        return "";
-    }
+  if (path === "") return "";
+  try {
+    return realPath(path);
+  } catch {
+    return "";
+  }
 }
 
 /** 合并重复斜杠（`//run/docker.sock` → `/run/docker.sock`）。 */
 function collapseSlashes(path: string): string {
-    return path.replace(/\/{2,}/g, "/");
+  return path.replace(/\/{2,}/g, "/");
 }
 
 /** 缺省 realpath：路径不存在时返回空串（由调用方回退字面比较）。 */
 function defaultRealPath(path: string): string {
-    try {
-        return Deno.realPathSync(path);
-    } catch {
-        return "";
-    }
+  try {
+    return Deno.realPathSync(path);
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -290,47 +290,47 @@ function defaultRealPath(path: string): string {
  * 的 daemon——**安全约束 1 被绕过，而配置看起来完全正常**。
  */
 export function assertJudgeDockerHost(host: string): void {
-    const expected = "unix://" + JUDGE_SOCKET_CONTAINER_PATH;
-    if (!host.startsWith("unix://")) {
-        throw new UsageError(
-            `JUDGE_DOCKER_HOST 必须使用 unix:// endpoint：${host}`,
-        );
-    }
-    if (host !== expected) {
-        throw new UsageError(
-            `JUDGE_DOCKER_HOST 必须为容器内专用 endpoint：${expected}（收到 ${host}）`,
-        );
-    }
+  const expected = "unix://" + JUDGE_SOCKET_CONTAINER_PATH;
+  if (!host.startsWith("unix://")) {
+    throw new UsageError(
+      `JUDGE_DOCKER_HOST 必须使用 unix:// endpoint：${host}`,
+    );
+  }
+  if (host !== expected) {
+    throw new UsageError(
+      `JUDGE_DOCKER_HOST 必须为容器内专用 endpoint：${expected}（收到 ${host}）`,
+    );
+  }
 }
 
 /** 校验 `JUDGE_REQUIRE_ISOLATED_DOCKER` 必须为 true。 */
 export function assertIsolatedDockerRequired(value: string): void {
-    if (value !== "true") {
-        throw new UsageError(
-            `JUDGE_REQUIRE_ISOLATED_DOCKER 必须为 true（收到 "${value}"）：` +
-                `关闭它会让 Judge 接受共享 socket`,
-        );
-    }
+  if (value !== "true") {
+    throw new UsageError(
+      `JUDGE_REQUIRE_ISOLATED_DOCKER 必须为 true（收到 "${value}"）：` +
+        `关闭它会让 Judge 接受共享 socket`,
+    );
+  }
 }
 
 /** 读取 `.env.judge` 为键值表；不存在返回空表。 */
 export async function readJudgeEnv(
-    path: string,
+  path: string,
 ): Promise<Record<string, string>> {
-    let text: string;
-    try {
-        text = await Deno.readTextFile(path);
-    } catch {
-        return {};
-    }
-    const out: Record<string, string> = {};
-    for (const [k, v] of parseEnvFile(text)) out[k] = v;
-    return out;
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of parseEnvFile(text)) out[k] = v;
+  return out;
 }
 
 /** 取配置值；缺失返回空串。 */
 export function envValue(env: Record<string, string>, key: string): string {
-    return env[key] ?? "";
+  return env[key] ?? "";
 }
 
 /**
@@ -344,28 +344,26 @@ export function envValue(env: Record<string, string>, key: string): string {
  * `your-` 等前缀），不重写一份。
  */
 export function assertJudgeConfigValues(env: Record<string, string>): void {
-    const missing: string[] = [];
-    for (const key of JUDGE_REQUIRED_KEYS) {
-        if (isPlaceholder(envValue(env, key))) missing.push(key);
-    }
-    if (missing.length > 0) {
-        throw new UsageError(
-            "Judge 配置未完成，以下项未配置或仍是占位值：\n" +
-                missing.map((k) => `  - ${k}`).join("\n"),
-        );
-    }
-    assertJudgeVersion(envValue(env, "NOJ_VERSION"));
-
-    assertSchedulingEnv(env);
-    for (const key of ["JUDGE_DOCKER_SOCKET_GID", "JUDGE_UID", "JUDGE_GID"]) {
-        if (!/^[0-9]+$/.test(envValue(env, key))) {
-            throw new UsageError(`${key} 必须是数字：${envValue(env, key)}`);
-        }
-    }
-    assertJudgeDockerHost(envValue(env, "JUDGE_DOCKER_HOST"));
-    assertIsolatedDockerRequired(
-        envValue(env, "JUDGE_REQUIRE_ISOLATED_DOCKER"),
+  const missing: string[] = [];
+  for (const key of JUDGE_REQUIRED_KEYS) {
+    if (isPlaceholder(envValue(env, key))) missing.push(key);
+  }
+  if (missing.length > 0) {
+    throw new UsageError(
+      "Judge 配置未完成，以下项未配置或仍是占位值：\n" +
+        missing.map((k) => `  - ${k}`).join("\n"),
     );
+  }
+  assertJudgeVersion(envValue(env, "NOJ_VERSION"));
+
+  assertSchedulingEnv(env);
+  for (const key of ["JUDGE_DOCKER_SOCKET_GID", "JUDGE_UID", "JUDGE_GID"]) {
+    if (!/^[0-9]+$/.test(envValue(env, key))) {
+      throw new UsageError(`${key} 必须是数字：${envValue(env, key)}`);
+    }
+  }
+  assertJudgeDockerHost(envValue(env, "JUDGE_DOCKER_HOST"));
+  assertIsolatedDockerRequired(envValue(env, "JUDGE_REQUIRE_ISOLATED_DOCKER"));
 }
 
 /** 配置文件权限的可接受值。 */
@@ -373,53 +371,53 @@ export const JUDGE_ENV_ALLOWED_MODES: readonly string[] = ["600", "400"];
 
 /** 校验配置文件权限。 */
 export async function assertJudgeEnvFileMode(path: string): Promise<void> {
-    let st: Deno.FileInfo;
-    try {
-        st = await Deno.stat(path);
-    } catch {
-        throw new UsageError(`找不到配置文件：${path}，请先执行 install`);
-    }
-    const mode = ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0");
-    if (!JUDGE_ENV_ALLOWED_MODES.includes(mode)) {
-        throw new UsageError(
-            `配置文件权限必须为 600 或 400：${path}（当前 ${mode}）`,
-        );
-    }
+  let st: Deno.FileInfo;
+  try {
+    st = await Deno.stat(path);
+  } catch {
+    throw new UsageError(`找不到配置文件：${path}，请先执行 install`);
+  }
+  const mode = ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0");
+  if (!JUDGE_ENV_ALLOWED_MODES.includes(mode)) {
+    throw new UsageError(
+      `配置文件权限必须为 600 或 400：${path}（当前 ${mode}）`,
+    );
+  }
 }
 
 /** {@link writeJudgeEnv} 的输入。 */
 export interface WriteJudgeEnvOptions {
-    /** `.env.judge` 路径。 */
-    path: string;
-    /** 首装的值（缺省用 {@link JUDGE_DEFAULT_VALUES}）；`NOJ_VERSION`/`REDIS_URL` 必给。 */
-    values?: Record<string, string>;
-    /**
-     * **显式**要求就地更新 `NOJ_VERSION`（`--version`）。
-     *
-     * 与 `values["NOJ_VERSION"]` 分开是刻意的：`values` 只是"首装时该写什么"，
-     * 而升级路径必须能表达"我确实想改版本"。混在一个字段里的话，任何把
-     * `NOJ_VERSION` 放进 `values` 的调用（例如复用一份基线配置对象）都会**静默
-     * 覆盖用户既有的版本**——那正是本模块要避免的破坏。
-     *
-     * 只在既有配置存在时生效（首装走 `values`）。
-     */
-    updateVersion?: string;
+  /** `.env.judge` 路径。 */
+  path: string;
+  /** 首装的值（缺省用 {@link JUDGE_DEFAULT_VALUES}）；`NOJ_VERSION`/`REDIS_URL` 必给。 */
+  values?: Record<string, string>;
+  /**
+   * **显式**要求就地更新 `NOJ_VERSION`（`--version`）。
+   *
+   * 与 `values["NOJ_VERSION"]` 分开是刻意的：`values` 只是"首装时该写什么"，
+   * 而升级路径必须能表达"我确实想改版本"。混在一个字段里的话，任何把
+   * `NOJ_VERSION` 放进 `values` 的调用（例如复用一份基线配置对象）都会**静默
+   * 覆盖用户既有的版本**——那正是本模块要避免的破坏。
+   *
+   * 只在既有配置存在时生效（首装走 `values`）。
+   */
+  updateVersion?: string;
 }
 
 /** {@link writeJudgeEnv} 的结果。 */
 export interface WriteJudgeEnvResult {
-    /** 本次是否真的写了文件（既有配置且未要求覆盖时为 false）。 */
-    written: boolean;
-    /** 最终生效的键值。 */
-    env: Record<string, string>;
-    /**
-     * 因「既有配置优先」而被忽略的键（值为本次请求值）。
-     *
-     * 为什么必须回报：`judge install --redis-url …` 在既有配置上
-     * 只应用 `updateVersion`，其余值一律不动且**零提示**——用户以为改了 Redis
-     * 口令，实际什么都没发生。静默忽略与"旗标被吞"是同一类缺陷。
-     */
-    ignored: Record<string, string>;
+  /** 本次是否真的写了文件（既有配置且未要求覆盖时为 false）。 */
+  written: boolean;
+  /** 最终生效的键值。 */
+  env: Record<string, string>;
+  /**
+   * 因「既有配置优先」而被忽略的键（值为本次请求值）。
+   *
+   * 为什么必须回报：`judge install --redis-url …` 在既有配置上
+   * 只应用 `updateVersion`，其余值一律不动且**零提示**——用户以为改了 Redis
+   * 口令，实际什么都没发生。静默忽略与"旗标被吞"是同一类缺陷。
+   */
+  ignored: Record<string, string>;
 }
 
 /**
@@ -432,88 +430,88 @@ export interface WriteJudgeEnvResult {
  * 的本质就是改版本；就地更新保留注释与其它键。
  */
 export async function writeJudgeEnv(
-    opts: WriteJudgeEnvOptions,
+  opts: WriteJudgeEnvOptions,
 ): Promise<WriteJudgeEnvResult> {
-    const existing = await readJudgeEnv(opts.path);
-    if (Object.keys(existing).length > 0) {
-        // 既有配置：只在**显式**给了 updateVersion 时就地更新该键
-        // （保留注释/顺序/其它键）。其它值一律不动。
-        const updateVersion = opts.updateVersion;
-        if (updateVersion !== undefined && updateVersion !== "") {
-            assertJudgeVersion(updateVersion);
-            await writeEnvFileAtomic(
-                opts.path,
-                new Map([["NOJ_VERSION", updateVersion]]),
-            );
-        }
-        await Deno.chmod(opts.path, JUDGE_ENV_MODE);
-        // 回报「请求了但因既有配置而未被应用」的键：静默忽略会让用户误以为
-        // `--redis-url` / `--socket-gid` 生效。
-        const ignored: Record<string, string> = {};
-        for (const [key, value] of Object.entries(opts.values ?? {})) {
-            if (key === "NOJ_VERSION") continue; // 版本是显式例外，已在上面处理
-            if (value !== "" && envValue(existing, key) !== value) {
-                ignored[key] = value;
-            }
-        }
-        return {
-            written: updateVersion !== undefined && updateVersion !== "",
-            env: await readJudgeEnv(opts.path),
-            ignored,
-        };
+  const existing = await readJudgeEnv(opts.path);
+  if (Object.keys(existing).length > 0) {
+    // 既有配置：只在**显式**给了 updateVersion 时就地更新该键
+    // （保留注释/顺序/其它键）。其它值一律不动。
+    const updateVersion = opts.updateVersion;
+    if (updateVersion !== undefined && updateVersion !== "") {
+      assertJudgeVersion(updateVersion);
+      await writeEnvFileAtomic(
+        opts.path,
+        new Map([["NOJ_VERSION", updateVersion]]),
+      );
     }
-
-    const version = opts.values?.["NOJ_VERSION"] ?? "";
-    const redisUrl = opts.values?.["REDIS_URL"] ?? "";
-    if (version === "") {
-        throw new UsageError("首装必须提供 NOJ_VERSION");
-    }
-    if (redisUrl === "") {
-        throw new UsageError("首装必须提供 REDIS_URL");
-    }
-    const merged: Record<string, string> = {
-        ...JUDGE_DEFAULT_VALUES,
-        ...(opts.values ?? {}),
-        NOJ_VERSION: version,
-        REDIS_URL: redisUrl,
-    };
-    // 写入前先过一遍安全守卫：**拒绝时不得留下任何文件**。
-    // 这是"先于配置写入"的落点——顺序反了的话，一个含共享 socket 的配置就已经
-    // 落盘了，后续即使报错也得靠人工清理。
-    assertDedicatedSocket(merged["JUDGE_DOCKER_SOCKET"] ?? "");
-    assertJudgeConfigValues(merged);
-
-    await Deno.mkdir(opts.path.substring(0, opts.path.lastIndexOf("/")), {
-        recursive: true,
-        mode: 0o700,
-    });
-    await writeEnvFileAtomic(opts.path, new Map(Object.entries(merged)));
     await Deno.chmod(opts.path, JUDGE_ENV_MODE);
-    return { written: true, env: await readJudgeEnv(opts.path), ignored: {} };
+    // 回报「请求了但因既有配置而未被应用」的键：静默忽略会让用户误以为
+    // `--redis-url` / `--socket-gid` 生效。
+    const ignored: Record<string, string> = {};
+    for (const [key, value] of Object.entries(opts.values ?? {})) {
+      if (key === "NOJ_VERSION") continue; // 版本是显式例外，已在上面处理
+      if (value !== "" && envValue(existing, key) !== value) {
+        ignored[key] = value;
+      }
+    }
+    return {
+      written: updateVersion !== undefined && updateVersion !== "",
+      env: await readJudgeEnv(opts.path),
+      ignored,
+    };
+  }
+
+  const version = opts.values?.["NOJ_VERSION"] ?? "";
+  const redisUrl = opts.values?.["REDIS_URL"] ?? "";
+  if (version === "") {
+    throw new UsageError("首装必须提供 NOJ_VERSION");
+  }
+  if (redisUrl === "") {
+    throw new UsageError("首装必须提供 REDIS_URL");
+  }
+  const merged: Record<string, string> = {
+    ...JUDGE_DEFAULT_VALUES,
+    ...(opts.values ?? {}),
+    NOJ_VERSION: version,
+    REDIS_URL: redisUrl,
+  };
+  // 写入前先过一遍安全守卫：**拒绝时不得留下任何文件**。
+  // 这是"先于配置写入"的落点——顺序反了的话，一个含共享 socket 的配置就已经
+  // 落盘了，后续即使报错也得靠人工清理。
+  assertDedicatedSocket(merged["JUDGE_DOCKER_SOCKET"] ?? "");
+  assertJudgeConfigValues(merged);
+
+  await Deno.mkdir(opts.path.substring(0, opts.path.lastIndexOf("/")), {
+    recursive: true,
+    mode: 0o700,
+  });
+  await writeEnvFileAtomic(opts.path, new Map(Object.entries(merged)));
+  await Deno.chmod(opts.path, JUDGE_ENV_MODE);
+  return { written: true, env: await readJudgeEnv(opts.path), ignored: {} };
 }
 
 /** Judge 目录内各文件的绝对路径。 */
 export interface JudgePaths {
-    dir: string;
-    envFile: string;
-    composeFile: string;
+  dir: string;
+  envFile: string;
+  composeFile: string;
 }
 
 /** 由运行目录派生各文件路径（并校验目录为绝对路径）。 */
 export function judgePaths(
-    dir: string,
-    envFile?: string,
-    composeFile?: string,
+  dir: string,
+  envFile?: string,
+  composeFile?: string,
 ): JudgePaths {
-    if (!isAbsolute(dir)) {
-        throw new UsageError(`Judge 运行目录必须是绝对路径：${dir}`);
-    }
-    const clean = dir.replace(/\/+$/, "");
-    return {
-        dir: clean,
-        envFile: envFile ?? join(clean, JUDGE_ENV_FILE),
-        composeFile: composeFile ?? join(clean, JUDGE_COMPOSE_FILE),
-    };
+  if (!isAbsolute(dir)) {
+    throw new UsageError(`Judge 运行目录必须是绝对路径：${dir}`);
+  }
+  const clean = dir.replace(/\/+$/, "");
+  return {
+    dir: clean,
+    envFile: envFile ?? join(clean, JUDGE_ENV_FILE),
+    composeFile: composeFile ?? join(clean, JUDGE_COMPOSE_FILE),
+  };
 }
 
 /**
@@ -524,89 +522,89 @@ export function judgePaths(
  * runner 以便在非 Linux 的 CI 上测试。
  */
 export interface HostProbe {
-    /** 平台名（`uname -s`）；缺省用 `Deno.build.os` 映射。 */
-    uname?: () => Promise<string>;
-    /** docker 可用性探测。 */
-    dockerAvailable?: () => Promise<boolean>;
+  /** 平台名（`uname -s`）；缺省用 `Deno.build.os` 映射。 */
+  uname?: () => Promise<string>;
+  /** docker 可用性探测。 */
+  dockerAvailable?: () => Promise<boolean>;
 }
 
 /** 探测结果。 */
 export interface HostProbeResult {
-    ok: boolean;
-    /** 失败原因（ok 为 true 时 null）。 */
-    error: string | null;
+  ok: boolean;
+  /** 失败原因（ok 为 true 时 null）。 */
+  error: string | null;
 }
 
 /** 执行宿主探测；**不通过即返回错误**（由调用方决定退出码）。 */
 export async function checkJudgeHost(
-    probe: HostProbe,
+  probe: HostProbe,
 ): Promise<HostProbeResult> {
-    const uname = probe.uname ?? (() => Promise.resolve(defaultUname()));
-    const platform = await uname();
-    if (!platform.startsWith("Linux")) {
-        return {
-            ok: false,
-            error: `独立 Judge 部署目前只支持 Linux（当前 ${platform}）`,
-        };
+  const uname = probe.uname ?? (() => Promise.resolve(defaultUname()));
+  const platform = await uname();
+  if (!platform.startsWith("Linux")) {
+    return {
+      ok: false,
+      error: `独立 Judge 部署目前只支持 Linux（当前 ${platform}）`,
+    };
+  }
+  if (probe.dockerAvailable !== undefined) {
+    if (!(await probe.dockerAvailable())) {
+      return {
+        ok: false,
+        error: "Docker daemon 未运行或当前用户无权限",
+      };
     }
-    if (probe.dockerAvailable !== undefined) {
-        if (!(await probe.dockerAvailable())) {
-            return {
-                ok: false,
-                error: "Docker daemon 未运行或当前用户无权限",
-            };
-        }
-    }
-    return { ok: true, error: null };
+  }
+  return { ok: true, error: null };
 }
 
 /** `Deno.build.os` → `uname -s` 风格的名字。 */
 function defaultUname(): string {
-    switch (Deno.build.os) {
-        case "linux":
-            return "Linux";
-        case "darwin":
-            return "Darwin";
-        case "windows":
-            return "Windows_NT";
-        default:
-            return Deno.build.os;
-    }
+  switch (Deno.build.os) {
+    case "linux":
+      return "Linux";
+    case "darwin":
+      return "Darwin";
+    case "windows":
+      return "Windows_NT";
+    default:
+      return Deno.build.os;
+  }
 }
 
 /** 校验 Judge 依赖的通用键（复用 `validateEnv` 的判定，不重写）。 */
 export function assertJudgeEnvViaSchema(
-    env: Record<string, string>,
+  env: Record<string, string>,
 ): { missing: string[]; placeholder: string[] } {
-    return validateEnv({
-        NOJ_VERSION: env["NOJ_VERSION"] ?? "",
-        APP_URL: env["APP_URL"] ?? "https://judge-standalone.invalid",
-        CORS_ALLOWED_ORIGINS: env["CORS_ALLOWED_ORIGINS"] ??
-            "https://judge-standalone.invalid",
-        DOMAIN: env["DOMAIN"] ?? "judge-standalone.invalid",
-        REDIS_PASSWORD: env["REDIS_PASSWORD"] ?? "n/a",
-        POSTGRES_PASSWORD: env["POSTGRES_PASSWORD"] ?? "n/a",
-        MINIO_ROOT_USER: env["MINIO_ROOT_USER"] ?? "n/a",
-        MINIO_ROOT_PASSWORD: env["MINIO_ROOT_PASSWORD"] ?? "n/a",
-        S3_ACCESS_KEY: env["S3_ACCESS_KEY"] ?? "n/a",
-        S3_SECRET_KEY: env["S3_SECRET_KEY"] ?? "n/a",
-        S3_BUCKET: env["S3_BUCKET"] ?? "n/a",
-        S3_ENDPOINT: env["S3_ENDPOINT"] ?? "n/a",
-        STORAGE_PROVIDER: env["STORAGE_PROVIDER"] ?? "n/a",
-        JWT_SECRET: env["JWT_SECRET"] ?? "n/a",
-        TFA_ENCRYPTION_KEY: env["TFA_ENCRYPTION_KEY"] ?? "n/a",
-        NOJ_LLM_SERVICE_TOKEN: env["NOJ_LLM_SERVICE_TOKEN"] ?? "n/a",
-        NOJ_LLM_STORE_KEY: env["NOJ_LLM_STORE_KEY"] ?? "n/a",
-        EMAIL_PROVIDER: env["EMAIL_PROVIDER"] ?? "n/a",
-        TRUSTED_PROXIES: env["TRUSTED_PROXIES"] ?? "n/a",
-    });
+  return validateEnv({
+    NOJ_VERSION: env["NOJ_VERSION"] ?? "",
+    APP_URL: env["APP_URL"] ?? "https://judge-standalone.invalid",
+    CORS_ALLOWED_ORIGINS: env["CORS_ALLOWED_ORIGINS"] ??
+      "https://judge-standalone.invalid",
+    DOMAIN: env["DOMAIN"] ?? "judge-standalone.invalid",
+    REDIS_PASSWORD: env["REDIS_PASSWORD"] ?? "n/a",
+    POSTGRES_PASSWORD: env["POSTGRES_PASSWORD"] ?? "n/a",
+    MINIO_ROOT_USER: env["MINIO_ROOT_USER"] ?? "n/a",
+    MINIO_ROOT_PASSWORD: env["MINIO_ROOT_PASSWORD"] ?? "n/a",
+    S3_ACCESS_KEY: env["S3_ACCESS_KEY"] ?? "n/a",
+    S3_SECRET_KEY: env["S3_SECRET_KEY"] ?? "n/a",
+    S3_BUCKET: env["S3_BUCKET"] ?? "n/a",
+    S3_ENDPOINT: env["S3_ENDPOINT"] ?? "n/a",
+    STORAGE_PROVIDER: env["STORAGE_PROVIDER"] ?? "n/a",
+    JWT_SECRET: env["JWT_SECRET"] ?? "n/a",
+    TFA_ENCRYPTION_KEY: env["TFA_ENCRYPTION_KEY"] ?? "n/a",
+    NOJ_LLM_SERVICE_TOKEN: env["NOJ_LLM_SERVICE_TOKEN"] ?? "n/a",
+    NOJ_LLM_STORE_KEY: env["NOJ_LLM_STORE_KEY"] ?? "n/a",
+    EMAIL_PROVIDER: env["EMAIL_PROVIDER"] ?? "n/a",
+    TRUSTED_PROXIES: env["TRUSTED_PROXIES"] ?? "n/a",
+  });
 }
 
 /** 断言 runner 从未调用被禁的宿主管理命令（安全约束 2 的断言辅助）。 */
 export function findForbiddenHostCalls(
-    calls: readonly { cmd: string }[],
+  calls: readonly { cmd: string }[],
 ): string[] {
-    return calls
-        .map((c) => c.cmd)
-        .filter((cmd) => FORBIDDEN_HOST_COMMANDS.includes(cmd));
+  return calls
+    .map((c) => c.cmd)
+    .filter((cmd) => FORBIDDEN_HOST_COMMANDS.includes(cmd));
 }

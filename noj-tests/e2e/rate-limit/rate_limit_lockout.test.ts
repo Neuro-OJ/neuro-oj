@@ -19,106 +19,100 @@
  */
 
 import {
-    apiGet,
-    apiPost,
-    e2eTest,
-    isE2E,
-    registerUser,
-    TEST_PASSWORD,
+  apiGet,
+  apiPost,
+  e2eTest,
+  isE2E,
+  registerUser,
+  TEST_PASSWORD,
 } from "../helper.ts";
 
 /** Compose 已移除固定 container_name；CI 通过 E2E_REDIS_CONTAINER 注入 ID。 */
 const REDIS_CONTAINER = Deno.env.get("E2E_REDIS_CONTAINER") ??
-    "noj-e2e-redis";
+  "noj-e2e-redis";
 
 const LOCK_THRESHOLD = Number(
-    Deno.env.get("RATE_LIMIT_LOGIN_LOCK_THRESHOLD") ?? "10",
+  Deno.env.get("RATE_LIMIT_LOGIN_LOCK_THRESHOLD") ?? "10",
 );
 
 e2eTest(
-    "[e2e/rate-limit] 连续错误密码触发当前 IP 的账号锁定（正确密码也被拒）",
-    async () => {
-        if (!isE2E) return;
-        const ts = Date.now().toString(36);
-        const username = `rl_${ts}`;
-        const token = await registerUser(
-            username,
-            `${username}@test.com`,
-            TEST_PASSWORD,
+  "[e2e/rate-limit] 连续错误密码触发当前 IP 的账号锁定（正确密码也被拒）",
+  async () => {
+    if (!isE2E) return;
+    const ts = Date.now().toString(36);
+    const username = `rl_${ts}`;
+    const token = await registerUser(
+      username,
+      `${username}@test.com`,
+      TEST_PASSWORD,
+    );
+    // 锁定桶按 users.id 归一化（NOJ-092），先取 userId 供 Redis 断言使用。
+    const me = await apiGet("/api/v1/auth/me", token);
+    const userId = (me.body as { data: { id: string } }).data.id;
+
+    for (let i = 0; i < LOCK_THRESHOLD; i++) {
+      const res = await apiPost("/api/v1/auth/login", {
+        login: username,
+        password: `WrongPass${i}`,
+      });
+      if (res.status === 429) {
+        throw new Error(
+          `第 ${i + 1} 次失败即被 429 限流，无法验证锁定阈值` +
+            "（请确认 e2e-rate-limit job 已放宽 RATE_LIMIT_LOGIN_ACC_MAX / IP_MAX）",
         );
-        // 锁定桶按 users.id 归一化（NOJ-092），先取 userId 供 Redis 断言使用。
-        const me = await apiGet("/api/v1/auth/me", token);
-        const userId = (me.body as { data: { id: string } }).data.id;
+      }
+      if (res.status !== 401) {
+        throw new Error(`第 ${i + 1} 次错误密码应返回 401，实际 ${res.status}`);
+      }
+    }
 
-        for (let i = 0; i < LOCK_THRESHOLD; i++) {
-            const res = await apiPost("/api/v1/auth/login", {
-                login: username,
-                password: `WrongPass${i}`,
-            });
-            if (res.status === 429) {
-                throw new Error(
-                    `第 ${i + 1} 次失败即被 429 限流，无法验证锁定阈值` +
-                        "（请确认 e2e-rate-limit job 已放宽 RATE_LIMIT_LOGIN_ACC_MAX / IP_MAX）",
-                );
-            }
-            if (res.status !== 401) {
-                throw new Error(
-                    `第 ${i + 1} 次错误密码应返回 401，实际 ${res.status}`,
-                );
-            }
-        }
+    // 锁定后正确密码也必须被拒，且响应体提示锁定
+    const locked = await apiPost("/api/v1/auth/login", {
+      login: username,
+      password: TEST_PASSWORD,
+    });
+    if (locked.status !== 401) {
+      throw new Error(`锁定期内正确密码应返回 401，实际 ${locked.status}`);
+    }
+    const body = JSON.stringify(locked.body ?? "");
+    if (!body.includes("锁定")) {
+      throw new Error(
+        `锁定响应应提示账号已锁定，实际 ${body.slice(0, 200)}`,
+      );
+    }
 
-        // 锁定后正确密码也必须被拒，且响应体提示锁定
-        const locked = await apiPost("/api/v1/auth/login", {
-            login: username,
-            password: TEST_PASSWORD,
-        });
-        if (locked.status !== 401) {
-            throw new Error(
-                `锁定期内正确密码应返回 401，实际 ${locked.status}`,
-            );
-        }
-        const body = JSON.stringify(locked.body ?? "");
-        if (!body.includes("锁定")) {
-            throw new Error(
-                `锁定响应应提示账号已锁定，实际 ${body.slice(0, 200)}`,
-            );
-        }
-
-        // 直接验证 Redis 锁定标记（服务端状态，不依赖文案）。
-        // E2E 栈的 REDIS_URL 指向 DB 1（docker-compose.e2e.yml），
-        // 不指定 -n 会默认查 DB 0 导致永远 EXISTS 0。
-        const cmd = new Deno.Command("docker", {
-            args: [
-                "exec",
-                REDIS_CONTAINER,
-                "redis-cli",
-                "-n",
-                "1",
-                "--scan",
-                "--pattern",
-                `loginlock:${userId.toLowerCase()}:*`,
-            ],
-        });
-        const { stdout, success } = await cmd.output();
-        if (!success) {
-            throw new Error(
-                `docker exec ${REDIS_CONTAINER} 失败，无法验证锁定标记`,
-            );
-        }
-        const keys = new TextDecoder().decode(stdout).trim().split("\n").filter(
-            Boolean,
-        );
-        if (
-            keys.length !== 1 ||
-            !keys[0].startsWith(`loginlock:${userId.toLowerCase()}:`)
-        ) {
-            throw new Error(
-                `Redis 应仅有当前 IP 的 loginlock 标记，实际 ${
-                    JSON.stringify(keys)
-                }`,
-            );
-        }
-        console.log("  ✓ 账号锁定已生效（401 + loginlock 标记）");
-    },
+    // 直接验证 Redis 锁定标记（服务端状态，不依赖文案）。
+    // E2E 栈的 REDIS_URL 指向 DB 1（docker-compose.e2e.yml），
+    // 不指定 -n 会默认查 DB 0 导致永远 EXISTS 0。
+    const cmd = new Deno.Command("docker", {
+      args: [
+        "exec",
+        REDIS_CONTAINER,
+        "redis-cli",
+        "-n",
+        "1",
+        "--scan",
+        "--pattern",
+        `loginlock:${userId.toLowerCase()}:*`,
+      ],
+    });
+    const { stdout, success } = await cmd.output();
+    if (!success) {
+      throw new Error(
+        `docker exec ${REDIS_CONTAINER} 失败，无法验证锁定标记`,
+      );
+    }
+    const keys = new TextDecoder().decode(stdout).trim().split("\n").filter(
+      Boolean,
+    );
+    if (
+      keys.length !== 1 ||
+      !keys[0].startsWith(`loginlock:${userId.toLowerCase()}:`)
+    ) {
+      throw new Error(
+        `Redis 应仅有当前 IP 的 loginlock 标记，实际 ${JSON.stringify(keys)}`,
+      );
+    }
+    console.log("  ✓ 账号锁定已生效（401 + loginlock 标记）");
+  },
 );

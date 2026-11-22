@@ -7,9 +7,9 @@
  */
 import type { DbRoot, DbTx } from "../../shared/db/executor.ts";
 import {
-    type SystemActor,
-    type UserActor,
-    userActorFromAuthenticatedId,
+  type SystemActor,
+  type UserActor,
+  userActorFromAuthenticatedId,
 } from "./contracts/actor.ts";
 import type { WorkspaceAuditAction } from "../../shared/workspace/audit.ts";
 import { appendAuditLogTx } from "../platform/contracts/audit.ts";
@@ -18,8 +18,8 @@ import { accessAuditEntry } from "./audit-entries.ts";
 export type AccessAuditActor = UserActor | SystemActor;
 
 export interface AccessAuditMeta {
-    readonly ipAddress?: string;
-    readonly requestId?: string;
+  readonly ipAddress?: string;
+  readonly requestId?: string;
 }
 
 /** 导出纯条目构造函数，供需要延迟写入的 application 用例复用。 */
@@ -33,29 +33,29 @@ export type { AccessAuditEntry } from "./audit-entries.ts";
  * 伪装成用户。
  */
 export async function workspaceAuditTx(
-    tx: DbTx,
-    actor: AccessAuditActor,
-    domainId: string | null,
-    action: WorkspaceAuditAction,
-    detail: Record<string, unknown> = {},
-    meta: AccessAuditMeta = {},
-    target?: { type: string; id: string },
+  tx: DbTx,
+  actor: AccessAuditActor,
+  domainId: string | null,
+  action: WorkspaceAuditAction,
+  detail: Record<string, unknown> = {},
+  meta: AccessAuditMeta = {},
+  target?: { type: string; id: string },
 ): Promise<void> {
-    const entry = accessAuditEntry(
-        actor,
-        domainId,
-        action,
-        detail,
-        meta,
-        target,
-    );
-    await appendAuditLogTx(tx, {
-        actor: entry.actor,
-        action: entry.action,
-        target: entry.target.id ? entry.target : undefined,
-        detail: entry.detail,
-        meta,
-    });
+  const entry = accessAuditEntry(
+    actor,
+    domainId,
+    action,
+    detail,
+    meta,
+    target,
+  );
+  await appendAuditLogTx(tx, {
+    actor: entry.actor,
+    action: entry.action,
+    target: entry.target.id ? entry.target : undefined,
+    detail: entry.detail,
+    meta,
+  });
 }
 
 /**
@@ -65,20 +65,20 @@ export async function workspaceAuditTx(
  * 收紧成显式 UserActor。新代码应直接调用 workspaceAuditTx 并传 Actor。
  */
 export async function workspaceAudit(
-    executor: DbRoot | DbTx,
-    actorId: string,
-    domainId: string | null,
-    action: WorkspaceAuditAction,
-    detail: Record<string, unknown> = {},
-    target?: { type: string; id: string },
+  executor: DbRoot | DbTx,
+  actorId: string,
+  domainId: string | null,
+  action: WorkspaceAuditAction,
+  detail: Record<string, unknown> = {},
+  target?: { type: string; id: string },
 ): Promise<void> {
-    const actor = userActorFromAuthenticatedId(actorId);
-    const run = (tx: DbTx) =>
-        workspaceAuditTx(tx, actor, domainId, action, detail, {}, target);
-    // DbTx 暴露 rollback；DbRoot 没有。带锁/在事务中的调用必须沿用当前事务。
-    if (typeof (executor as Partial<DbTx>).rollback === "function") {
-        await run(executor as DbTx);
-        return;
-    }
-    await (executor as DbRoot).transaction((tx) => run(tx));
+  const actor = userActorFromAuthenticatedId(actorId);
+  const run = (tx: DbTx) =>
+    workspaceAuditTx(tx, actor, domainId, action, detail, {}, target);
+  // DbTx 暴露 rollback；DbRoot 没有。带锁/在事务中的调用必须沿用当前事务。
+  if (typeof (executor as Partial<DbTx>).rollback === "function") {
+    await run(executor as DbTx);
+    return;
+  }
+  await (executor as DbRoot).transaction((tx) => run(tx));
 }

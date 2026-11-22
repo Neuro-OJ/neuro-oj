@@ -11,12 +11,12 @@
  * `@` / `?` / `#` 等会破坏 URL 结构的字符。
  */
 export function sanitizeHost(host: string | null | undefined): string | null {
-    if (!host) return null;
-    const trimmed = host.trim();
-    if (trimmed.length === 0 || trimmed.length > 255) return null;
-    if (/[\s/\\@?#]/.test(trimmed)) return null;
-    if (!/^[A-Za-z0-9.\-:[\]]+$/.test(trimmed)) return null;
-    return trimmed;
+  if (!host) return null;
+  const trimmed = host.trim();
+  if (trimmed.length === 0 || trimmed.length > 255) return null;
+  if (/[\s/\\@?#]/.test(trimmed)) return null;
+  if (!/^[A-Za-z0-9.\-:[\]]+$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 /**
@@ -27,16 +27,16 @@ export function sanitizeHost(host: string | null | undefined): string | null {
  * 未配置时才回退到校验过的 Host 头，仅用于本地开发。
  */
 export function resolveOrigin(
-    configuredSiteUrl: string | undefined,
-    protocolHeader: string | null,
-    hostHeader: string | null,
+  configuredSiteUrl: string | undefined,
+  protocolHeader: string | null,
+  hostHeader: string | null,
 ): string | null {
-    const configured = configuredSiteUrl?.trim();
-    if (configured) {
-        return configured.replace(/\/+$/, '');
-    }
-    const host = sanitizeHost(hostHeader);
-    if (!host) return null;
-    const protocol = protocolHeader === 'https' ? 'https' : 'http';
-    return `${protocol}://${host}`;
+  const configured = configuredSiteUrl?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  const host = sanitizeHost(hostHeader);
+  if (!host) return null;
+  const protocol = protocolHeader === 'https' ? 'https' : 'http';
+  return `${protocol}://${host}`;
 }

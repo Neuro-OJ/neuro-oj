@@ -23,7 +23,7 @@ const router = new Hono<AuthEnv>();
  * 应用于本路由组全部路径。
  */
 router.use("*", authMiddleware, (c, next) => {
-    return withActorContext(c, () => next());
+  return withActorContext(c, () => next());
 });
 
 /**
@@ -31,35 +31,35 @@ router.use("*", authMiddleware, (c, next) => {
  * GET /api/v1/admin/catalog/problems
  */
 router.get("/problems", async (c) => {
-    await assertPermission(c, "admin:full_access");
-    if (c.req.query("type") !== undefined) {
-        throw new BadRequestError("题库筛选已取消 P/U 分类");
-    }
-    const page = parseInt(c.req.query("page") || "1", 10);
-    const limit = parseInt(c.req.query("limit") || "20", 10);
+  await assertPermission(c, "admin:full_access");
+  if (c.req.query("type") !== undefined) {
+    throw new BadRequestError("题库筛选已取消 P/U 分类");
+  }
+  const page = parseInt(c.req.query("page") || "1", 10);
+  const limit = parseInt(c.req.query("limit") || "20", 10);
 
-    if (Number.isNaN(page) || Number.isNaN(limit)) {
-        throw new BadRequestError("分页参数 page 和 limit 必须为数字");
-    }
-    // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）。
-    if (page > MAX_SAFE_PAGE) {
-        throw new BadRequestError("分页参数 page 超出允许范围");
-    }
+  if (Number.isNaN(page) || Number.isNaN(limit)) {
+    throw new BadRequestError("分页参数 page 和 limit 必须为数字");
+  }
+  // 超大 page 会让 OFFSET 超出 PG bigint（2026-09-21 修复）。
+  if (page > MAX_SAFE_PAGE) {
+    throw new BadRequestError("分页参数 page 超出允许范围");
+  }
 
-    const result = await listAllProblems({
-        page: Math.max(1, page),
-        limit: Math.min(100, Math.max(1, limit)),
-        difficulty: c.req.query("difficulty") || undefined,
-        tag: c.req.query("tag") || undefined,
-        keyword: c.req.query("keyword") || undefined,
-    });
+  const result = await listAllProblems({
+    page: Math.max(1, page),
+    limit: Math.min(100, Math.max(1, limit)),
+    difficulty: c.req.query("difficulty") || undefined,
+    tag: c.req.query("tag") || undefined,
+    keyword: c.req.query("keyword") || undefined,
+  });
 
-    return c.json({
-        data: result.items,
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-    });
+  return c.json({
+    data: result.items,
+    total: result.total,
+    page: result.page,
+    limit: result.limit,
+  });
 });
 
 export default router;

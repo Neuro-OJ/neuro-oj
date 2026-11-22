@@ -6,13 +6,13 @@ import type { EducationCandidate } from "./progress-selection.ts";
 
 /** 只按作业域、题目、实际学生和时间索引读取，不扫描全实例提交。 */
 export async function loadAssignmentCandidates(
-    executor: Executor,
-    assignmentId: string,
-    userIds: string[],
+  executor: Executor,
+  assignmentId: string,
+  userIds: string[],
 ) {
-    if (!userIds.length) return [];
-    const userCondition = sql.join(userIds.map((id) => sql`${id}`), sql`, `);
-    const rows = await executor.execute(sql`WITH sources AS (
+  if (!userIds.length) return [];
+  const userCondition = sql.join(userIds.map((id) => sql`${id}`), sql`, `);
+  const rows = await executor.execute(sql`WITH sources AS (
     SELECT s.id AS submission_id, 'submission' AS source_kind, s.domain_id, s.problem_id, s.user_id,
       s.created_at AS received_at, s.receipt_sequence, s.contest_id, s.active_attempt_id,
       s.assignment_id, s.assignment_item_id
@@ -80,8 +80,8 @@ export async function loadAssignmentCandidates(
     (SELECT DISTINCT ON (user_id, problem_id, scope) * FROM pending
     ORDER BY user_id, problem_id, scope, receipt_sequence)
   ) SELECT * FROM selected`);
-    return unwrapRows<EducationCandidate>(rows as never).map((row) => ({
-        ...row,
-        receipt_sequence: Number(row.receipt_sequence),
-    }));
+  return unwrapRows<EducationCandidate>(rows as never).map((row) => ({
+    ...row,
+    receipt_sequence: Number(row.receipt_sequence),
+  }));
 }

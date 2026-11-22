@@ -16,27 +16,27 @@ import type { SubmissionResponse } from "./submissions-types.ts";
 import type { DomainExecutionRequest } from "../workspace-execution.ts";
 import type { DomainEvaluationAdmissionPlan } from "../../contracts/admission.ts";
 import {
-    createUploadedSubmission,
-    type UploadedSubmissionInput,
-    type UploadedSubmissionSpec,
+  createUploadedSubmission,
+  type UploadedSubmissionInput,
+  type UploadedSubmissionSpec,
 } from "./artifact-submissions.ts";
 import {
-    predictionFileExtension,
-    validatePredictionFile,
-    validatePredictionFileName,
+  predictionFileExtension,
+  validatePredictionFile,
+  validatePredictionFileName,
 } from "./prediction-format.ts";
 
 /** prediction 提交的输入（单文件流）。 */
 export type PredictionSubmissionInput = UploadedSubmissionInput;
 
 const PREDICTION_SPEC: UploadedSubmissionSpec = {
-    mode: "prediction",
-    modeMismatchMessage: "该题目不支持 prediction 提交",
-    validateFileName: validatePredictionFileName,
-    // 扩展名白/黑名单 + 魔数（含 pickle 协议头）在上传前基于首块完成。
-    validateHead: validatePredictionFile,
-    storageExtension: predictionFileExtension,
-    contentType: "application/octet-stream",
+  mode: "prediction",
+  modeMismatchMessage: "该题目不支持 prediction 提交",
+  validateFileName: validatePredictionFileName,
+  // 扩展名白/黑名单 + 魔数（含 pickle 协议头）在上传前基于首块完成。
+  validateHead: validatePredictionFile,
+  storageExtension: predictionFileExtension,
+  contentType: "application/octet-stream",
 };
 
 /**
@@ -48,20 +48,20 @@ const PREDICTION_SPEC: UploadedSubmissionSpec = {
  * @param isAdmin 是否管理员（访问解析用）
  */
 export function createPredictionSubmission(
-    userId: string,
-    input: PredictionSubmissionInput,
-    contestId?: string,
-    isAdmin = false,
-    domainRequest?: DomainExecutionRequest,
-    admissionPlan?: DomainEvaluationAdmissionPlan,
+  userId: string,
+  input: PredictionSubmissionInput,
+  contestId?: string,
+  isAdmin = false,
+  domainRequest?: DomainExecutionRequest,
+  admissionPlan?: DomainEvaluationAdmissionPlan,
 ): Promise<SubmissionResponse> {
-    return createUploadedSubmission(
-        PREDICTION_SPEC,
-        userId,
-        input,
-        contestId,
-        isAdmin,
-        domainRequest,
-        admissionPlan,
-    );
+  return createUploadedSubmission(
+    PREDICTION_SPEC,
+    userId,
+    input,
+    contestId,
+    isAdmin,
+    domainRequest,
+    admissionPlan,
+  );
 }

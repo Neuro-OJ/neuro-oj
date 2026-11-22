@@ -15,72 +15,71 @@ import { getBuildInfo } from "../../src/shared/base/build-info.ts";
 const CLI = new URL("../../scripts/noj.ts", import.meta.url).pathname;
 
 async function runCli(args: string[]): Promise<{
-    code: number;
-    stdout: string;
-    stderr: string;
+  code: number;
+  stdout: string;
+  stderr: string;
 }> {
-    const cmd = new Deno.Command("deno", {
-        args: ["run", "-A", CLI, ...args],
-        stdout: "piped",
-        stderr: "piped",
-    });
-    const out = await cmd.output();
-    return {
-        code: out.code,
-        stdout: new TextDecoder().decode(out.stdout),
-        stderr: new TextDecoder().decode(out.stderr),
-    };
+  const cmd = new Deno.Command("deno", {
+    args: ["run", "-A", CLI, ...args],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const out = await cmd.output();
+  return {
+    code: out.code,
+    stdout: new TextDecoder().decode(out.stdout),
+    stderr: new TextDecoder().decode(out.stderr),
+  };
 }
 
 Deno.test("noj --help 包含全部子命令", async () => {
-    const { code, stdout } = await runCli(["--help"]);
-    assertEquals(code, 0);
-    for (const name of ["db", "init", "bootstrap", "problems", "dev-setup"]) {
-        assertEquals(stdout.includes(name), true, `help 应包含子命令 ${name}`);
-    }
+  const { code, stdout } = await runCli(["--help"]);
+  assertEquals(code, 0);
+  for (const name of ["db", "init", "bootstrap", "problems", "dev-setup"]) {
+    assertEquals(stdout.includes(name), true, `help 应包含子命令 ${name}`);
+  }
 });
 
 Deno.test("noj --version 输出版本", async () => {
-    const { code, stdout } = await runCli(["--version"]);
-    assertEquals(code, 0);
-    // 版本号来自共享构建身份（此前硬编码 0.9.5，已随构建身份改造收敛）
-    assertEquals(stdout.includes(getBuildInfo().version), true);
+  const { code, stdout } = await runCli(["--version"]);
+  assertEquals(code, 0);
+  // 版本号来自共享构建身份（此前硬编码 0.9.5，已随构建身份改造收敛）
+  assertEquals(stdout.includes(getBuildInfo().version), true);
 });
 
 Deno.test("noj problems build --help 包含 --id 选项", async () => {
-    const { code, stdout } = await runCli(["problems", "build", "--help"]);
-    assertEquals(code, 0);
-    assertEquals(stdout.includes("--id"), true);
+  const { code, stdout } = await runCli(["problems", "build", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("--id"), true);
 });
 
-Deno.test("noj bootstrap admin --help 包含 --email/--password/--credentials-file", async () => {
-    const { code, stdout } = await runCli(["bootstrap", "admin", "--help"]);
-    assertEquals(code, 0);
-    assertEquals(stdout.includes("--email"), true);
-    assertEquals(stdout.includes("--password"), true);
-    assertEquals(stdout.includes("--credentials-file"), true);
+Deno.test("noj bootstrap admin --help 包含 --email/--password", async () => {
+  const { code, stdout } = await runCli(["bootstrap", "admin", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("--email"), true);
+  assertEquals(stdout.includes("--password"), true);
 });
 
 Deno.test("noj problems import --help 包含 --dir 默认值", async () => {
-    const { code, stdout } = await runCli(["problems", "import", "--help"]);
-    assertEquals(code, 0);
-    assertEquals(stdout.includes("--dir"), true);
+  const { code, stdout } = await runCli(["problems", "import", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("--dir"), true);
 });
 
 Deno.test("noj db migrate --help 包含命令说明", async () => {
-    const { code, stdout } = await runCli(["db", "migrate", "--help"]);
-    assertEquals(code, 0);
-    assertEquals(stdout.includes("执行数据库迁移"), true);
+  const { code, stdout } = await runCli(["db", "migrate", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("执行数据库迁移"), true);
 });
 
 Deno.test("noj init system --help 包含命令说明", async () => {
-    const { code, stdout } = await runCli(["init", "system", "--help"]);
-    assertEquals(code, 0);
-    assertEquals(stdout.includes("初始化系统基础数据"), true);
+  const { code, stdout } = await runCli(["init", "system", "--help"]);
+  assertEquals(code, 0);
+  assertEquals(stdout.includes("初始化系统基础数据"), true);
 });
 
 Deno.test("noj 未知命令返回非零退出码", async () => {
-    const { code, stderr } = await runCli(["nonexistent"]);
-    assertEquals(code !== 0, true);
-    assertEquals(stderr.includes("Unknown command"), true);
+  const { code, stderr } = await runCli(["nonexistent"]);
+  assertEquals(code !== 0, true);
+  assertEquals(stderr.includes("Unknown command"), true);
 });

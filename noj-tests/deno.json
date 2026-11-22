@@ -1,28 +1,28 @@
 {
-    "name": "@noj/tests",
-    "version": "0.11.0",
-    "exports": {},
-    "tasks": {
-        "test": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts api",
-        "test:api": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts api",
-        "test:domain": "bash scripts/run-e2e-domain.sh",
-        "test:browser": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts browser",
-        "test:logic": "deno test -A tests/unit/",
-        "test:baseline": "cd .. && deno run -A scripts/test-baseline.ts --suite browser",
-        "env:up": "deno run -A ../scripts/e2e/session.ts up",
-        "env:down": "deno run -A ../scripts/e2e/session.ts down",
-        "env:show": "deno run -A ../scripts/e2e/session.ts show"
-    },
-    "imports": {},
-    "nodeModulesDir": "auto",
-    "fmt": {
-        "semiColons": true,
-        "singleQuote": false,
-        "indentWidth": 4
-    },
-    "lint": {
-        "rules": {
-            "tags": ["recommended"]
-        }
+  "name": "@noj/tests",
+  "version": "0.11.0",
+  "exports": {},
+  "tasks": {
+    "test": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts api",
+    "test:api": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts api",
+    "test:domain": "bash scripts/run-e2e-domain.sh",
+    "test:browser": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts browser",
+    "test:logic": "deno test -A tests/unit/",
+    "test:baseline": "cd .. && deno run -A scripts/test-baseline.ts --suite browser",
+    "env:up": "deno run -A ../scripts/e2e/session.ts up",
+    "env:down": "deno run -A ../scripts/e2e/session.ts down",
+    "env:show": "deno run -A ../scripts/e2e/session.ts show"
+  },
+  "imports": {},
+  "nodeModulesDir": "auto",
+  "fmt": {
+    "semiColons": true,
+    "singleQuote": false,
+    "indentWidth": 2
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
     }
+  }
 }

@@ -1,167 +1,160 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
-    evaluationAttempts,
-    oauthAccounts,
-    problems,
-    submissions,
-    users,
+  evaluationAttempts,
+  oauthAccounts,
+  problems,
+  submissions,
+  users,
 } from "./../../src/shared/db/schema.ts";
 import type { SubmissionStatus } from "../../src/modules/evaluations/index.ts";
 
 Deno.test("schema: users table has correct columns", () => {
-    const columns = Object.keys(users);
-    assertEquals(columns.includes("id"), true);
-    assertEquals(columns.includes("username"), true);
-    assertEquals(columns.includes("email"), true);
-    assertEquals(columns.includes("email_verified"), true);
-    assertEquals(columns.includes("email_verify_token"), true);
-    assertEquals(columns.includes("email_verify_expires_at"), true);
-    assertEquals(columns.includes("deleted_at"), true);
-    assertEquals(columns.includes("password_hash"), true);
-    assertEquals(columns.includes("password_hash"), true);
-    assertEquals(columns.includes("created_at"), true);
-    assertEquals(columns.includes("updated_at"), true);
+  const columns = Object.keys(users);
+  assertEquals(columns.includes("id"), true);
+  assertEquals(columns.includes("username"), true);
+  assertEquals(columns.includes("email"), true);
+  assertEquals(columns.includes("email_verified"), true);
+  assertEquals(columns.includes("email_verify_token"), true);
+  assertEquals(columns.includes("email_verify_expires_at"), true);
+  assertEquals(columns.includes("deleted_at"), true);
+  assertEquals(columns.includes("password_hash"), true);
+  assertEquals(columns.includes("password_hash"), true);
+  assertEquals(columns.includes("created_at"), true);
+  assertEquals(columns.includes("updated_at"), true);
 });
 
 Deno.test("schema: users columns have correct constraints", () => {
-    assertEquals(users.id.primary, true); // PRIMARY KEY
-    assertEquals(users.id.notNull, true);
-    assertEquals(users.username.notNull, true);
-    // 注销用户统一匿名为“已注销用户”，因此唯一性由仅覆盖活跃账号的部分索引保证。
-    assertEquals(users.username.isUnique, false);
-    assertEquals(users.email.notNull, true);
-    assertEquals(users.email.isUnique, true); // UNIQUE
-    assertEquals(users.email_verified.notNull, true);
-    assertEquals(users.email_verified.hasDefault, true);
-    assertEquals(users.email_verified.default, true);
-    assertEquals(users.password_hash.notNull, false);
-    assertEquals(users.created_at.notNull, true);
-    assertEquals(users.updated_at.notNull, true);
+  assertEquals(users.id.primary, true); // PRIMARY KEY
+  assertEquals(users.id.notNull, true);
+  assertEquals(users.username.notNull, true);
+  // 注销用户统一匿名为“已注销用户”，因此唯一性由仅覆盖活跃账号的部分索引保证。
+  assertEquals(users.username.isUnique, false);
+  assertEquals(users.email.notNull, true);
+  assertEquals(users.email.isUnique, true); // UNIQUE
+  assertEquals(users.email_verified.notNull, true);
+  assertEquals(users.email_verified.hasDefault, true);
+  assertEquals(users.email_verified.default, true);
+  assertEquals(users.password_hash.notNull, false);
+  assertEquals(users.created_at.notNull, true);
+  assertEquals(users.updated_at.notNull, true);
 });
 
 Deno.test("schema: oauth accounts have a unique provider identity", () => {
-    const columns = Object.keys(oauthAccounts);
-    assertEquals(columns.includes("provider"), true);
-    assertEquals(columns.includes("provider_user_id"), true);
-    assertEquals(columns.includes("user_id"), true);
-    assertEquals(oauthAccounts.provider.notNull, true);
-    assertEquals(oauthAccounts.provider_user_id.notNull, true);
-    assertEquals(oauthAccounts.user_id.notNull, true);
+  const columns = Object.keys(oauthAccounts);
+  assertEquals(columns.includes("provider"), true);
+  assertEquals(columns.includes("provider_user_id"), true);
+  assertEquals(columns.includes("user_id"), true);
+  assertEquals(oauthAccounts.provider.notNull, true);
+  assertEquals(oauthAccounts.provider_user_id.notNull, true);
+  assertEquals(oauthAccounts.user_id.notNull, true);
 });
 
 Deno.test("schema: problems table has LMCC-specific columns", () => {
-    const columns = Object.keys(problems);
-    assertEquals(columns.includes("support_package_storage_url"), true);
-    assertEquals(columns.includes("runtime_config"), true);
-    // 不应包含 test_cases
-    assertEquals(columns.includes("test_cases"), false);
-    // 不应包含已移除的字段
-    assertEquals(columns.includes("judge_image"), false);
-    assertEquals(columns.includes("judge_command"), false);
-    assertEquals(columns.includes("time_limit_ms"), false);
-    assertEquals(columns.includes("memory_limit_mb"), false);
+  const columns = Object.keys(problems);
+  assertEquals(columns.includes("support_package_storage_url"), true);
+  assertEquals(columns.includes("runtime_config"), true);
+  // 不应包含 test_cases
+  assertEquals(columns.includes("test_cases"), false);
+  // 不应包含已移除的字段
+  assertEquals(columns.includes("judge_image"), false);
+  assertEquals(columns.includes("judge_command"), false);
+  assertEquals(columns.includes("time_limit_ms"), false);
+  assertEquals(columns.includes("memory_limit_mb"), false);
 });
 
 Deno.test("schema: problems columns have correct constraints", () => {
-    assertEquals(problems.id.primary, true); // PRIMARY KEY
-    assertEquals(problems.id.notNull, true);
-    assertEquals(problems.title.notNull, true);
-    assertEquals(problems.description.notNull, true);
-    assertEquals(problems.difficulty.notNull, true);
-    assertEquals(problems.difficulty.hasDefault, true);
-    assertEquals(problems.difficulty.default, "medium"); // DEFAULT 'medium'
-    assertEquals(problems.support_package_storage_url.notNull, false); // 可选
+  assertEquals(problems.id.primary, true); // PRIMARY KEY
+  assertEquals(problems.id.notNull, true);
+  assertEquals(problems.title.notNull, true);
+  assertEquals(problems.description.notNull, true);
+  assertEquals(problems.difficulty.notNull, true);
+  assertEquals(problems.difficulty.hasDefault, true);
+  assertEquals(problems.difficulty.default, "medium"); // DEFAULT 'medium'
+  assertEquals(problems.support_package_storage_url.notNull, false); // 可选
 });
 
 Deno.test("schema: submissions table has file_name for mount", () => {
-    const columns = Object.keys(submissions);
-    assertEquals(columns.includes("user_id"), true);
-    assertEquals(columns.includes("problem_id"), true);
-    assertEquals(columns.includes("language"), true);
-    assertEquals(columns.includes("code"), true);
-    assertEquals(columns.includes("file_name"), true);
-    assertEquals(columns.includes("status"), true);
+  const columns = Object.keys(submissions);
+  assertEquals(columns.includes("user_id"), true);
+  assertEquals(columns.includes("problem_id"), true);
+  assertEquals(columns.includes("language"), true);
+  assertEquals(columns.includes("code"), true);
+  assertEquals(columns.includes("file_name"), true);
+  assertEquals(columns.includes("status"), true);
 });
 
 Deno.test("schema: submissions columns have correct constraints", () => {
-    assertEquals(submissions.id.primary, true); // PRIMARY KEY
-    assertEquals(submissions.id.notNull, true);
-    assertEquals(submissions.user_id.notNull, true); // FK → users.id
-    assertEquals(submissions.problem_id.notNull, true); // FK → problems.id
-    assertEquals(submissions.language.notNull, true);
-    assertEquals(submissions.code.notNull, true);
-    assertEquals(submissions.file_name.notNull, false); // 可选
-    assertEquals(submissions.status.notNull, true);
-    assertEquals(submissions.status.hasDefault, true);
-    assertEquals(submissions.status.default, "pending"); // DEFAULT 'pending'
-    assertEquals(submissions.created_at.notNull, true);
+  assertEquals(submissions.id.primary, true); // PRIMARY KEY
+  assertEquals(submissions.id.notNull, true);
+  assertEquals(submissions.user_id.notNull, true); // FK → users.id
+  assertEquals(submissions.problem_id.notNull, true); // FK → problems.id
+  assertEquals(submissions.language.notNull, true);
+  assertEquals(submissions.code.notNull, true);
+  assertEquals(submissions.file_name.notNull, false); // 可选
+  assertEquals(submissions.status.notNull, true);
+  assertEquals(submissions.status.hasDefault, true);
+  assertEquals(submissions.status.default, "pending"); // DEFAULT 'pending'
+  assertEquals(submissions.created_at.notNull, true);
 });
 
 Deno.test("schema: submissions.status type matches SubmissionStatus", () => {
-    // 验证 SubmissionStatus 类型的值能被 status 列接受（编译期检查）
-    const validStatuses: SubmissionStatus[] = [
-        "pending",
-        "judging",
-        "finished",
-    ];
-    assertEquals(validStatuses.length, 3);
-    assertEquals(validStatuses.includes("pending"), true);
-    assertEquals(validStatuses.includes("judging"), true);
-    assertEquals(validStatuses.includes("finished"), true);
+  // 验证 SubmissionStatus 类型的值能被 status 列接受（编译期检查）
+  const validStatuses: SubmissionStatus[] = ["pending", "judging", "finished"];
+  assertEquals(validStatuses.length, 3);
+  assertEquals(validStatuses.includes("pending"), true);
+  assertEquals(validStatuses.includes("judging"), true);
+  assertEquals(validStatuses.includes("finished"), true);
 });
 
 Deno.test("schema: evaluation_attempts table carries the graded fact fields", () => {
-    const columns = Object.keys(evaluationAttempts);
-    assertEquals(columns.includes("submission_id"), true);
-    assertEquals(columns.includes("problem_version_id"), true);
-    assertEquals(columns.includes("state"), true);
-    assertEquals(columns.includes("result_kind"), true);
-    assertEquals(columns.includes("result_status"), true);
-    assertEquals(columns.includes("score"), true);
-    assertEquals(columns.includes("output"), true);
-    assertEquals(columns.includes("details"), true);
-    assertEquals(columns.includes("time_ms"), true);
-    assertEquals(columns.includes("memory_kb"), true);
+  const columns = Object.keys(evaluationAttempts);
+  assertEquals(columns.includes("submission_id"), true);
+  assertEquals(columns.includes("problem_version_id"), true);
+  assertEquals(columns.includes("state"), true);
+  assertEquals(columns.includes("result_kind"), true);
+  assertEquals(columns.includes("result_status"), true);
+  assertEquals(columns.includes("score"), true);
+  assertEquals(columns.includes("output"), true);
+  assertEquals(columns.includes("details"), true);
+  assertEquals(columns.includes("time_ms"), true);
+  assertEquals(columns.includes("memory_kb"), true);
 });
 
 Deno.test("schema: evaluation_attempts columns have correct constraints", () => {
-    assertEquals(evaluationAttempts.id.primary, true); // PRIMARY KEY（同时是 run_id）
-    assertEquals(evaluationAttempts.submission_id.notNull, false); // 与客观题来源二选一
-    assertEquals(evaluationAttempts.problem_id.notNull, true);
-    assertEquals(evaluationAttempts.sequence.notNull, true);
-    assertEquals(evaluationAttempts.source.notNull, true);
-    assertEquals(evaluationAttempts.state.notNull, true);
-    assertEquals(evaluationAttempts.accepted.notNull, true);
-    assertEquals(evaluationAttempts.accepted.hasDefault, true);
-    assertEquals(evaluationAttempts.accepted.default, false);
-    assertEquals(evaluationAttempts.score.notNull, false); // 未终结时为空
-    // 部署错误不写入正式判定：result_kind 允许为空
-    assertEquals(evaluationAttempts.result_kind.notNull, false);
-    assertEquals(evaluationAttempts.details.notNull, true);
-    assertEquals(evaluationAttempts.created_at.notNull, true);
+  assertEquals(evaluationAttempts.id.primary, true); // PRIMARY KEY（同时是 run_id）
+  assertEquals(evaluationAttempts.submission_id.notNull, false); // 与客观题来源二选一
+  assertEquals(evaluationAttempts.problem_id.notNull, true);
+  assertEquals(evaluationAttempts.sequence.notNull, true);
+  assertEquals(evaluationAttempts.source.notNull, true);
+  assertEquals(evaluationAttempts.state.notNull, true);
+  assertEquals(evaluationAttempts.accepted.notNull, true);
+  assertEquals(evaluationAttempts.accepted.hasDefault, true);
+  assertEquals(evaluationAttempts.accepted.default, false);
+  assertEquals(evaluationAttempts.score.notNull, false); // 未终结时为空
+  // 部署错误不写入正式判定：result_kind 允许为空
+  assertEquals(evaluationAttempts.result_kind.notNull, false);
+  assertEquals(evaluationAttempts.details.notNull, true);
+  assertEquals(evaluationAttempts.created_at.notNull, true);
 });
 
 Deno.test("schema: exports are defined", () => {
-    assertEquals(users !== null && users !== undefined, true);
-    assertEquals(problems !== null && problems !== undefined, true);
-    assertEquals(submissions !== null && submissions !== undefined, true);
-    assertEquals(
-        evaluationAttempts !== null && evaluationAttempts !== undefined,
-        true,
-    );
+  assertEquals(users !== null && users !== undefined, true);
+  assertEquals(problems !== null && problems !== undefined, true);
+  assertEquals(submissions !== null && submissions !== undefined, true);
+  assertEquals(
+    evaluationAttempts !== null && evaluationAttempts !== undefined,
+    true,
+  );
 });
 
 Deno.test("schema: 社区搜索 pg_trgm 索引与迁移 DDL 保持同步", async () => {
-    const migration = await Deno.readTextFile(
-        new URL("../../drizzle/0070_unusual_starfox.sql", import.meta.url),
-    );
-    assertEquals(
-        migration.includes("CREATE EXTENSION IF NOT EXISTS pg_trgm"),
-        true,
-    );
-    assertEquals(migration.includes('"idx_community_posts_title_trgm"'), true);
-    assertEquals(
-        migration.includes('"idx_community_posts_content_trgm"'),
-        true,
-    );
+  const migration = await Deno.readTextFile(
+    new URL("../../drizzle/0070_unusual_starfox.sql", import.meta.url),
+  );
+  assertEquals(
+    migration.includes("CREATE EXTENSION IF NOT EXISTS pg_trgm"),
+    true,
+  );
+  assertEquals(migration.includes('"idx_community_posts_title_trgm"'), true);
+  assertEquals(migration.includes('"idx_community_posts_content_trgm"'), true);
 });

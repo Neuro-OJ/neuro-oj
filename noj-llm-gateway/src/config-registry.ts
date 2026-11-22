@@ -27,27 +27,27 @@ import { QUOTA_ENV_KEYS } from "./limits.ts";
 
 /** 网关配置项的声明条目 */
 export interface GatewayEnvDefinition {
-    /** env 变量名；dynamic 条目为模板形式的代表键 */
-    key: string;
-    description: string;
-    /** 是否敏感（文档/日志中需脱敏） */
-    isSecret: boolean;
-    /** 读取方式：static 字面量 / dynamic 前缀模板 */
-    readMode: "static" | "dynamic";
-    /** dynamic 条目的 env 名前缀，供静态校验与枚举测试核对 */
-    dynamicPrefix?: string;
-    /** 默认值说明（供文档生成与人工核对） */
-    defaultValue?: string;
+  /** env 变量名；dynamic 条目为模板形式的代表键 */
+  key: string;
+  description: string;
+  /** 是否敏感（文档/日志中需脱敏） */
+  isSecret: boolean;
+  /** 读取方式：static 字面量 / dynamic 前缀模板 */
+  readMode: "static" | "dynamic";
+  /** dynamic 条目的 env 名前缀，供静态校验与枚举测试核对 */
+  dynamicPrefix?: string;
+  /** 默认值说明（供文档生成与人工核对） */
+  defaultValue?: string;
 }
 
 /** 网关配额窗口类型（day / month，与 limits.ts 默认表一致） */
 export const QUOTA_WINDOWS = ["day", "month"] as const;
 /** 网关配额作用域类型 */
 export const QUOTA_SCOPES = [
-    "global",
-    "user",
-    "problem",
-    "user_problem",
+  "global",
+  "user",
+  "problem",
+  "user_problem",
 ] as const;
 /** 网关配额字段 */
 export const QUOTA_FIELDS = ["CALLS", "TOKENS", "COST"] as const;
@@ -63,150 +63,149 @@ export const QUOTA_ENV_PREFIX = "NOJ_LLM_DEFAULT_";
  * 避免“新增窗口忘登记”再次发生。
  */
 export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
-    {
-        key: "NOJ_CORE_INTERNAL_URL",
-        description: "core实时实例LLM额度政策接口地址",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "http://127.0.0.1:8000",
-    },
-    {
-        key: "NOJ_GATEWAY_MIGRATIONS_DIR",
-        description:
-            "Gateway 迁移文件目录覆盖（未设置时使用随包 drizzle 目录）",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        key: "DATABASE_URL",
-        description: "PostgreSQL 连接串（配额与用量表）",
-        isSecret: true,
-        readMode: "static",
-    },
-    {
-        key: "REDIS_URL",
-        description: "Redis 连接串（限流与额度计数）",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "redis://127.0.0.1:6379/",
-    },
-    {
-        key: "NOJ_LLM_SERVICE_TOKEN",
-        description:
-            "core↔gateway 管理 API 鉴权 + eval_token 签发/校验（≥16 字符）",
-        isSecret: true,
-        readMode: "static",
-    },
-    {
-        key: "NOJ_LLM_STORE_KEY",
-        description: "加密 Provider API Key 的信封加密主密钥（≥16 字符）",
-        isSecret: true,
-        readMode: "static",
-    },
-    {
-        key: "NOJ_LLM_PORT",
-        description: "监听端口",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "8001",
-    },
-    {
-        key: "NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE",
-        description: "每个用户每 UTC 分钟窗口允许的调用次数",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        key: "NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE",
-        description: "每个 IP 每 UTC 分钟窗口允许的调用次数",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        key: "NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS",
-        description:
-            "Provider RPM/TPM 超限时单个请求的最长排队秒数（0 = 不排队，超限立即 429），默认 60",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "60",
-    },
-    {
-        key: "NOJ_LLM_USAGE_RETENTION_DAYS",
-        description:
-            "llm_usage 用量审计保留天数（0 = 不清理）；启动时与每 6 小时清理一次",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "90",
-    },
-    {
-        key: "NOJ_LLM_UPSTREAM_ALLOWED_HOSTS",
-        description:
-            "允许 http 与内网地址的上游主机白名单（逗号分隔）；默认仅允许 https 公网地址",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "",
-    },
-    // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
-    {
-        key: "NOJ_ENV",
-        description:
-            "运行环境标记；=production 时启用 JSON 日志输出与生产脱敏（缺失则按开发模式渲染）",
-        isSecret: false,
-        readMode: "static",
-        defaultValue: "development",
-    },
-    {
-        key: "LOG_LEVEL",
-        description: "日志级别（debug/info/warn/error；未设置按 NOJ_ENV 回退）",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        key: "LOG_FORMAT",
-        description: "日志格式（json/pretty；未设置按 NOJ_ENV 回退）",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        key: "LOG_COLOR",
-        description:
-            "日志着色（always/never/auto；NO_COLOR 优先，LOG_FORMAT=json 时恒无色）",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        key: "NO_COLOR",
-        description:
-            "通用配色禁用约定（https://no-color.org）：非空即关闭着色，优先于 LOG_COLOR；空串视为未设置",
-        isSecret: false,
-        readMode: "static",
-    },
-    {
-        // 代表键：真实键由前缀模板生成，枚举见 QUOTA_ENV_KEYS
-        key: "NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>",
-        description:
-            "LLM 默认配额兜底值（llm_quotas 缺行时生效）。SCOPE ∈ global|user|problem|user_problem，" +
-            "WINDOW ∈ day|month，FIELD ∈ CALLS|TOKENS|COST，共 24 个变量；" +
-            "仅当配额表无对应记录时才作为兜底，改动需重启 llm-gateway",
-        isSecret: false,
-        readMode: "dynamic",
-        dynamicPrefix: QUOTA_ENV_PREFIX,
-    },
+  {
+    key: "NOJ_CORE_INTERNAL_URL",
+    description: "core实时实例LLM额度政策接口地址",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "http://127.0.0.1:8000",
+  },
+  {
+    key: "NOJ_GATEWAY_MIGRATIONS_DIR",
+    description: "Gateway 迁移文件目录覆盖（未设置时使用随包 drizzle 目录）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "DATABASE_URL",
+    description: "PostgreSQL 连接串（配额与用量表）",
+    isSecret: true,
+    readMode: "static",
+  },
+  {
+    key: "REDIS_URL",
+    description: "Redis 连接串（限流与额度计数）",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "redis://127.0.0.1:6379/",
+  },
+  {
+    key: "NOJ_LLM_SERVICE_TOKEN",
+    description:
+      "core↔gateway 管理 API 鉴权 + eval_token 签发/校验（≥16 字符）",
+    isSecret: true,
+    readMode: "static",
+  },
+  {
+    key: "NOJ_LLM_STORE_KEY",
+    description: "加密 Provider API Key 的信封加密主密钥（≥16 字符）",
+    isSecret: true,
+    readMode: "static",
+  },
+  {
+    key: "NOJ_LLM_PORT",
+    description: "监听端口",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "8001",
+  },
+  {
+    key: "NOJ_LLM_USER_RATE_LIMIT_PER_MINUTE",
+    description: "每个用户每 UTC 分钟窗口允许的调用次数",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE",
+    description: "每个 IP 每 UTC 分钟窗口允许的调用次数",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "NOJ_LLM_PROVIDER_QUEUE_TIMEOUT_SECONDS",
+    description:
+      "Provider RPM/TPM 超限时单个请求的最长排队秒数（0 = 不排队，超限立即 429），默认 60",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "60",
+  },
+  {
+    key: "NOJ_LLM_USAGE_RETENTION_DAYS",
+    description:
+      "llm_usage 用量审计保留天数（0 = 不清理）；启动时与每 6 小时清理一次",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "90",
+  },
+  {
+    key: "NOJ_LLM_UPSTREAM_ALLOWED_HOSTS",
+    description:
+      "允许 http 与内网地址的上游主机白名单（逗号分隔）；默认仅允许 https 公网地址",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "",
+  },
+  // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
+  {
+    key: "NOJ_ENV",
+    description:
+      "运行环境标记；=production 时启用 JSON 日志输出与生产脱敏（缺失则按开发模式渲染）",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "development",
+  },
+  {
+    key: "LOG_LEVEL",
+    description: "日志级别（debug/info/warn/error；未设置按 NOJ_ENV 回退）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "LOG_FORMAT",
+    description: "日志格式（json/pretty；未设置按 NOJ_ENV 回退）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "LOG_COLOR",
+    description:
+      "日志着色（always/never/auto；NO_COLOR 优先，LOG_FORMAT=json 时恒无色）",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    key: "NO_COLOR",
+    description:
+      "通用配色禁用约定（https://no-color.org）：非空即关闭着色，优先于 LOG_COLOR；空串视为未设置",
+    isSecret: false,
+    readMode: "static",
+  },
+  {
+    // 代表键：真实键由前缀模板生成，枚举见 QUOTA_ENV_KEYS
+    key: "NOJ_LLM_DEFAULT_<SCOPE>_<WINDOW>_<FIELD>",
+    description:
+      "LLM 默认配额兜底值（llm_quotas 缺行时生效）。SCOPE ∈ global|user|problem|user_problem，" +
+      "WINDOW ∈ day|month，FIELD ∈ CALLS|TOKENS|COST，共 24 个变量；" +
+      "仅当配额表无对应记录时才作为兜底，改动需重启 llm-gateway",
+    isSecret: false,
+    readMode: "dynamic",
+    dynamicPrefix: QUOTA_ENV_PREFIX,
+  },
 ];
 
 /** 生成全部 24 个配额 env 名（与 limits.ts 的模板拼接逐字一致） */
 export function quotaEnvKeys(): string[] {
-    const keys: string[] = [];
-    for (const scope of QUOTA_SCOPES) {
-        for (const window of QUOTA_WINDOWS) {
-            for (const field of QUOTA_FIELDS) {
-                keys.push(
-                    `${QUOTA_ENV_PREFIX}${scope.toUpperCase()}_${window.toUpperCase()}_${field}`,
-                );
-            }
-        }
+  const keys: string[] = [];
+  for (const scope of QUOTA_SCOPES) {
+    for (const window of QUOTA_WINDOWS) {
+      for (const field of QUOTA_FIELDS) {
+        keys.push(
+          `${QUOTA_ENV_PREFIX}${scope.toUpperCase()}_${window.toUpperCase()}_${field}`,
+        );
+      }
     }
-    return keys;
+  }
+  return keys;
 }
 
 /**
@@ -216,13 +215,13 @@ export function quotaEnvKeys(): string[] {
  * 这里立即失败，而不是静默地让新键不可发现。
  */
 export function findQuotaEnvDrift(): {
-    missing: string[];
-    unexpected: string[];
+  missing: string[];
+  unexpected: string[];
 } {
-    const declared = new Set(quotaEnvKeys());
-    const actual = new Set(QUOTA_ENV_KEYS);
-    return {
-        missing: [...actual].filter((k) => !declared.has(k)),
-        unexpected: [...declared].filter((k) => !actual.has(k)),
-    };
+  const declared = new Set(quotaEnvKeys());
+  const actual = new Set(QUOTA_ENV_KEYS);
+  return {
+    missing: [...actual].filter((k) => !declared.has(k)),
+    unexpected: [...declared].filter((k) => !actual.has(k)),
+  };
 }

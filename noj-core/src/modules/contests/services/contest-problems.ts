@@ -4,13 +4,13 @@ import { contestProblems } from "../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import {
-    getJudgeBackend,
-    type ProblemRuntimeConfig,
+  getJudgeBackend,
+  type ProblemRuntimeConfig,
 } from "../../problems/types/runtime-config.ts";
 import {
-    getSubmissionLanguages,
-    isValidSubmissionMode,
-    type SubmissionMode,
+  getSubmissionLanguages,
+  isValidSubmissionMode,
+  type SubmissionMode,
 } from "../../problems/types/problems.ts";
 import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import { projectProblemContent } from "../../problems/contracts/read.ts";
@@ -28,31 +28,31 @@ import { resolveDomainContestProblems } from "./domain-problems.ts";
  * @throws {NotFoundError} 竞赛不存在时
  */
 export async function getContestProblems(
-    contestId: string,
-    userId?: string,
-    organizer = false,
+  contestId: string,
+  userId?: string,
+  organizer = false,
 ): Promise<ContestProblemResponse[]> {
-    const contest = await findContestRow(contestId);
-    const db = getDb();
-    // 旧默认域路由也走此读取门面，不能用固定版本恢复已撤销的跨域题面。
-    // 扩展迁移尚未回填的旧比赛行由后续收缩迁移统一补齐绑定。
-    const bindings = await db.select({ problem_id: contestProblems.problem_id })
-        .from(contestProblems).where(and(
-            eq(contestProblems.contest_id, contestId),
-            isNotNull(contestProblems.domain_problem_binding_id),
-        ));
-    if (bindings.length) {
-        await resolveDomainContestProblems(
-            db,
-            contest.domain_id ?? DEFAULT_DOMAIN_ID,
-            bindings.map((row) => row.problem_id),
-            contest.type as ContestType,
-            false,
-        );
-    }
-    const hideOiResults = !organizer && contest.type === "oi" &&
-        computeContestStatus(contest.start_time, contest.end_time) !== "ended";
-    const rows = await db.execute(sql`
+  const contest = await findContestRow(contestId);
+  const db = getDb();
+  // 旧默认域路由也走此读取门面，不能用固定版本恢复已撤销的跨域题面。
+  // 扩展迁移尚未回填的旧比赛行由后续收缩迁移统一补齐绑定。
+  const bindings = await db.select({ problem_id: contestProblems.problem_id })
+    .from(contestProblems).where(and(
+      eq(contestProblems.contest_id, contestId),
+      isNotNull(contestProblems.domain_problem_binding_id),
+    ));
+  if (bindings.length) {
+    await resolveDomainContestProblems(
+      db,
+      contest.domain_id ?? DEFAULT_DOMAIN_ID,
+      bindings.map((row) => row.problem_id),
+      contest.type as ContestType,
+      false,
+    );
+  }
+  const hideOiResults = !organizer && contest.type === "oi" &&
+    computeContestStatus(contest.start_time, contest.end_time) !== "ended";
+  const rows = await db.execute(sql`
     WITH contest_sources AS (
       SELECT user_id, problem_id, contest_id, is_contest_accepted, receipt_sequence, created_at FROM submissions
       UNION ALL
@@ -121,9 +121,9 @@ export async function getContestProblems(
     ORDER BY cp.sort_order ASC, cp.label ASC
   `);
 
-    return unwrapRows<Record<string, unknown>>(rows as never).map(
-        toContestProblemResponse,
-    );
+  return unwrapRows<Record<string, unknown>>(rows as never).map(
+    toContestProblemResponse,
+  );
 }
 
 /**
@@ -144,88 +144,85 @@ export async function getContestProblems(
  * 评测配置）。固定版本内容缺失（数据损坏）时退回题目投影，保证列表不 500。
  */
 function toContestProblemResponse(
-    row: Record<string, unknown>,
+  row: Record<string, unknown>,
 ): ContestProblemResponse {
-    const versionFields = row.pinned_content === null ||
-            row.pinned_content === undefined
-        ? null
-        : projectProblemContent(row.pinned_content as ProblemContentV1, false);
+  const versionFields = row.pinned_content === null ||
+      row.pinned_content === undefined
+    ? null
+    : projectProblemContent(row.pinned_content as ProblemContentV1, false);
 
-    // 无版本内容时的兜底口径：题目投影（仅数据损坏时走到）
-    const fallbackJudgeType = row.judge_type === "oi" ? "oi" : "dual";
-    const fallbackConfig = row.runtime_config as ProblemRuntimeConfig | null;
+  // 无版本内容时的兜底口径：题目投影（仅数据损坏时走到）
+  const fallbackJudgeType = row.judge_type === "oi" ? "oi" : "dual";
+  const fallbackConfig = row.runtime_config as ProblemRuntimeConfig | null;
 
-    const judgeType: "dual" | "oi" = versionFields?.["judge_type"] === "oi" ||
-            versionFields?.["judge_type"] === "dual"
-        ? versionFields["judge_type"]
-        : fallbackJudgeType;
-    const isObjective = typeof versionFields?.["is_objective"] === "boolean"
-        ? versionFields["is_objective"]
-        : row.is_objective === true;
-    const judgeBackend = versionFields !== null &&
-            "judge_backend" in versionFields
-        ? versionFields["judge_backend"] as ContestProblemResponse[
-            "judge_backend"
-        ]
-        : getJudgeBackend(fallbackJudgeType, fallbackConfig, isObjective);
-    const supportedLanguages = versionFields !== null &&
-            Array.isArray(versionFields["supported_languages"])
-        ? versionFields["supported_languages"] as string[]
-        : getSubmissionLanguages(fallbackJudgeType, fallbackConfig);
-    const submissionMode =
-        isValidSubmissionMode(versionFields?.["submission_mode"] as string)
-            ? versionFields!["submission_mode"] as SubmissionMode
-            : row.submission_mode as ContestProblemResponse["submission_mode"];
-    // 注意区分"版本内容显式声明 null"与"版本内容缺失"：前者表示该版本无产物上限，
-    // 不能回退到题目投影里的其他版本取值
-    const artifactMaxSizeMb = versionFields !== null &&
-            "artifact_max_size_mb" in versionFields
-        ? versionFields["artifact_max_size_mb"] as number | null
-        : row.artifact_max_size_mb === null ||
-                row.artifact_max_size_mb === undefined
-        ? null
-        : Number(row.artifact_max_size_mb);
+  const judgeType: "dual" | "oi" = versionFields?.["judge_type"] === "oi" ||
+      versionFields?.["judge_type"] === "dual"
+    ? versionFields["judge_type"]
+    : fallbackJudgeType;
+  const isObjective = typeof versionFields?.["is_objective"] === "boolean"
+    ? versionFields["is_objective"]
+    : row.is_objective === true;
+  const judgeBackend = versionFields !== null &&
+      "judge_backend" in versionFields
+    ? versionFields["judge_backend"] as ContestProblemResponse["judge_backend"]
+    : getJudgeBackend(fallbackJudgeType, fallbackConfig, isObjective);
+  const supportedLanguages = versionFields !== null &&
+      Array.isArray(versionFields["supported_languages"])
+    ? versionFields["supported_languages"] as string[]
+    : getSubmissionLanguages(fallbackJudgeType, fallbackConfig);
+  const submissionMode =
+    isValidSubmissionMode(versionFields?.["submission_mode"] as string)
+      ? versionFields!["submission_mode"] as SubmissionMode
+      : row.submission_mode as ContestProblemResponse["submission_mode"];
+  // 注意区分"版本内容显式声明 null"与"版本内容缺失"：前者表示该版本无产物上限，
+  // 不能回退到题目投影里的其他版本取值
+  const artifactMaxSizeMb = versionFields !== null &&
+      "artifact_max_size_mb" in versionFields
+    ? versionFields["artifact_max_size_mb"] as number | null
+    : row.artifact_max_size_mb === null ||
+        row.artifact_max_size_mb === undefined
+    ? null
+    : Number(row.artifact_max_size_mb);
 
-    return {
-        problem_id: row.problem_id as string,
-        sort_order: Number(row.sort_order),
-        label: row.label as string,
-        score: Number(row.score),
-        title: typeof versionFields?.["title"] === "string"
-            ? versionFields["title"]
-            : row.title as string,
-        description: typeof versionFields?.["description"] === "string"
-            ? versionFields["description"]
-            : row.description as string,
-        samples:
-            (versionFields?.samples ?? []) as ContestProblemResponse["samples"],
-        limits:
-            (versionFields?.limits ?? null) as ContestProblemResponse["limits"],
-        // 难度 / 可见性 / display_id 属于题目管理信息，沿用题目身份值
-        difficulty: row.difficulty as string,
-        judge_type: judgeType,
-        is_objective: isObjective,
-        judge_backend: judgeBackend,
-        // 竞赛固定作答版本：客户端提交时原样回传（不一致 → 409，绝不自动换版）
-        version_id: (row.pinned_version_id as string | null) ?? null,
-        version: row.pinned_version_number == null
-            ? null
-            : Number(row.pinned_version_number),
-        // 竞赛 × 题目 有效版本策略与乐观锁版本（管理端切换策略/升级固定版本用）
-        effective_version_policy: row.effective_version_mode === "exact"
-            ? {
-                mode: "exact" as const,
-                version_id: (row.required_version_id as string | null) ?? null,
-            }
-            : { mode: "any" as const },
-        effective_version_policy_revision: Number(
-            row.effective_policy_revision ?? 0,
-        ),
-        supported_languages: supportedLanguages,
-        display_id: row.display_id as string,
-        submission_mode: submissionMode,
-        artifact_max_size_mb: artifactMaxSizeMb,
-        visibility: row.visibility as ContestProblemResponse["visibility"],
-        user_status: row.user_status as ContestProblemResponse["user_status"],
-    };
+  return {
+    problem_id: row.problem_id as string,
+    sort_order: Number(row.sort_order),
+    label: row.label as string,
+    score: Number(row.score),
+    title: typeof versionFields?.["title"] === "string"
+      ? versionFields["title"]
+      : row.title as string,
+    description: typeof versionFields?.["description"] === "string"
+      ? versionFields["description"]
+      : row.description as string,
+    samples:
+      (versionFields?.samples ?? []) as ContestProblemResponse["samples"],
+    limits: (versionFields?.limits ?? null) as ContestProblemResponse["limits"],
+    // 难度 / 可见性 / display_id 属于题目管理信息，沿用题目身份值
+    difficulty: row.difficulty as string,
+    judge_type: judgeType,
+    is_objective: isObjective,
+    judge_backend: judgeBackend,
+    // 竞赛固定作答版本：客户端提交时原样回传（不一致 → 409，绝不自动换版）
+    version_id: (row.pinned_version_id as string | null) ?? null,
+    version: row.pinned_version_number == null
+      ? null
+      : Number(row.pinned_version_number),
+    // 竞赛 × 题目 有效版本策略与乐观锁版本（管理端切换策略/升级固定版本用）
+    effective_version_policy: row.effective_version_mode === "exact"
+      ? {
+        mode: "exact" as const,
+        version_id: (row.required_version_id as string | null) ?? null,
+      }
+      : { mode: "any" as const },
+    effective_version_policy_revision: Number(
+      row.effective_policy_revision ?? 0,
+    ),
+    supported_languages: supportedLanguages,
+    display_id: row.display_id as string,
+    submission_mode: submissionMode,
+    artifact_max_size_mb: artifactMaxSizeMb,
+    visibility: row.visibility as ContestProblemResponse["visibility"],
+    user_status: row.user_status as ContestProblemResponse["user_status"],
+  };
 }

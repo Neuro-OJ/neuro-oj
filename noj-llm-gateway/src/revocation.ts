@@ -7,44 +7,43 @@ export const TOKEN_REVOCATIONS_READY_KEY = "llm:revocations:ready:v1";
 
 /** 与 Core 持久吊销 outbox 的尝试标识一致。 */
 export function evalTokenRevokedKey(
-    payload: Pick<EvalTokenPayload, "attempt_id">,
+  payload: Pick<EvalTokenPayload, "attempt_id">,
 ): string {
-    return `llm:attempt:revoked:${payload.attempt_id}`;
+  return `llm:attempt:revoked:${payload.attempt_id}`;
 }
 
 /** 预占前身份复核失败；路由按 code 返回 401 或恢复期 503。 */
 export class EvalTokenAdmissionError extends Error {
-    constructor(
-        readonly code:
-            | "invalid_token"
-            | "token_revoked"
-            | "revocations_unavailable",
-    ) {
-        super(code);
-    }
+  constructor(
+    readonly code:
+      | "invalid_token"
+      | "token_revoked"
+      | "revocations_unavailable",
+  ) {
+    super(code);
+  }
 }
 
 /** 在实际预占边界复核有效期、恢复屏障和吊销；不可只依赖进入排队前的检查。 */
 export async function assertEvalTokenActive(
-    redis: RedisClient,
-    payload: EvalTokenPayload,
+  redis: RedisClient,
+  payload: EvalTokenPayload,
 ): Promise<void> {
-    if (payload.exp <= Math.floor(Date.now() / 1000)) {
-        throw new EvalTokenAdmissionError("invalid_token");
+  if (payload.exp <= Math.floor(Date.now() / 1000)) {
+    throw new EvalTokenAdmissionError("invalid_token");
+  }
+  try {
+    if (await redis.get(evalTokenRevokedKey(payload)) !== null) {
+      throw new EvalTokenAdmissionError("token_revoked");
     }
-    try {
-        if (await redis.get(evalTokenRevokedKey(payload)) !== null) {
-            throw new EvalTokenAdmissionError("token_revoked");
-        }
-        if (
-            !redis.serverId ||
-            await redis.get(TOKEN_REVOCATIONS_READY_KEY) !==
-                await redis.serverId()
-        ) {
-            throw new EvalTokenAdmissionError("revocations_unavailable");
-        }
-    } catch (error) {
-        if (error instanceof EvalTokenAdmissionError) throw error;
-        throw new EvalTokenAdmissionError("revocations_unavailable");
+    if (
+      !redis.serverId ||
+      await redis.get(TOKEN_REVOCATIONS_READY_KEY) !== await redis.serverId()
+    ) {
+      throw new EvalTokenAdmissionError("revocations_unavailable");
     }
+  } catch (error) {
+    if (error instanceof EvalTokenAdmissionError) throw error;
+    throw new EvalTokenAdmissionError("revocations_unavailable");
+  }
 }

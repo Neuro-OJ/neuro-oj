@@ -8,14 +8,14 @@
  * - users.ts          getUserProfile / listUsers
  */
 export {
-    changePassword,
-    ensureRootUser,
-    getUserProfile,
-    listUsers,
-    loginUser,
-    MIN_PASSWORD_LENGTH,
-    registerUser,
-    setPassword,
-    toUserResponse,
-    validatePasswordStrength,
+  changePassword,
+  ensureRootUser,
+  getUserProfile,
+  listUsers,
+  loginUser,
+  MIN_PASSWORD_LENGTH,
+  registerUser,
+  setPassword,
+  toUserResponse,
+  validatePasswordStrength,
 } from "./auth/auth.ts";

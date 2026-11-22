@@ -1,22 +1,22 @@
 import { getBuiltinOiCostProfile } from "../../problems/types/oi-cost-profile.ts";
 import { isOiRuntimeConfig } from "../../problems/types/runtime-config.ts";
 import {
-    buildJudgeTask,
-    type BuildJudgeTaskInput,
-    EVALUATION_PROTOCOL_VERSION,
-    type JudgeTask,
-    type JudgeTaskKind,
+  buildJudgeTask,
+  type BuildJudgeTaskInput,
+  EVALUATION_PROTOCOL_VERSION,
+  type JudgeTask,
+  type JudgeTaskKind,
 } from "../types/index.ts";
 
 /** 正式评测任务的封套输入（Handbook §5.5）。 */
 export interface PrepareJudgeTaskInput extends BuildJudgeTaskInput {
-    /**
-     * 本次执行的评测尝试 ID（`evaluation_attempts.id`）。
-     *
-     * **正式提交必传**：`run_id` 与之一致，结果回填才能落到正确的尝试上。
-     * 自测/演练等没有尝试记录的任务不传，OI 任务退回随机 ID（进度/取消键仍需唯一）。
-     */
-    attempt_id?: string;
+  /**
+   * 本次执行的评测尝试 ID（`evaluation_attempts.id`）。
+   *
+   * **正式提交必传**：`run_id` 与之一致，结果回填才能落到正确的尝试上。
+   * 自测/演练等没有尝试记录的任务不传，OI 任务退回随机 ID（进度/取消键仍需唯一）。
+   */
+  attempt_id?: string;
 }
 
 /**
@@ -32,30 +32,30 @@ export interface PrepareJudgeTaskInput extends BuildJudgeTaskInput {
  * WASM 任务只绑定内置标准，禁止注入本机或题目自定义成本。
  */
 export function prepareJudgeTask(
-    input: PrepareJudgeTaskInput,
+  input: PrepareJudgeTaskInput,
 ): JudgeTask {
-    const profile = isOiRuntimeConfig(input.runtime_config) &&
-            input.runtime_config.backend === "wasm"
-        ? getBuiltinOiCostProfile()
-        : undefined;
-    const taskKind: JudgeTaskKind = input.task_kind ?? "submission";
-    const runId = taskKind === "self_test"
-        ? input.self_test_run_id ?? input.run_id ?? crypto.randomUUID()
-        : input.attempt_id ?? input.run_id ?? crypto.randomUUID();
-    return buildJudgeTask({
-        ...input,
-        task_kind: taskKind,
-        ...(taskKind === "self_test" ? { self_test_run_id: runId } : {}),
-        // 初次尝试也必须显式下发 sequence=0；协议 v2 结果拒绝缺失的序列号。
-        rejudge_seq: input.rejudge_seq ?? 0,
-        ...(runId ? { run_id: runId } : {}),
-        ...(input.problem_version_id
-            ? { problem_version_id: input.problem_version_id }
-            : {}),
-        evaluation_protocol_version: EVALUATION_PROTOCOL_VERSION,
-        runtime_config: isOiRuntimeConfig(input.runtime_config)
-            ? { ...input.runtime_config, scoring_version: 2 }
-            : input.runtime_config,
-        oi_cost_profile: profile,
-    });
+  const profile = isOiRuntimeConfig(input.runtime_config) &&
+      input.runtime_config.backend === "wasm"
+    ? getBuiltinOiCostProfile()
+    : undefined;
+  const taskKind: JudgeTaskKind = input.task_kind ?? "submission";
+  const runId = taskKind === "self_test"
+    ? input.self_test_run_id ?? input.run_id ?? crypto.randomUUID()
+    : input.attempt_id ?? input.run_id ?? crypto.randomUUID();
+  return buildJudgeTask({
+    ...input,
+    task_kind: taskKind,
+    ...(taskKind === "self_test" ? { self_test_run_id: runId } : {}),
+    // 初次尝试也必须显式下发 sequence=0；协议 v2 结果拒绝缺失的序列号。
+    rejudge_seq: input.rejudge_seq ?? 0,
+    ...(runId ? { run_id: runId } : {}),
+    ...(input.problem_version_id
+      ? { problem_version_id: input.problem_version_id }
+      : {}),
+    evaluation_protocol_version: EVALUATION_PROTOCOL_VERSION,
+    runtime_config: isOiRuntimeConfig(input.runtime_config)
+      ? { ...input.runtime_config, scoring_version: 2 }
+      : input.runtime_config,
+    oi_cost_profile: profile,
+  });
 }

@@ -16,8 +16,8 @@
 import { Hono } from "hono";
 import type { AuthEnv } from "../../access/identity/middleware/auth.ts";
 import {
-    adminMiddleware,
-    authMiddleware,
+  adminMiddleware,
+  authMiddleware,
 } from "../../access/identity/middleware/auth.ts";
 import identityAdminRouter from "./routes/identity.ts";
 import catalogAdminRouter from "./routes/catalog.ts";
@@ -33,20 +33,18 @@ import backgroundTasksAdminRouter from "./routes/background-tasks.ts";
 const router = new Hono<AuthEnv>();
 
 const FINE_GRAINED_ADMIN_PREFIXES = [
-    "/api/v1/admin/catalog",
-    "/api/v1/admin/system/announcements",
-    "/api/v1/admin/community",
+  "/api/v1/admin/catalog",
+  "/api/v1/admin/system/announcements",
+  "/api/v1/admin/community",
 ] as const;
 
 router.use("*", authMiddleware, async (c, next) => {
-    if (
-        FINE_GRAINED_ADMIN_PREFIXES.some((prefix) =>
-            c.req.path.startsWith(prefix)
-        )
-    ) {
-        return next();
-    }
-    return await adminMiddleware(c, next);
+  if (
+    FINE_GRAINED_ADMIN_PREFIXES.some((prefix) => c.req.path.startsWith(prefix))
+  ) {
+    return next();
+  }
+  return await adminMiddleware(c, next);
 });
 
 router.route("/identity", identityAdminRouter);

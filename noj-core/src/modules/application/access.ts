@@ -10,221 +10,221 @@ import { runBestEffort } from "../../shared/base/best-effort.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import type { UserActor } from "../access/contracts/actor.ts";
 import {
-    type AccountLifecycleBoundary,
-    adminDeleteAccountTx,
-    deleteOwnAccountTx,
-    verifyOwnAccountPassword,
+  type AccountLifecycleBoundary,
+  adminDeleteAccountTx,
+  deleteOwnAccountTx,
+  verifyOwnAccountPassword,
 } from "../access/account.ts";
 import {
-    createDomainTx,
-    setDomainStatusTx,
-    updateDomainTx,
+  createDomainTx,
+  setDomainStatusTx,
+  updateDomainTx,
 } from "../access/domains.ts";
 import {
-    consumeDomainInvitationTx,
-    createDomainInvitationTx,
-    type DomainInvitationInput,
-    previewDomainInvitation,
-    revokeDomainInvitationTx,
+  consumeDomainInvitationTx,
+  createDomainInvitationTx,
+  type DomainInvitationInput,
+  previewDomainInvitation,
+  revokeDomainInvitationTx,
 } from "../access/invitations.ts";
 import type { InvitationRegistrationBoundary } from "../access/registration.ts";
 import {
-    type AccessWriteMeta,
-    joinDomainTx,
-    removeDomainMemberTx,
-    reviewJoinRequestTx,
-    setMemberRoleTx,
-    transferDomainTx,
+  type AccessWriteMeta,
+  joinDomainTx,
+  removeDomainMemberTx,
+  reviewJoinRequestTx,
+  setMemberRoleTx,
+  transferDomainTx,
 } from "../access/members.ts";
 import type { DomainPreset } from "../../shared/workspace/types.ts";
 import {
-    accessClassroomInvitationBoundary,
-    accessDomainChangeBoundary,
-    accessMemberRemovalBoundary,
+  accessClassroomInvitationBoundary,
+  accessDomainChangeBoundary,
+  accessMemberRemovalBoundary,
 } from "./access-capabilities.ts";
 
 /** 账户命令保留 application 边界，跨 assets/search/legal 的回调由调用方注入。 */
 export async function deleteOwnAccountCommand(
-    actor: UserActor,
-    password: string,
-    options: AccountLifecycleBoundary & { meta?: AccessWriteMeta },
+  actor: UserActor,
+  password: string,
+  options: AccountLifecycleBoundary & { meta?: AccessWriteMeta },
 ) {
-    const user = actor;
-    const passwordHash = await verifyOwnAccountPassword(user, password);
-    const db: DbRoot = getDb();
-    const result = await db.transaction((tx) =>
-        deleteOwnAccountTx(tx, user, passwordHash, options)
-    );
-    await runBestEffort(
-        "account.deleted.after_commit",
-        () =>
-            options.afterCommit({
-                type: "account_deleted",
-                userId: user.userId,
-                previousAvatarUrl: result.avatarUrl,
-            }),
-        { user_id: user.userId },
-    );
+  const user = actor;
+  const passwordHash = await verifyOwnAccountPassword(user, password);
+  const db: DbRoot = getDb();
+  const result = await db.transaction((tx) =>
+    deleteOwnAccountTx(tx, user, passwordHash, options)
+  );
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: user.userId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: user.userId },
+  );
 }
 
 export async function adminDeleteAccountCommand(
-    actor: UserActor,
-    targetUserId: string,
-    options: AccountLifecycleBoundary & { meta?: AccessWriteMeta },
+  actor: UserActor,
+  targetUserId: string,
+  options: AccountLifecycleBoundary & { meta?: AccessWriteMeta },
 ) {
-    const db: DbRoot = getDb();
-    const result = await db.transaction((tx) =>
-        adminDeleteAccountTx(tx, actor, targetUserId, options)
-    );
-    await runBestEffort(
-        "account.deleted.after_commit",
-        () =>
-            options.afterCommit({
-                type: "account_deleted",
-                userId: targetUserId,
-                previousAvatarUrl: result.avatarUrl,
-            }),
-        { user_id: targetUserId },
-    );
+  const db: DbRoot = getDb();
+  const result = await db.transaction((tx) =>
+    adminDeleteAccountTx(tx, actor, targetUserId, options)
+  );
+  await runBestEffort(
+    "account.deleted.after_commit",
+    () =>
+      options.afterCommit({
+        type: "account_deleted",
+        userId: targetUserId,
+        previousAvatarUrl: result.avatarUrl,
+      }),
+    { user_id: targetUserId },
+  );
 }
 
 export function createDomainCommand(
-    actor: UserActor,
-    input: {
-        slug: string;
-        name: string;
-        preset: DomainPreset;
-        description?: string;
-    },
-    options: { approved?: boolean; meta?: AccessWriteMeta } = {},
+  actor: UserActor,
+  input: {
+    slug: string;
+    name: string;
+    preset: DomainPreset;
+    description?: string;
+  },
+  options: { approved?: boolean; meta?: AccessWriteMeta } = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) => createDomainTx(tx, actor, input, options));
+  const db: DbRoot = getDb();
+  return db.transaction((tx) => createDomainTx(tx, actor, input, options));
 }
 
 export function updateDomainCommand(
-    actor: UserActor,
-    slug: string,
-    revision: number,
-    patch: {
-        name?: string;
-        description?: string;
-        configuration?: Record<string, unknown>;
-    },
-    options: { meta?: AccessWriteMeta } = {},
+  actor: UserActor,
+  slug: string,
+  revision: number,
+  patch: {
+    name?: string;
+    description?: string;
+    configuration?: Record<string, unknown>;
+  },
+  options: { meta?: AccessWriteMeta } = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        updateDomainTx(tx, actor, slug, revision, patch, {
-            ...accessDomainChangeBoundary,
-            meta: options.meta,
-        })
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    updateDomainTx(tx, actor, slug, revision, patch, {
+      ...accessDomainChangeBoundary,
+      meta: options.meta,
+    })
+  );
 }
 
 export function setDomainStatusCommand(
-    actor: UserActor,
-    slug: string,
-    status: "active" | "archived" | "suspended",
-    revision: number,
-    options: { meta?: AccessWriteMeta } = {},
+  actor: UserActor,
+  slug: string,
+  status: "active" | "archived" | "suspended",
+  revision: number,
+  options: { meta?: AccessWriteMeta } = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        setDomainStatusTx(tx, actor, slug, status, revision, {
-            ...accessDomainChangeBoundary,
-            meta: options.meta,
-        })
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    setDomainStatusTx(tx, actor, slug, status, revision, {
+      ...accessDomainChangeBoundary,
+      meta: options.meta,
+    })
+  );
 }
 
 export function joinDomainCommand(
-    actor: UserActor,
-    slug: string,
-    reason = "",
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  reason = "",
+  meta: AccessWriteMeta = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) => joinDomainTx(tx, actor, slug, reason, meta));
+  const db: DbRoot = getDb();
+  return db.transaction((tx) => joinDomainTx(tx, actor, slug, reason, meta));
 }
 
 export function reviewJoinRequestCommand(
-    actor: UserActor,
-    slug: string,
-    requestId: string,
-    approved: boolean,
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  requestId: string,
+  approved: boolean,
+  meta: AccessWriteMeta = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        reviewJoinRequestTx(tx, actor, slug, requestId, approved, meta)
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    reviewJoinRequestTx(tx, actor, slug, requestId, approved, meta)
+  );
 }
 
 export function setMemberRoleCommand(
-    actor: UserActor,
-    slug: string,
-    userId: string,
-    role: unknown,
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  userId: string,
+  role: unknown,
+  meta: AccessWriteMeta = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        setMemberRoleTx(tx, actor, slug, userId, role, meta)
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    setMemberRoleTx(tx, actor, slug, userId, role, meta)
+  );
 }
 
 export function removeDomainMemberCommand(
-    actor: UserActor,
-    slug: string,
-    userId: string,
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  userId: string,
+  meta: AccessWriteMeta = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        removeDomainMemberTx(
-            tx,
-            actor,
-            slug,
-            userId,
-            meta,
-            accessMemberRemovalBoundary,
-        )
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    removeDomainMemberTx(
+      tx,
+      actor,
+      slug,
+      userId,
+      meta,
+      accessMemberRemovalBoundary,
+    )
+  );
 }
 
 export function transferDomainCommand(
-    actor: UserActor,
-    slug: string,
-    newOwnerId: string,
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  newOwnerId: string,
+  meta: AccessWriteMeta = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        transferDomainTx(tx, actor, slug, newOwnerId, meta)
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    transferDomainTx(tx, actor, slug, newOwnerId, meta)
+  );
 }
 
 export function createDomainInvitationCommand(
-    actor: UserActor,
-    slug: string,
-    input: string | DomainInvitationInput,
-    options: {
-        classroomId?: string;
-        meta?: AccessWriteMeta;
-    } = {},
+  actor: UserActor,
+  slug: string,
+  input: string | DomainInvitationInput,
+  options: {
+    classroomId?: string;
+    meta?: AccessWriteMeta;
+  } = {},
 ) {
-    const db: DbRoot = getDb();
-    const boundary = options.classroomId
-        ? accessClassroomInvitationBoundary()
-        : {};
-    return db.transaction((tx) =>
-        createDomainInvitationTx(tx, actor, slug, input, {
-            ...boundary,
-            classroomId: options.classroomId,
-            meta: options.meta,
-        })
-    );
+  const db: DbRoot = getDb();
+  const boundary = options.classroomId
+    ? accessClassroomInvitationBoundary()
+    : {};
+  return db.transaction((tx) =>
+    createDomainInvitationTx(tx, actor, slug, input, {
+      ...boundary,
+      classroomId: options.classroomId,
+      meta: options.meta,
+    })
+  );
 }
 
 /**
@@ -234,71 +234,71 @@ export function createDomainInvitationCommand(
  * 因此 HTTP 适配层不需要也不能选择跨模块写入能力。
  */
 export function createClassroomInvitationCommand(
-    actor: UserActor,
-    slug: string,
-    classroomId: string,
-    input: string | DomainInvitationInput,
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  classroomId: string,
+  input: string | DomainInvitationInput,
+  meta: AccessWriteMeta = {},
 ) {
-    return createDomainInvitationCommand(actor, slug, input, {
-        classroomId,
-        meta,
-    });
+  return createDomainInvitationCommand(actor, slug, input, {
+    classroomId,
+    meta,
+  });
 }
 
 /** 邀请预览也必须经 application 绑定班级签发者授权，避免公开入口绕过教学状态。 */
 export function previewDomainInvitationCommand(token: string) {
-    return previewDomainInvitation(token, accessClassroomInvitationBoundary());
+  return previewDomainInvitation(token, accessClassroomInvitationBoundary());
 }
 
 export function consumeDomainInvitationCommand(
-    actor: UserActor,
-    token: string,
-    options: { meta?: AccessWriteMeta } = {},
+  actor: UserActor,
+  token: string,
+  options: { meta?: AccessWriteMeta } = {},
 ) {
-    const db: DbRoot = getDb();
-    return db.transaction((tx) =>
-        consumeDomainInvitationTx(tx, actor, token, {
-            ...accessClassroomInvitationBoundary(),
-            meta: options.meta,
-        })
-    );
+  const db: DbRoot = getDb();
+  return db.transaction((tx) =>
+    consumeDomainInvitationTx(tx, actor, token, {
+      ...accessClassroomInvitationBoundary(),
+      meta: options.meta,
+    })
+  );
 }
 
 export function revokeDomainInvitationCommand(
-    actor: UserActor,
-    slug: string,
-    invitationId: string,
-    options: {
-        classroomId?: string;
-        meta?: AccessWriteMeta;
-    } = {},
+  actor: UserActor,
+  slug: string,
+  invitationId: string,
+  options: {
+    classroomId?: string;
+    meta?: AccessWriteMeta;
+  } = {},
 ) {
-    const db: DbRoot = getDb();
-    const boundary = options.classroomId
-        ? accessClassroomInvitationBoundary()
-        : {};
-    return db.transaction((tx) =>
-        revokeDomainInvitationTx(tx, actor, slug, invitationId, {
-            ...boundary,
-            classroomId: options.classroomId,
-            meta: options.meta,
-        })
-    );
+  const db: DbRoot = getDb();
+  const boundary = options.classroomId
+    ? accessClassroomInvitationBoundary()
+    : {};
+  return db.transaction((tx) =>
+    revokeDomainInvitationTx(tx, actor, slug, invitationId, {
+      ...boundary,
+      classroomId: options.classroomId,
+      meta: options.meta,
+    })
+  );
 }
 
 /** 班级邀请撤销与授权核验共用 application 已组装的 DbTx。 */
 export function revokeClassroomInvitationCommand(
-    actor: UserActor,
-    slug: string,
-    classroomId: string,
-    invitationId: string,
-    meta: AccessWriteMeta = {},
+  actor: UserActor,
+  slug: string,
+  classroomId: string,
+  invitationId: string,
+  meta: AccessWriteMeta = {},
 ) {
-    return revokeDomainInvitationCommand(actor, slug, invitationId, {
-        classroomId,
-        meta,
-    });
+  return revokeDomainInvitationCommand(actor, slug, invitationId, {
+    classroomId,
+    meta,
+  });
 }
 
 /**
@@ -308,5 +308,5 @@ export function revokeClassroomInvitationCommand(
  * 绑定；access 只消费这个已组合能力，不反向导入 education 服务。
  */
 export function registrationInvitationBoundary(): InvitationRegistrationBoundary {
-    return accessClassroomInvitationBoundary();
+  return accessClassroomInvitationBoundary();
 }

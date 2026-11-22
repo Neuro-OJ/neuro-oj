@@ -9,17 +9,17 @@ import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-    domainProblemBindings,
-    domains,
-    problems,
-    problemVersions,
+  domainProblemBindings,
+  domains,
+  problems,
+  problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { getProblemSubmissionSummaries } from "../../../access/submission-policy.ts";
 import {
-    loadDomainProblemProtection,
-    type PublicContestSecrecyRef,
+  loadDomainProblemProtection,
+  type PublicContestSecrecyRef,
 } from "../../../access/contest-policy.ts";
 import { parseDomainProblemReference } from "./problem-reference.ts";
 
@@ -29,151 +29,148 @@ const PROBLEM_KINDS = ["oi", "ai", "objective"] as const;
 export type ProblemSummaryKind = (typeof PROBLEM_KINDS)[number];
 
 export interface DomainProblemSummaryItem {
-    reference: string;
-    contest_protection?: PublicContestSecrecyRef[];
-    can_read?: boolean;
-    can_practice?: boolean;
-    availability: "available" | "unavailable";
-    title: string | null;
-    kind: ProblemSummaryKind | null;
-    answer_version_id: string | null;
-    answer_version: number | null;
-    progress: "solved" | "attempted" | "unseen" | null;
-    best_score?: number | null;
+  reference: string;
+  contest_protection?: PublicContestSecrecyRef[];
+  can_read?: boolean;
+  can_practice?: boolean;
+  availability: "available" | "unavailable";
+  title: string | null;
+  kind: ProblemSummaryKind | null;
+  answer_version_id: string | null;
+  answer_version: number | null;
+  progress: "solved" | "attempted" | "unseen" | null;
+  best_score?: number | null;
 }
 
 function progressOf(
-    row: { solved: boolean | null; attempted: boolean | null } | undefined,
-    authenticated: boolean,
+  row: { solved: boolean | null; attempted: boolean | null } | undefined,
+  authenticated: boolean,
 ): DomainProblemSummaryItem["progress"] {
-    if (!authenticated) return null;
-    return row?.solved ? "solved" : row?.attempted ? "attempted" : "unseen";
+  if (!authenticated) return null;
+  return row?.solved ? "solved" : row?.attempted ? "attempted" : "unseen";
 }
 
 /** 读取当前域内一页题目摘要；调用者负责传入已解析的认证用户 ID。 */
 export async function readDomainProblemSummaries(
-    slug: string,
-    references: string[],
-    actorId: string | null,
+  slug: string,
+  references: string[],
+  actorId: string | null,
 ): Promise<{ items: DomainProblemSummaryItem[] }> {
-    const uniqueReferences = [...new Set(references)];
-    if (
-        uniqueReferences.length < 1 ||
-        uniqueReferences.length > MAX_PROBLEM_SUMMARIES ||
-        uniqueReferences.some((reference) =>
-            typeof reference !== "string" || !reference.trim()
-        )
-    ) {
-        throw new BadRequestError(
-            `每次必须提供 1-${MAX_PROBLEM_SUMMARIES} 个有效题号`,
-            "INVALID_PROBLEM_SUMMARIES",
-        );
-    }
-    const parsed = uniqueReferences.map((reference) => ({
-        reference,
-        ...parseDomainProblemReference(reference),
-    }));
-    const workspace = await loadWorkspace(slug, actorId);
-    const db = getDb();
-    const source = alias(domains, "problem_summary_source_domain");
-    const binding = domainProblemBindings;
-    const scope = {
-        domainId: workspace.domain.id,
-        member: !!workspace.membership || workspace.platformAdmin,
-    };
-    const referenceWhere = or(
-        ...parsed.map((item) =>
-            and(
-                eq(problems.number, item.number),
-                item.sourceSlug
-                    ? eq(source.slug, item.sourceSlug)
-                    : eq(problems.domain_id, workspace.domain.id),
-            )
-        ),
+  const uniqueReferences = [...new Set(references)];
+  if (
+    uniqueReferences.length < 1 ||
+    uniqueReferences.length > MAX_PROBLEM_SUMMARIES ||
+    uniqueReferences.some((reference) =>
+      typeof reference !== "string" || !reference.trim()
+    )
+  ) {
+    throw new BadRequestError(
+      `每次必须提供 1-${MAX_PROBLEM_SUMMARIES} 个有效题号`,
+      "INVALID_PROBLEM_SUMMARIES",
     );
-    const authorized = and(
-        eq(binding.domain_id, workspace.domain.id),
-        isNull(binding.disabled_at),
-        isNotNull(problems.latest_version_id),
-        eq(problems.domain_id, workspace.domain.id),
-    );
-    const rows = await db.select({
-        problem_id: problems.id,
-        source_slug: source.slug,
-        number: problems.number,
-        title: sql<string>`${problemVersions.content}->>'title'`,
-        kind: sql<string>`${problemVersions.content}->>'kind'`,
-        answer_version_id: problemVersions.id,
-        answer_version: problemVersions.version,
-    })
-        .from(binding)
-        .innerJoin(problems, eq(problems.id, binding.problem_id))
-        .innerJoin(source, eq(source.id, problems.domain_id))
-        .innerJoin(
-            problemVersions,
-            and(
-                eq(problemVersions.problem_id, problems.id),
-                eq(
-                    problemVersions.id,
-                    sql`CASE WHEN ${problems.effective_version_mode} = 'exact'
+  }
+  const parsed = uniqueReferences.map((reference) => ({
+    reference,
+    ...parseDomainProblemReference(reference),
+  }));
+  const workspace = await loadWorkspace(slug, actorId);
+  const db = getDb();
+  const source = alias(domains, "problem_summary_source_domain");
+  const binding = domainProblemBindings;
+  const scope = {
+    domainId: workspace.domain.id,
+    member: !!workspace.membership || workspace.platformAdmin,
+  };
+  const referenceWhere = or(
+    ...parsed.map((item) =>
+      and(
+        eq(problems.number, item.number),
+        item.sourceSlug
+          ? eq(source.slug, item.sourceSlug)
+          : eq(problems.domain_id, workspace.domain.id),
+      )
+    ),
+  );
+  const authorized = and(
+    eq(binding.domain_id, workspace.domain.id),
+    isNull(binding.disabled_at),
+    isNotNull(problems.latest_version_id),
+    eq(problems.domain_id, workspace.domain.id),
+  );
+  const rows = await db.select({
+    problem_id: problems.id,
+    source_slug: source.slug,
+    number: problems.number,
+    title: sql<string>`${problemVersions.content}->>'title'`,
+    kind: sql<string>`${problemVersions.content}->>'kind'`,
+    answer_version_id: problemVersions.id,
+    answer_version: problemVersions.version,
+  })
+    .from(binding)
+    .innerJoin(problems, eq(problems.id, binding.problem_id))
+    .innerJoin(source, eq(source.id, problems.domain_id))
+    .innerJoin(
+      problemVersions,
+      and(
+        eq(problemVersions.problem_id, problems.id),
+        eq(
+          problemVersions.id,
+          sql`CASE WHEN ${problems.effective_version_mode} = 'exact'
             THEN ${problems.required_version_id}
             ELSE ${problems.latest_version_id} END`,
-                ),
-            ),
-        )
-        .where(and(authorized, referenceWhere));
-    const problemIds = rows.map((row) => row.problem_id);
-    const protection = await loadDomainProblemProtection(
-        workspace.domain.id,
-        problemIds,
-        db,
-    );
-    const statistics = actorId
-        ? await getProblemSubmissionSummaries(scope, problemIds, actorId)
-        : [];
-    const statisticsByProblem = new Map(
-        statistics.map((row) => [row.problem_id, row]),
-    );
-    const rowsByReference = new Map(
-        rows.map((row) => [`${row.source_slug}:${row.number}`, row]),
-    );
-    return {
-        items: parsed.map(({ reference, sourceSlug, number }) => {
-            const row = rowsByReference.get(
-                `${sourceSlug ?? workspace.domain.slug}:${number}`,
-            );
-            if (
-                !row || !PROBLEM_KINDS.includes(row.kind as ProblemSummaryKind)
-            ) {
-                return {
-                    reference,
-                    availability: "unavailable",
-                    title: null,
-                    kind: null,
-                    answer_version_id: null,
-                    answer_version: null,
-                    progress: null,
-                };
-            }
-            return {
-                reference,
-                availability: "available",
-                contest_protection: protection.get(row.problem_id) ?? [],
-                can_read: !protection.has(row.problem_id),
-                can_practice: !protection.has(row.problem_id),
-                title: row.title,
-                kind: row.kind as ProblemSummaryKind,
-                answer_version_id: row.answer_version_id,
-                answer_version: row.answer_version,
-                progress: progressOf(
-                    statisticsByProblem.get(row.problem_id),
-                    !!actorId,
-                ),
-                best_score: actorId
-                    ? statisticsByProblem.get(row.problem_id)?.best_score ??
-                        null
-                    : null,
-            };
-        }),
-    };
+        ),
+      ),
+    )
+    .where(and(authorized, referenceWhere));
+  const problemIds = rows.map((row) => row.problem_id);
+  const protection = await loadDomainProblemProtection(
+    workspace.domain.id,
+    problemIds,
+    db,
+  );
+  const statistics = actorId
+    ? await getProblemSubmissionSummaries(scope, problemIds, actorId)
+    : [];
+  const statisticsByProblem = new Map(
+    statistics.map((row) => [row.problem_id, row]),
+  );
+  const rowsByReference = new Map(
+    rows.map((row) => [`${row.source_slug}:${row.number}`, row]),
+  );
+  return {
+    items: parsed.map(({ reference, sourceSlug, number }) => {
+      const row = rowsByReference.get(
+        `${sourceSlug ?? workspace.domain.slug}:${number}`,
+      );
+      if (!row || !PROBLEM_KINDS.includes(row.kind as ProblemSummaryKind)) {
+        return {
+          reference,
+          availability: "unavailable",
+          title: null,
+          kind: null,
+          answer_version_id: null,
+          answer_version: null,
+          progress: null,
+        };
+      }
+      return {
+        reference,
+        availability: "available",
+        contest_protection: protection.get(row.problem_id) ?? [],
+        can_read: !protection.has(row.problem_id),
+        can_practice: !protection.has(row.problem_id),
+        title: row.title,
+        kind: row.kind as ProblemSummaryKind,
+        answer_version_id: row.answer_version_id,
+        answer_version: row.answer_version,
+        progress: progressOf(
+          statisticsByProblem.get(row.problem_id),
+          !!actorId,
+        ),
+        best_score: actorId
+          ? statisticsByProblem.get(row.problem_id)?.best_score ?? null
+          : null,
+      };
+    }),
+  };
 }

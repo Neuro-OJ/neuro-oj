@@ -23,17 +23,17 @@ return 0
 export type JudgeTaskMarkerState = "queued" | "dispatching";
 
 export type JudgeTaskDispatchClaim =
-    | { status: "claimed" }
-    | { status: "already"; marker: JudgeTaskMarkerState | "unknown" };
+  | { status: "claimed" }
+  | { status: "already"; marker: JudgeTaskMarkerState | "unknown" };
 
 export function judgeTaskMarkerKey(runId: string): string {
-    return `${JUDGE_TASK_MARKER_PREFIX}${runId}`;
+  return `${JUDGE_TASK_MARKER_PREFIX}${runId}`;
 }
 
 async function readyRedis() {
-    const redis = getRedis();
-    if (redis.status !== "ready") await redis.connect();
-    return redis;
+  const redis = getRedis();
+  if (redis.status !== "ready") await redis.connect();
+  return redis;
 }
 
 /**
@@ -43,47 +43,47 @@ async function readyRedis() {
  * core 副本同时发现同一孤儿后重复入队。锁只在恢复器的构建/入队窗口内存在。
  */
 export async function claimJudgeTaskDispatch(
-    runId: string,
+  runId: string,
 ): Promise<JudgeTaskDispatchClaim> {
-    const redis = await readyRedis();
-    const key = judgeTaskMarkerKey(runId);
-    const claimed = await redis.set(
-        key,
-        "dispatching",
-        "EX",
-        DISPATCH_CLAIM_TTL_SECONDS,
-        "NX",
-    );
-    if (claimed === "OK") return { status: "claimed" };
+  const redis = await readyRedis();
+  const key = judgeTaskMarkerKey(runId);
+  const claimed = await redis.set(
+    key,
+    "dispatching",
+    "EX",
+    DISPATCH_CLAIM_TTL_SECONDS,
+    "NX",
+  );
+  if (claimed === "OK") return { status: "claimed" };
 
-    const marker = await redis.get(key);
-    return {
-        status: "already",
-        marker: marker === "queued" || marker === "dispatching"
-            ? marker
-            : "unknown",
-    };
+  const marker = await redis.get(key);
+  return {
+    status: "already",
+    marker: marker === "queued" || marker === "dispatching"
+      ? marker
+      : "unknown",
+  };
 }
 
 /** 恢复动作失败时释放 dispatching 锁；queued 标记不会被误删。 */
 export async function releaseJudgeTaskDispatch(runId: string): Promise<void> {
-    const redis = await readyRedis();
-    await redis.eval(
-        RELEASE_DISPATCH_SCRIPT,
-        1,
-        judgeTaskMarkerKey(runId),
-        "dispatching",
-    );
+  const redis = await readyRedis();
+  await redis.eval(
+    RELEASE_DISPATCH_SCRIPT,
+    1,
+    judgeTaskMarkerKey(runId),
+    "dispatching",
+  );
 }
 
 /** 批量查询哪些 run_id 仍有派发标记（任意状态），返回有标记的集合。 */
 export async function findJudgeTaskMarkers(
-    runIds: readonly string[],
+  runIds: readonly string[],
 ): Promise<Set<string>> {
-    if (runIds.length === 0) return new Set();
-    const redis = await readyRedis();
-    const values = await redis.mget(...runIds.map(judgeTaskMarkerKey));
-    return new Set(runIds.filter((_, index) => values[index] != null));
+  if (runIds.length === 0) return new Set();
+  const redis = await readyRedis();
+  const values = await redis.mget(...runIds.map(judgeTaskMarkerKey));
+  return new Set(runIds.filter((_, index) => values[index] != null));
 }
 
 /**
@@ -94,42 +94,42 @@ export async function findJudgeTaskMarkers(
  * 调用，列表长度受队列容量约束。
  */
 export async function markInFlightJudgeTasks(
-    queues: readonly string[],
-    runIds: ReadonlySet<string>,
+  queues: readonly string[],
+  runIds: ReadonlySet<string>,
 ): Promise<Set<string>> {
-    const found = new Set<string>();
-    if (runIds.size === 0) return found;
-    const redis = await readyRedis();
-    for (const queue of queues) {
-        for (const raw of await redis.lrange(queue, 0, -1)) {
-            let parsed: { run_id?: unknown; attempt_id?: unknown };
-            try {
-                parsed = JSON.parse(raw);
-            } catch {
-                continue;
-            }
-            const runId = typeof parsed?.run_id === "string"
-                ? parsed.run_id
-                : typeof parsed?.attempt_id === "string"
-                ? parsed.attempt_id
-                : null;
-            if (runId && runIds.has(runId)) found.add(runId);
-        }
+  const found = new Set<string>();
+  if (runIds.size === 0) return found;
+  const redis = await readyRedis();
+  for (const queue of queues) {
+    for (const raw of await redis.lrange(queue, 0, -1)) {
+      let parsed: { run_id?: unknown; attempt_id?: unknown };
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      const runId = typeof parsed?.run_id === "string"
+        ? parsed.run_id
+        : typeof parsed?.attempt_id === "string"
+        ? parsed.attempt_id
+        : null;
+      if (runId && runIds.has(runId)) found.add(runId);
     }
-    for (const runId of found) {
-        await redis.set(
-            judgeTaskMarkerKey(runId),
-            "queued",
-            "EX",
-            JUDGE_TASK_MARKER_TTL_SECONDS,
-            "NX",
-        );
-    }
-    return found;
+  }
+  for (const runId of found) {
+    await redis.set(
+      judgeTaskMarkerKey(runId),
+      "queued",
+      "EX",
+      JUDGE_TASK_MARKER_TTL_SECONDS,
+      "NX",
+    );
+  }
+  return found;
 }
 
 /** 评测结果已持久化后清理任务标记；失败由调用方决定是否记录但不重投结果。 */
 export async function clearJudgeTaskMarker(runId: string): Promise<void> {
-    const redis = await readyRedis();
-    await redis.del(judgeTaskMarkerKey(runId));
+  const redis = await readyRedis();
+  await redis.del(judgeTaskMarkerKey(runId));
 }

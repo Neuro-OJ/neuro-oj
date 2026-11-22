@@ -22,14 +22,14 @@ import { assertEquals } from "jsr:@std/assert@^1";
 import { createApp } from "../../../../../app.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import {
-    _resetSystemSettingsForTest,
-    initSystemSettings,
+  _resetSystemSettingsForTest,
+  initSystemSettings,
 } from "../../index.ts";
 import { takeMockEmailsForTest } from "../../services/email-providers/mock.ts";
 import {
-    createUserToken,
-    initRedisForTest,
-    jsonRequest,
+  createUserToken,
+  initRedisForTest,
+  jsonRequest,
 } from "../../../../../../tests/helper.ts";
 
 await initRedisForTest();
@@ -38,9 +38,9 @@ await initRedisForTest();
 const originalEmailProvider = Deno.env.get("EMAIL_PROVIDER");
 
 async function setupWithProvider(provider: "mock" | "disabled") {
-    Deno.env.set("EMAIL_PROVIDER", provider);
-    _resetSystemSettingsForTest();
-    await initSystemSettings();
+  Deno.env.set("EMAIL_PROVIDER", provider);
+  _resetSystemSettingsForTest();
+  await initSystemSettings();
 }
 
 /**
@@ -50,108 +50,108 @@ async function setupWithProvider(provider: "mock" | "disabled") {
  * 同进程后续测试文件，把单点失败放大成跨文件连锁失败。
  */
 async function withProvider(
-    provider: "mock" | "disabled",
-    fn: () => Promise<void>,
+  provider: "mock" | "disabled",
+  fn: () => Promise<void>,
 ) {
-    await setupWithProvider(provider);
-    try {
-        await fn();
-    } finally {
-        if (originalEmailProvider === undefined) {
-            Deno.env.delete("EMAIL_PROVIDER");
-        } else {
-            Deno.env.set("EMAIL_PROVIDER", originalEmailProvider);
-        }
-        _resetSystemSettingsForTest();
-        await initSystemSettings();
+  await setupWithProvider(provider);
+  try {
+    await fn();
+  } finally {
+    if (originalEmailProvider === undefined) {
+      Deno.env.delete("EMAIL_PROVIDER");
+    } else {
+      Deno.env.set("EMAIL_PROVIDER", originalEmailProvider);
     }
+    _resetSystemSettingsForTest();
+    await initSystemSettings();
+  }
 }
 
 async function adminApp() {
-    const token = await createUserToken("admin");
-    return { app: createApp(), token };
+  const token = await createUserToken("admin");
+  return { app: createApp(), token };
 }
 
 Deno.test({
-    name: "admin email status: mock 开发环境 configured=true 且测试邮件可投递",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        await withProvider("mock", async () => {
-            const { app, token } = await adminApp();
+  name: "admin email status: mock 开发环境 configured=true 且测试邮件可投递",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await withProvider("mock", async () => {
+      const { app, token } = await adminApp();
 
-            const statusRes = await jsonRequest(
-                app,
-                "/api/v1/admin/system/settings/email/status",
-                { token },
-            );
-            assertEquals(statusRes.status, 200);
-            assertEquals(await statusRes.json(), {
-                data: { provider: "mock", configured: true, missing: [] },
-            });
+      const statusRes = await jsonRequest(
+        app,
+        "/api/v1/admin/system/settings/email/status",
+        { token },
+      );
+      assertEquals(statusRes.status, 200);
+      assertEquals(await statusRes.json(), {
+        data: { provider: "mock", configured: true, missing: [] },
+      });
 
-            takeMockEmailsForTest();
-            const sendRes = await jsonRequest(
-                app,
-                "/api/v1/admin/system/settings/email/test-send",
-                { method: "POST", body: { to: "admin@example.com" }, token },
-            );
-            assertEquals(sendRes.status, 200);
-            assertEquals((await sendRes.json()).data.sent, true);
-            const mailbox = takeMockEmailsForTest();
-            assertEquals(mailbox.length, 1);
-            assertEquals(mailbox[0].to, "admin@example.com");
-        });
-    },
+      takeMockEmailsForTest();
+      const sendRes = await jsonRequest(
+        app,
+        "/api/v1/admin/system/settings/email/test-send",
+        { method: "POST", body: { to: "admin@example.com" }, token },
+      );
+      assertEquals(sendRes.status, 200);
+      assertEquals((await sendRes.json()).data.sent, true);
+      const mailbox = takeMockEmailsForTest();
+      assertEquals(mailbox.length, 1);
+      assertEquals(mailbox[0].to, "admin@example.com");
+    });
+  },
 });
 
 Deno.test({
-    name: "admin email status: 非法收件邮箱返回 400",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        await withProvider("mock", async () => {
-            const { app, token } = await adminApp();
+  name: "admin email status: 非法收件邮箱返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await withProvider("mock", async () => {
+      const { app, token } = await adminApp();
 
-            const res = await jsonRequest(
-                app,
-                "/api/v1/admin/system/settings/email/test-send",
-                { method: "POST", body: { to: "not-an-email" }, token },
-            );
-            assertEquals(res.status, 400);
-        });
-    },
+      const res = await jsonRequest(
+        app,
+        "/api/v1/admin/system/settings/email/test-send",
+        { method: "POST", body: { to: "not-an-email" }, token },
+      );
+      assertEquals(res.status, 400);
+    });
+  },
 });
 
 Deno.test({
-    name:
-        "admin email status: EMAIL_PROVIDER=disabled 时未就绪且 test-send 返回 400",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        await withProvider("disabled", async () => {
-            const { app, token } = await adminApp();
+  name:
+    "admin email status: EMAIL_PROVIDER=disabled 时未就绪且 test-send 返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await withProvider("disabled", async () => {
+      const { app, token } = await adminApp();
 
-            const statusRes = await jsonRequest(
-                app,
-                "/api/v1/admin/system/settings/email/status",
-                { token },
-            );
-            assertEquals(statusRes.status, 200);
-            const status = await statusRes.json();
-            assertEquals(status.data.provider, "disabled");
-            assertEquals(status.data.configured, false);
+      const statusRes = await jsonRequest(
+        app,
+        "/api/v1/admin/system/settings/email/status",
+        { token },
+      );
+      assertEquals(statusRes.status, 200);
+      const status = await statusRes.json();
+      assertEquals(status.data.provider, "disabled");
+      assertEquals(status.data.configured, false);
 
-            const sendRes = await jsonRequest(
-                app,
-                "/api/v1/admin/system/settings/email/test-send",
-                { method: "POST", body: { to: "admin@example.com" }, token },
-            );
-            assertEquals(sendRes.status, 400);
-            assertEquals((await sendRes.json()).code, "EMAIL_NOT_CONFIGURED");
-        });
-    },
+      const sendRes = await jsonRequest(
+        app,
+        "/api/v1/admin/system/settings/email/test-send",
+        { method: "POST", body: { to: "admin@example.com" }, token },
+      );
+      assertEquals(sendRes.status, 400);
+      assertEquals((await sendRes.json()).code, "EMAIL_NOT_CONFIGURED");
+    });
+  },
 });

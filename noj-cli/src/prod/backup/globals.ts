@@ -25,37 +25,32 @@
  * @returns `0` 成功；`1` 源文件不可读（已写出空 `target`，调用方据此报错）。
  */
 export async function makeIdempotentGlobals(
-    source: string,
-    target: string,
+  source: string,
+  target: string,
 ): Promise<number> {
-    let text: string;
-    try {
-        text = await Deno.readTextFile(source);
-    } catch {
-        await Deno.writeTextFile(target, "");
-        return 1;
+  let text: string;
+  try {
+    text = await Deno.readTextFile(source);
+  } catch {
+    await Deno.writeTextFile(target, "");
+    return 1;
+  }
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    if (line.startsWith("CREATE ROLE ")) {
+      const identifier = line.slice("CREATE ROLE ".length).replace(/;\s*$/, "");
+      let name = identifier;
+      if (name.startsWith('"') && name.endsWith('"') && name.length >= 2) {
+        name = name.slice(1, -1).replace(/""/g, '"');
+      }
+      const escaped = name.replace(/'/g, "''");
+      out.push(
+        `DO $role$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${escaped}') THEN CREATE ROLE ${identifier}; END IF; END $role$;`,
+      );
+      continue;
     }
-    const out: string[] = [];
-    for (const line of text.split("\n")) {
-        if (line.startsWith("CREATE ROLE ")) {
-            const identifier = line.slice("CREATE ROLE ".length).replace(
-                /;\s*$/,
-                "",
-            );
-            let name = identifier;
-            if (
-                name.startsWith('"') && name.endsWith('"') && name.length >= 2
-            ) {
-                name = name.slice(1, -1).replace(/""/g, '"');
-            }
-            const escaped = name.replace(/'/g, "''");
-            out.push(
-                `DO $role$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${escaped}') THEN CREATE ROLE ${identifier}; END IF; END $role$;`,
-            );
-            continue;
-        }
-        out.push(line);
-    }
-    await Deno.writeTextFile(target, out.join("\n"));
-    return 0;
+    out.push(line);
+  }
+  await Deno.writeTextFile(target, out.join("\n"));
+  return 0;
 }

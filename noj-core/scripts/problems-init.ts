@@ -15,27 +15,27 @@
 
 import { dirname, join } from "node:path";
 import {
-    isProblemTemplateName,
-    PROBLEM_TEMPLATE_NAMES,
-    type ProblemTemplateName,
-    renderProblemTemplate,
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  renderProblemTemplate,
 } from "./problem-templates.ts";
 
 /** 脚手架选项。 */
 export interface ProblemInitOptions {
-    /** 题目 slug（目录名）；必须是小写字母/数字/短横线。 */
-    slug: string;
-    /** 题目标题；缺省用 slug。 */
-    title?: string;
-    /** 难度。缺省 medium。 */
-    difficulty?: "easy" | "medium" | "hard";
-    /** 目标根目录（缺省 data/problems-src）。 */
-    root?: string;
-    /**
-     * 可验题模板（P0-2 B）：生成带参考解答与断言的完整题目，可直接
-     * `noj-cli problem test`。模板内容与 noj-cli 共用 `problem-templates.ts`。
-     */
-    template?: ProblemTemplateName;
+  /** 题目 slug（目录名）；必须是小写字母/数字/短横线。 */
+  slug: string;
+  /** 题目标题；缺省用 slug。 */
+  title?: string;
+  /** 难度。缺省 medium。 */
+  difficulty?: "easy" | "medium" | "hard";
+  /** 目标根目录（缺省 data/problems-src）。 */
+  root?: string;
+  /**
+   * 可验题模板（P0-2 B）：生成带参考解答与断言的完整题目，可直接
+   * `noj-cli problem test`。模板内容与 noj-cli 共用 `problem-templates.ts`。
+   */
+  template?: ProblemTemplateName;
 }
 
 /** slug 合法性问题（供 CLI 报错）。 */
@@ -60,9 +60,9 @@ const SLUG_MAX_LENGTH = 64;
  * 骨架。改这里即同时改两处。
  */
 const DEFAULT_LIMITS = {
-    evaluatorTimeLimitMs: 30000,
-    solutionCallTimeoutMs: 5000,
-    memoryLimitMb: 256,
+  evaluatorTimeLimitMs: 30000,
+  solutionCallTimeoutMs: 5000,
+  memoryLimitMb: 256,
 } as const;
 
 /**
@@ -72,19 +72,19 @@ const DEFAULT_LIMITS = {
  * 跨平台与打包问题；同时保持与既有题目（如 `decoding-sampler`）一致。
  */
 export function validateSlug(slug: string): void {
-    if (!slug) {
-        throw new InvalidSlugError("题目 slug 不能为空");
-    }
-    if (slug.length > SLUG_MAX_LENGTH) {
-        throw new InvalidSlugError(
-            `题目 slug 过长：${slug.length} 字符（上限 ${SLUG_MAX_LENGTH}）`,
-        );
-    }
-    if (!SLUG_PATTERN.test(slug)) {
-        throw new InvalidSlugError(
-            `题目 slug 非法：${slug}（仅允许小写字母、数字与单个短横线，且不以短横线开头/结尾）`,
-        );
-    }
+  if (!slug) {
+    throw new InvalidSlugError("题目 slug 不能为空");
+  }
+  if (slug.length > SLUG_MAX_LENGTH) {
+    throw new InvalidSlugError(
+      `题目 slug 过长：${slug.length} 字符（上限 ${SLUG_MAX_LENGTH}）`,
+    );
+  }
+  if (!SLUG_PATTERN.test(slug)) {
+    throw new InvalidSlugError(
+      `题目 slug 非法：${slug}（仅允许小写字母、数字与单个短横线，且不以短横线开头/结尾）`,
+    );
+  }
 }
 
 /**
@@ -96,43 +96,43 @@ export function validateSlug(slug: string): void {
  * 只读 `<noj-core>/data/problems-src/`，产物永远不会被发现。
  */
 function defaultProblemSrcDir(): string {
-    const projectRoot = Deno.env.get("NOJ_PROJECT_ROOT") ??
-        join(import.meta.dirname ?? ".", "..");
-    return join(projectRoot, "data", "problems-src");
+  const projectRoot = Deno.env.get("NOJ_PROJECT_ROOT") ??
+    join(import.meta.dirname ?? ".", "..");
+  return join(projectRoot, "data", "problems-src");
 }
 
 function problemJson(
-    opts: Required<
-        Pick<ProblemInitOptions, "slug" | "title" | "difficulty">
-    >,
+  opts: Required<
+    Pick<ProblemInitOptions, "slug" | "title" | "difficulty">
+  >,
 ): string {
-    const manifest = {
-        format_version: 3,
-        kind: "ai",
-        title: opts.title,
-        difficulty: opts.difficulty,
-        // 必须使用已种子化的题目标签（seed-system.ts 的 seedTags），否则首次导入会
-        // 打印「标签不存在，已忽略」，出题人以为标签生效了实际没有。
-        tags: ["入门"],
-        runtime_config: {
-            evaluator: {
-                image: "noj-evaluator-python",
-                time_limit_ms: DEFAULT_LIMITS.evaluatorTimeLimitMs,
-                memory_limit_mb: DEFAULT_LIMITS.memoryLimitMb,
-            },
-            solution: {
-                image: "noj-solution-python",
-                call_timeout_ms: DEFAULT_LIMITS.solutionCallTimeoutMs,
-                memory_limit_mb: DEFAULT_LIMITS.memoryLimitMb,
-            },
-        },
-        template: "template.py",
-    };
-    return `${JSON.stringify(manifest, null, 2)}\n`;
+  const manifest = {
+    format_version: 3,
+    kind: "ai",
+    title: opts.title,
+    difficulty: opts.difficulty,
+    // 必须使用已种子化的题目标签（seed-system.ts 的 seedTags），否则首次导入会
+    // 打印「标签不存在，已忽略」，出题人以为标签生效了实际没有。
+    tags: ["入门"],
+    runtime_config: {
+      evaluator: {
+        image: "noj-evaluator-python",
+        time_limit_ms: DEFAULT_LIMITS.evaluatorTimeLimitMs,
+        memory_limit_mb: DEFAULT_LIMITS.memoryLimitMb,
+      },
+      solution: {
+        image: "noj-solution-python",
+        call_timeout_ms: DEFAULT_LIMITS.solutionCallTimeoutMs,
+        memory_limit_mb: DEFAULT_LIMITS.memoryLimitMb,
+      },
+    },
+    template: "template.py",
+  };
+  return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
 function statementMarkdown(title: string): string {
-    return `# ${title}
+  return `# ${title}
 
 ## 题目描述
 
@@ -187,7 +187,7 @@ function statementMarkdown(title: string): string {
 }
 
 function templatePy(): string {
-    return `#!/usr/bin/env python3
+  return `#!/usr/bin/env python3
 """选手模板（starter code）。
 
 你需要实现 \`solve(input_str)\`：解析输入并按题面规则返回结果 JSON 文本。
@@ -211,7 +211,7 @@ def solve(input_str: str) -> str:
 }
 
 function evaluatePy(): string {
-    return `#!/usr/bin/env python3
+  return `#!/usr/bin/env python3
 """评测入口（NOJ 双容器）。
 
 协议契约（noj-docs/docs/standards/test-data.md）：
@@ -420,7 +420,7 @@ if __name__ == "__main__":
 }
 
 function readmeMarkdown(title: string): string {
-    return `# ${title}
+  return `# ${title}
 
 > 由 \`noj problems init\` 生成的**最小可评测骨架**。请按下列清单补齐后再导入平台。
 
@@ -472,39 +472,31 @@ deno task problems:import                    # 导入平台
 
 /** 可见用例（题面示例，对应 statement.md 的示例 1）。 */
 function visibleJsonl(): string {
-    const rows = [
-        {
-            id: "v001",
-            input: JSON.stringify({ a: 1, b: 2 }),
-            expected: { sum: 3 },
-        },
-    ];
-    return rows.map((row) => JSON.stringify(row) + "\n").join("");
+  const rows = [
+    { id: "v001", input: JSON.stringify({ a: 1, b: 2 }), expected: { sum: 3 } },
+  ];
+  return rows.map((row) => JSON.stringify(row) + "\n").join("");
 }
 
 /** 隐藏用例（正式评分，等权）。请按题面补齐边界用例。 */
 function hiddenJsonl(): string {
-    const rows = [
-        {
-            id: "h001",
-            input: JSON.stringify({ a: 0, b: 0 }),
-            expected: { sum: 0 },
-        },
-        {
-            id: "h002",
-            input: JSON.stringify({ a: -1, b: 1 }),
-            expected: { sum: 0 },
-        },
-    ];
-    return rows.map((row) => JSON.stringify(row) + "\n").join("");
+  const rows = [
+    { id: "h001", input: JSON.stringify({ a: 0, b: 0 }), expected: { sum: 0 } },
+    {
+      id: "h002",
+      input: JSON.stringify({ a: -1, b: 1 }),
+      expected: { sum: 0 },
+    },
+  ];
+  return rows.map((row) => JSON.stringify(row) + "\n").join("");
 }
 
 /** 生成结果（供 CLI 打印）。 */
 export interface ProblemInitResult {
-    /** 题目目录绝对/相对路径。 */
-    dir: string;
-    /** 已写入的文件名列表。 */
-    files: string[];
+  /** 题目目录绝对/相对路径。 */
+  dir: string;
+  /** 已写入的文件名列表。 */
+  files: string[];
 }
 
 /**
@@ -516,108 +508,99 @@ export interface ProblemInitResult {
  * @throws Error 目标目录已存在且非空
  */
 export async function initProblem(
-    opts: ProblemInitOptions,
+  opts: ProblemInitOptions,
 ): Promise<ProblemInitResult> {
-    validateSlug(opts.slug);
+  validateSlug(opts.slug);
 
-    const difficulty = opts.difficulty ?? "medium";
-    if (!["easy", "medium", "hard"].includes(difficulty)) {
-        throw new Error(
-            `难度非法：${difficulty}（仅允许 easy / medium / hard）`,
-        );
+  const difficulty = opts.difficulty ?? "medium";
+  if (!["easy", "medium", "hard"].includes(difficulty)) {
+    throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
+  }
+
+  if (opts.template !== undefined && !isProblemTemplateName(opts.template)) {
+    throw new Error(
+      `未知模板：${opts.template}（可选 ${PROBLEM_TEMPLATE_NAMES.join("/")}）`,
+    );
+  }
+
+  const root = opts.root ?? defaultProblemSrcDir();
+  const dir = join(root, opts.slug);
+  const title = opts.title?.trim() || opts.slug;
+
+  // 目标路径占用检查（不跟随符号链接）：
+  // 1. 已存在的**符号链接**一律拒绝——否则 mkdir/写入会落到链接目标，
+  //    把 7 个文件写到 `--dir` 之外（实测可越出，属安全问题）；
+  // 2. 已存在的**普通文件**给出可读错误，而不是让 readDir 抛 NotADirectory；
+  // 3. 已存在的**非空目录**拒绝覆盖，保护出题人已有的工作。
+  let existing: Deno.FileInfo | undefined;
+  try {
+    existing = await Deno.lstat(dir);
+  } catch (err) {
+    if (!(err instanceof Deno.errors.NotFound)) throw err;
+    // 不存在 → 正常继续
+  }
+
+  // 目录是否由本次创建（回滚时据此决定是否删除）。
+  let createdDir = false;
+
+  if (existing) {
+    if (existing.isSymlink) {
+      throw new Error(
+        `目标路径已存在且为符号链接：${dir}（拒绝写入链接目标，请换 slug 或先删除该链接）`,
+      );
     }
-
-    if (opts.template !== undefined && !isProblemTemplateName(opts.template)) {
-        throw new Error(
-            `未知模板：${opts.template}（可选 ${
-                PROBLEM_TEMPLATE_NAMES.join("/")
-            }）`,
-        );
+    if (!existing.isDirectory) {
+      throw new Error(
+        `目标路径已存在且不是目录：${dir}（请换 slug，或先删除该文件）`,
+      );
     }
-
-    const root = opts.root ?? defaultProblemSrcDir();
-    const dir = join(root, opts.slug);
-    const title = opts.title?.trim() || opts.slug;
-
-    // 目标路径占用检查（不跟随符号链接）：
-    // 1. 已存在的**符号链接**一律拒绝——否则 mkdir/写入会落到链接目标，
-    //    把 7 个文件写到 `--dir` 之外（实测可越出，属安全问题）；
-    // 2. 已存在的**普通文件**给出可读错误，而不是让 readDir 抛 NotADirectory；
-    // 3. 已存在的**非空目录**拒绝覆盖，保护出题人已有的工作。
-    let existing: Deno.FileInfo | undefined;
-    try {
-        existing = await Deno.lstat(dir);
-    } catch (err) {
-        if (!(err instanceof Deno.errors.NotFound)) throw err;
-        // 不存在 → 正常继续
+    let empty = true;
+    for await (const _ of Deno.readDir(dir)) {
+      empty = false;
+      break;
     }
-
-    // 目录是否由本次创建（回滚时据此决定是否删除）。
-    let createdDir = false;
-
-    if (existing) {
-        if (existing.isSymlink) {
-            throw new Error(
-                `目标路径已存在且为符号链接：${dir}（拒绝写入链接目标，请换 slug 或先删除该链接）`,
-            );
-        }
-        if (!existing.isDirectory) {
-            throw new Error(
-                `目标路径已存在且不是目录：${dir}（请换 slug，或先删除该文件）`,
-            );
-        }
-        let empty = true;
-        for await (const _ of Deno.readDir(dir)) {
-            empty = false;
-            break;
-        }
-        if (!empty) {
-            throw new Error(
-                `目标目录已存在且非空：${dir}（请换 slug，或先自行清空该目录）`,
-            );
-        }
-        // 已存在的空目录：沿用即可（与旧行为一致），无需 mkdir。
-    } else {
-        // 不用 recursive：仅创建一层；并发下若已被他人创建则失败而非静默复用。
-        await Deno.mkdir(dir);
-        createdDir = true;
+    if (!empty) {
+      throw new Error(
+        `目标目录已存在且非空：${dir}（请换 slug，或先自行清空该目录）`,
+      );
     }
+    // 已存在的空目录：沿用即可（与旧行为一致），无需 mkdir。
+  } else {
+    // 不用 recursive：仅创建一层；并发下若已被他人创建则失败而非静默复用。
+    await Deno.mkdir(dir);
+    createdDir = true;
+  }
 
-    const files: Array<[string, string]> = opts.template !== undefined
-        ? renderProblemTemplate(opts.template, { title, difficulty })
-        : [
-            [
-                "problem.json",
-                problemJson({ slug: opts.slug, title, difficulty }),
-            ],
-            ["statement.md", statementMarkdown(title)],
-            ["template.py", templatePy()],
-            ["evaluate.py", evaluatePy()],
-            ["visible.jsonl", visibleJsonl()],
-            ["hidden.jsonl", hiddenJsonl()],
-            ["README.md", readmeMarkdown(title)],
-        ];
+  const files: Array<[string, string]> = opts.template !== undefined
+    ? renderProblemTemplate(opts.template, { title, difficulty })
+    : [
+      ["problem.json", problemJson({ slug: opts.slug, title, difficulty })],
+      ["statement.md", statementMarkdown(title)],
+      ["template.py", templatePy()],
+      ["evaluate.py", evaluatePy()],
+      ["visible.jsonl", visibleJsonl()],
+      ["hidden.jsonl", hiddenJsonl()],
+      ["README.md", readmeMarkdown(title)],
+    ];
 
-    // 写入失败时回滚，避免留下「半成品目录」——它会因非空而拒绝后续重跑。
-    const written: string[] = [];
-    try {
-        for (const [name, content] of files) {
-            const target = join(dir, name);
-            // 模板含子目录（如 submissions/）；dir 已确认是本次可写的空目录。
-            await Deno.mkdir(dirname(target), { recursive: true });
-            // createNew：并发/重入下不覆盖已存在的文件。
-            await Deno.writeTextFile(target, content, { createNew: true });
-            written.push(target);
-        }
-    } catch (err) {
-        for (const target of written) {
-            await Deno.remove(target).catch(() => {});
-        }
-        if (createdDir) {
-            await Deno.remove(dir, { recursive: true }).catch(() => {});
-        }
-        throw err;
+  // 写入失败时回滚，避免留下「半成品目录」——它会因非空而拒绝后续重跑。
+  const written: string[] = [];
+  try {
+    for (const [name, content] of files) {
+      const target = join(dir, name);
+      // 模板含子目录（如 submissions/）；dir 已确认是本次可写的空目录。
+      await Deno.mkdir(dirname(target), { recursive: true });
+      // createNew：并发/重入下不覆盖已存在的文件。
+      await Deno.writeTextFile(target, content, { createNew: true });
+      written.push(target);
     }
+  } catch (err) {
+    for (const target of written) {
+      await Deno.remove(target).catch(() => {});
+    }
+    if (createdDir) await Deno.remove(dir, { recursive: true }).catch(() => {});
+    throw err;
+  }
 
-    return { dir, files: files.map(([name]) => name) };
+  return { dir, files: files.map(([name]) => name) };
 }

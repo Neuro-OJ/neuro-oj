@@ -1,11 +1,11 @@
 {
-    "format_version": 3,
-    "kind": "ai",
-    "title": "模板：预测提交题（CSV + 指标）",
-    "difficulty": "easy",
-    "submission_mode": "prediction",
-    "artifact_max_size_mb": 1,
-    "runtime_config": {
-        "evaluator": { "time_limit_ms": 30000, "memory_limit_mb": 256 }
-    }
+  "format_version": 3,
+  "kind": "ai",
+  "title": "模板：预测提交题（CSV + 指标）",
+  "difficulty": "easy",
+  "submission_mode": "prediction",
+  "artifact_max_size_mb": 1,
+  "runtime_config": {
+    "evaluator": { "time_limit_ms": 30000, "memory_limit_mb": 256 }
+  }
 }

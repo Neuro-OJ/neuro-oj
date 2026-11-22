@@ -3,8 +3,8 @@ import type { QuotaRow } from "./limits.ts";
 import { readCurrentPolicy } from "./policy-operations.ts";
 
 export interface DomainQuotaCaps {
-    day: QuotaRow;
-    month: QuotaRow;
+  day: QuotaRow;
+  month: QuotaRow;
 }
 
 /**
@@ -21,21 +21,21 @@ export interface DomainQuotaCaps {
  * - 行不存在时返回空政策（不隐式创建），空政策表示"不额外限制"。
  */
 export async function loadCurrentQuotaCaps(db: Db): Promise<DomainQuotaCaps> {
-    const policy = await readCurrentPolicy(db);
-    return { day: policy.day, month: policy.month };
+  const policy = await readCurrentPolicy(db);
+  return { day: policy.day, month: policy.month };
 }
 
 /** null 不能解除另一层数值限制。 */
 export function capDomainQuota(
-    quota: QuotaRow | null,
-    cap?: QuotaRow,
+  quota: QuotaRow | null,
+  cap?: QuotaRow,
 ): QuotaRow | null {
-    if (!cap) return quota;
-    const min = (local: number | null | undefined, upper: number | null) =>
-        local == null ? upper : upper === null ? local : Math.min(local, upper);
-    return {
-        max_calls: min(quota?.max_calls, cap.max_calls),
-        max_tokens: min(quota?.max_tokens, cap.max_tokens),
-        max_cost: min(quota?.max_cost, cap.max_cost),
-    };
+  if (!cap) return quota;
+  const min = (local: number | null | undefined, upper: number | null) =>
+    local == null ? upper : upper === null ? local : Math.min(local, upper);
+  return {
+    max_calls: min(quota?.max_calls, cap.max_calls),
+    max_tokens: min(quota?.max_tokens, cap.max_tokens),
+    max_cost: min(quota?.max_cost, cap.max_cost),
+  };
 }

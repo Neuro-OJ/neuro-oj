@@ -22,10 +22,10 @@ import { UsageError } from "../util/args.ts";
 
 /** 受支持的维护子命令（与容器内 CLI 的子命令一致）。 */
 export const MAINTAIN_SUBCOMMANDS = [
-    "enter",
-    "status",
-    "wait",
-    "exit",
+  "enter",
+  "status",
+  "wait",
+  "exit",
 ] as const;
 
 /** 维护子命令类型。 */
@@ -33,12 +33,12 @@ export type MaintainSubcommand = typeof MAINTAIN_SUBCOMMANDS[number];
 
 /** 解析后的 maintain 调用。 */
 export interface MaintainCommand {
-    /** 子命令。 */
-    sub: MaintainSubcommand;
-    /** 容器内 CLI 的完整参数（含 `maintain` 前缀）。 */
-    args: string[];
-    /** 是否请求机器可读 JSON（容器内 CLI 的 `--json`）。 */
-    json: boolean;
+  /** 子命令。 */
+  sub: MaintainSubcommand;
+  /** 容器内 CLI 的完整参数（含 `maintain` 前缀）。 */
+  args: string[];
+  /** 是否请求机器可读 JSON（容器内 CLI 的 `--json`）。 */
+  json: boolean;
 }
 
 /**
@@ -50,74 +50,74 @@ export interface MaintainCommand {
  * （其契约属于容器内 CLI，本模块不复制一份白名单）。
  */
 export function parseMaintainArgs(argv: string[]): MaintainCommand {
-    const sub = argv.find((arg) => !arg.startsWith("-"));
-    if (sub === undefined) {
-        throw new UsageError(
-            `maintain 需要子命令 ${MAINTAIN_SUBCOMMANDS.join("/")}`,
-        );
-    }
-    if (!(MAINTAIN_SUBCOMMANDS as readonly string[]).includes(sub)) {
-        throw new UsageError(
-            `未知的 maintain 子命令：${sub}（可用 ${
-                MAINTAIN_SUBCOMMANDS.join("/")
-            }）`,
-        );
-    }
-    return {
-        sub: sub as MaintainSubcommand,
-        args: ["maintain", ...argv],
-        json: argv.includes("--json"),
-    };
+  const sub = argv.find((arg) => !arg.startsWith("-"));
+  if (sub === undefined) {
+    throw new UsageError(
+      `maintain 需要子命令 ${MAINTAIN_SUBCOMMANDS.join("/")}`,
+    );
+  }
+  if (!(MAINTAIN_SUBCOMMANDS as readonly string[]).includes(sub)) {
+    throw new UsageError(
+      `未知的 maintain 子命令：${sub}（可用 ${
+        MAINTAIN_SUBCOMMANDS.join("/")
+      }）`,
+    );
+  }
+  return {
+    sub: sub as MaintainSubcommand,
+    args: ["maintain", ...argv],
+    json: argv.includes("--json"),
+  };
 }
 
 /** maintain 的专项帮助文本（容器内 CLI 的选项 + 宿主机选项）。 */
 export function renderMaintainHelp(): string {
-    return [
-        "noj-cli maintain <enter|status|wait|exit> [选项]",
-        "",
-        "在 noj-server 容器内执行维护模式/排空命令（Tier 3；--no-deps 运行）。",
-        "update 默认在升级前自动 enter + wait、目标栈就绪后 exit；本命令用于人工干预。",
-        "",
-        "子命令:",
-        "  enter    进入维护模式（幂等；此后写请求返回 503 MAINTENANCE）",
-        "  status   查看排空状态、blockers 与队列/在途任务",
-        "  wait     轮询直到 drained（默认间隔 5s、超时 1800s）",
-        "  exit     退出维护模式（幂等；恢复写请求）",
-        "",
-        "选项（透传给容器内 CLI）:",
-        "  --json              stdout 只输出一个 JSON 文档",
-        "  --url <url>         内部 API 地址（默认 NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
-        "  --timeout <秒>      wait 超时（默认 1800）",
-        "  --interval <秒>     wait 轮询间隔（默认 5）",
-        "",
-        "宿主选项:",
-        "  --install-dir <path>  生产安装目录（CLI 自身选项）",
-        "  --dry-run             仅打印将执行的 compose 命令",
-        "",
-        "内部 API 需要 .env.prod 的 NOJ_INTERNAL_SERVICE_TOKEN；未设置时端点返回 503。",
-        "退出码: 0 成功 / 1 运行失败 / 2 用法错误（与容器内 CLI 一致）。",
-        "",
-    ].join("\n");
+  return [
+    "noj-cli maintain <enter|status|wait|exit> [选项]",
+    "",
+    "在 noj-server 容器内执行维护模式/排空命令（Tier 3；--no-deps 运行）。",
+    "update 默认在升级前自动 enter + wait、目标栈就绪后 exit；本命令用于人工干预。",
+    "",
+    "子命令:",
+    "  enter    进入维护模式（幂等；此后写请求返回 503 MAINTENANCE）",
+    "  status   查看排空状态、blockers 与队列/在途任务",
+    "  wait     轮询直到 drained（默认间隔 5s、超时 1800s）",
+    "  exit     退出维护模式（幂等；恢复写请求）",
+    "",
+    "选项（透传给容器内 CLI）:",
+    "  --json              stdout 只输出一个 JSON 文档",
+    "  --url <url>         内部 API 地址（默认 NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+    "  --timeout <秒>      wait 超时（默认 1800）",
+    "  --interval <秒>     wait 轮询间隔（默认 5）",
+    "",
+    "宿主选项:",
+    "  --install-dir <path>  生产安装目录（CLI 自身选项）",
+    "  --dry-run             仅打印将执行的 compose 命令",
+    "",
+    "内部 API 需要 .env.prod 的 NOJ_INTERNAL_SERVICE_TOKEN；未设置时端点返回 503。",
+    "退出码: 0 成功 / 1 运行失败 / 2 用法错误（与容器内 CLI 一致）。",
+    "",
+  ].join("\n");
 }
 
 /** 容器路由匹配结果的结构子集（`cli-commands/container.ts:ContainerCommandMatch`）。 */
 export interface MaintainRouteMatch {
-    /** compose service 名（`core`）。 */
-    service: string;
-    /** 完整顶层参数（`["maintain", …]`）。 */
-    args: string[];
+  /** compose service 名（`core`）。 */
+  service: string;
+  /** 完整顶层参数（`["maintain", …]`）。 */
+  args: string[];
 }
 
 /** 宿主机侧 maintain 分发的注入点（全部可替换，单测不起容器）。 */
 export interface MaintainDispatchDeps {
-    /** 生产安装目录定位（复用 `cli.ts` 的 `findProductionDir`，cwd 已固化）。 */
-    findProductionDir: (explicit: string | undefined) => Promise<string>;
-    /** 解析 `--install-dir`（CLI 自身选项）。 */
-    parseInstallDir: (args: string[]) => string | undefined;
-    /** 剔除 CLI 自身选项（`--install-dir`/`--dry-run`/`--debug`）。 */
-    stripCliFlags: (args: string[]) => string[];
-    /** 容器执行器；缺省 {@link runInContainer}。 */
-    run?: (options: RunContainerOptions) => Promise<number>;
+  /** 生产安装目录定位（复用 `cli.ts` 的 `findProductionDir`，cwd 已固化）。 */
+  findProductionDir: (explicit: string | undefined) => Promise<string>;
+  /** 解析 `--install-dir`（CLI 自身选项）。 */
+  parseInstallDir: (args: string[]) => string | undefined;
+  /** 剔除 CLI 自身选项（`--install-dir`/`--dry-run`/`--debug`）。 */
+  stripCliFlags: (args: string[]) => string[];
+  /** 容器执行器；缺省 {@link runInContainer}。 */
+  run?: (options: RunContainerOptions) => Promise<number>;
 }
 
 /**
@@ -127,22 +127,22 @@ export interface MaintainDispatchDeps {
  * 退出码原样透传容器内 CLI 的退出码（0/1/2）。
  */
 export async function dispatchMaintain(
-    match: MaintainRouteMatch,
-    deps: MaintainDispatchDeps,
+  match: MaintainRouteMatch,
+  deps: MaintainDispatchDeps,
 ): Promise<number> {
-    const tail = match.args.slice(1);
-    if (tail.includes("--help") || tail.includes("-h")) {
-        console.log(renderMaintainHelp());
-        return 0;
-    }
-    const command = parseMaintainArgs(deps.stripCliFlags(tail));
-    const dir = await deps.findProductionDir(deps.parseInstallDir(tail));
-    const run = deps.run ?? runInContainer;
-    return await run({
-        dir,
-        service: match.service,
-        command: command.args,
-        noDeps: true,
-        dryRun: tail.includes("--dry-run"),
-    });
+  const tail = match.args.slice(1);
+  if (tail.includes("--help") || tail.includes("-h")) {
+    console.log(renderMaintainHelp());
+    return 0;
+  }
+  const command = parseMaintainArgs(deps.stripCliFlags(tail));
+  const dir = await deps.findProductionDir(deps.parseInstallDir(tail));
+  const run = deps.run ?? runInContainer;
+  return await run({
+    dir,
+    service: match.service,
+    command: command.args,
+    noDeps: true,
+    dryRun: tail.includes("--dry-run"),
+  });
 }
