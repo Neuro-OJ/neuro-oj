@@ -9,7 +9,7 @@
  * 事件处理器，只看字符串又会漏掉浏览器解析出的真标签。
  *
  * 覆盖分工（重要）：
- * - **服务端/SSR 分支**：本文件 + `tests/sanitize_test.ts`（Deno）。
+ * - **服务端/SSR 分支**：本文件 + `tests/utils/sanitize_test.ts`（Deno）。
  * - **客户端 DOMPurify 分支**：happy-dom 下 DOMPurify 会剥掉大量标签、并残留
  *   `svg > animate@onbegin` 之类的假象（happy-dom 自身解析缺陷，见
  *   `tests/components/ObjectiveRichText.spec.ts` 的既有注释），因此客户端分支**不**
