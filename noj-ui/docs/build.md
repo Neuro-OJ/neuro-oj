@@ -63,7 +63,7 @@ cd dist && ./noj-ui      # 默认 http://localhost:3000
 ## 浏览器类验证的前提
 
 ```bash
-deno run -A npm:playwright@1.62.1 install chromium          # 首次
+deno run -A npm:playwright@1.65.1 install chromium          # 首次
 E2E_UI_URL=http://127.0.0.1:3000 deno task test:theme # 需先起 UI
 ```
 

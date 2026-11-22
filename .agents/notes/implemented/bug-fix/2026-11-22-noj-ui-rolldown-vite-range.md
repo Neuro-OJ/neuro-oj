@@ -17,7 +17,9 @@ Status: implemented
 
 - `rolldown` 与 `overrides.rolldown` 固定为 1.2.19（满足 vite `~1.2.18`）， 其余
   nuxt / vue / vue-router / playwright 升级保留。
-- `ci.yml` 的 Playwright 浏览器安装版本与 `noj-ui/package.json` 对齐为 1.65.1。
+- `ci.yml` 的 Playwright 浏览器安装版本与 `noj-ui/package.json` 对齐为
+  1.65.1；`tests/browser/editorTheme.browser.test.ts` 的 `npm:playwright` 导入及
+  noj-ui 文档中的安装命令同步为 1.65.1。
 - `dependabot.yml` 对 noj-ui 的 `rolldown` 忽略 semver-minor 更新，随 vite
   升级手动调整，防止再次越出 vite 声明区间。
 
