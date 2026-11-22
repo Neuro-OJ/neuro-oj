@@ -1,4 +1,4 @@
-import type { OwnSubmissionHistory, OwnSubmissionKind } from '~/utils/own-submissions';
+import type { OwnSubmissionHistory, OwnSubmissionKind } from '~/utils/domain/submission/own-submissions';
 /** 统一本人接口不接受代理用户 ID，也不继承导航偏好域。 */
 export function useOwnSubmissions() {
   const { api } = useApi();

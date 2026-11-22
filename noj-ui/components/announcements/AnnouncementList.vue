@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { formatDateTime } from '~/utils/submissionFormat';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
 const props = defineProps<{ domainSlug?: string }>();
 const route = useRoute(), router = useRouter(), { user } = useAuth();
 const api = useAnnouncements(props.domainSlug);

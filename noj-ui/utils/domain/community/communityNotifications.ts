@@ -7,10 +7,10 @@
  * `actor` 为 `null`。这类通知一律进入详情页，而不是退回社区首页。
  */
 
-import { publicUrl, userUrl } from './publicIdentifiers.ts';
+import { publicUrl, userUrl } from '../../publicIdentifiers.ts';
 import { communityPath } from './community-workspace.ts';
-import { workspacePath } from './workspace.ts';
-import { TEACHING_NOTICE_LABELS } from './education-notifications.ts';
+import { workspacePath } from '../workspace/workspace.ts';
+import { TEACHING_NOTICE_LABELS } from '../education/education-notifications.ts';
 
 /**
  * 判断是否需要加载社区通知未读数。

@@ -3,8 +3,8 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useAuth } from '~/composables/useAuth';
 import { useDomainAnswerDraft } from '~/composables/useDomainAnswerDraft';
-import type { AuthUser } from '~/utils/auth-user';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import type { AuthUser } from '~/utils/auth/auth-user';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 
 const student: AuthUser = {
   id: 'first',

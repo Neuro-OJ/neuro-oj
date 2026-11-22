@@ -5,7 +5,7 @@ import {
   bundleImportErrorMessage,
   bundleImportSuccessMessage,
   validateZipFileName,
-} from '../../../utils/bundleImport.ts';
+} from '../../../utils/domain/problem/bundleImport.ts';
 
 Deno.test('validateZipFileName: 仅接受 .zip（大小写不敏感）', () => {
   assertEquals(validateZipFileName('a.zip'), null);

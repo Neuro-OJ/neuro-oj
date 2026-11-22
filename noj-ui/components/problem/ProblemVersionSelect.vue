@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{
   slug: string; reference: string; selected: string; version: number;
   current: string; mode: 'any' | 'exact'; required?: string | null;

@@ -1,8 +1,8 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { domainSearchHref } from '../../../utils/domain-search.ts';
-import type { SearchItem } from '../../../utils/search-types.ts';
+import { domainSearchHref } from '../../../utils/domain/workspace/domain-search.ts';
+import type { SearchItem } from '../../../utils/domain/workspace/search-types.ts';
 Deno.test('域搜索：同号来源题始终在使用域引用上下文中定位', () => {
   const item: SearchItem = {
     entity_type: 'problem',

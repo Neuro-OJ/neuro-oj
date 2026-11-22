@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { computed, ref, watch } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import AssignmentCopy from '~/components/education/AssignmentCopy.vue';
-import type { AssignmentDetail } from '~/utils/education';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
 
 const members = vi.fn();
 let current = true;

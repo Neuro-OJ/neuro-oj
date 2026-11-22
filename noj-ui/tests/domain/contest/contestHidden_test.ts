@@ -1,4 +1,4 @@
-/** utils/contestHidden.ts 单元测试（VULN-07：公开赛收编题目的斜纹标识契约）。 */
+/** utils/domain/contest/contestHidden.ts 单元测试（VULN-07：公开赛收编题目的斜纹标识契约）。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
@@ -6,7 +6,7 @@ import {
   CONTEST_HIDDEN_STRIPES_CLASS,
   CONTEST_HIDDEN_TIP,
   contestHiddenRowClass,
-} from '../../../utils/contestHidden.ts';
+} from '../../../utils/domain/contest/contestHidden.ts';
 
 Deno.test('contestHiddenRowClass: 仅显式 true 才加斜纹底', () => {
   assertEquals(contestHiddenRowClass(true), CONTEST_HIDDEN_STRIPES_CLASS);

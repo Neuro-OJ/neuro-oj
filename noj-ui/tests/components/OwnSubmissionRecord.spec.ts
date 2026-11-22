@@ -4,7 +4,7 @@ import OwnSubmissionRecord from '~/components/submission/SubmissionOwnRecord.vue
 import OwnSubmissionSummary from '~/components/submission/SubmissionOwnSummary.vue';
 import { useOwnSubmissions } from '~/composables/useOwnSubmissions';
 import { useDomainObjectiveHistory } from '~/composables/useDomainObjectiveHistory';
-import type { OwnSubmissionHistory } from '~/utils/own-submissions';
+import type { OwnSubmissionHistory } from '~/utils/domain/submission/own-submissions';
 const entry = (): OwnSubmissionHistory => ({
   kind: 'submission',
   id: 's1',

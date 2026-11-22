@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { teachingTrainingId } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { teachingTrainingId } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library', breadcrumbWidth: '1008px' });
 const { slug, domain, can } = useWorkspace(),
   { user } = useAuth(),

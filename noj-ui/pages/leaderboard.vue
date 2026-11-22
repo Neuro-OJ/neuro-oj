@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { formatAcceptanceRate } from "~/utils/submissionFormat";
+import { formatAcceptanceRate } from "~/utils/domain/submission/submissionFormat";
 import type { RankingRow } from "~/composables/useRankings"
-import { normalizeMonth } from "~/utils/checkinCalendar"
+import { normalizeMonth } from "~/utils/domain/community/checkinCalendar"
 
 definePageMeta({
   // 公开页面，无需登录（OJ 榜单标准）

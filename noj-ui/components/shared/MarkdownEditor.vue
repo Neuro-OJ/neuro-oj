@@ -2,12 +2,12 @@
 // Markdown 分屏编辑器：左侧源码编辑，右侧 MarkdownRenderer 实时预览。
 //
 // - 三种视图：编辑 / 分屏 / 预览；窄屏（< md）分屏自动退化为上下堆叠
-// - 工具栏与快捷键（Ctrl/⌘+B/I/K、Tab 缩进）调用 utils/markdownEditing 纯函数
+// - 工具栏与快捷键（Ctrl/⌘+B/I/K、Tab 缩进）调用 utils/domain/problem/markdownEditing 纯函数
 // - 预览防抖渲染，避免长文档每次按键都重跑 KaTeX / highlight.js
 // - 分屏时编辑区滚动按比例同步到预览区
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
-import { type EditResult, insertBlock, insertText, prefixLines, wrapSelection } from '~/utils/markdownEditing';
+import { type EditResult, insertBlock, insertText, prefixLines, wrapSelection } from '~/utils/domain/problem/markdownEditing';
 
 type ViewMode = 'edit' | 'split' | 'preview';
 

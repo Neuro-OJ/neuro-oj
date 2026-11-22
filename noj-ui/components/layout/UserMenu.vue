@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { workspaceSettingsNavigation } from '~/utils/workspace-settings';
-import type { WorkspaceDetail } from '~/utils/workspace';
-import { domainIdentityLabel } from '~/utils/domain-navigation';
+import { workspaceSettingsNavigation } from '~/utils/domain/workspace/workspace-settings';
+import type { WorkspaceDetail } from '~/utils/domain/workspace/workspace';
+import { domainIdentityLabel } from '~/utils/domain/workspace/domain-navigation';
 import { userUrl } from '~/utils/publicIdentifiers';
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import type { WorkspaceSummary } from '~/utils/workspace';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceSummary } from '~/utils/domain/workspace/workspace';
 const route = useRoute(), slug = useNavigationDomain();
 const { user, isLoggedIn, logout } = useAuth();
 const workspaces = useWorkspaceApi(), { api } = useApi(), { dialog } = useDialog();

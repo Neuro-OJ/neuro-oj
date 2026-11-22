@@ -4,7 +4,7 @@
 import { useToast } from '~/composables/useToast'
 
 import type { CommunityConfig, PostRow, ReportRow } from "~/composables/useCommunity"
-import { extractApiError } from '~/utils/apiError'
+import { extractApiError } from '~/utils/server/apiError'
 
 definePageMeta({ layout: "admin", middleware: "community-moderation", })
 

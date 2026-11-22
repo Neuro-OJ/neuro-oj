@@ -8,11 +8,11 @@ import {
 import {
   addPostPreviews,
   type PostRowWithPreview,
-} from "~/utils/communityPostPreview"
+} from "~/utils/domain/community/communityPostPreview"
 import { useToast } from "~/composables/useToast"
 import { useBanStatus } from "~/composables/useBanStatus"
-import { extractApiError } from "~/utils/apiError"
-import { isCommunityEdited } from "~/utils/communityEdited"
+import { extractApiError } from "~/utils/server/apiError"
+import { isCommunityEdited } from "~/utils/domain/community/communityEdited"
 import { onMounted } from 'vue'
 
 defineProps<{ embedded?: boolean }>()

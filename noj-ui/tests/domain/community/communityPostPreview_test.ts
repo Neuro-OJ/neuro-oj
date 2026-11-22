@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { addPostPreviews } from '../../../utils/communityPostPreview.ts';
+import { addPostPreviews } from '../../../utils/domain/community/communityPostPreview.ts';
 
 Deno.test('community post previews are generated when rows enter the list', () => {
   const posts = addPostPreviews([

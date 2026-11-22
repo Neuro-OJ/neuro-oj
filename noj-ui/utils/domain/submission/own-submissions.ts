@@ -1,6 +1,6 @@
-import type { DomainProblemReference } from './domain-problems.ts';
-import { workspaceProblemPath } from './workspace.ts';
-import type { AssignmentSubmissionOrigin } from './education.ts';
+import type { DomainProblemReference } from '../problem/domain-problems.ts';
+import { workspaceProblemPath } from '../workspace/workspace.ts';
+import type { AssignmentSubmissionOrigin } from '../education/education.ts';
 export type OwnSubmissionKind = 'submission' | 'objective';
 /** 本人目录可读取失去域权限后的原提交；不包含题面或评测数据。 */
 export interface OwnSubmissionHistory {

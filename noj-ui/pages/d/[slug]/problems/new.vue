@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { newDomainEditorContent } from '~/utils/domain-problem-editor';
-import type { DomainAiRuntime, DomainEditorContent } from '~/utils/domain-problem-editor';
-import { extractApiError } from '~/utils/apiError';
+import { newDomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import type { DomainAiRuntime, DomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug, can, domain } = useWorkspace(), api = useDomainProblemEditor(), capture = useWorkspaceActionScope();
 const { user } = useAuth();

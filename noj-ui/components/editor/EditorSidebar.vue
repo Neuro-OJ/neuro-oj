@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
-import { getStatusColor, getStatusLabel } from '~/utils/submissionFormat';
+import { getStatusColor, getStatusLabel } from '~/utils/domain/submission/submissionFormat';
 import type { EditorTheme } from '~/composables/useEditorTheme';
 import type { PolledSubmission } from '~/composables/useSubmissionPolling';
 import type { PolledSelfTest } from '~/composables/useSelfTestPolling';

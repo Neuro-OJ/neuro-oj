@@ -7,12 +7,12 @@
  * 额外提供「查看相关内容」入口，直接打开本页 URL 也能继续跳转。
  */
 import type { NotificationRow } from "~/composables/useCommunity"
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError } from "~/utils/server/apiError"
 import {
   notificationTarget,
   notificationTypeIcon,
   notificationTypeLabel,
-} from "~/utils/communityNotifications"
+} from "~/utils/domain/community/communityNotifications"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 

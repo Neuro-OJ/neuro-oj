@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { DomainProblemDetail } from '~/utils/domain-problems';
+import type { DomainProblemDetail } from '~/utils/domain/problem/domain-problems';
 import type { DomainSelfTest, DomainSelfTestCase } from '~/composables/useDomainSelfTests';
-import { domainAnswerKey } from '~/utils/domain-problems';
-import { extractApiError } from '~/utils/apiError';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
+import { extractApiError } from '~/utils/server/apiError';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
 const props = defineProps<
   {
     slug: string;

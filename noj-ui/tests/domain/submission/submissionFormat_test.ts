@@ -1,5 +1,5 @@
 /**
- * utils/submissionFormat.ts 单元测试。
+ * utils/domain/submission/submissionFormat.ts 单元测试。
  */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
@@ -15,7 +15,7 @@ import {
   getStatusColor,
   getStatusLabel,
   submissionVersionLabel,
-} from '../../../utils/submissionFormat.ts';
+} from '../../../utils/domain/submission/submissionFormat.ts';
 
 Deno.test('formatScore: 正常值、零值与空值', () => {
   assertEquals(formatScore(100), '1.0');

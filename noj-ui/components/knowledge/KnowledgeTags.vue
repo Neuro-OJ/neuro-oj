@@ -5,7 +5,7 @@
  * P2：传了 `domain` 时标签可点击，跳到域内知识点页 `/d/<域>/knowledge/<节点>`。
  * 未归类或接口返回空时整块不渲染（父组件亦可直接 v-if 门控）。
  */
-import type { ProblemKnowledgeView } from '~/utils/knowledge';
+import type { ProblemKnowledgeView } from '~/utils/domain/education/knowledge';
 
 const props = defineProps<{ view: ProblemKnowledgeView | null; domain?: string }>();
 

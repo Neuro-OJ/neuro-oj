@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { SubmissionListItem } from '~/utils/submissionFormat'
-import { formatScore, formatTime, getStatusColor, getStatusLabel } from '~/utils/submissionFormat'
+import type { SubmissionListItem } from '~/utils/domain/submission/submissionFormat'
+import { formatScore, formatTime, getStatusColor, getStatusLabel } from '~/utils/domain/submission/submissionFormat'
 
 /**
  * 「我的提交」卡片（#511，右栏）。

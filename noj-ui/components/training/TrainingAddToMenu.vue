@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { DomainProblemReference } from '~/utils/domain-problems';
-import { extractApiError } from '~/utils/apiError';
-import { workspacePath } from '~/utils/workspace';
+import type { DomainProblemReference } from '~/utils/domain/problem/domain-problems';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 const props = defineProps<{ slug: string; problem: DomainProblemReference }>();

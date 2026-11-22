@@ -10,8 +10,8 @@ import {
   teachingScore,
   teachingTrainingId,
   teachingUtcTime,
-} from '../../../utils/education.ts';
-import type { Assignment, ClassroomDetail, TeachingCell } from '../../../utils/education.ts';
+} from '../../../utils/domain/education/education.ts';
+import type { Assignment, ClassroomDetail, TeachingCell } from '../../../utils/domain/education/education.ts';
 
 Deno.test('教学分数：整数及两位小数精确保存，拒绝超范围和隐式舍入', () => {
   assertEquals(teachingScore('60'), 6000);

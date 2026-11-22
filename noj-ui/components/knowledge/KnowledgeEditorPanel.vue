@@ -5,7 +5,7 @@
  *
  * 无编辑权限时不渲染；功能关闭或接口返回空时隐藏。
  */
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   mappingStateLabel,
   normalizeSelection,
@@ -13,7 +13,7 @@ import {
   selectionFromView,
   type ProblemKnowledgeView,
   type KnowledgeSelection,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 const props = defineProps<{ problemId: string; writable: boolean }>();
 

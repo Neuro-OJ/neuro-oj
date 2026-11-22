@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { domainUiSelfTestResult, domainUiSubmissionResult } from '../../../utils/domain-ui-runs.ts';
+import { domainUiSelfTestResult, domainUiSubmissionResult } from '../../../utils/domain/problem/domain-ui-runs.ts';
 Deno.test('界面结果：hidden不读取隐藏分数、判定或output，只推送中性受理状态', () => {
   const record = {
     id: 's',

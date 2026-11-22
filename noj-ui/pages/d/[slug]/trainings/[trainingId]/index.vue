@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import type { BffEnvelope } from '~/utils/bff-view';
-import type { TrainingView, TrainingViewItem } from '~/utils/domain-trainings';
+import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import type { BffEnvelope } from '~/utils/server/bff-view';
+import type { TrainingView, TrainingViewItem } from '~/utils/domain/problem/domain-trainings';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const route = useRoute(), { slug, domain } = useWorkspace(), { user } = useAuth(), { api } = useApi();
 const resources = useDomainResources(), capture = useWorkspaceActionScope();

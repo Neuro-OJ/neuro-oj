@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { classroomCan, educationCacheKey } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { classroomCan, educationCacheKey } from '~/utils/domain/education/education';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
 const actor = useState<{ id: string } | null>('auth:user', () => null), reset = ref(0);

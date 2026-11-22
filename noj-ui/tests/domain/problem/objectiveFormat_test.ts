@@ -1,8 +1,8 @@
-/** utils/objectiveFormat.ts 单元测试。 */
+/** utils/domain/problem/objectiveFormat.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { formatObjectiveAnswer } from '../../../utils/objectiveFormat.ts';
+import { formatObjectiveAnswer } from '../../../utils/domain/problem/objectiveFormat.ts';
 
 Deno.test('formatObjectiveAnswer: 无题目信息时直接拼接', () => {
   assertEquals(formatObjectiveAnswer(undefined, ['A', 'B']), 'A, B');

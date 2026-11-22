@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainTrainingDetail, DomainTrainingInput } from '~/composables/useDomainTrainings';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; initial?: DomainTrainingDetail }>();
 const emit = defineEmits<{ saved: [id: string] }>();
 const api = useDomainTrainings(), capture = useWorkspaceActionScope(), { dialog } = useDialog();

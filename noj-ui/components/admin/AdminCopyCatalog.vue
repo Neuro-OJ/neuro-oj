@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CopySourceItem } from '~/composables/useDomainResources';
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; kind: 'problem' | 'training' }>();
 const emit = defineEmits<{ imported: [] }>();
 const api = useDomainResources(),

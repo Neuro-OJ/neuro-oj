@@ -6,13 +6,13 @@
  * 不需要先手填一遍会被覆盖的表单。默认导入为草稿，可勾选「导入后立即发布」。
  * 导入成功后由页面决定跳转（用户侧 / 管理后台的编辑页路径不同）。
  */
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError } from "~/utils/server/apiError"
 import { useToast } from "~/composables/useToast"
 import {
   type BundleImportResult,
   bundleImportErrorMessage,
   bundleImportSuccessMessage,
-} from "~/utils/bundleImport"
+} from "~/utils/domain/problem/bundleImport"
 
 const emit = defineEmits<{ imported: [result: BundleImportResult] }>()
 const props = defineProps<{ domainSlug: string }>()

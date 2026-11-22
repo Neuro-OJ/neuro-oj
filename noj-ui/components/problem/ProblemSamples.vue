@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DomainProblemContent } from '~/utils/domain-problems';
+import type { DomainProblemContent } from '~/utils/domain/problem/domain-problems';
 defineProps<{ samples: DomainProblemContent['samples'] }>();
 const { copyText } = useCopyText();
 </script>

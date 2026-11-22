@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { OwnSubmissionHistory } from '~/utils/own-submissions';
-import { originalAnswerText, ownHistoryProblemLink } from '~/utils/own-submissions';
-import { formatDateTime } from '~/utils/submissionFormat';
-import { workspacePath } from '~/utils/workspace';
+import type { OwnSubmissionHistory } from '~/utils/domain/submission/own-submissions';
+import { originalAnswerText, ownHistoryProblemLink } from '~/utils/domain/submission/own-submissions';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 const props = defineProps<{ entry: OwnSubmissionHistory; offerDomainActions?: boolean }>();
 const user = typeof useAuth === 'function' ? useAuth()?.user : undefined;
 const isOwner = computed(() => !props.entry.user_id || (user?.value ? user.value.id === props.entry.user_id : true));

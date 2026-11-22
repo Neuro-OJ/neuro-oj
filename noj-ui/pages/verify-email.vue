@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
-import { safeAuthRedirect } from "~/utils/authRedirect"
+import { extractApiError } from "~/utils/server/apiError"
+import { safeAuthRedirect } from "~/utils/auth/authRedirect"
 
 definePageMeta({ layout: "auth" })
 const route = useRoute()

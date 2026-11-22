@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { formatDateTime } from '~/utils/submissionFormat';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { DOMAIN_CONTEST_TYPES } from '~/utils/domain-contests';
-import { extractApiError } from '~/utils/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { DOMAIN_CONTEST_TYPES } from '~/utils/domain/contest/domain-contests';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({
   layout: 'workspace',
   middleware: 'workspace-context',

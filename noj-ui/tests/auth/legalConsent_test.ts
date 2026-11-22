@@ -6,7 +6,7 @@
  */
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { collectPendingConsents, type LegalStatusMap } from '../../utils/legalConsent.ts';
+import { collectPendingConsents, type LegalStatusMap } from '../../utils/auth/legalConsent.ts';
 
 Deno.test('legalConsent: 未登录（undefined）时不弹窗', () => {
   assertEquals(collectPendingConsents(undefined), []);

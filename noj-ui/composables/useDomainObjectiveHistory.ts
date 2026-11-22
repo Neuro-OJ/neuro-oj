@@ -1,4 +1,4 @@
-import type { OwnSubmissionHistory } from '~/utils/own-submissions';
+import type { OwnSubmissionHistory } from '~/utils/domain/submission/own-submissions';
 /** 当前域本人客观历史，不借全账号目录绕过进入限制。 */
 export function useDomainObjectiveHistory() {
   const { api } = useApi(),

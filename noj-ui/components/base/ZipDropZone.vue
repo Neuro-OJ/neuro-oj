@@ -5,7 +5,7 @@
  * 只负责"拿到一个 .zip 文件"：扩展名不对时就地提示，不发请求；
  * 禁用 / 处理中时点击与拖拽投放都不生效（否则拖拽会绕过 disabled）。
  */
-import { validateZipFileName } from "~/utils/bundleImport"
+import { validateZipFileName } from "~/utils/domain/problem/bundleImport"
 
 interface Props {
   disabled?: boolean

@@ -14,7 +14,7 @@ import {
   toContestProblemView,
   toDomainProblemView,
   toProblemView,
-} from '../../../utils/problemView.ts';
+} from '../../../utils/domain/problem/problemView.ts';
 
 Deno.test('problemView: 域题目保留来源题号、作答版本与已裁剪的标签', () => {
   const view = toDomainProblemView({

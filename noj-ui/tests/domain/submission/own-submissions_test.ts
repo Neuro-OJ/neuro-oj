@@ -1,8 +1,8 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { originalAnswerText, ownHistoryProblemLink } from '../../../utils/own-submissions.ts';
-import type { OwnSubmissionHistory } from '../../../utils/own-submissions.ts';
+import { originalAnswerText, ownHistoryProblemLink } from '../../../utils/domain/submission/own-submissions.ts';
+import type { OwnSubmissionHistory } from '../../../utils/domain/submission/own-submissions.ts';
 const entry = {
   kind: 'objective',
   id: 'answer-one',

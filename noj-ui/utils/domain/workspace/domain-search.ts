@@ -1,5 +1,5 @@
 import type { SearchItem } from './search-types.ts';
-import type { DomainProblemReference } from './domain-problems.ts';
+import type { DomainProblemReference } from '../problem/domain-problems.ts';
 import { workspacePath, workspaceProblemPath } from './workspace.ts';
 /** 来源信息由搜索接口实时投影，不借旧索引数字猜测使用域本地题号。 */
 export function domainSearchReference(item: SearchItem) {

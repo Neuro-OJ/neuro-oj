@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { ProblemView } from '~/utils/problemView';
-import { problemJudgeTypeLabel } from '~/utils/problemView';
-import { defaultProblemLabel } from '~/utils/default-workspace';
-import { formatAcceptanceRate } from '~/utils/submissionFormat';
-import { formatMemoryLimit, formatTimeLimit } from '~/utils/problemView';
-import type { PublicProblemStats } from '~/utils/problemStats';
+import type { ProblemView } from '~/utils/domain/problem/problemView';
+import { problemJudgeTypeLabel } from '~/utils/domain/problem/problemView';
+import { defaultProblemLabel } from '~/utils/domain/workspace/default-workspace';
+import { formatAcceptanceRate } from '~/utils/domain/submission/submissionFormat';
+import { formatMemoryLimit, formatTimeLimit } from '~/utils/domain/problem/problemView';
+import type { PublicProblemStats } from '~/utils/domain/problem/problemStats';
 
 /**
  * 题目头部标识区（#511）：编号胶囊 + 类型/客观题徽章 + 标题 + 作者 +

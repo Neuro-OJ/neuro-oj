@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DomainObjectiveSnapshot } from '~/utils/domain-problem-editor';
+import type { DomainObjectiveSnapshot } from '~/utils/domain/problem/domain-problem-editor';
 import type { QuestionDraft } from '~/composables/useObjective';
 const questions = defineModel<DomainObjectiveSnapshot[]>({ required: true });
 const emit = defineEmits<{ editing: [active: boolean] }>();

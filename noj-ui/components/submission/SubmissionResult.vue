@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainSubmission } from '~/composables/useDomainSubmissions';
-import { formatMemory, formatScore, formatTime, getResultDef } from '~/utils/submissionFormat';
+import { formatMemory, formatScore, formatTime, getResultDef } from '~/utils/domain/submission/submissionFormat';
 interface OiSummary {
   verdict?: string;
   compile_error?: string;

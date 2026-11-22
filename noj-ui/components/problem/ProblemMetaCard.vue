@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ProblemView } from '~/utils/problemView'
-import { problemJudgeTypeLabel } from '~/utils/problemView'
-import { formatAcceptanceRate } from '~/utils/submissionFormat'
-import type { PublicProblemStats } from '~/utils/problemStats'
+import type { ProblemView } from '~/utils/domain/problem/problemView'
+import { problemJudgeTypeLabel } from '~/utils/domain/problem/problemView'
+import { formatAcceptanceRate } from '~/utils/domain/submission/submissionFormat'
+import type { PublicProblemStats } from '~/utils/domain/problem/problemStats'
 
 /**
  * 题目信息卡片（#511，右栏）：编号 / 难度 / 提供者 / 标签 / 通过率。

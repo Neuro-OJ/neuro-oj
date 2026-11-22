@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import type { DomainContest } from '~/composables/useDomainContests';
-import type { ContestPayload, ContestType } from '~/utils/contest-types';
-import type { DomainProblemSummary } from '~/utils/domain-problems';
-import { DOMAIN_CONTEST_TYPES, domainContestAllows, domainContestDefaults } from '~/utils/domain-contests';
-import { extractApiError } from '~/utils/apiError';
+import type { ContestPayload, ContestType } from '~/utils/domain/contest/contest-types';
+import type { DomainProblemSummary } from '~/utils/domain/problem/domain-problems';
+import { DOMAIN_CONTEST_TYPES, domainContestAllows, domainContestDefaults } from '~/utils/domain/contest/domain-contests';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; existing?: DomainContest }>();
 const api = useDomainContests();
 const problemApi = useDomainProblems();

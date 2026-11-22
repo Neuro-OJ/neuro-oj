@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { watch } from 'vue';
-import type { DomainProblemDetail } from '~/utils/domain-problems';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import type { DomainProblemDetail } from '~/utils/domain/problem/domain-problems';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
-import type { UiFrameResult } from '~/utils/uiFrame';
-import { extractApiError } from '~/utils/apiError';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
+import type { UiFrameResult } from '~/utils/domain/problem/uiFrame';
+import { extractApiError } from '~/utils/server/apiError';
 import ProblemAnswerPanel, { type AnswerHandlers } from '~/components/problem/ProblemAnswerPanel.vue';
 
 /**

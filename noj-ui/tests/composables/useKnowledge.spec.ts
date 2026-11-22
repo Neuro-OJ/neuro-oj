@@ -16,7 +16,7 @@ import {
   isKnowledgeDisabled,
   normalizeSelection,
   selectionFromView,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 const disabledError = { status: 404, data: { error: '知识图谱功能已关闭', code: 'KNOWLEDGE_DISABLED' } };
 
@@ -126,7 +126,7 @@ describe('useKnowledge', () => {
   });
 });
 
-describe('utils/knowledge', () => {
+describe('utils/domain/education/knowledge', () => {
   it('isKnowledgeDisabled 只认 404 KNOWLEDGE_DISABLED', () => {
     expect(isKnowledgeDisabled(disabledError)).toBe(true);
     expect(isKnowledgeDisabled({ status: 404, data: { code: 'NOT_FOUND' } })).toBe(false);

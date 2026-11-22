@@ -7,7 +7,7 @@ import {
   type ProblemStatsDetail,
   sortedStatusDistribution,
   topFailedCases,
-} from '../../../utils/problemStats.ts';
+} from '../../../utils/domain/problem/problemStats.ts';
 
 const baseDetail: ProblemStatsDetail = {
   attempt_count: 10,

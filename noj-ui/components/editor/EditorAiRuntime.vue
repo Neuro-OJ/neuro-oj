@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DomainAiRuntime, DomainEditorContent } from '~/utils/domain-problem-editor';
+import type { DomainAiRuntime, DomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
 const content = defineModel<DomainEditorContent>({ required: true });
 defineProps<{ published: boolean }>();
 const { user } = useAuth(), api = useDomainProblemEditor();

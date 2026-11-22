@@ -1,4 +1,4 @@
-/** utils/llmQuota.ts 单元测试（issue #579）。 */
+/** utils/server/llmQuota.ts 单元测试（issue #579）。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
@@ -11,7 +11,7 @@ import {
   type LlmQuotaRow,
   type QuotaForm,
   validateQuotaForm,
-} from '../../utils/llmQuota.ts';
+} from '../../utils/server/llmQuota.ts';
 
 const form = (patch: Partial<QuotaForm> = {}): QuotaForm => ({
   scope_type: 'user',

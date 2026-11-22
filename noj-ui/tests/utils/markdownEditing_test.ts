@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { insertBlock, insertText, prefixLines, wrapSelection } from '../../utils/markdownEditing.ts';
+import { insertBlock, insertText, prefixLines, wrapSelection } from '../../utils/domain/problem/markdownEditing.ts';
 
 Deno.test('wrapSelection 包裹选中文本并保持选区在原文本上', () => {
   const r = wrapSelection('hello world', 6, 11, '**', '**');

@@ -4,7 +4,7 @@ import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
 import { strToU8, zipSync } from "npm:fflate@0.8.2";
 import { Buffer } from "node:buffer";
-import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
+import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { api as request, getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
   BROWSER_E2E,

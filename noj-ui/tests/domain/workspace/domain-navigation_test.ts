@@ -1,7 +1,7 @@
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { domainIdentityLabel, initialDomainSlug } from '../../../utils/domain-navigation.ts';
-import type { WorkspaceSummary } from '../../../utils/workspace.ts';
+import { domainIdentityLabel, initialDomainSlug } from '../../../utils/domain/workspace/domain-navigation.ts';
+import type { WorkspaceSummary } from '../../../utils/domain/workspace/workspace.ts';
 const school = { slug: 'school' } as WorkspaceSummary;
 Deno.test('根入口：公开实例进入指定默认域，私有单域实例进入成员域', () => {
   assertEquals(initialDomainSlug({ access: 'public', default_domain_slug: 'main' }, [school]), 'main');

@@ -1,8 +1,8 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { currentPageRemediation } from '../../../utils/education-remediation.ts';
-import type { MatrixData, TeachingCell } from '../../../utils/education.ts';
+import { currentPageRemediation } from '../../../utils/domain/education/education-remediation.ts';
+import type { MatrixData, TeachingCell } from '../../../utils/domain/education/education.ts';
 
 Deno.test('补题快捷选择：只包括当前有效学生和确定未达标单元', () => {
   const cell = (

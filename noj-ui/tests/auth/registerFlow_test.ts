@@ -1,5 +1,5 @@
 /**
- * utils/registerFlow.ts 回归测试（issue #425 / #426）。
+ * utils/auth/registerFlow.ts 回归测试（issue #425 / #426）。
  *
  * 覆盖注册提交流程的四个分支：
  * - 邮件发送成功：跳转 /verify-email?registered=1&sent=1
@@ -13,7 +13,7 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals, assertRejects } from 'jsr:@std/assert@^1';
-import { submitRegistration } from '../../utils/registerFlow.ts';
+import { submitRegistration } from '../../utils/auth/registerFlow.ts';
 
 Deno.test('submitRegistration: 邮件发送成功时跳转 sent=1', async () => {
   const calls: string[] = [];

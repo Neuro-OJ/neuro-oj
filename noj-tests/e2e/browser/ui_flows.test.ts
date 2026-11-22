@@ -27,7 +27,7 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { domainAnswerKey } from "../../../noj-ui/utils/domain-problems.ts";
+import { domainAnswerKey } from "../../../noj-ui/utils/domain/problem/domain-problems.ts";
 import {
   buildProblemBundle,
   problemBundleForm,

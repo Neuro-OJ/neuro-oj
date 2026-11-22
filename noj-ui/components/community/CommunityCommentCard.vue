@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CommentRow } from "~/composables/useCommunity"
 import { useToast } from "~/composables/useToast"
-import { isCommunityEdited } from "~/utils/communityEdited"
+import { isCommunityEdited } from "~/utils/domain/community/communityEdited"
 
 const props = defineProps<{
   row: CommentRow

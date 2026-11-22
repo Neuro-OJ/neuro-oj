@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError } from "~/utils/server/apiError"
 
 definePageMeta({ layout: "auth" })
 

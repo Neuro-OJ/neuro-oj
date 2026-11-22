@@ -1,4 +1,4 @@
-import { authCookieNames } from '../../../utils/auth-cookies.ts';
+import { authCookieNames } from '../../../utils/auth/auth-cookies.ts';
 
 /**
  * 本地注销端点（issue #75 JWT 撤销机制）。

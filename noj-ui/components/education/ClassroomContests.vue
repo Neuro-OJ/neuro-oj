@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { formatDateTime } from '~/utils/submissionFormat';
-import { educationCacheKey } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 
 const props = defineProps<{ slug: string; classroomId?: string }>();
 const { user } = useAuth();

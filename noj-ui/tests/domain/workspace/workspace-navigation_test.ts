@@ -1,9 +1,9 @@
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix
 import { assert, assertEquals } from 'jsr:@std/assert@^1';
-import type { WorkspaceDetail } from '../../../utils/workspace.ts';
-import { workspaceNavigation } from '../../../utils/workspace-navigation.ts';
-import { workspaceSettingsNavigation } from '../../../utils/workspace-settings.ts';
+import type { WorkspaceDetail } from '../../../utils/domain/workspace/workspace.ts';
+import { workspaceNavigation } from '../../../utils/domain/workspace/workspace-navigation.ts';
+import { workspaceSettingsNavigation } from '../../../utils/domain/workspace/workspace-settings.ts';
 const base = {
   slug: 'school',
   actor_id: 'same-user',

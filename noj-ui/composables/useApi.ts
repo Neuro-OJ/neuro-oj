@@ -1,7 +1,7 @@
-import type { ApiErrorInfo } from '~/utils/apiError';
-import { extractApiError } from '~/utils/apiError';
+import type { ApiErrorInfo } from '~/utils/server/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import { useToast } from '~/composables/useToast';
-import { authCookieNames } from '~/utils/auth-cookies';
+import { authCookieNames } from '~/utils/auth/auth-cookies';
 import { clearUserDrafts } from '~/utils/draft-storage';
 
 /**

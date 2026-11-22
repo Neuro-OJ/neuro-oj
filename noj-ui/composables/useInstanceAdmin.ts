@@ -3,7 +3,7 @@ import type {
   GovernancePage,
   InstanceDomain,
   InstanceSetting,
-} from '~/utils/instance-governance';
+} from '~/utils/server/instance-governance';
 /** 平台治理明确列出目标域，不将域管理员提升为实例管理员。 */
 export function useInstanceAdmin() {
   const { api } = useApi();

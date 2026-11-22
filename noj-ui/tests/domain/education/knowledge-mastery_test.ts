@@ -16,7 +16,7 @@ import {
   nodeHasLearners,
   parsePickCount,
   recommendationReasonText,
-} from '../../../utils/knowledge.ts';
+} from '../../../utils/domain/education/knowledge.ts';
 
 Deno.test('推荐理由：四种已知 code 拼中文，未知 code 回退通用文案', () => {
   assertEquals(

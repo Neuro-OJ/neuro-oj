@@ -13,8 +13,8 @@ import {
   workspacePath,
   workspaceProblemPath,
   workspaceSlugFromPath,
-} from '../../../utils/workspace.ts';
-import { safeAuthRedirect } from '../../../utils/authRedirect.ts';
+} from '../../../utils/domain/workspace/workspace.ts';
+import { safeAuthRedirect } from '../../../utils/auth/authRedirect.ts';
 
 Deno.test('域路径：引用题保留使用域，旧 P/U 不作为新域题号', () => {
   assertEquals(workspaceProblemPath('school', 'main:1001'), '/d/school/problems/main:1001');

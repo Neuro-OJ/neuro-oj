@@ -1,4 +1,4 @@
-/** utils/recoveryCodes.ts 单元测试。 */
+/** utils/auth/recoveryCodes.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals, assertThrows } from 'jsr:@std/assert@^1';
@@ -8,7 +8,7 @@ import {
   isRecoveryCode,
   parseRecoveryCodesFile,
   RECOVERY_CODE_FILE_MAX_BYTES,
-} from '../../utils/recoveryCodes.ts';
+} from '../../utils/auth/recoveryCodes.ts';
 
 const CODE_A = 'ABCD-EFGH-JKLM';
 const CODE_B = 'NPQR-STUV-WXYZ';

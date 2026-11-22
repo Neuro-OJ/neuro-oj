@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import type { AdminColumn } from '~/components/admin/AdminTable.vue';
 
 const props = defineProps<{ domainSlug?: string }>();

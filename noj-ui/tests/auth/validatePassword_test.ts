@@ -1,10 +1,10 @@
 /**
- * utils/validatePassword.ts 单元测试。
+ * utils/auth/validatePassword.ts 单元测试。
  */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本，与 noj-core 测试写法一致
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { validateEmail, validatePassword, validatePasswordMatch } from '../../utils/validatePassword.ts';
+import { validateEmail, validatePassword, validatePasswordMatch } from '../../utils/auth/validatePassword.ts';
 
 Deno.test('validatePassword: 空值、长度与字符组成校验', () => {
   assertEquals(validatePassword(''), { valid: false, message: '请输入密码' });

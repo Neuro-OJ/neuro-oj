@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { watch } from 'vue';
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import type { EducationDashboardData } from '~/utils/education-dashboard';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import type { EducationDashboardData } from '~/utils/domain/education/education-dashboard';
 const props = defineProps<{ initialData?: { data: EducationDashboardData } }>();
 const { slug, domain, can } = useWorkspace(), { user } = useAuth();
 const api = useEducationApi();

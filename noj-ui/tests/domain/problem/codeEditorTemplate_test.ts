@@ -1,8 +1,8 @@
-/** utils/codeEditorTemplate.ts 单元测试。 */
+/** utils/domain/problem/codeEditorTemplate.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals, assertRejects } from 'jsr:@std/assert@^1';
-import { restoreCodeTemplate } from '../../../utils/codeEditorTemplate.ts';
+import { restoreCodeTemplate } from '../../../utils/domain/problem/codeEditorTemplate.ts';
 
 function createOptions(overrides: Partial<Parameters<typeof restoreCodeTemplate>[0]> = {}) {
   const events: string[] = [];

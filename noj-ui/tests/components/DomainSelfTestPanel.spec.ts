@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, onMounted, ref, Suspense, watch } from 'vue';
 import DomainSelfTestPanel from '~/components/problem/ProblemSelfTestPanel.vue';
-import type { DomainProblemDetail } from '~/utils/domain-problems';
+import type { DomainProblemDetail } from '~/utils/domain/problem/domain-problems';
 const api = { create: vi.fn(), detail: vi.fn(), cancel: vi.fn() };
 const refresh = vi.fn();
 const problem = {

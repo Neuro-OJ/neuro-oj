@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { classroomCan, educationCacheKey } from '~/utils/education';
-import type { ClassroomMember } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { classroomCan, educationCacheKey } from '~/utils/domain/education/education';
+import type { ClassroomMember } from '~/utils/domain/education/education';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 import { useCopyText } from '~/composables/useCopyText';
 import WorkspaceInvitationManager from '~/components/workspace/WorkspaceInvitationManager.vue';
 import ClassroomImport from '~/components/education/ClassroomImport.vue';

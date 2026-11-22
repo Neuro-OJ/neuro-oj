@@ -8,7 +8,7 @@ import {
   ladderEntryItem,
   ladderItemPath,
   parsePassRatioOverride,
-} from '../../../utils/knowledge.ts';
+} from '../../../utils/domain/education/knowledge.ts';
 
 const item = (number: number | null, passed: boolean | null = false) => ({
   problem_id: `p${number}`,

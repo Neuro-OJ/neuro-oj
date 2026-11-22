@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { formatMemory, formatTime } from '~/utils/submissionFormat'
-import { isSubmissionCasePassed, submissionCasesWithProgress, type SubmissionCaseResult, type SubmissionCaseProgress } from '~/utils/submissionCaseResults'
+import { formatMemory, formatTime } from '~/utils/domain/submission/submissionFormat'
+import { isSubmissionCasePassed, submissionCasesWithProgress, type SubmissionCaseResult, type SubmissionCaseProgress } from '~/utils/domain/submission/submissionCaseResults'
 import { useCopyText } from '~/composables/useCopyText'
 
 const props = defineProps<{

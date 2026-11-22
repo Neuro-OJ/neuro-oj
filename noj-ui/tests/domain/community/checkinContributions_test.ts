@@ -1,8 +1,8 @@
-/** utils/checkinContributions.ts 单元测试。 */
+/** utils/domain/community/checkinContributions.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { buildContributionGrid, formatDateFull } from '../../../utils/checkinContributions.ts';
+import { buildContributionGrid, formatDateFull } from '../../../utils/domain/community/checkinContributions.ts';
 
 Deno.test('buildContributionGrid: 网格从最早签到日所在周日起，到当前周为止', () => {
   // 2026-08-20 是周四，最早签到日所在周起点应为 2026-08-16（周日）

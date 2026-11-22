@@ -15,7 +15,7 @@
 
 import { ref } from 'vue';
 import type { MaybeRefOrGetter, Ref } from 'vue';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import { usePolling } from '~/composables/usePolling';
 
 export interface AdminListOptions<T> {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { workspacePath } from '~/utils/workspace';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 
 /**
  * 赛后「官方题解」入口（赛题页内联版）。

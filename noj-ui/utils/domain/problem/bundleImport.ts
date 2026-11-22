@@ -3,7 +3,7 @@
  *
  * 编辑器与「从题目包导入」页共用：文件校验、可见性规则、导入结果与错误文案。
  */
-import type { ApiErrorInfo } from './apiError.ts';
+import type { ApiErrorInfo } from '../../server/apiError.ts';
 
 /** 校验所选文件是否为 zip；合法返回 null，否则返回提示文案。 */
 export function validateZipFileName(name: string): string | null {

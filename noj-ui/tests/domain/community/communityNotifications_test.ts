@@ -1,11 +1,11 @@
-/** utils/communityNotifications.ts 单元测试。 */
+/** utils/domain/community/communityNotifications.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
 import {
   COMMUNITY_UNREAD_COUNT_REQUEST_OPTIONS,
   shouldLoadCommunityUnreadCount,
-} from '../../../utils/communityNotifications.ts';
+} from '../../../utils/domain/community/communityNotifications.ts';
 
 Deno.test('communityNotifications: 匿名或关闭社区时不加载未读数', () => {
   assertEquals(shouldLoadCommunityUnreadCount(null, true), false);

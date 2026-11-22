@@ -49,7 +49,7 @@ import {
   itemHref,
   metaLine,
   typeLabel,
-} from "~/utils/searchFormat";
+} from "~/utils/domain/workspace/searchFormat";
 
 const props = defineProps<{
   item: SearchItem;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { workspacePath } from '~/utils/workspace';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug, domain, can } = useWorkspace();
 useSeoMeta({ title: '创建域题单' });

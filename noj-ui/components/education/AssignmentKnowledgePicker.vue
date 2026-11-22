@@ -6,7 +6,7 @@
  * - 总开关关闭或接口 404 `KNOWLEDGE_DISABLED` 时整块渲染为空；
  * - 预览由后端按阶梯均匀抽样，这里只展示题号、标题与难度档。
  */
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   difficultyTierColor,
   difficultyTierLabel,
@@ -18,7 +18,7 @@ import {
   type KnowledgeSelection,
   nodeName,
   parsePickCount,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 const props = defineProps<{
   slug: string;

@@ -3,19 +3,19 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useApi } from '~/composables/useApi';
 import { useDialog } from '~/composables/useDialog';
 import { useToast } from '~/composables/useToast';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   formatInvitationCode,
   getInvitationStatus,
   WORKSPACE_INVITATION_MODE_LABELS,
   WORKSPACE_INVITATION_STATUS_LABELS,
   workspaceInvitationLink,
-} from '~/utils/workspace';
+} from '~/utils/domain/workspace/workspace';
 import type {
   WorkspaceInvitation,
   WorkspaceInvitationCreated,
   WorkspaceInvitationStatus,
-} from '~/utils/workspace';
+} from '~/utils/domain/workspace/workspace';
 
 interface Props {
   domainSlug: string;

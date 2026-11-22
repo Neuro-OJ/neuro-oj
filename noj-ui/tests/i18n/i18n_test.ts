@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { extractApiError } from '../../utils/apiError.ts';
+import { extractApiError } from '../../utils/server/apiError.ts';
 import { messages, translate, translateErrorCode } from '../../utils/i18n.ts';
 
 Deno.test('文案表：按键取中文并替换占位符，未知键原样返回', () => {

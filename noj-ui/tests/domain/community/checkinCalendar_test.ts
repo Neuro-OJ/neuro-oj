@@ -1,8 +1,13 @@
-/** utils/checkinCalendar.ts 单元测试。 */
+/** utils/domain/community/checkinCalendar.ts 单元测试。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { buildMonthCalendar, currentUtcMonth, normalizeMonth, shiftMonth } from '../../../utils/checkinCalendar.ts';
+import {
+  buildMonthCalendar,
+  currentUtcMonth,
+  normalizeMonth,
+  shiftMonth,
+} from '../../../utils/domain/community/checkinCalendar.ts';
 
 Deno.test('buildMonthCalendar: 生成当月日历并标记已签到日期', () => {
   const ref = new Date('2026-07-15T00:00:00Z');

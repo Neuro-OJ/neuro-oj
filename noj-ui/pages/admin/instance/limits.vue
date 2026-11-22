@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import { useToast } from '~/composables/useToast';
 import AdminInstanceNav from '~/components/admin/AdminInstanceNav.vue';
 import WorkspaceLimitFields from '~/components/workspace/WorkspaceLimitFields.vue';
-import type { WorkspaceLimits } from '~/utils/workspace';
+import type { WorkspaceLimits } from '~/utils/domain/workspace/workspace';
 
 definePageMeta({ layout: 'admin', middleware: 'admin', });
 

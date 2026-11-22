@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from "vue"
-import { getMonacoLanguage } from '~/utils/editorLanguages'
+import { getMonacoLanguage } from '~/utils/domain/problem/editorLanguages'
 
 const props = defineProps<{
   modelValue: string

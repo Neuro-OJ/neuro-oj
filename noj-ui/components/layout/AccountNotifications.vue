@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { NotificationRow } from '~/composables/useCommunity';
-import { extractApiError } from '~/utils/apiError';
-import { notificationTarget, notificationTypeLabel, notificationTypeIcon } from '~/utils/communityNotifications';
+import { extractApiError } from '~/utils/server/apiError';
+import { notificationTarget, notificationTypeLabel, notificationTypeIcon } from '~/utils/domain/community/communityNotifications';
 const { api } = useApi(), { user } = useAuth(), workspace = useWorkspaceApi();
 const workspaceCtx = typeof useOptionalWorkspace === 'function' ? useOptionalWorkspace() : null;
 const page = ref(1), domainId = ref(workspaceCtx?.domain?.value?.id ?? 'all'), opening = ref(''), actionError = ref('');

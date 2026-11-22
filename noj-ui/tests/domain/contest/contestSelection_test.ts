@@ -1,4 +1,4 @@
-/** utils/contestSelection.ts 单元测试（VULN-04 / VULN-05：邀请赛公开题风险提示）。 */
+/** utils/domain/contest/contestSelection.ts 单元测试（VULN-04 / VULN-05：邀请赛公开题风险提示）。 */
 /// <reference lib="deno.ns" />
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
@@ -6,7 +6,7 @@ import {
   INVITE_PUBLIC_PROBLEM_WARNING,
   invitePublicProblemIds,
   needsInvitePublicWarning,
-} from '../../../utils/contestSelection.ts';
+} from '../../../utils/domain/contest/contestSelection.ts';
 
 const OPTIONS = [
   { id: 'p-public', visibility: 'public' as const },

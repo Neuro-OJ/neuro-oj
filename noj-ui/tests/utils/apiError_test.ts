@@ -1,5 +1,5 @@
 /**
- * utils/apiError.ts 单元测试。
+ * utils/server/apiError.ts 单元测试。
  *
  * 覆盖四类错误提取：后端错误响应、无 error 字段兜底、网络错误、超时，
  * 以及未知错误兜底。
@@ -13,7 +13,7 @@ import {
   isNotFoundError,
   isTimeoutError,
   isVersionConflictError,
-} from '../../utils/apiError.ts';
+} from '../../utils/server/apiError.ts';
 
 /** 构造一个带 $fetch 错误对象结构的 Error（data/status 为 ofetch FetchError 字段） */
 function makeFetchError(

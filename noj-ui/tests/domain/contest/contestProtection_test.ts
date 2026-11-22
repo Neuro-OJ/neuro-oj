@@ -1,6 +1,6 @@
 // deno-lint-ignore no-import-prefix -- jsr: 前缀由 deno.lock 固定版本
 import { assertEquals } from 'jsr:@std/assert@^1';
-import { contestProtectionFromError } from '../../../utils/contestProtection.ts';
+import { contestProtectionFromError } from '../../../utils/domain/contest/contestProtection.ts';
 
 Deno.test('赛题保护：普通错误保持原错误处理，缺失比赛列表仍识别保护状态', () => {
   assertEquals(contestProtectionFromError(null), null);

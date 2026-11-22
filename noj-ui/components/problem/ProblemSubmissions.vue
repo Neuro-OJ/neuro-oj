@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime, getStatusLabel } from '~/utils/submissionFormat';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime, getStatusLabel } from '~/utils/domain/submission/submissionFormat';
 
 const props = defineProps<{ slug: string; problemId: string; contestId?: string; title?: string }>();
 const { user } = useAuth();

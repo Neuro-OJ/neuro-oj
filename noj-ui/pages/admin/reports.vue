@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError } from "~/utils/server/apiError"
 import { useToast } from "~/composables/useToast"
 
 definePageMeta({ layout: "admin", middleware: "community-moderation", })

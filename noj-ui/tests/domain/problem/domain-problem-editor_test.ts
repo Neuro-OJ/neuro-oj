@@ -5,9 +5,9 @@ import {
   domainEditorPayload,
   newDomainEditorContent,
   normalizeDomainEditorContent,
-} from '../../../utils/domain-problem-editor.ts';
-import type { DomainAiRuntime } from '../../../utils/domain-problem-editor.ts';
-import type { DomainOiRuntime } from '../../../utils/domain-problem-editor.ts';
+} from '../../../utils/domain/problem/domain-problem-editor.ts';
+import type { DomainAiRuntime } from '../../../utils/domain/problem/domain-problem-editor.ts';
+import type { DomainOiRuntime } from '../../../utils/domain/problem/domain-problem-editor.ts';
 Deno.test('域草稿：OI 编辑保留既有文件扩展、测试点 ID 和专属限制', () => {
   const input = newDomainEditorContent('oi');
   const runtime = input.runtime_config as DomainOiRuntime;

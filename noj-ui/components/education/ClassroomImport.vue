@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { CLASSROOM_IMPORT_LABELS, classroomImportResultCsv } from '~/utils/education-enrollment';
-import type { ClassroomImportPreview, ClassroomImportResult } from '~/utils/education-enrollment';
-import { workspaceInvitationLink } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { CLASSROOM_IMPORT_LABELS, classroomImportResultCsv } from '~/utils/domain/education/education-enrollment';
+import type { ClassroomImportPreview, ClassroomImportResult } from '~/utils/domain/education/education-enrollment';
+import { workspaceInvitationLink } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; classroomId: string; writable: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
 const education = useEducationApi(), capture = useWorkspaceActionScope();

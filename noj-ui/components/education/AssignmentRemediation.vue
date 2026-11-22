@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { AssignmentDetail } from '~/utils/education';
-import type { AssignmentRemediationPreview, RemediationSelectionInput } from '~/utils/education-remediation-preview';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
+import type { AssignmentRemediationPreview, RemediationSelectionInput } from '~/utils/domain/education/education-remediation-preview';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; task: AssignmentDetail; writable: boolean; canReadProgress: boolean }>();
 const education = useEducationApi(), capture = useWorkspaceActionScope();
 const open = ref(false), scope = ref<'on_time' | 'current'>('current');

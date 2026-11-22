@@ -124,11 +124,11 @@
 </template>
 
 <script setup lang="ts">
-import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/validatePassword"
-import { extractApiError } from "~/utils/apiError"
-import { submitRegistration } from "~/utils/registerFlow"
-import { workspaceInvitationToken, workspacePath } from "~/utils/workspace"
-import type { WorkspaceInvitationPreview } from "~/utils/workspace"
+import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/auth/validatePassword"
+import { extractApiError } from "~/utils/server/apiError"
+import { submitRegistration } from "~/utils/auth/registerFlow"
+import { workspaceInvitationToken, workspacePath } from "~/utils/domain/workspace/workspace"
+import type { WorkspaceInvitationPreview } from "~/utils/domain/workspace/workspace"
 
 definePageMeta({ layout: "auth" })
 
@@ -279,7 +279,7 @@ async function handleRegister() {
 
     loading.value = true
     try {
-        // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/registerFlow.ts）
+        // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/auth/registerFlow.ts）
         const result = await submitRegistration(
             {
                 register: (username, email, password, accepted) =>

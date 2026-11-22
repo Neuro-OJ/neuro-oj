@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { DomainCodeProblem } from '~/utils/domain-problems';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
-import { domainAnswerKey } from '~/utils/domain-problems';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { getEditorLanguages } from '~/utils/editorLanguages';
-import { extractApiError } from '~/utils/apiError';
+import type { DomainCodeProblem } from '~/utils/domain/problem/domain-problems';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { getEditorLanguages } from '~/utils/domain/problem/editorLanguages';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{
   slug: string;
   problem: DomainCodeProblem;

@@ -3,8 +3,8 @@
 // 显式导入项目 useToast：避免与 @nuxt/ui 自动导入的同名 useToast 混淆
 import { useToast } from '~/composables/useToast'
 
-import type { Clarification, Contest, ContestProblem } from '~/utils/contest-types'
-import { extractApiError } from '~/utils/apiError'
+import type { Clarification, Contest, ContestProblem } from '~/utils/domain/contest/contest-types'
+import { extractApiError } from '~/utils/server/apiError'
 
 /**
  * 竞赛答疑面板（**域页面专用**）。

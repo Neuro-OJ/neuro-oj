@@ -1,4 +1,9 @@
-import type { WorkspaceConfiguration, WorkspaceLimits, WorkspacePreset, WorkspaceRecord } from './workspace.ts';
+import type {
+  WorkspaceConfiguration,
+  WorkspaceLimits,
+  WorkspacePreset,
+  WorkspaceRecord,
+} from '../domain/workspace/workspace.ts';
 export interface InstanceSetting {
   key: string;
   effective_value: unknown;

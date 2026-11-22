@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { educationCacheKey } from '~/utils/education';
-import type { AssignmentDetail } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; task: AssignmentDetail }>();
 const education = useEducationApi(), actor = useState<{ id: string } | null>('auth:user', () => null);
 const key = computed(() =>

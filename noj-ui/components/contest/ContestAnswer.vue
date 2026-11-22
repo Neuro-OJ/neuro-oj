@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { watch } from 'vue';
-import type { ContestProblem } from '~/utils/contest-types';
-import type { UiFrameResult } from '~/utils/uiFrame';
+import type { ContestProblem } from '~/utils/domain/contest/contest-types';
+import type { UiFrameResult } from '~/utils/domain/problem/uiFrame';
 import ProblemAnswerPanel, { type AnswerHandlers, type AnswerQuestion } from '~/components/problem/ProblemAnswerPanel.vue';
-import { extractApiError } from '~/utils/apiError';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import { extractApiError } from '~/utils/server/apiError';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 
 /**
  * 比赛作答入口：把比赛独立提交入口适配到共用作答面板。

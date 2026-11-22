@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DomainLlmModelAlias, DomainLlmProvider } from '~/composables/useDomainLlm';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; providers: DomainLlmProvider[]; writable: boolean }>();
 const { user } = useAuth(), api = useDomainLlm(), capture = useWorkspaceActionScope(), { dialog } = useDialog();
 const { data, error, refresh } = await useAsyncData(

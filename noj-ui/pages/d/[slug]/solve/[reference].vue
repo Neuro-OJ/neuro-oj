@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { contestProtectionFromError } from '~/utils/contestProtection';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
+import { workspaceCacheKey, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { contestProtectionFromError } from '~/utils/domain/contest/contestProtection';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
 definePageMeta({ layout: 'workspace-editor', middleware: 'workspace-context' });
 const route = useRoute(),
   router = useRouter(),

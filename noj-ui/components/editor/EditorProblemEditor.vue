@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { ProblemDraftView, PublishPreflightReport } from '~/composables/useDomainProblemEditor';
-import type { DomainEditorContent, DomainOiRuntime } from '~/utils/domain-problem-editor';
-import { domainEditorPayload, normalizeDomainEditorContent } from '~/utils/domain-problem-editor';
-import { extractApiError } from '~/utils/apiError';
+import type { DomainEditorContent, DomainOiRuntime } from '~/utils/domain/problem/domain-problem-editor';
+import { domainEditorPayload, normalizeDomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<
   { slug: string; reference: string; draft: ProblemDraftView; writable: boolean; canPublish: boolean }
 >();

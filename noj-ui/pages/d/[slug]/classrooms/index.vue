@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { ClassroomDetail } from '~/utils/education';
-import { assignmentPhase, educationCacheKey } from '~/utils/education';
-import type { EducationDashboardData } from '~/utils/education-dashboard';
-import { teachingNeedsAttention } from '~/utils/education-dashboard';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import type { ClassroomDetail } from '~/utils/domain/education/education';
+import { assignmentPhase, educationCacheKey } from '~/utils/domain/education/education';
+import type { EducationDashboardData } from '~/utils/domain/education/education-dashboard';
+import { teachingNeedsAttention } from '~/utils/domain/education/education-dashboard';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 

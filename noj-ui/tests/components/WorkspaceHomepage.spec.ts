@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, reactive, ref, watch } from 'vue';
-import type { WorkspaceDetail } from '~/utils/workspace';
+import type { WorkspaceDetail } from '~/utils/domain/workspace/workspace';
 const notices = vi.hoisted(() => ({ success: vi.fn() }));
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: notices }) }));
 import WorkspaceHome from '~/pages/d/[slug]/index.vue';

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DomainSubmission } from '~/composables/useDomainSubmissions';
-import { formatScore, getResultDef, getStatusLabel } from '~/utils/submissionFormat';
+import { formatScore, getResultDef, getStatusLabel } from '~/utils/domain/submission/submissionFormat';
 const props = defineProps<{ submission: DomainSubmission }>();
 const hidden = computed(() => props.submission.result_visibility === 'hidden');
 const verdict = computed(() =>

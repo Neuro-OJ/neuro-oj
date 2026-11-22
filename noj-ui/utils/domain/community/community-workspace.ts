@@ -1,4 +1,4 @@
-import { workspacePath } from './workspace.ts';
+import { workspacePath } from '../workspace/workspace.ts';
 
 /** null 表示账号通知；内容社区始终有明确使用域。 */
 export function communityApiPath(slug: string | null, suffix = '') {
