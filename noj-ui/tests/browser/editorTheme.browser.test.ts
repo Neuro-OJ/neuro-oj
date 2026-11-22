@@ -6,7 +6,7 @@
  * 通过实际 Domain solve 入口验收；API 全部使用本地夹具，无需启动 core / 数据库。
  */
 // deno-lint-ignore no-import-prefix -- 沿用 deno.lock 已固定的浏览器工具版本
-import { chromium, expect, type Locator } from 'npm:playwright@1.62.0/test';
+import { chromium, expect, type Locator } from 'npm:playwright@1.65.1/test';
 
 const uiUrl = Deno.env.get('E2E_UI_URL') ?? 'http://127.0.0.1:3000';
 const screenshotDir = Deno.env.get('NOJ_THEME_SCREENSHOTS');

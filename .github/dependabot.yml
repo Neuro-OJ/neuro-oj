@@ -74,6 +74,11 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+      # rolldown 由 package.json overrides 强制统一，必须落在 vite 声明的
+      # `~1.x.y` 区间内；跨 minor 会导致 __vite__mapDeps 预加载占位替换错位、
+      # 产物 JS 语法错误。随 vite 升级手动调整。
+      - dependency-name: "rolldown"
+        update-types: ["version-update:semver-minor"]
 
   # ---------------------------------------------------------------------------
   # cargo — noj-judge Rust 依赖（tokio / bollard / redis 等）

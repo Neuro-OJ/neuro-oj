@@ -715,7 +715,7 @@ jobs:
 
       - name: 安装 BFF 浏览器验收依赖
         working-directory: noj-ui
-        run: deno run -A npm:playwright@1.62.1 install --with-deps chromium
+        run: deno run -A npm:playwright@1.65.1 install --with-deps chromium
 
       - name: BFF 生产 SSR 与水合验收
         working-directory: noj-ui
