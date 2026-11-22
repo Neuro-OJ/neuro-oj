@@ -6,7 +6,7 @@
  * - /catalog/problems、/catalog/trainings
  * - /problems/:id/effective-version-policy、
  *   /contests/:contestId/problems/:problemId/{effective-version-policy,version}（版本策略）
- * - /submissions、/contest/contests、/judge-images、
+ * - /submissions、/judge-images、
  *   /dashboard/stats、/settings、/audit-logs、/announcements、/llm/...
  *
  * 组级守卫：所有 admin 端点均需认证 + 管理员权限，在此统一挂载。
@@ -25,7 +25,6 @@ import submissionAdminRouter from "./routes/submission.ts";
 import submissionJobsAdminRouter from "./routes/submission-jobs.ts";
 import problemVersionsAdminRouter from "./routes/problem-versions.ts";
 import queryAdminRouter from "./routes/query.ts";
-import contestAdminRouter from "./routes/contest.ts";
 import systemAdminRouter from "./routes/system.ts";
 import communityAdminRouter from "./routes/community.ts";
 import gatewayAdminRouter from "./routes/gateway.ts";
@@ -55,7 +54,6 @@ router.route("/submission-jobs", submissionJobsAdminRouter);
 // 版本策略路由按 Handbook §4.5 的路径挂在 /api/v1/admin 根下（不是 /admin/catalog）
 router.route("/", problemVersionsAdminRouter);
 router.route("/query", queryAdminRouter);
-router.route("/contest", contestAdminRouter);
 router.route("/system", systemAdminRouter);
 router.route("/community", communityAdminRouter);
 router.route("/gateway", gatewayAdminRouter);

@@ -185,7 +185,7 @@ Settlement）**阶段：
 | 项 | 结果 |
 | --- | --- |
 | 删除的无域路由 | 8 条只读（列表、详情、赛题、单题、实时榜、正式榜、我的提交、答疑）+ 5 条写入 + SSE `/contests/:id/events` |
-| 第一方调用方迁移 | E2E 37 处改走域路径；后台两处读接口改走 `GET /api/v1/admin/contest/contests/:id` |
+| 第一方调用方迁移 | E2E 37 处改走域路径；后台两处读接口改走 `GET /api/v1/admin/contest/contests/:id`（该管理端接口已在 0.11.0 之后删除，统一走域入口） |
 | 删除的死代码 | 旧编辑器页 `pages/editor/[id].vue` 及其专用组件、`utils/editorHistory.ts`（此前已被全局 301 覆盖，永不可达） |
 | 门禁 | `scripts/check-legacy-contest-api.ts`：路由文件不得复活、第一方零引用、退役清单不得再登记比赛 |
 
@@ -193,7 +193,7 @@ Settlement）**阶段：
 
 1. **"已退役"曾经只在生产生效**（`retireLegacyEndpoints` 默认取 `NOJ_ENV ===
    "production"`），所以 E2E 里旧写接口仍返回 201——测试通过从来不是退役证据。
-2. **授权口径绑默认域**：旧读路径经 `resolveDefaultContestAccess` 固定 `main`，因此
+2. **授权口径绑默认域**：旧读路径固定 `main` 域授权，因此
    旧编辑器深链接只能收敛到 `main`，不能"顺手"改成域无关。
 
 决策记录见仓库内

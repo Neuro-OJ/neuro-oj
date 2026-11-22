@@ -9,7 +9,6 @@
 import {
   apiGet,
   apiPost,
-  apiPut,
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
@@ -69,14 +68,13 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
   if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
-    "/api/v1/admin/contest/contests",
+    "/api/v1/domains/main/contests",
     {
       title: `E2E 答疑竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
       config: {},
-      is_public: true,
       affect_global_ranking: false,
       problems: [{
         problem_id: problemId,
@@ -165,14 +163,13 @@ e2eTest(
     // 已结束竞赛：先建赛后改时间窗口（ended 竞赛无法注册）
     const now = Date.now();
     const endedCreate = await apiPost(
-      "/api/v1/admin/contest/contests",
+      "/api/v1/domains/main/contests",
       {
         title: `E2E 已结束答疑竞赛 ${testSuffix}`,
         start_time: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
         end_time: new Date(now - 60 * 60 * 1000).toISOString(),
         type: "kaggle",
         config: {},
-        is_public: true,
         affect_global_ranking: false,
         problems: [{
           problem_id: problemId,
@@ -197,14 +194,13 @@ e2eTest(
     // spec: pending / ended 期间提问 MUST 403（需已注册参赛者身份）
     // pending 竞赛：创建未来窗口竞赛，注册后赛前提问
     const pendingCreate = await apiPost(
-      "/api/v1/admin/contest/contests",
+      "/api/v1/domains/main/contests",
       {
         title: `E2E 待开始答疑竞赛 ${testSuffix}`,
         start_time: new Date(now + 60 * 60 * 1000).toISOString(),
         end_time: new Date(now + 120 * 60 * 1000).toISOString(),
         type: "kaggle",
         config: {},
-        is_public: true,
         affect_global_ranking: false,
         problems: [{
           problem_id: problemId,
@@ -249,16 +245,17 @@ e2eTest(
       );
     }
 
-    // ended 竞赛：无法注册，先建 running 窗口竞赛注册，再由 admin 改为已结束
+    // ended 竞赛：无法注册，先建短窗口的 running 竞赛注册，再等它自然结束
+    // （域入口开赛后不能修改受理窗口）。
+    const endedAskEnd = Date.now() + 5_000;
     const endedAskCreate = await apiPost(
-      "/api/v1/admin/contest/contests",
+      "/api/v1/domains/main/contests",
       {
         title: `E2E 赛后提问竞赛 ${testSuffix}`,
         start_time: new Date(now - 60 * 60 * 1000).toISOString(),
-        end_time: new Date(now + 60 * 60 * 1000).toISOString(),
+        end_time: new Date(endedAskEnd).toISOString(),
         type: "kaggle",
         config: {},
-        is_public: true,
         affect_global_ranking: false,
         problems: [{
           problem_id: problemId,
@@ -283,16 +280,9 @@ e2eTest(
         }`,
       );
     }
-    const endContest = await apiPut(
-      `/api/v1/admin/contest/contests/${endedAskContestId}`,
-      { end_time: new Date(now - 1000).toISOString() },
-      adminToken,
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, endedAskEnd - Date.now()) + 500)
     );
-    if (endContest.status !== 200) {
-      throw new Error(
-        `结束竞赛失败: ${endContest.status} ${JSON.stringify(endContest.body)}`,
-      );
-    }
     const endedAsk = await apiPost(
       `/api/v1/domains/main/contests/${endedAskContestId}/clarifications`,
       { content: "赛后提问" },
