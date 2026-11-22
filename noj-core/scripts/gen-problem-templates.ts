@@ -105,10 +105,20 @@ export function renderModule(
     return lines.join("\n");
 }
 
+/**
+ * `deno fmt` 的配置路径。
+ *
+ * 必须显式传 `--config`：本生成器同时被 Root Gates（仓库根目录）和
+ * `tests/scripts/problems-init-templates_test.ts`（noj-core 目录）调用，
+ * 而 `deno fmt` 只按**当前工作目录**发现 deno.json。不钉死配置时，根目录生成
+ * 2 空格、noj-core 内生成 4 空格，两处 `--check` 必有一处失败。
+ */
+const FMT_CONFIG = join(SCRIPTS_DIR, "..", "deno.json");
+
 /** 用 deno fmt 规范化源码，使生成结果与仓库格式检查一致。 */
 export async function formatTs(source: string): Promise<string> {
     const child = new Deno.Command(Deno.execPath(), {
-        args: ["fmt", "--ext", "ts", "-"],
+        args: ["fmt", "--config", FMT_CONFIG, "--ext", "ts", "-"],
         stdin: "piped",
         stdout: "piped",
         stderr: "piped",

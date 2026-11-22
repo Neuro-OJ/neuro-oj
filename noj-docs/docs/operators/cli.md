@@ -108,7 +108,14 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
   `bootstrap admin`（通过 `ADMIN_EMAIL`
   指定目标）。该命令可以提升已有用户，只用于明确授权的本机维护，不应加入启动或升级流程。
 - `dev-setup` 与旧 `bootstrap admin` 保留开发/维护用途；未指定 `ADMIN_EMAIL`
-  时旧命令仍会打印开发引导密码，生产首次初始化应使用 `bootstrap first-admin`。
+  时旧命令把一次性管理员密码写入启动目录的 `.data/bootstrap-admin.txt`
+  （控制台只显示该路径），生产首次初始化应使用 `bootstrap first-admin`。
+- 凭据写盘失败时命令以非零退出码中止，且**不会创建管理员账号**；修复目录后
+  直接重跑即可完成初始化（会生成新密码）。目标文件已存在时不会覆盖，本次凭据
+  写到同目录下带时间戳的兄弟文件，旧文件原样保留。
+- 只读根文件系统（生产 `core` 容器）内如需使用 `bootstrap admin`，用
+  `--credentials-file <path>` 把凭据指向挂载的可写目录；默认的启动目录
+  `/app/.data/` 不可写。
 
 ## 样例题同步
 

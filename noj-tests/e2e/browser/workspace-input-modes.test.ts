@@ -2,7 +2,7 @@
 /** main 新输入模式的真实浏览器→Core→Judge旅程；API只准备资源及核对结果。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
-import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
+import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
     BROWSER_E2E,

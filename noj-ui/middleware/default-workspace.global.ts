@@ -7,12 +7,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
     const destination = defaultWorkspaceDestination(to.path);
     if (!destination) return;
     const query = { ...to.query };
-    if (!to.path.startsWith('/community') && to.path !== '/search') delete query.type;
+    // 静态路径段不区分大小写（与原 Vue Router 页面一致），`/Search` 仍是搜索页。
+    const lower = to.path.toLowerCase();
+    if (!lower.startsWith('/community') && lower !== '/search') delete query.type;
     if (
-        to.path === '/search' && query.type && !['problem', 'contest', 'submission', 'all'].includes(String(query.type))
+        lower === '/search' && query.type && !['problem', 'contest', 'submission', 'all'].includes(String(query.type))
     ) delete query.type;
     if ('path' in destination) {
         if (destination.kind) query.kind = destination.kind;
+        if (destination.query) Object.assign(query, destination.query);
         return navigateTo({ path: destination.path, query, hash: to.hash }, { redirectCode: 301, replace: true });
     }
     if ('trainingRef' in destination) {

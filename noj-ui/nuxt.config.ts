@@ -153,6 +153,21 @@ export default defineNuxtConfig({
         ].map((path) => ({ path, pathPrefix: false })),
     },
 
+    // 自动导入只扫 composables/ 与 utils/ 的顶层，子目录要显式登记（同 components.dirs）。
+    // utils 按领域分子目录后，新增子目录必须在此登记，否则该目录下的工具不会被自动导入。
+    imports: {
+        dirs: [
+            'utils/auth',
+            'utils/server',
+            'utils/domain/problem',
+            'utils/domain/contest',
+            'utils/domain/submission',
+            'utils/domain/education',
+            'utils/domain/workspace',
+            'utils/domain/community',
+        ],
+    },
+
     // API 请求由 server/api/[...slug].ts 代理到 noj-core
 
     app: {

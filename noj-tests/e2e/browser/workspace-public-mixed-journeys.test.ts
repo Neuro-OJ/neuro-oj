@@ -2,7 +2,7 @@
 /** Public/Mixed 实际用户旅程：页面写操作与当前域请求一起验收。 */
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
-import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
+import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { api, getAdminToken, registerUser, TEST_PASSWORD } from "../helper.ts";
 import {
     BROWSER_E2E,

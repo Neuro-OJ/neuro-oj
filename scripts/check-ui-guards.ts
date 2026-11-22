@@ -16,6 +16,13 @@
  *   deno run -A scripts/check-ui-guards.ts --report         # 三 scope 表 + JSON
  *   deno run -A scripts/check-ui-guards.ts --write-baseline # 唯一允许写基线的入口
  *
+ * 跨分支棘轮：`--check-against <git-ref>`（CI 上也可用环境变量
+ * `UI_GUARDS_BASE_REF` 指定）会额外读出目标分支同一份基线，逐项要求
+ * **当前计数不得高于 base**。本地硬棘轮只保证"当前 == 同一提交里的基线"，
+ * 单靠它会漏掉「先加违规、再 --write-baseline 重建基线」——维护者用临时夹具
+ * 实测：新增 `rounded-xl` 后三个 scope 都报错，重建基线后全部通过。跨分支
+ * 比对把这条路堵死：基线只允许随真实修复下降，不允许上调。
+ *
  * 自检（任一失败即红灯，避免"门禁自动变绿"）：
  *   1. 扫到的 `noj-ui/**\/*.vue` 少于 100 个——扫描根或过滤规则失效；
  *   2. 基线文件缺失 / 不可读——没有可比对的事实源；
@@ -121,6 +128,35 @@ export function compareWithBaseline(
   return errors;
 }
 
+/**
+ * 与**目标分支**的基线比对：任何规则 × 任何 scope，当前计数都不得高于 base。
+ *
+ * 与 `compareWithBaseline` 的刻意差异：这里只拦"高于"，允许低于——目标分支的
+ * 基线是历史水位，本分支修掉一些违规时不需要先去改目标分支。但当前分支自己的
+ * 基线仍由本地硬棘轮要求逐项相等（下降要在本分支 --write-baseline 锁住）。
+ * base 里缺某条规则（新规则首次加入）按 0 计：新规则扫出的存量也算违规。
+ */
+export function compareAgainstBase(
+  scan: Scan,
+  baseline: Baseline,
+): string[] {
+  const errors: string[] = [];
+  for (const scope of SCOPE_NAMES) {
+    for (const rule of RULE_NAMES) {
+      const current = scan[scope].counts[rule];
+      const base = baseline.scopes[scope]?.[rule] ?? 0;
+      if (current > base) {
+        errors.push(
+          `${scope}/${rule} 高于目标分支基线：${base} → 当前 ${current}（+${
+            current - base
+          }）——基线只允许随真实修复下降，禁止重建基线把违规上调`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
 /** 与基线无关的自检项（文件数 + 探针）。 */
 export function selfCheck(
   scan: Scan,
@@ -141,6 +177,8 @@ export interface CheckOptions {
   minScannedFiles?: number;
   /** 基线路径（相对扫描根）。 */
   baselinePath?: string;
+  /** 目标分支的基线；给出时额外做「不得高于 base」比对（夹具测试用）。 */
+  baseBaseline?: Baseline;
 }
 
 export interface CheckResult {
@@ -172,7 +210,68 @@ export async function loadBaseline(
   }
 }
 
-/** 完整门禁：扫描 → 自检 → 读基线 → 逐项比对。 */
+export interface RefBaselineResult {
+  baseline: Baseline | null;
+  /** 目标 ref 上还没有这份基线（守卫首次引入）；不是失败。 */
+  missing: boolean;
+  errors: string[];
+}
+
+/**
+ * 从 git ref 读出基线文件（`git show <ref>:<path>`）。
+ *
+ * - ref 无法解析 → 失败（参数写错不能被当成"新引入"静默放过）；
+ * - ref 上没有该文件 → `missing`（守卫首次合入前，目标分支尚无事实源）；
+ * - 文件解析失败 → 失败（目标基线坏了，不能拿"缺失"当借口）。
+ */
+export async function loadBaselineFromRef(
+  root: string,
+  ref: string,
+  baselinePath = BASELINE_PATH,
+): Promise<RefBaselineResult> {
+  const cwd = toPosix(root);
+  const resolved = await new Deno.Command("git", {
+    args: ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+    cwd,
+    stdout: "null",
+    stderr: "null",
+  }).output();
+  if (!resolved.success) {
+    return {
+      baseline: null,
+      missing: false,
+      errors: [`--check-against 的目标 ref 无法解析：${ref}`],
+    };
+  }
+  const shown = await new Deno.Command("git", {
+    args: ["show", `${ref}:${baselinePath}`],
+    cwd,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  if (!shown.success) {
+    return { baseline: null, missing: true, errors: [] };
+  }
+  try {
+    return {
+      baseline: parseBaseline(new TextDecoder().decode(shown.stdout)),
+      missing: false,
+      errors: [],
+    };
+  } catch (err) {
+    return {
+      baseline: null,
+      missing: false,
+      errors: [
+        `目标分支 ${ref} 的基线不可解析：${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      ],
+    };
+  }
+}
+
+/** 完整门禁：扫描 → 自检 → 读基线 → 逐项比对 →（可选）跨分支比对。 */
 export async function checkUiGuards(
   root: string,
   options: CheckOptions = {},
@@ -184,10 +283,21 @@ export async function checkUiGuards(
   if (loaded.baseline) {
     errors.push(...compareWithBaseline(scan, loaded.baseline));
   }
+  if (options.baseBaseline) {
+    errors.push(...compareAgainstBase(scan, options.baseBaseline));
+  }
   return { scan, errors };
 }
 
 // ── 入口 ────────────────────────────────────────────────────────────────────
+
+/** 取 `--flag value` 的值；缺值（或下一个参数仍是开关）返回 `null`。 */
+function flagValue(flag: string): string | null {
+  const index = Deno.args.indexOf(flag);
+  if (index < 0) return null;
+  const value = Deno.args[index + 1];
+  return value && !value.startsWith("--") ? value : null;
+}
 
 if (import.meta.main) {
   const mode = Deno.args.includes("--write-baseline")
@@ -195,6 +305,23 @@ if (import.meta.main) {
     : Deno.args.includes("--report")
     ? "report"
     : "check";
+  const baseRefArg = flagValue("--check-against");
+  // CI 在 PR 上通过环境变量传入目标分支（本地不设则为空，跳过跨分支比对）。
+  const baseRef = baseRefArg ?? Deno.env.get("UI_GUARDS_BASE_REF")?.trim() ??
+    "";
+
+  if (Deno.args.includes("--check-against") && !baseRefArg) {
+    console.error(
+      "--check-against 需要一个 git ref，例如 --check-against main",
+    );
+    Deno.exit(2);
+  }
+  if (mode === "write" && baseRef !== "") {
+    console.error(
+      "--write-baseline 与 --check-against 不能同时使用：写基线不应绕过目标分支比对",
+    );
+    Deno.exit(2);
+  }
 
   const scan = await scanUi(REPO_ROOT);
   const selfErrors = selfCheck(scan);
@@ -228,16 +355,30 @@ if (import.meta.main) {
   }
 
   const errors = compareWithBaseline(scan, loaded.baseline);
+  let baseNote = "";
+  if (baseRef !== "") {
+    const refLoaded = await loadBaselineFromRef(REPO_ROOT, baseRef);
+    errors.push(...refLoaded.errors);
+    if (refLoaded.missing) {
+      console.log(
+        `注意：目标分支 ${baseRef} 上还没有 ${BASELINE_PATH}（守卫首次引入），跳过跨分支基线比对。`,
+      );
+    } else if (refLoaded.baseline) {
+      errors.push(...compareAgainstBase(scan, refLoaded.baseline));
+      baseNote = `；与 ${baseRef} 的基线逐项比较未上调`;
+    }
+  }
+
   if (errors.length > 0) {
-    console.error("设计系统守卫失败（当前与基线不逐项相等）：");
+    console.error("设计系统守卫失败（当前与基线不逐项相等，或基线被上调）：");
     for (const err of errors) console.error(`- ${err}`);
     console.error(
-      "\n违规回流：改用设计系统 token / U* 组件；\n" +
+      "\n违规回流：改用设计系统 token / U* 组件，不要重建基线把违规写进去；\n" +
         "已修复导致下降：运行 deno run -A scripts/check-ui-guards.ts --write-baseline 锁住成果。",
     );
     Deno.exit(1);
   }
   console.log(
-    `设计系统守卫通过（${summarize(scan)}；与 ${BASELINE_PATH} 逐项相等）`,
+    `设计系统守卫通过（${summarize(scan)}；与 ${BASELINE_PATH} 逐项相等${baseNote}）`,
   );
 }

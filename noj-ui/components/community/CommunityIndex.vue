@@ -217,9 +217,13 @@ async function prepareEditor() {
     showEditor.value = true;
 }
 
-async function searchProblems() {
+// `value` 由 `update:modelValue` 传入：Nuxt UI 的 UInput 会先透传原生 `input`
+// 事件、再更新 v-model，所以在 `@input` 里读 `problemQuery` 拿到的是上一次的值
+//（实测输入 "ab" 后补 "c"，两次 handler 分别读到 "" 和 "ab"）。搜索必须用
+// 本次事件的新值，不能读 ref。
+async function searchProblems(value?: string) {
     const seq = ++problemSearchSeq;
-    const q = problemQuery.value.trim();
+    const q = (typeof value === 'string' ? value : problemQuery.value).trim();
     if (q.length < 2) {
         problemResults.value = [];
         showProblemDropdown.value = false;
@@ -460,7 +464,7 @@ onMounted(() => {
                 <div v-if="activeType === 'solution'" class="relative mb-3">
                     <UInput v-model="problemQuery" class="w-full"
                         placeholder="搜索题目（输入至少 2 个字符）或直接填题目 ID" @focus="searchProblemIdChanged"
-                        @input="searchProblems" @blur="delayCloseProblemDropdown" />
+                        @update:model-value="searchProblems" @blur="delayCloseProblemDropdown" />
                     <span v-if="problemQuery"
                         class="absolute right-2 top-2 cursor-pointer text-xs text-text-secondary hover:text-primary"
                         @mousedown.prevent="clearProblemSelection">清除</span>

@@ -53,11 +53,12 @@ Deno.test("noj problems build --help 包含 --id 选项", async () => {
     assertEquals(stdout.includes("--id"), true);
 });
 
-Deno.test("noj bootstrap admin --help 包含 --email/--password", async () => {
+Deno.test("noj bootstrap admin --help 包含 --email/--password/--credentials-file", async () => {
     const { code, stdout } = await runCli(["bootstrap", "admin", "--help"]);
     assertEquals(code, 0);
     assertEquals(stdout.includes("--email"), true);
     assertEquals(stdout.includes("--password"), true);
+    assertEquals(stdout.includes("--credentials-file"), true);
 });
 
 Deno.test("noj problems import --help 包含 --dir 默认值", async () => {

@@ -2,7 +2,7 @@
 /** 班级治理、矩阵导出及补题跟进；API仅准备已有账号、普通角色和原始任务。 */
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
-import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
+import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
     BROWSER_E2E,

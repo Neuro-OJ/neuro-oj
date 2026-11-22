@@ -33,13 +33,16 @@ export const RULE_NAMES: readonly RuleName[] = [
  */
 const PATTERNS: Record<Exclude<RuleName, "raw-control">, readonly RegExp[]> = {
   // 设计系统只允许 `rounded` / `rounded-md` / `rounded-full`（4px 工业圆角）。
+  // `rounded-4xl`（2rem）与 lg/xl/2xl/3xl 一样是 Tailwind 默认圆角，必须拦。
   radius: [
-    /rounded-(?:lg|xl|2xl|3xl)(?![\w-])/,
+    /rounded-(?:lg|xl|2xl|3xl|4xl)(?![\w-])/,
     /rounded-\[[^\]\n]*\]/,
   ],
   // Tailwind 原始色板：颜色只能来自 --c-* token（AGENTS.md 禁令 9）。
+  // 色板清单 = Tailwind 4 默认色板的全部 22 种（此前漏了 neutral / stone，
+  // 用 `bg-neutral-500`、`border-stone-500` 即可绕过门禁）。
   palette: [
-    /(?<![\w-])(?:bg|text|border|divide|ring|outline|from|via|to|fill|stroke|accent|placeholder|caret)-(?:blue|sky|green|emerald|red|rose|amber|yellow|gray|slate|zinc|purple|indigo|pink|orange|teal|cyan|lime|violet|fuchsia)-\d{2,3}(?![\w-])/,
+    /(?<![\w-])(?:bg|text|border|divide|ring|outline|from|via|to|fill|stroke|accent|placeholder|caret)-(?:blue|sky|green|emerald|red|rose|amber|yellow|gray|slate|zinc|neutral|stone|purple|indigo|pink|orange|teal|cyan|lime|violet|fuchsia)-\d{2,3}(?![\w-])/,
   ],
   motion: [
     /animate-ping/,
@@ -152,7 +155,8 @@ export function detect(source: string): Record<RuleName, number> {
  * input、注释里的标签、颜色任意值）。规则写坏时这里会先红。
  */
 export const PROBE_SOURCE = `<template>
-  <div class="rounded-xl rounded-2xl rounded-[7px] bg-blue-500 text-slate-700
+  <div class="rounded-xl rounded-2xl rounded-[7px] rounded-4xl
+              bg-blue-500 text-slate-700 bg-neutral-500 border-stone-500
               animate-ping hover:-translate-y-1 transition-all
               animate-[fadeIn_1s_ease] dark:bg-bg-panel text-13px text-[14px]">
     <button>原生按钮</button>
@@ -171,8 +175,8 @@ export const PROBE_SOURCE = `<template>
 
 /** 探针的期望命中数：逐条锁定，防止"多算"悄悄推高基线。 */
 export const PROBE_EXPECTED: Record<RuleName, number> = {
-  radius: 3,
-  palette: 2,
+  radius: 4,
+  palette: 4,
   motion: 3,
   entrance: 1,
   dark: 1,

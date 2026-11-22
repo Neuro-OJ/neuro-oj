@@ -28,12 +28,23 @@
 | `layouts/`            | `default`（导航 + 页脚）/ `auth` / `admin`（侧栏 + 顶栏）/ `workspace`                           |
 | `middleware/`         | `auth` / `admin` / `community-moderation`（[data.md](data.md)）                                  |
 | `server/api/`         | `[...slug].ts` 通用代理、`auth/logout.post.ts` 注销（[security.md](security.md)）                |
-| `utils/`              | 纯函数与政策：`sanitize-policy.ts`、`ssr-routes.ts`、`default-workspace.ts`、`i18n.ts`           |
+| `utils/`              | 纯函数与政策；根层只放横切件，业务件按域分目录（见「utils 分类」）                               |
 | `app.vue`             | 根组件；`--c-*` CSS 变量唯一定义处                                                               |
 | `assets/css/main.css` | Tailwind v4 `@theme`（映射 `--c-*`）+ `--ui-*` + `prose-neuro`                                   |
 
 无域前缀的题库、比赛、提交与旧编辑入口在页面 setup 前固定跳转默认域 `main`
 （`utils/domain/workspace/default-workspace.ts`，301 保护旧书签），旧页面已删除。
+
+## utils 分类
+
+根层只留横切件：`breadcrumb`、`buildInfo`、`draft-storage`、`i18n`、`markdown`、
+`publicIdentifiers`、`sanitize`、`sanitize-policy`、`ssr-routes`。其余按域放进
+`utils/auth/`、`utils/server/`、`utils/domain/{problem,contest,submission,education,workspace,community}/`。
+
+**新增 utils 子目录必须登记到 `nuxt.config.ts` 的 `imports.dirs`**——自动导入只扫
+`composables/` 与 `utils/` 的顶层，未登记的子目录不会被扫描，模板里直接用会得到
+`TS2339` 或运行时 `undefined`。与组件目录的 R7 同一规则。
+
 
 ## 组件目录（`components/`）
 

@@ -12,6 +12,7 @@
  */
 
 import { eq, sql } from "drizzle-orm";
+import { basename, dirname, extname, join, resolve } from "jsr:@std/path@^1";
 import { getDb } from "../../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../../application/search-tasks.ts";
 import { judgeImages, tags, users } from "../../../../../shared/db/schema.ts";
@@ -42,6 +43,98 @@ async function promoteToPlatformAdmin(userId: string): Promise<void> {
  */
 function shouldForcePasswordChange(): boolean {
     return Deno.env.get("NOJ_FORCE_PASSWORD_CHANGE") !== "false";
+}
+
+/** 引导凭据默认落盘路径（相对启动目录，`.data/` 已被 .gitignore 忽略）。 */
+const BOOTSTRAP_CREDENTIAL_RELATIVE_PATH = ".data/bootstrap-admin.txt";
+
+/** 凭据文件写入结果。 */
+export interface BootstrapCredentialsWriteResult {
+    /** 实际写入的绝对路径（目标已存在时为另存的兄弟文件）。 */
+    filePath: string;
+    /** 调用方请求的目标绝对路径。 */
+    requestedPath: string;
+    /** 目标已存在且未被覆盖（本次写到了兄弟文件）。 */
+    existingPreserved: boolean;
+}
+
+/** 解析凭据落盘路径；相对路径以启动目录为基准，便于注入临时目录/挂载点。 */
+export function resolveBootstrapCredentialsPath(filePath?: string): string {
+    const configured = filePath?.trim();
+    return resolve(
+        Deno.cwd(),
+        configured || BOOTSTRAP_CREDENTIAL_RELATIVE_PATH,
+    );
+}
+
+/** 目标已存在时生成不冲突的兄弟文件名（时间戳 + 随机后缀）。 */
+function bootstrapCredentialsSibling(filePath: string): string {
+    const extension = extname(filePath);
+    const stem = basename(filePath, extension);
+    // 2026-11-22T02:40:00.123Z → 20261122T024000123Z
+    const stamp = new Date().toISOString().replace(/[-:.]/g, "");
+    const nonce = crypto.getRandomValues(new Uint8Array(4))
+        .reduce((out, byte) => out + byte.toString(16).padStart(2, "0"), "");
+    return join(dirname(filePath), `${stem}-${stamp}-${nonce}${extension}`);
+}
+
+/**
+ * 把一次性引导凭据写入本机文件。
+ *
+ * 密码不进日志 sink：控制台只给路径，避免终端回滚、录屏或日志采集把临时凭据
+ * 带走。文件权限尽力设为 0600（Windows 无 POSIX 权限位，忽略即可）。
+ *
+ * 不静默覆盖：目标文件已存在时改写到同目录下带时间戳的兄弟文件，既有凭据
+ * 原样保留；返回值携带实际路径与是否发生旁路，调用方据此提示操作者。
+ *
+ * @param credentials 一次性凭据
+ * @param filePath 目标路径；相对路径以启动目录为基准，省略时用
+ *   `.data/bootstrap-admin.txt`
+ */
+export async function writeBootstrapCredentialsFile(
+    credentials: { username: string; email: string; password: string },
+    filePath?: string,
+): Promise<BootstrapCredentialsWriteResult> {
+    const requestedPath = resolveBootstrapCredentialsPath(filePath);
+    const content = [
+        "# NOJ 引导管理员一次性凭据",
+        `timestamp: ${new Date().toISOString()}`,
+        `username: ${credentials.username}`,
+        `email: ${credentials.email}`,
+        `password: ${credentials.password}`,
+        "",
+        "首次登录后系统会强制要求修改密码；确认可登录后请删除本文件。",
+        "",
+    ].join("\n");
+    try {
+        await Deno.mkdir(dirname(requestedPath), {
+            recursive: true,
+            mode: 0o700,
+        });
+        let target = requestedPath;
+        let existingPreserved = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+                await Deno.writeTextFile(target, content, {
+                    createNew: true,
+                    mode: 0o600,
+                });
+                return { filePath: target, requestedPath, existingPreserved };
+            } catch (error) {
+                if (!(error instanceof Deno.errors.AlreadyExists)) throw error;
+                existingPreserved = true;
+                target = bootstrapCredentialsSibling(requestedPath);
+            }
+        }
+        throw new Error("连续生成兄弟文件名仍冲突");
+    } catch (error) {
+        throw new Error(
+            `引导凭据写入失败：${requestedPath}（${
+                error instanceof Error ? error.message : String(error)
+            }）。请确认该目录可写；只读根文件系统请用 bootstrap admin --credentials-file 指定挂载的可写目录`,
+            { cause: error },
+        );
+    }
 }
 
 /**
@@ -230,10 +323,22 @@ function generateStrongPassword(): string {
  *
  * 当系统中不存在任何可登录管理员（users.role='admin' 且 id!='0'）时，
  * 自动创建一个临时管理员（username=admin / email=admin@noj.local /
- * 24 字符随机密码，must_change_password=true），凭据打印到终端。
+ * 24 字符随机密码，must_change_password=true），凭据写入启动目录的
+ * `.data/bootstrap-admin.txt`，终端只打印文件路径。
  * 已存在可登录 admin 时本函数为 no-op，可重复运行（幂等）。
+ *
+ * 顺序：**先交付凭据、后落库**。凭据写盘失败时抛错（CLI 非零退出），此时
+ * 数据库里没有管理员，`hasLoginableAdmin` 不会挡住修好目录后的重跑；反过来
+ * （先落库、失败再删号）依赖第二次数据库写成功，数据库不健康时会留下一个
+ * 没有密码的管理员，反而把初始化锁死。
+ *
+ * @param options.credentialsFile 凭据落盘路径；相对路径以启动目录为基准，
+ *   省略时用 `.data/bootstrap-admin.txt`。只读根文件系统（生产 `core` 容器）
+ *   里应指向挂载的可写目录。
  */
-export async function ensureBootstrapAdmin(): Promise<void> {
+export async function ensureBootstrapAdmin(
+    options: { credentialsFile?: string } = {},
+): Promise<void> {
     if (Deno.env.get("ADMIN_EMAIL")) {
         console.log(
             "  ADMIN_EMAIL 已设置，遵循环境变量配置，跳过引导管理员创建",
@@ -256,17 +361,53 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     const password = generateStrongPassword();
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
+    const passwordHash = await hashPassword(password);
 
-    await db.insert(users).values({
-        id,
-        username,
-        email,
-        password_hash: await hashPassword(password),
-        must_change_password: shouldForcePasswordChange(),
-        role: "admin",
-        created_at: now,
-        updated_at: now,
-    });
+    // 1) 先交付一次性凭据；失败即中止，数据库尚未发生任何写入。
+    let credentialFile: string;
+    try {
+        const written = await writeBootstrapCredentialsFile(
+            { username, email, password },
+            options.credentialsFile,
+        );
+        credentialFile = written.filePath;
+        if (written.existingPreserved) {
+            console.warn(
+                `  目标 ${written.requestedPath} 已存在，未覆盖；本次凭据写入 ${written.filePath}`,
+            );
+        }
+    } catch (error) {
+        // 一次性密码不送进日志：只报路径/原因，绝不回落为打印密码。
+        throw new Error(
+            "引导管理员创建已中止：一次性凭据写盘失败，未创建任何管理员账号。" +
+                "修复目录后可直接重跑（会生成新密码）。" +
+                (error instanceof Error ? ` 原因：${error.message}` : ""),
+            { cause: error },
+        );
+    }
+
+    // 2) 凭据已交付，再落库。插入失败时保留凭据文件而不删除：若提交结果
+    // 不确定（连接在响应途中断开），文件里的密码仍可能对应已建账号；重跑时
+    // 已存在管理员会走幂等跳过，不会覆盖该文件。
+    try {
+        await db.insert(users).values({
+            id,
+            username,
+            email,
+            password_hash: passwordHash,
+            must_change_password: shouldForcePasswordChange(),
+            role: "admin",
+            created_at: now,
+            updated_at: now,
+        });
+    } catch (error) {
+        throw new Error(
+            `引导管理员账号创建失败；本次凭据保留在 ${credentialFile}，` +
+                "如确认账号未创建可直接重跑（会另存新文件，不覆盖该文件）。" +
+                (error instanceof Error ? ` 原因：${error.message}` : ""),
+            { cause: error },
+        );
+    }
 
     console.log("");
     console.log("-".repeat(72));
@@ -280,12 +421,12 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     console.log("-".repeat(72));
     console.log(`  username: ${username}`);
     console.log(`  email:    ${email}`);
-    // 开发引导必须把一次性密码显示给本机操作者（仅本地 bootstrap 路径）。
-    // codeql[js/clear-text-logging]
-    console.log(`  password: ${password}`);
+    console.log(`  已写入 ${credentialFile}，请打开查看`);
     console.log("-".repeat(72));
     if (shouldForcePasswordChange()) {
-        console.log("⚠ 请立即记录上述密码，首次登录后系统会强制要求修改密码。");
+        console.log(
+            "⚠ 请立即查看上述密码文件，首次登录后系统会强制要求修改密码。",
+        );
     }
     console.log("-".repeat(72));
     console.log("");

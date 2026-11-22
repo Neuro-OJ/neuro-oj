@@ -75,11 +75,14 @@ export type {
     UpdateJudgeImageInput,
 } from "../types/judge-images.ts";
 export {
+    type BootstrapCredentialsWriteResult,
     ensureAdminFromEnv,
     ensureBootstrapAdmin,
     ensureE2EPwChangeUser,
+    resolveBootstrapCredentialsPath,
     seedJudgeImages,
     seedTags,
+    writeBootstrapCredentialsFile,
 } from "./services/seed/seed-system.ts";
 export {
     _resetTrustedProxyCacheForTest,

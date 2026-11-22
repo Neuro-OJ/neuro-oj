@@ -202,6 +202,80 @@ Deno.test("ui-guards: 硬棘轮——增长与下降都必须失败", async () =
   }
 });
 
+Deno.test("ui-guards: 目标分支基线拒绝上调（重建基线也拦得住）", async () => {
+  const clean =
+    `<template><div class="rounded-md bg-primary text-sm">x</div></template>\n`;
+  const dirty =
+    `<template><div class="rounded-xl bg-primary text-sm">x</div></template>\n`;
+  const root = await makeRepo({ "pages/a.vue": clean });
+  try {
+    // 目标分支（base ref）的基线：0 处圆角违规。
+    const base = buildBaseline(await scanUi(root));
+
+    // 攻击者新增 rounded-xl 后重建本地基线：本地硬棘轮只比较"当前 == 本提交
+    // 基线"，会放行——这正是评审复现的「重建基线即变绿」。
+    await Deno.writeTextFile(`${root}/noj-ui/pages/a.vue`, dirty);
+    await writeFixtureBaseline(
+      root,
+      JSON.stringify(buildBaseline(await scanUi(root)), null, 2) + "\n",
+    );
+    const localOnly = await checkUiGuards(root, { minScannedFiles: 0 });
+    assertEquals(
+      localOnly.errors,
+      [],
+      "夹具前提：仅本地硬棘轮时，重建基线后应通过",
+    );
+
+    // 与目标分支基线比对：三个 scope 的 radius 都必须报"高于目标分支基线"。
+    const checked = await checkUiGuards(root, {
+      minScannedFiles: 0,
+      baseBaseline: base,
+    });
+    for (const scope of ["s1", "public", "all"]) {
+      assert(
+        checked.errors.some((err) =>
+          err.includes(`${scope}/radius`) && err.includes("目标分支基线")
+        ),
+        `${scope}/radius 上调必须失败，实际：${
+          JSON.stringify(checked.errors)
+        }`,
+      );
+    }
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("ui-guards: 目标分支基线允许下降（修复后无需先改 base）", async () => {
+  const dirty =
+    `<template><div class="rounded-xl bg-primary text-sm">x</div></template>\n`;
+  const clean =
+    `<template><div class="rounded-md bg-primary text-sm">x</div></template>\n`;
+  const root = await makeRepo({ "pages/a.vue": dirty });
+  try {
+    // 目标分支基线登记了 1 处 radius。
+    const base = buildBaseline(await scanUi(root));
+
+    // 本分支修掉它，并把本分支基线同步到 0（本地硬棘轮要求相等）。
+    await Deno.writeTextFile(`${root}/noj-ui/pages/a.vue`, clean);
+    await writeFixtureBaseline(
+      root,
+      JSON.stringify(buildBaseline(await scanUi(root)), null, 2) + "\n",
+    );
+    const result = await checkUiGuards(root, {
+      minScannedFiles: 0,
+      baseBaseline: base,
+    });
+    assertEquals(
+      result.errors,
+      [],
+      "当前计数低于目标分支基线应通过（基线只减不增）",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("ui-guards: 真实仓库通过，且基线可由当前扫描原样复现", async () => {
   const { errors, scan } = await checkUiGuards(REPO_ROOT);
   assertEquals(errors, []);

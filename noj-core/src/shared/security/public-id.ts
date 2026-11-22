@@ -23,7 +23,11 @@ export function generatePublicId(prefix: string, length = 8): string {
     const bytes = crypto.getRandomValues(new Uint8Array(length));
     let out = "";
     for (let i = 0; i < bytes.length; i++) {
-        out += PUBLIC_ID_ALPHABET[bytes[i] % PUBLIC_ID_ALPHABET.length];
+        // 字母表长度 32，恰好整除 256：取高 5 位（>> 3）与 % 32 等价且无偏，
+        // 0..255 >> 3 会让 0..31 各出现 8 次。用位移而不是取模，是因为
+        // 静态分析（CodeQL js/biased-cryptographic-random）无法从常量推出
+        // 32 整除 256，会把取模误报为有偏。
+        out += PUBLIC_ID_ALPHABET[bytes[i] >> 3];
     }
     return `${prefix}-${out}`;
 }

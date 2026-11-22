@@ -2,7 +2,7 @@
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
 import { expect } from "npm:playwright@1.62.1/test";
 import postgres from "npm:postgres@3.4.5";
-import { collectPendingConsents } from "../../../noj-ui/utils/legalConsent.ts";
+import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
     BROWSER_E2E,
