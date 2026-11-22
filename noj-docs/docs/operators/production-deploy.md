@@ -248,7 +248,7 @@ Release，保证安装与升级使用同一版本集合，不会选中资产未�
 
 从 `v0.11` 之后的版本升级与备份前，建议通过 `noj-cli check` / `noj-cli status`
 确认安装目录所在分区与 Docker
-数据目录（`docker info --format '{{.DockerRootDir}}'`）所在分区的可用余量（可用
+数据目录（<span v-pre>`docker info --format '{{.DockerRootDir}}'`</span>）所在分区的可用余量（可用
 `< 5 GiB` 或使用率 `>= 85%` 会输出低空间告警；`< 1 GiB` 或 `>= 95%`
 为严重告警）：
 
