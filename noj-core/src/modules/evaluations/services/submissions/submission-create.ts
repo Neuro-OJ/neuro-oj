@@ -27,7 +27,7 @@ import {
 } from "../../mq/producer.ts";
 import { validateJudgeImageWithKind } from "../../../platform/contracts/cross-module/services_judge-images.ts";
 import { assertContestSubmissionLimit } from "../../../contests/contracts/cross-module/services_contests.ts";
-import { enqueueTaskTx } from "../../../runtime/tasks/repository.ts";
+import { enqueueTaskTx } from "../../../../shared/tasks/repository.ts";
 import { resolveJudgeTaskPriority } from "./judge-priority.ts";
 import { buildJudgeTaskLlm } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
 import { isOiRuntimeConfig } from "../../../problems/types/runtime-config.ts";

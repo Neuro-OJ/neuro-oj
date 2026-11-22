@@ -28,7 +28,10 @@ import {
   storageObjects,
 } from "../../../../shared/db/schema.ts";
 import { AppError } from "../../../../shared/base/errors.ts";
-import { claimTasks, completeTaskTx } from "../../../runtime/index.ts";
+import {
+  claimTasks,
+  completeTaskTx,
+} from "../../../../shared/tasks/repository.ts";
 import {
   draftRevisionRequired,
   getProblemDraft,

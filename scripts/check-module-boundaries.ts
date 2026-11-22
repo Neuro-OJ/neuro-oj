@@ -494,15 +494,13 @@ export function analyzeSources(
 
       if (
         sourceModule === "http" &&
-        (target.endsWith("/src/runtime/system-actors.ts") ||
-          target === "src/runtime/system-actors.ts" ||
-          target.endsWith("/src/modules/runtime/system-actors.ts") ||
-          target === "src/modules/runtime/system-actors.ts")
+        (target.endsWith("/src/shared/access/system-actors.ts") ||
+          target === "src/shared/access/system-actors.ts")
       ) {
         addViolation(
           report.violations,
           "http-system-actor-factory",
-          "HTTP 层不得导入 system actor factory；系统身份只能在 runtime/application composition 创建",
+          "HTTP 层不得导入 system actor factory；系统身份只能在启动与 application 装配点创建",
           file,
           target,
         );
@@ -635,8 +633,11 @@ export function validateBoundaryConfig(config: BoundaryConfig): string[] {
   }
   const ownership = config.tableOwnership ??
     { schemaOwners: {}, tableExceptions: {} };
+  // 底座表（后台任务、SSE 事件日志）归 shared，不属于任何旧模块。
+  const isTableOwner = (owner: string) =>
+    owner === "shared" || nameSet.has(owner);
   for (const [file, owner] of Object.entries(ownership.schemaOwners ?? {})) {
-    if (!nameSet.has(owner)) {
+    if (!isTableOwner(owner)) {
       errors.push(`schema ${file} 指向未知表所有权模块 ${owner}`);
     }
   }
@@ -644,7 +645,7 @@ export function validateBoundaryConfig(config: BoundaryConfig): string[] {
     const [file, tables] of Object.entries(ownership.tableExceptions ?? {})
   ) {
     for (const [table, owner] of Object.entries(tables)) {
-      if (!nameSet.has(owner)) {
+      if (!isTableOwner(owner)) {
         errors.push(
           `表 ${file}:${table} 指向未知表所有权模块 ${owner}`,
         );

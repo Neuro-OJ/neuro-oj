@@ -1,6 +1,6 @@
 /** runtime 后台任务观测 provider；只读取通用任务表，不依赖任何业务 handler。 */
-import type { ObservabilityRegistry } from "../../shared/observability/contracts.ts";
-import { readTaskHealth } from "./tasks/repository.ts";
+import type { ObservabilityRegistry } from "../observability/contracts.ts";
+import { readTaskHealth } from "./repository.ts";
 
 export function registerRuntimeObservability(
   registry: ObservabilityRegistry,

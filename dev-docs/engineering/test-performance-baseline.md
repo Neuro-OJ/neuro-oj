@@ -37,7 +37,7 @@
 | src/modules/communication/community/tests/routes/community.test.ts | 20 | 0 | 0 | 13729ms |
 | src/modules/evaluations/tests/routes/assignment-origin.test.ts | 6 | 0 | 0 | 7596ms |
 | src/modules/education/tests/services/progress-worker.test.ts | 5 | 0 | 0 | 7021ms |
-| src/modules/runtime/tests/tasks/lease-renewal.pg.test.ts | 4 | 0 | 0 | 3998ms |
+| tests/shared/tasks/lease-renewal.pg.test.ts | 4 | 0 | 0 | 3998ms |
 | src/modules/communication/community/tests/services/community-contest-silence.test.ts | 5 | 0 | 0 | 3940ms |
 | src/modules/read-models/search/tests/services/domain-search.test.ts | 6 | 0 | 0 | 3741ms |
 | src/modules/communication/community/tests/services/community-official.test.ts | 5 | 0 | 0 | 3620ms |

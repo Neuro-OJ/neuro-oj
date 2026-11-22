@@ -225,8 +225,9 @@
   （`knowledge_mastery_min_solved`，默认 3）且至少一道达标题位于该节点题目难度
   上三分之一 → `mastered`；节点题量 < K 时需全部达标。
 - **增量重算**：有效成绩物化写入点（`evaluations/.../projection.ts`）经
-  `modules/runtime/knowledge-mastery-task.ts` 在同一事务登记 `knowledge.mastery`
-  任务（target = 用户，按用户去重），handler 调 `recomputeUserMastery(userId)`
+  `modules/evaluations/services/versioning/knowledge-mastery-task.ts`
+  在同一事务登记 `knowledge.mastery` 任务（target = 用户，按用户去重），handler
+  调 `recomputeUserMastery(userId)`
   重算该用户所有相关节点；开关关闭时直接成功结束。
 - **保护结束补算**：`startMasteryProtectionWorker`（1h 周期，事务级 advisory
   锁多副本互斥）对过去 24h 内结束的比赛题目相关用户重算。

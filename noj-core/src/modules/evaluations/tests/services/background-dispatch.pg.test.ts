@@ -3,7 +3,7 @@ import { eq, ne } from "drizzle-orm";
 import { fixture, withQueue } from "../_domain-execution-fixture.ts";
 import { createDomainSubmission } from "../../index.ts";
 import { handleEvaluationDispatchTask } from "../../../application/dispatch-handlers.ts";
-import { claimTasks } from "../../../runtime/tasks/repository.ts";
+import { claimTasks } from "../../../../shared/tasks/repository.ts";
 import {
   getRedis,
   resetRedisForTest,

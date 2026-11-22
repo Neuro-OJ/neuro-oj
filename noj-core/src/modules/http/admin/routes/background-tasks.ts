@@ -21,7 +21,7 @@ import {
   listTasks,
   readTaskHealth,
   requeueFailedTaskTx,
-} from "../../../runtime/tasks/repository.ts";
+} from "../../../../shared/tasks/repository.ts";
 import { appendAuditLogTx } from "../../../platform/contracts/audit.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { BackgroundTaskRow } from "../../../../shared/db/schema.ts";

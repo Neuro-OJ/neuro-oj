@@ -11,7 +11,7 @@ import {
   RETRY_BASE_BACKOFF_MS,
   RETRY_MAX_BACKOFF_MS,
   RETRY_MAX_FAILURES,
-} from "../../tasks/retry-policy.ts";
+} from "../../../src/shared/tasks/retry-policy.ts";
 
 const NOW = 1_700_000_000_000;
 

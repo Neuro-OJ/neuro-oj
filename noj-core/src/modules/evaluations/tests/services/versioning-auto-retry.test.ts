@@ -24,7 +24,7 @@ import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { bindMainProblemForTest } from "../_versioning-fixtures.ts";
 import { handleEvaluationDispatchTask } from "../../../application/dispatch-handlers.ts";
-import { claimTasks } from "../../../runtime/tasks/repository.ts";
+import { claimTasks } from "../../../../shared/tasks/repository.ts";
 import { createSubmission } from "../../index.ts";
 import {
   classifyPlatformErrorRetry,

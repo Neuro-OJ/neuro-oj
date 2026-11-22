@@ -92,12 +92,6 @@
       "legacyDomains": [
         "admin"
       ]
-    },
-    {
-      "name": "runtime",
-      "root": "noj-core/src/modules/runtime",
-      "kind": "runtime",
-      "legacyDomains": []
     }
   ],
   "legacyDomainToModule": {
@@ -132,8 +126,7 @@
     "system": [
       "platform",
       "assets",
-      "application",
-      "runtime"
+      "application"
     ]
   },
   "tableOwnership": {
@@ -162,7 +155,7 @@
       "workspace-invitations.ts": "access",
       "workspace-storage.ts": "assets",
       "workspace.ts": "access",
-      "background-tasks.ts": "runtime"
+      "background-tasks.ts": "shared"
     },
     "tableExceptions": {
       "education.ts": {
@@ -173,7 +166,7 @@
         "storage_objects": "assets"
       },
       "submission.ts": {
-        "sse_events": "runtime"
+        "sse_events": "shared"
       }
     }
   },
@@ -265,14 +258,6 @@
       "ciJobs": [
         "core-test-sharded"
       ]
-    },
-    "runtime": {
-      "testTasks": [
-        "cd noj-core && deno task test:domain runtime"
-      ],
-      "ciJobs": [
-        "core-test-sharded"
-      ]
     }
   },
   "rules": {
@@ -300,8 +285,7 @@
       "evaluations",
       "platform",
       "problems",
-      "read-models",
-      "runtime"
+      "read-models"
     ],
     "assets": [
       "access",
@@ -331,8 +315,7 @@
       "contests",
       "evaluations",
       "platform",
-      "problems",
-      "runtime"
+      "problems"
     ],
     "evaluations": [
       "access",
@@ -342,8 +325,7 @@
       "education",
       "platform",
       "problems",
-      "read-models",
-      "runtime"
+      "read-models"
     ],
     "http": [
       "access",
@@ -354,8 +336,7 @@
       "evaluations",
       "platform",
       "problems",
-      "read-models",
-      "runtime"
+      "read-models"
     ],
     "platform": [
       "access",
@@ -382,9 +363,6 @@
       "evaluations",
       "platform",
       "problems"
-    ],
-    "runtime": [
-      "access"
     ]
   },
   "e2eApiDomains": [
@@ -456,10 +434,6 @@
       "allApiDomains": true
     },
     "http": {
-      "domains": [],
-      "allApiDomains": true
-    },
-    "runtime": {
       "domains": [],
       "allApiDomains": true
     }
