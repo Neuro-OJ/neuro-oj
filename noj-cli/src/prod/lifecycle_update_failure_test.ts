@@ -498,15 +498,7 @@ Deno.test("upgrade：是 update 的别名，行为逐字一致", async () => {
     assertEquals(viaUpgrade.latest, false);
     assertEquals(viaUpgrade.filesSynced, viaUpdate.filesSynced);
     assertEquals(viaUpgrade.backupPath, viaUpdate.backupPath);
-
-    // 显式传 --latest 时 upgrade 仍按固定版本处理（别名不改变模式）
-    const forced = await upgrade({
-      ...shared,
-      dir,
-      io: captureRenderIO().io,
-      latest: true,
-    });
-    assertEquals(forced.latest, false);
+    // --latest 透传见 lifecycle_update_test.ts「upgrade 别名保留 --latest」。
   } finally {
     await Deno.remove(dir, { recursive: true });
   }

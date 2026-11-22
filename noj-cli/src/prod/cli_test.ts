@@ -258,6 +258,37 @@ Deno.test("接线: update 未接线备份时明确失败", async () => {
   }
 });
 
+Deno.test("接线: update 解析 --latest 并先查询最新 Release", async () => {
+  const dir = await makeInstallDir();
+  try {
+    const { runProdUpdate } = await import("./commands/update.ts");
+    const urls: string[] = [];
+    const result = await runProdUpdate(dir, ["--latest"], {
+      runner: {
+        run() {
+          throw new Error("解析最新版本失败后不得调用 docker");
+        },
+        spawn() {
+          throw new Error("不应 spawn");
+        },
+      },
+      fetcher: (url: string) => {
+        urls.push(url);
+        return Promise.reject(new Error("offline"));
+      },
+      io: { stdout: () => {}, stderr: () => {}, jsonMode: false },
+      isTty: () => false,
+      processEnv: {},
+      processState: undefined,
+    } as never);
+    assertEquals(result.latest, true);
+    assertEquals(urls.length > 0, true, "必须查询最新 Release");
+    assertEquals(result.exitCode, 1);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("P1d: update --drain-timeout 非法值 → 用法错误（零 docker 调用）", async () => {
   const dir = await makeInstallDir();
   try {

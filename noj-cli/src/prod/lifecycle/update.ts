@@ -228,7 +228,9 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
       );
       to = previous.to;
     }
-    if (normalizedVersion(to) === normalizedVersion(from)) {
+    // 恢复未完成升级时不得 no-op：迁移阶段失败后 `.env.prod` 已是目标版本，
+    // from === to 只说明配置已提交，不代表迁移、启动与退出维护已完成。
+    if (!recovering && normalizedVersion(to) === normalizedVersion(from)) {
       ctx.status("success", UPDATE_UP_TO_DATE_HINT);
       return finish({
         dir: ctx.dir,
@@ -385,7 +387,7 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
  * 不复制任何编排（别名若有第二份实现，迟早会漂移）。
  */
 export async function upgrade(opts: UpdateOptions): Promise<UpdateResult> {
-  return await update({ ...opts, latest: false });
+  return await update(opts);
 }
 
 /** `update` 的 `--json` 载荷（stdout 只含这一个 JSON 文档）。 */
