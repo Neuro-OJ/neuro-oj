@@ -119,105 +119,110 @@ async function educationTasks(): Promise<TaskRow[]> {
   );
 }
 
-Deno.test("迁移 0145[真实 PG]: 存量教学事件转为 v2 任务，未完成刷新与新请求合并", async () => {
-  const db = getDb();
-  await db.execute(sql`DELETE FROM background_tasks`);
-  await recreateLegacyOutbox();
-  try {
-    // 未处理 + 已有 v1 任务（带分页游标、延迟失效标记，到期时间在未来）
-    await insertOutbox({
-      id: "o-pending",
-      event_type: "submission.changed",
-      user_id: STUDENT,
-      payload: {
+Deno.test({
+  name: "migration 0145: 存量教学事件转为 v2 任务，未完成刷新与新请求合并",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const db = getDb();
+    await db.execute(sql`DELETE FROM background_tasks`);
+    await recreateLegacyOutbox();
+    try {
+      // 未处理 + 已有 v1 任务（带分页游标、延迟失效标记，到期时间在未来）
+      await insertOutbox({
+        id: "o-pending",
+        event_type: "submission.changed",
+        user_id: STUDENT,
+        payload: {
+          contest_id: "c1",
+          _invalidate_on_claim: true,
+          _education_cursor: { assignment_after: "a0" },
+        },
+        available_at: FUTURE,
+      });
+      await insertV1Task({
+        id: "t-pending",
+        outboxId: "o-pending",
+        availableAt: FUTURE,
+      });
+      // 已处理 + v1 任务仍 pending
+      await insertOutbox({
+        id: "o-done",
+        event_type: "module.changed",
+        processed_at: LATER,
+      });
+      await insertV1Task({ id: "t-done", outboxId: "o-done" });
+      // 未处理 + 没有任务（早期 rc 数据）
+      await insertOutbox({ id: "o-orphan", event_type: "problem.changed" });
+      // 未处理的刷新 + v1 任务
+      await insertOutbox({
+        id: "o-refresh",
+        event_type: "assignment.refresh",
+        user_id: STUDENT,
+        assignment_id: ASSIGNMENT,
+      });
+      await insertV1Task({
+        id: "t-refresh",
+        outboxId: "o-refresh",
+        assignmentId: ASSIGNMENT,
+      });
+
+      const statements = readMigrationStatements();
+      assert(statements.length > 0, "0145 迁移文件不应为空");
+      for (const stmt of statements) await db.execute(sql.raw(stmt));
+
+      const legacy = unwrapRows<{ name: string | null }>(
+        await db.execute(
+          sql`SELECT to_regclass('education_outbox')::text AS name`,
+        ) as never,
+      );
+      assertEquals(legacy[0].name, null);
+
+      const tasks = await educationTasks();
+      const byId = new Map(tasks.map((t) => [t.id, t]));
+
+      const pending = byId.get("t-pending")!;
+      assertEquals(pending.status, "pending");
+      assertEquals(pending.payload_version, 2);
+      assertEquals(pending.available_at, FUTURE);
+      assertEquals(pending.payload.event_id, "o-pending");
+      assertEquals(pending.payload.event_type, "submission.changed");
+      assertEquals(pending.payload.user_id, STUDENT);
+      assertEquals(pending.payload.data, {
         contest_id: "c1",
         _invalidate_on_claim: true,
         _education_cursor: { assignment_after: "a0" },
-      },
-      available_at: FUTURE,
-    });
-    await insertV1Task({
-      id: "t-pending",
-      outboxId: "o-pending",
-      availableAt: FUTURE,
-    });
-    // 已处理 + v1 任务仍 pending
-    await insertOutbox({
-      id: "o-done",
-      event_type: "module.changed",
-      processed_at: LATER,
-    });
-    await insertV1Task({ id: "t-done", outboxId: "o-done" });
-    // 未处理 + 没有任务（早期 rc 数据）
-    await insertOutbox({ id: "o-orphan", event_type: "problem.changed" });
-    // 未处理的刷新 + v1 任务
-    await insertOutbox({
-      id: "o-refresh",
-      event_type: "assignment.refresh",
-      user_id: STUDENT,
-      assignment_id: ASSIGNMENT,
-    });
-    await insertV1Task({
-      id: "t-refresh",
-      outboxId: "o-refresh",
-      assignmentId: ASSIGNMENT,
-    });
+      });
 
-    const statements = readMigrationStatements();
-    assert(statements.length > 0, "0145 迁移文件不应为空");
-    for (const stmt of statements) await db.execute(sql.raw(stmt));
+      const done = byId.get("t-done")!;
+      assertEquals(done.status, "succeeded");
+      assertEquals(done.payload_version, 1);
 
-    const legacy = unwrapRows<{ name: string | null }>(
-      await db.execute(
-        sql`SELECT to_regclass('education_outbox')::text AS name`,
-      ) as never,
-    );
-    assertEquals(legacy[0].name, null);
+      const orphan = tasks.find((t) => t.dedupe_key === "outbox:o-orphan");
+      assert(orphan, "未处理且无任务的事件应补登记任务");
+      assertEquals(orphan.status, "pending");
+      assertEquals(orphan.payload_version, 2);
+      assertEquals(orphan.payload.event_id, "o-orphan");
 
-    const tasks = await educationTasks();
-    const byId = new Map(tasks.map((t) => [t.id, t]));
+      const refresh = byId.get("t-refresh")!;
+      assertEquals(refresh.status, "pending");
+      assertEquals(refresh.payload_version, 2);
+      assertEquals(refresh.dedupe_key, `refresh:${STUDENT}`);
 
-    const pending = byId.get("t-pending")!;
-    assertEquals(pending.status, "pending");
-    assertEquals(pending.payload_version, 2);
-    assertEquals(pending.available_at, FUTURE);
-    assertEquals(pending.payload.event_id, "o-pending");
-    assertEquals(pending.payload.event_type, "submission.changed");
-    assertEquals(pending.payload.user_id, STUDENT);
-    assertEquals(pending.payload.data, {
-      contest_id: "c1",
-      _invalidate_on_claim: true,
-      _education_cursor: { assignment_after: "a0" },
-    });
-
-    const done = byId.get("t-done")!;
-    assertEquals(done.status, "succeeded");
-    assertEquals(done.payload_version, 1);
-
-    const orphan = tasks.find((t) => t.dedupe_key === "outbox:o-orphan");
-    assert(orphan, "未处理且无任务的事件应补登记任务");
-    assertEquals(orphan.status, "pending");
-    assertEquals(orphan.payload_version, 2);
-    assertEquals(orphan.payload.event_id, "o-orphan");
-
-    const refresh = byId.get("t-refresh")!;
-    assertEquals(refresh.status, "pending");
-    assertEquals(refresh.payload_version, 2);
-    assertEquals(refresh.dedupe_key, `refresh:${STUDENT}`);
-
-    // 升级后同一作业 + 学生再次请求刷新：合并到存量任务，不新增第二条。
-    await db.transaction((tx) =>
-      enqueueEducationRefreshTx(tx, DEFAULT_DOMAIN_ID, ASSIGNMENT, STUDENT)
-    );
-    const refreshes = (await educationTasks()).filter((t) =>
-      t.payload.event_type === "assignment.refresh" && t.status === "pending"
-    );
-    assertEquals(refreshes.map((t) => t.id), ["t-refresh"]);
-  } finally {
-    await db.execute(sql`DELETE FROM background_tasks`);
-    await db.execute(sql.raw(
-      `ALTER TABLE "notifications" DROP CONSTRAINT IF EXISTS "notifications_event_id_education_outbox_id_fk"`,
-    ));
-    await db.execute(sql.raw(`DROP TABLE IF EXISTS "education_outbox"`));
-  }
+      // 升级后同一作业 + 学生再次请求刷新：合并到存量任务，不新增第二条。
+      await db.transaction((tx) =>
+        enqueueEducationRefreshTx(tx, DEFAULT_DOMAIN_ID, ASSIGNMENT, STUDENT)
+      );
+      const refreshes = (await educationTasks()).filter((t) =>
+        t.payload.event_type === "assignment.refresh" && t.status === "pending"
+      );
+      assertEquals(refreshes.map((t) => t.id), ["t-refresh"]);
+    } finally {
+      await db.execute(sql`DELETE FROM background_tasks`);
+      await db.execute(sql.raw(
+        `ALTER TABLE "notifications" DROP CONSTRAINT IF EXISTS "notifications_event_id_education_outbox_id_fk"`,
+      ));
+      await db.execute(sql.raw(`DROP TABLE IF EXISTS "education_outbox"`));
+    }
+  },
 });
