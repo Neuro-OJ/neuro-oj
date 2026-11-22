@@ -29,7 +29,11 @@ Status: implemented
    `.nojbackup-create.lock`（记录 `{ pid, startedAt }`）及文件名前缀嵌入 PID
    识别进程存活状态；仅在确认进程已死亡时清理受控临时命名残留（绝不触碰已提交
    `.nojbackup` / `.sha256` / `metrics` / `upgrade-state.json`），存活锁或存活
-   PID 直接中止或跳过以避免误删并发任务。
+   PID 直接中止或跳过以避免误删并发任务。陈旧锁回收经
+   `.nojbackup-create.lock.reclaim`（`createNew` 互斥，60s
+   后视为崩溃残留）串行化， 并在互斥内比对锁文件内容与
+   inode，与先前观测不一致即重新判定，防止基于过期
+   观测的进程删除他人刚获取的新锁导致两路备份并发。
 3. **数据量估算与同/异分区预检**：新增 `disk-space.ts`，采样
    PG（`pg_database_size`）、Redis（`INFO memory`）、MinIO（`mc du --json`），并在
    `backup create` 与 `update` 写入任何临时文件、备份与 compose

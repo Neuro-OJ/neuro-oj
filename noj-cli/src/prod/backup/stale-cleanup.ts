@@ -126,10 +126,97 @@ function parseLockPid(raw: string): number | null {
   return null;
 }
 
+/** 回收陈旧锁时使用的互斥文件后缀（与锁文件同目录）。 */
+const RECLAIM_MUTEX_SUFFIX = ".reclaim";
+
+/** 回收互斥文件被视为崩溃残留的阈值（毫秒）；临界区仅含一次读、比对与删除。 */
+const RECLAIM_MUTEX_STALE_MS = 60_000;
+
+/** 锁观测最多重试次数（锁在回收前被他人替换时重新判定）。 */
+const MAX_LOCK_INSPECT_ATTEMPTS = 3;
+
+/** 一次锁文件观测快照：内容 + inode（+ mtime），用于回收前确认锁未被替换。 */
+interface LockObservation {
+  raw: string;
+  ino: number | null;
+  mtime: Date | null;
+}
+
+async function observeLock(lockPath: string): Promise<LockObservation | null> {
+  try {
+    // 先 stat 后读：锁文件只会被回收者（持互斥）或持有者本人删除，二者之间不会被替换
+    const st = await Deno.stat(lockPath);
+    const raw = await Deno.readTextFile(lockPath);
+    return { raw, ino: st.ino ?? null, mtime: st.mtime };
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) return null;
+    throw err;
+  }
+}
+
+async function acquireReclaimMutex(
+  mutexPath: string,
+  now: Date,
+): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const file = await Deno.open(mutexPath, {
+        createNew: true,
+        write: true,
+        mode: 0o600,
+      });
+      file.close();
+      return;
+    } catch (err) {
+      if (!(err instanceof Deno.errors.AlreadyExists)) throw err;
+    }
+    const st = await Deno.stat(mutexPath).catch(() => null);
+    const ageMs = st?.mtime ? now.getTime() - st.mtime.getTime() : Infinity;
+    if (attempt > 0 || (ageMs >= 0 && ageMs < RECLAIM_MUTEX_STALE_MS)) break;
+    // 回收者在极短临界区内崩溃留下的互斥文件：超过阈值后清除再重试一次
+    await Deno.remove(mutexPath).catch(() => {});
+  }
+  throw new Error(
+    `另一进程正在回收陈旧备份锁（${mutexPath}），为避免并发冲突已中止`,
+  );
+}
+
+/**
+ * 在回收互斥保护下删除陈旧锁：仅当锁文件内容与 inode 与先前观测完全一致时才删除，
+ * 保证基于过期观测的回收者不会误删其他进程刚获取的新锁。
+ *
+ * 返回 `true` 表示已删除（或锁已不存在），`false` 表示锁已被替换、需重新判定。
+ */
+async function removeLockIfUnchanged(
+  lockPath: string,
+  observed: LockObservation,
+  now: Date,
+): Promise<boolean> {
+  const mutexPath = `${lockPath}${RECLAIM_MUTEX_SUFFIX}`;
+  await acquireReclaimMutex(mutexPath, now);
+  try {
+    const current = await observeLock(lockPath);
+    if (current === null) return true;
+    if (
+      current.raw !== observed.raw ||
+      (observed.ino !== null && current.ino !== observed.ino)
+    ) {
+      return false;
+    }
+    await Deno.remove(lockPath).catch((err) => {
+      if (!(err instanceof Deno.errors.NotFound)) throw err;
+    });
+    return true;
+  } finally {
+    await Deno.remove(mutexPath).catch(() => {});
+  }
+}
+
 /**
  * 校验锁文件并在持有者死亡时删除死锁。
  *
  * 若锁持有者仍存活，或损坏锁文件处于宽限期内（可能正在创建），直接抛错中止。
+ * 陈旧锁的删除经回收互斥串行化并比对观测快照，避免误删并发进程的新锁。
  * 返回本次是否清理了陈旧锁文件。
  */
 async function inspectAndClearLock(
@@ -137,35 +224,35 @@ async function inspectAndClearLock(
   alive: (pid: number) => Promise<boolean>,
   now: Date,
 ): Promise<boolean> {
-  let raw: string;
-  try {
-    raw = await Deno.readTextFile(lockPath);
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) return false;
-    throw err;
-  }
+  for (let attempt = 0; attempt < MAX_LOCK_INSPECT_ATTEMPTS; attempt++) {
+    const observed = await observeLock(lockPath);
+    if (observed === null) return false;
 
-  const pid = parseLockPid(raw);
-  if (pid !== null) {
-    if (await alive(pid)) {
-      throw new Error(
-        `检测到正在进行的备份任务（PID ${pid}，锁文件 ${lockPath}），为避免并发写满磁盘已中止`,
-      );
+    const pid = parseLockPid(observed.raw);
+    if (pid !== null) {
+      if (await alive(pid)) {
+        throw new Error(
+          `检测到正在进行的备份任务（PID ${pid}，锁文件 ${lockPath}），为避免并发写满磁盘已中止`,
+        );
+      }
+    } else {
+      // 内容为空或损坏时检查 mtime，避开另一进程刚 open 尚未 write 完成的瞬间
+      const ageMs = observed.mtime
+        ? now.getTime() - observed.mtime.getTime()
+        : Infinity;
+      if (ageMs >= 0 && ageMs < CORRUPT_LOCK_GRACE_MS) {
+        throw new Error(
+          `检测到刚创建的备份锁文件 ${lockPath}，为避免并发冲突已中止`,
+        );
+      }
     }
-    await Deno.remove(lockPath).catch(() => {});
-    return true;
-  }
 
-  // 内容为空或损坏时检查 mtime，避开另一进程刚 open 尚未 write 完成的瞬间
-  const st = await Deno.stat(lockPath).catch(() => null);
-  const ageMs = st?.mtime ? now.getTime() - st.mtime.getTime() : Infinity;
-  if (ageMs >= 0 && ageMs < CORRUPT_LOCK_GRACE_MS) {
-    throw new Error(
-      `检测到刚创建的备份锁文件 ${lockPath}，为避免并发冲突已中止`,
-    );
+    if (await removeLockIfUnchanged(lockPath, observed, now)) return true;
+    // 锁在判定期间已被其他进程回收并重新获取：基于新锁重新判定
   }
-  await Deno.remove(lockPath).catch(() => {});
-  return true;
+  throw new Error(
+    `备份锁文件 ${lockPath} 持续被并发替换，为避免并发冲突已中止`,
+  );
 }
 
 function matchControlledArtifact(

@@ -217,3 +217,83 @@ Deno.test("acquireBackupLock: 排他持锁、抢占死锁与 release 释放", as
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("acquireBackupLock: 并发回收同一死锁时，过期观测不得删除他人新锁", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = join(dir, BACKUP_LOCK_FILE);
+    await Deno.writeTextFile(
+      lockPath,
+      JSON.stringify({ pid: 999, startedAt: "2026-11-20T00:00:00Z" }) + "\n",
+    );
+
+    let lockB: Awaited<ReturnType<typeof acquireBackupLock>> | null = null;
+    // 进程 A 已读到死锁 PID 999，在 alive() 判定期间被挂起；
+    // 此时进程 B 回收同一死锁并成功获取新锁。
+    const msg = await assertRejects(
+      () =>
+        acquireBackupLock(dir, {
+          pid: 3003,
+          isProcessAlive: async (pid) => {
+            if (pid === 999 && lockB === null) {
+              lockB = await acquireBackupLock(dir, {
+                pid: 4004,
+                isProcessAlive: (p) => Promise.resolve(p === 4004),
+              });
+              return false;
+            }
+            return pid === 4004;
+          },
+        }),
+      Error,
+    );
+    assertStringIncludes(msg.message, "4004");
+
+    const raw = await Deno.readTextFile(lockPath);
+    assertEquals(JSON.parse(raw).pid, 4004, "B 持有的新锁不得被 A 删除");
+    assertEquals(
+      await Deno.stat(`${lockPath}.reclaim`).then(() => true).catch(() =>
+        false
+      ),
+      false,
+      "回收互斥文件必须在临界区结束后释放",
+    );
+    await lockB!.release();
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("acquireBackupLock: 崩溃遗留的过期回收互斥文件会被清除", async () => {
+  const dir = await Deno.makeTempDir();
+  try {
+    const lockPath = join(dir, BACKUP_LOCK_FILE);
+    await Deno.writeTextFile(lockPath, JSON.stringify({ pid: 999 }) + "\n");
+    const mutexPath = `${lockPath}.reclaim`;
+    await Deno.writeTextFile(mutexPath, "");
+    const old = new Date("2026-11-20T00:00:00Z");
+    await Deno.utime(mutexPath, old, old);
+
+    const lock = await acquireBackupLock(dir, {
+      pid: 5005,
+      isProcessAlive: (pid) => Promise.resolve(pid === 5005),
+    });
+    assertEquals(JSON.parse(await Deno.readTextFile(lockPath)).pid, 5005);
+    await lock.release();
+
+    // 新鲜的回收互斥文件表示另一进程正在回收：应中止而非抢占
+    await Deno.writeTextFile(lockPath, JSON.stringify({ pid: 999 }) + "\n");
+    await Deno.writeTextFile(mutexPath, "");
+    await assertRejects(
+      () =>
+        acquireBackupLock(dir, {
+          pid: 6006,
+          isProcessAlive: (pid) => Promise.resolve(pid === 6006),
+        }),
+      Error,
+      "正在回收陈旧备份锁",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
