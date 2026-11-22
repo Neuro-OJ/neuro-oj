@@ -8,8 +8,8 @@
 
 import { ref, watch } from 'vue'
 import { useToast } from '~/composables/useToast'
-import { extractApiError } from '~/utils/apiError'
-import type { PendingConsent } from '~/utils/legalConsent'
+import { extractApiError } from '~/utils/server/apiError'
+import type { PendingConsent } from '~/utils/auth/legalConsent'
 
 const props = defineProps<{ pending: PendingConsent[] }>()
 

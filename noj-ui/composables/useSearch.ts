@@ -1,4 +1,4 @@
-export type { SearchEntityType, SearchItem, SearchState, SearchType } from '../utils/search-types.ts';
+export type { SearchEntityType, SearchItem, SearchState, SearchType } from '../utils/domain/workspace/search-types.ts';
 
 export function useSearch() {
   const { api } = useApi();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import AssignmentMatrix from '~/components/education/AssignmentMatrix.vue';
-import type { MatrixData, TeachingCell } from '~/utils/education';
+import type { MatrixData, TeachingCell } from '~/utils/domain/education/education';
 
 const cell: TeachingCell = {
   item_id: 'item',

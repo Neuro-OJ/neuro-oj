@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 import type { DomainLlmQuota } from '~/composables/useDomainLlm';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
@@ -206,7 +206,7 @@ useSeoMeta({ title: 'LLM 额度管理 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="can('llm:manage')" class="space-y-6">
       <AdminPageHeader title="LLM 额度管理" description="按全域、成员或题目配置每日/每月调用次数、Token 与费用上限。" icon="i-lucide-sliders-horizontal">
         <template #actions>
@@ -373,5 +373,5 @@ useSeoMeta({ title: 'LLM 额度管理 - 域设置' });
       </UCard>
     </div>
     <UAlert v-else color="warning" title="没有当前域 LLM 管理权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

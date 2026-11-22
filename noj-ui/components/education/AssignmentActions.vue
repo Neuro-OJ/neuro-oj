@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { teachingLocalTime, teachingUtcTime } from '~/utils/education';
-import type { AssignmentDetail } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { teachingLocalTime, teachingUtcTime } from '~/utils/domain/education/education';
+import type { AssignmentDetail } from '~/utils/domain/education/education';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; task: AssignmentDetail; writable: boolean }>();
 const emit = defineEmits<{ changed: [] }>();
 const education = useEducationApi(), capture = useWorkspaceActionScope(), { dialog } = useDialog();

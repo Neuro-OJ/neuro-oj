@@ -1,6 +1,6 @@
-import type { DomainEditorContent } from '~/utils/domain-problem-editor';
-import { domainProblemApiPath } from '~/utils/domain-problems';
-import type { DomainProblemReference } from '~/utils/domain-problems';
+import type { DomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import { domainProblemApiPath } from '~/utils/domain/problem/domain-problems';
+import type { DomainProblemReference } from '~/utils/domain/problem/domain-problems';
 
 /** 共享草稿视图（`synthesized` 表示尚未落库、由服务端派生）。 */
 export interface ProblemDraftView {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { workspacePath, workspaceSlugFromPath } from '~/utils/workspace';
+import { workspacePath, workspaceSlugFromPath } from '~/utils/domain/workspace/workspace';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute();
 const slug = workspaceSlugFromPath(route.path) ?? 'main';

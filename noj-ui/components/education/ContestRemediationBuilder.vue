@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { educationCacheKey, teachingScore } from '~/utils/education';
+import { educationCacheKey, teachingScore } from '~/utils/domain/education/education';
 import type {
   ContestRemediationCriteria,
   ContestRemediationPreview,
   RemediationSelectionInput,
-} from '~/utils/education-remediation-preview';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+} from '~/utils/domain/education/education-remediation-preview';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 /** 与路由页名称区分，避免组件解析误认为页面自身。 */
 const props = defineProps<{ slug: string; classroomId: string; writable: boolean }>();
 const education = useEducationApi(), contests = useDomainContests(), capture = useWorkspaceActionScope();

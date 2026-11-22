@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { educationCacheKey } from '~/utils/education';
-import { teachingSubmissionResult } from '~/utils/education-submissions';
-import type { TeachingSubmission } from '~/utils/education-submissions';
-import { extractApiError } from '~/utils/apiError';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import { teachingSubmissionResult } from '~/utils/domain/education/education-submissions';
+import type { TeachingSubmission } from '~/utils/domain/education/education-submissions';
+import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; assignmentId: string; classroomId: string; userId: string; itemId: string; scope: 'on_time' | 'current'; canAnnotate: boolean }>();
 const api = useEducationApi(), { user } = useAuth(), page = ref(1), selected = ref<TeachingSubmission | null>(null);
 const key = computed(() => educationCacheKey(props.slug, user.value?.id ?? null, props.assignmentId, `${props.userId}:${props.itemId}:${props.scope}:evidence`));

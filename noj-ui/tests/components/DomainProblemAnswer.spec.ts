@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, nextTick, ref } from 'vue';
-import DomainProblemAnswer from '~/components/feature/DomainProblemAnswer.vue';
-import type { DomainProblemDetail } from '~/utils/domain-problems';
-import { domainAnswerKey } from '~/utils/domain-problems';
+import DomainProblemAnswer from '~/components/problem/ProblemAnswer.vue';
+import type { DomainProblemDetail } from '~/utils/domain/problem/domain-problems';
+import { domainAnswerKey } from '~/utils/domain/problem/domain-problems';
 const api = { code: vi.fn(), objective: vi.fn(), artifact: vi.fn(), template: vi.fn(), ui: vi.fn() };
 const confirm = vi.fn();
 const detail: DomainProblemDetail = {
@@ -30,15 +30,15 @@ const stubs = {
   UAlert: { props: ['title'], template: '<div>{{ title }}<slot name="actions" /></div>' },
   USelect: { template: '<select />' },
   ClientOnly: { template: '<div><slot /></div>' },
-  DomainSelfTestPanel: true,
-  UiFrame: {
-    name: 'UiFrame',
+  ProblemSelfTestPanel: true,
+  UiProblemFrame: {
+    name: 'UiProblemFrame',
     props: ['html', 'disabled', 'result'],
     emits: ['update:values', 'submit'],
     template:
       "<button :disabled=\"disabled\" @click=\"$emit('update:values', {prompt:'school work'}); $emit('submit')\">界面提交</button>",
   },
-  DomainUiRuns: {
+  UiProblemRuns: {
     emits: ['result'],
     template:
       "<button @click=\"$emit('result', {kind:'submit',status:'finished',label:'已评测',score:80})\">读取域汇总</button>",
@@ -133,7 +133,7 @@ describe('域题作答', () => {
     await flushPromises();
     expect(api.ui).toHaveBeenCalledWith('school', 'main:1001', 'v1');
     await view.findAll('button').find((button) => button.text() === '读取域汇总')!.trigger('click');
-    expect(view.findComponent({ name: 'UiFrame' }).props('result')).toMatchObject({ score: 80 });
+    expect(view.findComponent({ name: 'UiProblemFrame' }).props('result')).toMatchObject({ score: 80 });
     await view.findAll('button').find((button) => button.text() === '界面提交')!.trigger('click');
     await flushPromises();
     expect(api.code).toHaveBeenCalledWith(

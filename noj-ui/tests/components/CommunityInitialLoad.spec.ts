@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import CommunityIndex from '~/components/feature/community/CommunityIndex.vue';
+import CommunityIndex from '~/components/community/CommunityIndex.vue';
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: { error: vi.fn() } }) }));
 vi.mock('~/composables/useBanStatus', () => ({ useBanStatus: () => ({ userBanned: ref(false) }) }));
 const get = vi.fn(), configError = ref<unknown>(null);

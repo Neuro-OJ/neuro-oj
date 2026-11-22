@@ -89,9 +89,9 @@
 </template>
 
 <script setup lang="ts">
-import { workspacePath } from "~/utils/workspace";
+import { workspacePath } from "~/utils/domain/workspace/workspace";
 const domainSlug = useNavigationDomain();
-import { buildFilingLinks, EMPTY_SITE_META } from "~/utils/siteMeta";
+import { buildFilingLinks, EMPTY_SITE_META } from "~/utils/server/siteMeta";
 import {
     type BuildInfo,
     commitDisplay,

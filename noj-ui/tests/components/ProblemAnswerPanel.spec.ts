@@ -56,7 +56,7 @@ const stubs = {
     emits: ['update:modelValue'],
     template: '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },
-  UiFrame: { template: '<div>题包界面</div>' },
+  UiProblemFrame: { template: '<div>题包界面</div>' },
   NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 };
 

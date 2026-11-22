@@ -76,7 +76,7 @@ await api.delete<T>(url, options?);
   `Promise.race`；其余选项（`params`、`headers`、 `query` 等）原样透传
   `$fetch`。
 - 错误文案：要写进页面 error ref 时用 `extractApiError(e).message`
-  （`import { extractApiError } from '~/utils/apiError'`），禁止手写
+  （`import { extractApiError } from '~/utils/server/apiError'`），禁止手写
   `e.data?.error || e.status`。
 - SSR 端不弹 toast（UToaster 只在客户端），仅抛错。
 - 后端错误响应固定为

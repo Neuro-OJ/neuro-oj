@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import CommunityPostDetail from '~/components/feature/community/CommunityPostDetail.vue';
+import CommunityPostDetail from '~/components/community/CommunityPostDetail.vue';
 definePageMeta({ breadcrumbWidth: '56rem' });
 const { key } = useCommunityScope();
 const route = useRoute();

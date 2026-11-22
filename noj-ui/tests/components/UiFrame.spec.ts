@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, reactive } from 'vue';
-import UiFrame from '~/components/uiproblem/UiFrame.vue';
+import UiFrame from '~/components/problem/ui/UiProblemFrame.vue';
 
 describe('界面题 JSON 消息边界', () => {
   it('init/result/set 将响应式参数和结果转成浏览器可克隆的 JSON 快照', async () => {

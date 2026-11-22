@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, reactive, ref } from 'vue';
 import { mount } from '@vue/test-utils';
-import type { WorkspaceDetail } from '~/utils/workspace';
+import type { WorkspaceDetail } from '~/utils/domain/workspace/workspace';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('~/composables/useApi', () => ({ useApi: () => ({ api }) }));

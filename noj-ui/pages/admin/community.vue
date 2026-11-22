@@ -4,7 +4,7 @@
 import { useToast } from '~/composables/useToast'
 
 import type { CommunityConfig, PostRow, ReportRow } from "~/composables/useCommunity"
-import { extractApiError } from '~/utils/apiError'
+import { extractApiError } from '~/utils/server/apiError'
 
 definePageMeta({ layout: "admin", middleware: "community-moderation", })
 
@@ -434,7 +434,7 @@ await load()
   <div class="space-y-6 p-6">
     <AdminPageHeader title="社区管理" description="配置私域策略、独立开关，处理待审内容、举报与处罚。" icon="i-lucide-shield-check">
       <template #actions>
-        <RefreshControl
+        <AdminRefreshControl
           v-model:interval="pollInterval"
           :last-refresh="lastRefresh"
           @refresh="load()"

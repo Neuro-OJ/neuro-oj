@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast';
-import { extractApiError } from '~/utils/apiError';
-import SettingFieldInput, {
+import { extractApiError } from '~/utils/server/apiError';
+import AdminSettingFieldInput, {
   type SystemSetting,
-} from '~/components/admin/SettingFieldInput.vue';
+} from '~/components/admin/AdminSettingFieldInput.vue';
 
 definePageMeta({
   layout: 'admin',
@@ -604,7 +604,7 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
 
             <!-- 输入控件区域（复用独立字段组件，保证 ID 唯一与无障碍关联） -->
             <div class="pt-1">
-              <SettingFieldInput
+              <AdminSettingFieldInput
                 v-model="drafts[s.key]"
                 :setting="s"
                 :error="saveErrors[s.key]"
@@ -698,7 +698,7 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
 
                 <!-- 当前值输入 -->
                 <td class="px-3 py-3 align-top">
-                  <SettingFieldInput
+                  <AdminSettingFieldInput
                     v-model="drafts[s.key]"
                     :setting="s"
                     :error="saveErrors[s.key]"

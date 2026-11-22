@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { workspaceCacheKey } from '~/utils/workspace';
-import type { WorkspaceLimits, WorkspaceLimitUsage } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceLimits, WorkspaceLimitUsage } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
@@ -92,7 +92,7 @@ useSeoMeta({ title: '资源额度 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="permitted && context.domain.value" class="space-y-6">
       <AdminPageHeader
         title="资源额度"
@@ -189,5 +189,5 @@ useSeoMeta({ title: '资源额度 - 域设置' });
       </p>
     </div>
     <UAlert v-else-if="context.status.value !== 'pending' && context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间配额的权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

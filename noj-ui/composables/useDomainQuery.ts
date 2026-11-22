@@ -1,5 +1,5 @@
 import type { RankingRow, RankingsResponse } from './useRankings';
-import type { SearchItem } from '~/utils/search-types';
+import type { SearchItem } from '~/utils/domain/workspace/search-types';
 /** 域榜和搜索从当前 URL 指定的使用域读取，不聚合其他私有域。 */
 export function useDomainQuery() {
   const { api } = useApi(), root = (slug: string) => `/api/v1/domains/${encodeURIComponent(slug)}`;

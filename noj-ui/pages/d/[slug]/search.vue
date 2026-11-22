@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { SearchItem } from '~/utils/search-types';
-import { workspaceCacheKey } from '~/utils/workspace';
-import { domainSearchHref, domainSearchReference } from '~/utils/domain-search';
-import { extractApiError } from '~/utils/apiError';
+import type { SearchItem } from '~/utils/domain/workspace/search-types';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { domainSearchHref, domainSearchReference } from '~/utils/domain/workspace/domain-search';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth(), api = useDomainQuery();
 const router = useRouter();

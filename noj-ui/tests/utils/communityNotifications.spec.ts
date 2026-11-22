@@ -15,7 +15,7 @@ import {
   type NotificationTargetSource,
   notificationTypeIcon,
   notificationTypeLabel,
-} from '~/utils/communityNotifications';
+} from '~/utils/domain/community/communityNotifications';
 
 function row(
   overrides: Partial<NotificationTargetSource['notification']> = {},

@@ -34,7 +34,7 @@ const stubs = {
   },
   AsyncContent: { template: '<div><slot /></div>' },
   MarkdownRenderer: { props: ['content'], template: '<div class="md">{{ content }}</div>' },
-  DifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
+  ProblemDifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
   UIcon: true,
   KnowledgeTags: true,
 };

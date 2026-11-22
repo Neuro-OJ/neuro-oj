@@ -2,8 +2,8 @@
 import { onMounted, onUnmounted, reactive, ref } from 'vue';
 import { useToast } from '~/composables/useToast';
 import { useApi } from '~/composables/useApi';
-import { authCookieNames } from '~/utils/auth-cookies';
-import { extractApiError } from '~/utils/apiError';
+import { authCookieNames } from '~/utils/auth/auth-cookies';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   formatInvitationCode,
   isInvitationCredential,
@@ -11,8 +11,8 @@ import {
   workspaceInvitationLink,
   workspaceInvitationToken,
   workspacePath,
-} from '~/utils/workspace';
-import type { WorkspaceInvitationPreview } from '~/utils/workspace';
+} from '~/utils/domain/workspace/workspace';
+import type { WorkspaceInvitationPreview } from '~/utils/domain/workspace/workspace';
 
 definePageMeta({ layout: 'auth' });
 

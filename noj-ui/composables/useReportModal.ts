@@ -1,6 +1,6 @@
-import ReportModal from '~/components/feature/community/ReportModal.vue';
+import ReportModal from '~/components/community/CommunityReportModal.vue';
 import { useOverlay } from '@nuxt/ui/composables';
-import type { ReportCategory } from '~/utils/reportCategories';
+import type { ReportCategory } from '~/utils/domain/community/reportCategories';
 
 export interface ReportResult {
   category: ReportCategory;

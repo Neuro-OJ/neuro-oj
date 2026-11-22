@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, watch } from 'vue';
-import ObjectiveRichText from '~/components/objective/ObjectiveRichText.vue';
+import ObjectiveRichText from '~/components/problem/objective/ObjectiveRichText.vue';
 import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
 
 // 组件测试环境没有 Nuxt 自动导入：MarkdownRenderer 运行时引用的全局标识符在此补齐。

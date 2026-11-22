@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, reactive, ref, Suspense, watch } from 'vue';
 import SettingsPage from '~/pages/d/[slug]/classrooms/[classroomId]/settings.vue';
-import AsyncContent from '~/components/ui/AsyncContent.vue';
+import AsyncContent from '~/components/base/AsyncContent.vue';
 
 const education = { classroom: vi.fn(), members: vi.fn(), updateClassroom: vi.fn() };
 const classroom = {

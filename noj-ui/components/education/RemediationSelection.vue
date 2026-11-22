@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { teachingUtcTime } from '~/utils/education';
-import type { AssignmentRemediationPreview, RemediationSelectionInput } from '~/utils/education-remediation-preview';
+import { teachingUtcTime } from '~/utils/domain/education/education';
+import type { AssignmentRemediationPreview, RemediationSelectionInput } from '~/utils/domain/education/education-remediation-preview';
 const props = defineProps<{
   preview: Pick<AssignmentRemediationPreview, 'students' | 'items' | 'updating' | 'excluded' | 'preview_token'>;
   initialTitle: string;

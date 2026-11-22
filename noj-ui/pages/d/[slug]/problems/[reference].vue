@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceSolvePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
-import { toDomainProblemView } from '~/utils/problemView';
-import type { PublicProblemStats } from '~/utils/problemStats';
-import { contestProtectionFromError } from '~/utils/contestProtection';
-import type { ProblemKnowledgeView } from '~/utils/knowledge';
+import { workspaceCacheKey, workspaceSolvePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
+import { toDomainProblemView } from '~/utils/domain/problem/problemView';
+import type { PublicProblemStats } from '~/utils/domain/problem/problemStats';
+import { contestProtectionFromError } from '~/utils/domain/contest/contestProtection';
+import type { ProblemKnowledgeView } from '~/utils/domain/education/knowledge';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'problem', breadcrumbWidth: '1280px' });
 const route = useRoute();
@@ -85,7 +85,7 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
           <KnowledgeTags v-if="data.reference.problem_id" :view="knowledgeView" :domain="slug ?? undefined" />
           <ProblemHeader :problem="problemView" :stats="publicStats" :show-owner="false" :calibrated-tier="calibratedTier">
             <template #actions>
-              <DomainAddToTrainingMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />
+              <TrainingAddToMenu v-if="user && domain?.status === 'active' && (can('training:create') || can('training:write_any'))" :slug="slug!" :problem="data.reference" />
               <UButton v-if="!inlineAnswer && data.can_practice !== false" :to="solveTo" size="lg" :icon="data.content.submission_mode === 'ui' ? 'i-lucide-panels-top-left' : 'i-lucide-code-2'">{{ editorLabel }}</UButton>
               <UButton v-else-if="data.can_practice !== false" to="#answer" size="lg" icon="i-lucide-pencil-line">开始作答</UButton>
             </template>
@@ -93,24 +93,24 @@ useSeoMeta({ title: () => data.value?.content.title ?? '题目' });
           <!-- 编辑器入口只在抬头保留一个（与题面工具条重复，见 #685）。 -->
           <ProblemStatement v-model:expanded="statementExpanded" :content="data.content.description" :edit-to="editTo">
             <template #toolbar>
-              <DomainProblemVersionSelect :slug="slug!" :reference="reference" :selected="data.version_id" :version="data.version"
+              <ProblemVersionSelect :slug="slug!" :reference="reference" :selected="data.version_id" :version="data.version"
                 :current="data.answer_version_id" :mode="data.effective_version_mode" :required="data.required_version_id" @select="selectVersion" />
             </template>
             <template #after-content><ProblemSamples :samples="data.content.samples" /></template>
           </ProblemStatement>
           <div v-if="inlineAnswer" id="answer" class="scroll-mt-24">
-            <DomainProblemAnswer :key="`${slug}:${reference}:${user?.id}:${data.version_id}`" :slug="slug!" :problem="data" :assignment-origin="assignmentOrigin" @refresh="refresh()" />
+            <ProblemAnswer :key="`${slug}:${reference}:${user?.id}:${data.version_id}`" :slug="slug!" :problem="data" :assignment-origin="assignmentOrigin" @refresh="refresh()" />
           </div>
-          <DomainProblemSolutions v-if="domain?.configuration.features.community && data.content.kind !== 'objective'"
+          <ProblemSolutions v-if="domain?.configuration.features.community && data.content.kind !== 'objective'"
             :key="`${slug}:${reference}:${user?.id}:solutions`" :slug="slug!" :problem-id="data.reference.problem_id" />
         </div>
         <aside class="min-w-0 space-y-6 lg:col-span-4">
           <ProblemMetaCard :problem="problemView" :stats="publicStats" :problems-to="`/d/${slug}/problems`" :calibrated-tier="calibratedTier" />
           <KnowledgeNextLink :problem-id="data.reference.problem_id" :user-key="user?.id ?? null" />
-          <DomainProblemSubmissions :key="`${slug}:${reference}:${user?.id}:submissions`" :slug="slug!" :problem-id="data.reference.problem_id" />
+          <ProblemSubmissions :key="`${slug}:${reference}:${user?.id}:submissions`" :slug="slug!" :problem-id="data.reference.problem_id" />
           <UButton v-if="assignmentOrigin" :to="`/d/${slug}/assignments/${assignmentOrigin.assignment_id}`" color="neutral" variant="outline" class="w-full justify-center" icon="i-lucide-arrow-left">返回作业</UButton>
           <ClientOnly>
-            <DomainRejudgeAction :slug="slug!" :scope="{type:'problem',problem_id:data.reference.problem_id}"
+            <SubmissionRejudgeAction :slug="slug!" :scope="{type:'problem',problem_id:data.reference.problem_id}"
               :label="`重测本域此题提交（${data.reference.display_ref}）`" :eligible="true"
               :answer-version="{problemId:data.reference.problem_id,id:data.version_id,version:data.version}" />
           </ClientOnly>

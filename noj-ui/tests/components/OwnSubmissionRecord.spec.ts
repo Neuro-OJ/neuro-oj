@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import OwnSubmissionRecord from '~/components/submission/OwnSubmissionRecord.vue';
-import OwnSubmissionSummary from '~/components/submission/OwnSubmissionSummary.vue';
+import OwnSubmissionRecord from '~/components/submission/SubmissionOwnRecord.vue';
+import OwnSubmissionSummary from '~/components/submission/SubmissionOwnSummary.vue';
 import { useOwnSubmissions } from '~/composables/useOwnSubmissions';
 import { useDomainObjectiveHistory } from '~/composables/useDomainObjectiveHistory';
-import type { OwnSubmissionHistory } from '~/utils/own-submissions';
+import type { OwnSubmissionHistory } from '~/utils/domain/submission/own-submissions';
 const entry = (): OwnSubmissionHistory => ({
   kind: 'submission',
   id: 's1',
@@ -37,7 +37,7 @@ const stubs = {
   UCard: { template: '<div><slot /></div>' },
   UButton: { props: ['to'], template: '<button :data-to="to"><slot /></button>' },
   UAlert: { props: ['title'], template: '<p>{{ title }}</p>' },
-  ArtifactDownload: {
+  SubmissionArtifactDownload: {
     props: ['endpoint', 'fileName'],
     template: '<button :data-endpoint="endpoint" :data-filename="fileName">下载原提交产物</button>',
   },
@@ -48,7 +48,7 @@ describe('本人原提交与成绩摘要', () => {
     history.domain.accessible = true;
     const view = mount(OwnSubmissionRecord, {
       props: { entry: history },
-      global: { components: { OwnSubmissionSummary }, stubs },
+      global: { components: { SubmissionOwnSummary: OwnSubmissionSummary }, stubs },
     });
     expect(view.findAll('button').find((button) => button.text() === '来源作业')?.attributes('data-to')).toBe(
       '/d/school/assignments/task',
@@ -64,7 +64,7 @@ describe('本人原提交与成绩摘要', () => {
     artifact.code = null;
     const view = mount(OwnSubmissionRecord, {
       props: { entry: artifact, offerDomainActions: true },
-      global: { components: { OwnSubmissionSummary }, stubs },
+      global: { components: { SubmissionOwnSummary: OwnSubmissionSummary }, stubs },
     });
     expect(view.get('button').attributes('data-endpoint')).toBe('/api/v1/me/submissions/submission/s1/artifact');
     expect(view.get('button').attributes('data-filename')).toBe('answer.zip');
@@ -73,7 +73,7 @@ describe('本人原提交与成绩摘要', () => {
   it('失去域访问权仍显示原代码和授权摘要，不生成题面导航', () => {
     const view = mount(OwnSubmissionRecord, {
       props: { entry: entry(), offerDomainActions: true },
-      global: { components: { OwnSubmissionSummary }, stubs },
+      global: { components: { SubmissionOwnSummary: OwnSubmissionSummary }, stubs },
     });
     expect(view.text()).toContain('print("my code")');
     expect(view.text()).toContain('100.0 分');
@@ -97,7 +97,7 @@ describe('本人原提交与成绩摘要', () => {
     accessible.resource_available = true;
     const view = mount(OwnSubmissionRecord, {
       props: { entry: accessible, offerDomainActions: true },
-      global: { components: { OwnSubmissionSummary }, stubs },
+      global: { components: { SubmissionOwnSummary: OwnSubmissionSummary }, stubs },
     });
     expect(view.findAll('button').find((button) => button.text() === '进入所属空间提交详情')!.attributes('data-to'))
       .toBe('/d/school/submissions/s1');

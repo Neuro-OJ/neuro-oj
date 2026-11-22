@@ -5,7 +5,7 @@ import ProblemHeader from '~/components/problem/ProblemHeader.vue';
 import ProblemMetaCard from '~/components/problem/ProblemMetaCard.vue';
 import KnowledgeNextLink from '~/components/knowledge/KnowledgeNextLink.vue';
 import KnowledgeTags from '~/components/knowledge/KnowledgeTags.vue';
-import type { ProblemView } from '~/utils/problemView';
+import type { ProblemView } from '~/utils/domain/problem/problemView';
 
 const problem = {
   title: '数组求和',
@@ -20,7 +20,7 @@ const stubs = {
   NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
   UBadge: { template: '<span class="badge"><slot /></span>' },
   UIcon: true,
-  DifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
+  ProblemDifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
   UserIdentity: true,
 };
 

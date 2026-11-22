@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
-import DomainTrainingEditor from '~/components/feature/DomainTrainingEditor.vue';
+import DomainTrainingEditor from '~/components/training/TrainingEditor.vue';
 import type { DomainTrainingDetail } from '~/composables/useDomainTrainings';
 import { useDomainResources as resourcesApi } from '~/composables/useDomainResources';
 const api = { share: vi.fn(), save: vi.fn() };
@@ -19,7 +19,7 @@ const stubs = {
   USelect: { props: ['modelValue'], template: '<select />' },
   UCheckbox: { template: '<div />' },
   MarkdownEditor: { template: '<div />' },
-  DomainProblemChooser: { template: '<div />' },
+  ProblemChooser: { template: '<div />' },
   UAlert: { props: ['title'], template: '<p>{{ title }}</p>' },
 };
 beforeEach(() => {

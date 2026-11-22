@@ -1,12 +1,12 @@
 import type { H3Event } from 'h3';
 import { getCookie, getQuery, getRouterParam, setHeader, setResponseStatus } from 'h3';
-import type { BffViewKind } from '../../utils/bff-view.ts';
+import type { BffViewKind } from '../../utils/server/bff-view.ts';
 import type { BffCacheStore } from './bff-cache.ts';
 import { cachedSiteMeta } from './bff-cache.ts';
 import { aggregateView } from './bff-aggregate.ts';
 import { BffError, createCoreReader } from './bff-request.ts';
 import { getClientNetworkHeaders } from './client-network.ts';
-import { authCookieNames } from '../../utils/auth-cookies.ts';
+import { authCookieNames } from '../../utils/auth/auth-cookies.ts';
 
 /** 所有 BFF GET 使用同一身份、总预算和诊断计数。 */
 export async function handleBffView(event: H3Event, kind: BffViewKind) {

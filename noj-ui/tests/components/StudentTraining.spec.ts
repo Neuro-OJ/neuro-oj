@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import StudentTraining from '~/components/education/StudentTraining.vue';
-import type { ClassroomDetail, TeachingCapability } from '~/utils/education';
+import type { ClassroomDetail, TeachingCapability } from '~/utils/domain/education/education';
 const api = { studentSubmissions: vi.fn(), studentSubmission: vi.fn(), assignments: vi.fn() };
 const stubs = {
   LibraryPageHeader: { props: ['title'], template: '<h1>{{ title }}</h1>' },
@@ -19,7 +19,7 @@ const stubs = {
     props: ['slug', 'classroomId', 'submissionId', 'kind'],
     template: '<p :data-kind="kind" :data-submission="submissionId">正式评测沿革</p>',
   },
-  ArtifactDownload: {
+  SubmissionArtifactDownload: {
     props: ['endpoint', 'fileName'],
     template: '<button :data-endpoint="endpoint" :data-filename="fileName">下载原提交产物</button>',
   },

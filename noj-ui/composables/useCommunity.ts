@@ -1,4 +1,4 @@
-import type { CommunityNotificationType } from '~/utils/communityNotifications';
+import type { CommunityNotificationType } from '~/utils/domain/community/communityNotifications';
 
 export type PostType = 'discussion' | 'solution';
 
@@ -136,7 +136,7 @@ export interface NotificationRow {
   domain?: { id: string; slug: string; name: string } | null;
   notification: {
     id: string;
-    // 类型定义与展示/跳转规则共用 utils/communityNotifications.ts，避免两处漂移
+    // 类型定义与展示/跳转规则共用 utils/domain/community/communityNotifications.ts，避免两处漂移
     type: CommunityNotificationType;
     post_id: string | null;
     comment_id: string | null;

@@ -20,7 +20,7 @@
       />
     </template>
 
-    <TextInput
+    <AuthTextInput
       id="email"
       v-model="email"
       label="邮箱"
@@ -34,7 +34,7 @@
       <template #icon>
         <UIcon name="i-lucide-mail" class="size-4.5" />
       </template>
-    </TextInput>
+    </AuthTextInput>
 
     <template #footer>
       <p>想起密码了？<NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">返回登录</NuxtLink></p>
@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
+import { extractApiError } from "~/utils/server/apiError"
 
 definePageMeta({ layout: "auth" })
 

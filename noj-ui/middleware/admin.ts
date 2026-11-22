@@ -11,7 +11,7 @@
  * （SSR 阶段 `useAuth()` 的 `useAsyncData` 尚未 resolve，直接判断会把已登录
  * 用户误判为未登录并 302 到 /login）。
  */
-import { isAdminUser } from '~/utils/isAdminUser';
+import { isAdminUser } from '~/utils/auth/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
   const { isLoggedIn, user, ensureAuthReady } = useAuth();

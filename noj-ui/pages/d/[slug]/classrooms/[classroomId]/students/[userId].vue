@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { classroomCan, educationCacheKey } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { classroomCan, educationCacheKey } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 

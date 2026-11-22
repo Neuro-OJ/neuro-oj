@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug, domain, can } = useWorkspace(), { user } = useAuth(), api = useDomainProblemEditor();
 const reference = computed(() => String(route.params.reference)), generation = ref(0);
@@ -15,7 +15,7 @@ useSeoMeta({ title: '域题目草稿编辑' });
 <template>
   <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
     :error="error ? extractApiError(error).message : undefined" @retry="reload()">
-    <DomainProblemEditor v-if="data" :key="`${key}:${generation}`" :slug="slug!" :reference="reference" :draft="data"
+    <EditorProblemEditor v-if="data" :key="`${key}:${generation}`" :slug="slug!" :reference="reference" :draft="data"
       :writable="domain?.status === 'active'" :can-publish="can('problem:publish')" @reload="reload" />
   </AsyncContent>
 </template>

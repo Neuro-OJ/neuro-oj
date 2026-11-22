@@ -9,7 +9,7 @@
  * - 无审核权限 → 重定向到 /（静默拦截，不给错误提示）
  */
 import { useAuthReady } from '~/composables/useAuthReady';
-import { isAdminUser } from '~/utils/isAdminUser';
+import { isAdminUser } from '~/utils/auth/isAdminUser';
 
 export default defineNuxtRouteMiddleware(async (_to, _from) => {
   // SSR 阶段跳过守卫——页面是客户端渲染，水合后会重新执行

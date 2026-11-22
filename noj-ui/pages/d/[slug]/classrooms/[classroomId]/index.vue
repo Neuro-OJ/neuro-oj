@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { assignmentPhase, classroomCan, educationCacheKey } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { assignmentPhase, classroomCan, educationCacheKey } from '~/utils/domain/education/education';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 

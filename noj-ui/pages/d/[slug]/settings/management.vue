@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import type { WorkspaceMember, WorkspaceDetail } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import type { WorkspaceMember, WorkspaceDetail } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
@@ -99,7 +99,7 @@ useSeoMeta({ title: '交接与归档 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="permitted && domain" class="space-y-6 max-w-[768px]">
       <AdminPageHeader
         title="交接与空间治理"
@@ -198,5 +198,5 @@ useSeoMeta({ title: '交接与归档 - 域设置' });
       </UCard>
     </div>
     <UAlert v-else-if="context.status.value !== 'pending' && domain" color="neutral" variant="subtle" title="你没有此空间的交接或治理权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

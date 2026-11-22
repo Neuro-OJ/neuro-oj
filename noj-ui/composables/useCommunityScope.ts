@@ -1,5 +1,5 @@
-import { communityApiPath, communityPath, communityScopeKey } from '~/utils/community-workspace';
-import { workspaceSlugFromPath } from '~/utils/workspace';
+import { communityApiPath, communityPath, communityScopeKey } from '~/utils/domain/community/community-workspace';
+import { workspaceSlugFromPath } from '~/utils/domain/workspace/workspace';
 
 /** URL 是内容域的唯一来源；账号通知显式选择账号作用域。 */
 export function useCommunityScope(account: boolean | (() => boolean) = false) {

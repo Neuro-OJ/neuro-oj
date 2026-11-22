@@ -5,7 +5,7 @@
  * 竞赛/训练/提交/帖子/公告 → public_id。
  */
 
-import { defaultProblemReference } from './default-workspace.ts';
+import { defaultProblemReference } from './domain/workspace/default-workspace.ts';
 export function problemUrl(id: string, displayId?: string): string {
   const reference = defaultProblemReference(displayId ?? '');
   return reference ? `/d/main/problems/${encodeURIComponent(reference)}` : `/problems/${encodeURIComponent(id)}`;

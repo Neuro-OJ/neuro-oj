@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime } from '~/utils/submissionFormat';
+import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), workspace = useWorkspace(), { user } = useAuth(), api = useDomainSubmissions();
 const slug = workspace.slug, can = workspace.can ?? (() => false);
@@ -47,18 +47,18 @@ useSeoMeta({ title: '空间提交详情' });
         class="break-all text-xs text-text-muted tabular-nums">{{ data.data.id }} · {{ formatDateTime(data.data.created_at) }} · 使用域 {{ slug }} · {{ data.data.submitted_version == null ? '版本未知' : `V${data.data.submitted_version}` }}</p>
       <UAlert v-if="!data.data.resource_available" color="warning"
         title="源资源已不可用，保留已受理的原提交和授权成绩摘要" />
-      <DomainSubmissionResult :submission="data.data" />
+      <SubmissionResult :submission="data.data" />
       <ClientOnly>
         <div class="flex flex-wrap gap-3">
-          <DomainUpgradeAction :slug="slug!" :source="{ kind: 'submission', id: data.data.id }"
+          <SubmissionUpgradeAction :slug="slug!" :source="{ kind: 'submission', id: data.data.id }"
             :source-version="data.data.submitted_version_id"
             :eligible="data.data.user_id === user?.id && data.data.resource_available && data.data.result_visibility !== 'hidden' && data.data.is_latest === false && !['pending', 'judging'].includes(data.data.status ?? '') && (!data.data.contest_id || contest.data.value?.data.status === 'ended')" />
-          <DomainUpgradeAction
+          <SubmissionUpgradeAction
             v-if="contest.data.value?.data.can_manage && contest.data.value.data.status === 'running'"
             :slug="slug!" :source="{ kind: 'submission', id: data.data.id }" context="source_contest"
             :source-version="data.data.submitted_version_id"
             :eligible="data.data.resource_available && data.data.is_latest === false && !['pending', 'judging'].includes(data.data.status ?? '') && (data.data.user_id === user?.id || can('submission:rejudge'))" />
-          <DomainRejudgeAction :slug="slug!"
+          <SubmissionRejudgeAction :slug="slug!"
             :scope="{ type: 'selected', submissions: [{ kind: 'submission', id: data.data.id }] }"
             label="重测此提交"
             :eligible="data.data.resource_available && (!data.data.contest_id || !!contest.data.value?.data.can_manage) && can('submission:rejudge')" />

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense } from 'vue';
-import LatestSubmissions from '~/components/feature/LatestSubmissions.vue';
+import LatestSubmissions from '~/components/home/HomeLatestSubmissions.vue';
 
 const get = vi.fn();
 let onEvent: Record<string, () => void> = {};
@@ -61,7 +61,7 @@ async function mountWithInitial(initialData: ReturnType<typeof activity>) {
       stubs: {
         UIcon: true,
         NuxtLink: { template: '<a><slot /></a>' },
-        StatsToggle: true,
+        HomeStatsToggle: true,
         AsyncContent: { template: '<div><slot /></div>' },
         SubmissionCard: {
           props: ['submission'],

@@ -48,10 +48,10 @@ async function view(kind = 'oi', mode = 'code') {
         ProblemHeader: { template: '<header><slot name="actions" /></header>' },
         ProblemStatement: true,
         ProblemMetaCard: true,
-        DomainProblemSubmissions: true,
-        DomainProblemSolutions: true,
+        ProblemSubmissions: true,
+        ProblemSolutions: true,
         NuxtLink: { template: '<a><slot /></a>' },
-        DomainProblemAnswer: { template: '<p>作答表单</p>' },
+        ProblemAnswer: { template: '<p>作答表单</p>' },
       },
     },
   });

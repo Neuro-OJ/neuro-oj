@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import DomainOiFiles from '~/components/editor/DomainOiFiles.vue';
-import { newDomainEditorContent } from '~/utils/domain-problem-editor';
+import DomainOiFiles from '~/components/editor/EditorOiFiles.vue';
+import { newDomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
 const api = { oiFiles: vi.fn(), oiFile: vi.fn(), oiSave: vi.fn() }, refresh = vi.fn();
 const stubs = {
   UButton: { props: ['disabled'], template: '<button :disabled="disabled"><slot /></button>' },

@@ -4,7 +4,7 @@
 // 渲染当前已发布的服务条款 Markdown；未发布时给出提示。
 // 页尾展示个人信息处理者信息。
 
-import { EMPTY_SITE_META } from "~/utils/siteMeta";
+import { EMPTY_SITE_META } from "~/utils/server/siteMeta";
 
 const { api } = useApi();
 

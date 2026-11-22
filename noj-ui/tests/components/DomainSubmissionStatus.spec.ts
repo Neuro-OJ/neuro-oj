@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import Status from '~/components/submission/DomainSubmissionStatus.vue';
+import Status from '~/components/submission/SubmissionStatus.vue';
 import type { DomainSubmission } from '~/composables/useDomainSubmissions';
 beforeEach(() => {
   vi.stubGlobal('computed', computed);

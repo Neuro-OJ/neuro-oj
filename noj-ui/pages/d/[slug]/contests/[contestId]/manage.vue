@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute();
 const { slug } = useWorkspace();
@@ -69,9 +69,9 @@ useSeoMeta({ title: '管理比赛' });
     </UAlert>
     <template v-if="data?.data.can_manage">
       <h2 class="text-xl font-semibold">{{ data.data.title }} · 管理</h2>
-      <DomainContestForm :slug="slug!" :existing="data.data" />
+      <ContestForm :slug="slug!" :existing="data.data" />
       <ClientOnly>
-        <DomainRejudgeAction :slug="slug!" :scope="{ type: 'contest', contest_id: data.data.id }"
+        <SubmissionRejudgeAction :slug="slug!" :scope="{ type: 'contest', contest_id: data.data.id }"
           label="重测本域整场比赛" :eligible="true" />
       </ClientOnly>
       <UCard v-if="data.data.status === 'ended'">

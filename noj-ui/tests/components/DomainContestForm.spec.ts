@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import DomainContestForm from '~/components/feature/DomainContestForm.vue';
+import DomainContestForm from '~/components/contest/ContestForm.vue';
 import type { DomainContest } from '~/composables/useDomainContests';
 
 const api = { problems: vi.fn(), update: vi.fn(), create: vi.fn() };

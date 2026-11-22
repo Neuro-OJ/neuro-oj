@@ -1,8 +1,8 @@
-import { extractApiError } from '~/utils/apiError';
-import { authCookieNames } from '~/utils/auth-cookies';
+import { extractApiError } from '~/utils/server/apiError';
+import { authCookieNames } from '~/utils/auth/auth-cookies';
 import { clearUserDrafts } from '~/utils/draft-storage';
 
-import type { AuthUser as UserResponse } from '~/utils/auth-user';
+import type { AuthUser as UserResponse } from '~/utils/auth/auth-user';
 
 interface SessionData {
   userId: string;

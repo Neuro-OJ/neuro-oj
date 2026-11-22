@@ -6,7 +6,7 @@
  *
  * 使用 useState 确保 SSR → 客户端水合过程只调一次。
  */
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 
 export interface IpBanInfo {
   matched_cidr: string;

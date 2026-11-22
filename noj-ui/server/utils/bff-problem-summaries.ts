@@ -1,6 +1,6 @@
 import type { CoreReader } from './bff-request.ts';
 import { BffError } from './bff-request.ts';
-import type { ProblemSummaries } from '../../utils/problem-summaries.ts';
+import type { ProblemSummaries } from '../../utils/server/problem-summaries.ts';
 /** 固定当前使用域，单次最多50题；由 Core 集合授权并统一处理不可用题目。 */
 export async function readProblemSummaries(
   reader: CoreReader,

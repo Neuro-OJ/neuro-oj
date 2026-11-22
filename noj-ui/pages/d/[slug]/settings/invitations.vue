@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import InvitationManager from '~/components/workspace/InvitationManager.vue';
-import { extractApiError } from '~/utils/apiError';
+import WorkspaceInvitationManager from '~/components/workspace/WorkspaceInvitationManager.vue';
+import { extractApiError } from '~/utils/server/apiError';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
@@ -31,7 +31,7 @@ useSeoMeta({ title: '邀请管理 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="!isUnauthorized" class="space-y-6">
       <AdminPageHeader
         title="邀请管理"
@@ -41,7 +41,7 @@ useSeoMeta({ title: '邀请管理 - 域设置' });
       <p v-if="context.error.value" class="text-sm text-error-text" role="alert">
         {{ extractApiError(context.error.value).message }}
       </p>
-      <InvitationManager
+      <WorkspaceInvitationManager
         v-if="domainSlug"
         :domain-slug="domainSlug"
         :writable="writable"
@@ -53,6 +53,6 @@ useSeoMeta({ title: '邀请管理 - 域设置' });
       variant="subtle"
       title="你没有管理此空间邀请的权限"
     />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>
 

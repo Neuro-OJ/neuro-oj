@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import JobPage from '~/pages/d/[slug]/submission-jobs/[jobId].vue';
-import type { DomainSubmissionJob } from '~/utils/domain-submission-jobs';
+import type { DomainSubmissionJob } from '~/utils/domain/submission/domain-submission-jobs';
 const api = { detail: vi.fn(), items: vi.fn(), cancel: vi.fn() };
 const objective = { detail: vi.fn() }, navigate = vi.fn();
 let polling: { intervalMs: { value: number | null }; fetcher: () => Promise<void> };

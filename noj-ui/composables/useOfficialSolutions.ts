@@ -1,6 +1,6 @@
 import type { PostRow } from '~/composables/useCommunity';
-import { communityApiPath } from '~/utils/community-workspace';
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
+import { communityApiPath } from '~/utils/domain/community/community-workspace';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
 
 /**
  * 赛后「官方题解」数据源。

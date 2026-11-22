@@ -1,5 +1,5 @@
-import type { DomainProblemReference } from '~/utils/domain-problems';
-import { domainProblemApiPath } from '~/utils/domain-problems';
+import type { DomainProblemReference } from '~/utils/domain/problem/domain-problems';
+import { domainProblemApiPath } from '~/utils/domain/problem/domain-problems';
 
 export interface DomainProblemBinding {
   reference: DomainProblemReference;
