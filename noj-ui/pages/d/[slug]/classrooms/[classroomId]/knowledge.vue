@@ -7,9 +7,9 @@
  * - 单元格颜色与 `me/mastery` 徽标同口径（`masteryStateColor`），`title` 给中文状态；
  * - 学生或知识点多时横向滚动，首列（学生）粘性固定。
  */
-import { classroomCan, educationCacheKey } from '~/utils/education';
-import type { ClassroomDetail } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { classroomCan, educationCacheKey } from '~/utils/domain/education/education';
+import type { ClassroomDetail } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   type ClassroomMasteryArea,
   filterMasteryAreas,
@@ -21,8 +21,8 @@ import {
   masteryStateColor,
   masteryStudentLabel,
   type ClassroomMasteryView,
-} from '~/utils/knowledge';
-import { workspacePath } from '~/utils/workspace';
+} from '~/utils/domain/education/knowledge';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '88rem' });
 

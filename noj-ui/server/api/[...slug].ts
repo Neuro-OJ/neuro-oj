@@ -1,7 +1,7 @@
 import { getClientNetworkHeaders } from '../utils/client-network.ts';
 import { cookieMaxAgeFromJwt, parseAuthSession } from '../utils/auth-session.ts';
 import { withSecurityHeaders } from '../utils/security-headers.ts';
-import { authCookieNames } from '../../utils/auth-cookies.ts';
+import { authCookieNames } from '../../utils/auth/auth-cookies.ts';
 
 const FORWARDABLE_HEADERS = new Set([
   'retry-after',

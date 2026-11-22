@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
-import ArtifactDownload from '~/components/submission/ArtifactDownload.vue';
+import ArtifactDownload from '~/components/submission/SubmissionArtifactDownload.vue';
 const get = vi.fn(), click = vi.fn(), create = vi.fn(), revoke = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();

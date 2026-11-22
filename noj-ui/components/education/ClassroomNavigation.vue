@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { classroomCan } from '~/utils/education';
-import type { ClassroomDetail } from '~/utils/education';
-import { workspacePath } from '~/utils/workspace';
+import { classroomCan } from '~/utils/domain/education/education';
+import type { ClassroomDetail } from '~/utils/domain/education/education';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 
 const props = defineProps<{ slug: string; classroomId: string; classroom?: ClassroomDetail | null }>();
 const route = useRoute();

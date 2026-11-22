@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { initialDomainSlug } from '~/utils/domain-navigation';
-import { workspacePath } from '~/utils/workspace';
+import { initialDomainSlug } from '~/utils/domain/workspace/domain-navigation';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
 definePageMeta({ layout: false });
 const auth = useAuth(), workspaces = useWorkspaceApi();
 await auth.ensureAuthReady();

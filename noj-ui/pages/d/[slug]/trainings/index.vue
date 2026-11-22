@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { teachingTrainingId } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { teachingTrainingId } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library', breadcrumbWidth: '1008px' });
 const { slug, domain, can } = useWorkspace(),
   { user } = useAuth(),
@@ -60,7 +60,7 @@ useSeoMeta({ title: '题单' });
         <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
         <div class="mt-5 border-t border-border pt-5">
           <ClientOnly>
-            <DomainCopyCatalog :slug="slug!" kind="training" @imported="refresh()" />
+            <AdminCopyCatalog :slug="slug!" kind="training" @imported="refresh()" />
           </ClientOnly>
         </div>
       </div>

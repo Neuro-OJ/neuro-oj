@@ -10,7 +10,7 @@
       @submit="handleSubmit"
       @clear-error="clearError"
     >
-      <PasswordField
+      <AuthPasswordField
         id="password"
         v-model="form.password"
         label="新密码"
@@ -21,7 +21,7 @@
         @blur="validatePasswordField"
         @focus="fieldErrors.password = ''"
       />
-      <PasswordField
+      <AuthPasswordField
         id="confirm-password"
         v-model="form.confirmPassword"
         label="确认密码"
@@ -36,8 +36,8 @@
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
-import { validatePassword, validatePasswordMatch } from "~/utils/validatePassword"
+import { extractApiError } from "~/utils/server/apiError"
+import { validatePassword, validatePasswordMatch } from "~/utils/auth/validatePassword"
 
 definePageMeta({ layout: "auth", middleware: "auth" })
 

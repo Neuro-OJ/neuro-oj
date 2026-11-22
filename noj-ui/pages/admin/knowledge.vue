@@ -10,8 +10,8 @@
  *   时段与下次开始时刻，回填确认框注明「任务将在低峰时段执行」。
  */
 import type { AdminColumn } from '~/components/admin/AdminTable.vue';
-import { type CoverageView, coverageNodeHasProblem } from '~/utils/knowledge';
-import { extractApiError } from '~/utils/apiError';
+import { type CoverageView, coverageNodeHasProblem } from '~/utils/domain/education/knowledge';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   formatCost,
   formatOffpeakStart,
@@ -24,7 +24,7 @@ import {
   type ProblemKnowledgeView,
   type TagEstimate,
   type TagUsage,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 definePageMeta({
   layout: 'admin',

@@ -127,9 +127,30 @@ export default defineNuxtConfig({
     },
   },
 
-  // 子目录组件不添加路径前缀（feature/LatestSubmissions.vue → <LatestSubmissions>）
+  // 组件按领域分目录，目录不参与组件名（pathPrefix: false），新目录必须登记。
+  // Nuxt 递归扫描每个登记目录，problem/objective、problem/ui 不用单列；legacy/ 故意不登记。
   components: {
-    dirs: [{ path: '~/components', pathPrefix: false }],
+    dirs: [
+      '~/components/base',
+      '~/components/shared',
+      '~/components/layout',
+      '~/components/home',
+      '~/components/problem',
+      '~/components/submission',
+      '~/components/contest',
+      '~/components/training',
+      '~/components/community',
+      '~/components/ranking',
+      '~/components/search',
+      '~/components/auth',
+      '~/components/legal',
+      '~/components/editor',
+      '~/components/admin',
+      '~/components/education',
+      '~/components/knowledge',
+      '~/components/workspace',
+      '~/components/announcements',
+    ].map((path) => ({ path, pathPrefix: false })),
   },
 
   // API 请求由 server/api/[...slug].ts 代理到 noj-core

@@ -19,7 +19,7 @@ const stubs = {
     props: ['status', 'error'],
     template: '<div class="async"><slot v-if="status !== \'loading\'" /><p v-else class="loading" /></div>',
   },
-  DifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
+  ProblemDifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
   UIcon: true,
 };
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { newDomainEditorContent } from '~/utils/domain-problem-editor';
-import type { DomainAiRuntime, DomainEditorContent } from '~/utils/domain-problem-editor';
-import { extractApiError } from '~/utils/apiError';
+import { newDomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import type { DomainAiRuntime, DomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug, can, domain } = useWorkspace(), api = useDomainProblemEditor(), capture = useWorkspaceActionScope();
 const { user } = useAuth();
@@ -69,7 +69,7 @@ useSeoMeta({ title: '创建本域题目' });
       <UButton :to="`/d/${slug}/problems/new`" :variant="importingBundle ? 'outline' : 'solid'">填写配置创建</UButton>
       <UButton :to="`/d/${slug}/problems/new?import=1`" :variant="importingBundle ? 'solid' : 'outline'">从题目包导入</UButton>
     </div>
-    <BundleImportPanel v-if="importingBundle && slug" :key="slug" :domain-slug="slug" @imported="onImported" />
+    <EditorBundleImportPanel v-if="importingBundle && slug" :key="slug" :domain-slug="slug" @imported="onImported" />
     <UCard v-else>
       <form class="space-y-4" @submit.prevent="create">
         <AdminFormField label="题型">

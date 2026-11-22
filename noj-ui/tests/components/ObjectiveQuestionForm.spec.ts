@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { nextTick, ref, watch } from 'vue';
-import ObjectiveQuestionForm from '~/components/objective/ObjectiveQuestionForm.vue';
+import ObjectiveQuestionForm from '~/components/problem/objective/ObjectiveQuestionForm.vue';
 import type { QuestionDraft } from '~/composables/useObjective';
 
 // 组件测试环境没有 Nuxt 自动导入

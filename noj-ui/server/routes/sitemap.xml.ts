@@ -1,7 +1,7 @@
 // 公开目录每次由 core 以匿名身份重新授权，不缓存可被撤销的资源定位。
 import { resolveOrigin } from '../utils/sitemap-origin';
-import { workspacePath, workspaceProblemPath } from '../../utils/workspace';
-import type { DomainProblemReference } from '../../utils/domain-problems';
+import { workspacePath, workspaceProblemPath } from '../../utils/domain/workspace/workspace';
+import type { DomainProblemReference } from '../../utils/domain/problem/domain-problems';
 
 const MAX_PAGES = 10;
 const PER_PAGE = 100;

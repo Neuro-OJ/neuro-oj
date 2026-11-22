@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { DOMAIN_JOB_STATUS_LABELS, domainJobTerminal } from '~/utils/domain-submission-jobs';
-import { extractApiError, isNotFoundError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { DOMAIN_JOB_STATUS_LABELS, domainJobTerminal } from '~/utils/domain/submission/domain-submission-jobs';
+import { extractApiError, isNotFoundError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug, domain, can } = useWorkspace(), { user } = useAuth();
 const api = useDomainSubmissionJobs(), capture = useWorkspaceActionScope();

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from 'vue';
-import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime, languageLabels } from '~/utils/submissionFormat';
+import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime, languageLabels } from '~/utils/domain/submission/submissionFormat';
 import { useToast } from '~/composables/useToast';
 import type { DomainSubmissionListQuery } from '~/composables/useDomainSubmissions';
 
@@ -242,7 +242,7 @@ useSeoMeta({ title: '提交' });
             <span v-else class="text-xs text-text-muted">—</span>
           </template>
           <template #result-cell="{ row }">
-            <DomainSubmissionStatus :submission="row.original" />
+            <SubmissionStatus :submission="row.original" />
           </template>
           <template #version-cell="{ row }">
             <span class="whitespace-nowrap text-xs tabular-nums text-text-muted">{{ row.original.submitted_version == null ? '—' : `V${row.original.submitted_version}` }}</span>

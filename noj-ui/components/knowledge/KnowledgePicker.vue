@@ -12,7 +12,7 @@ import {
   normalizeSelection,
   type KnowledgeGraph,
   type KnowledgeSelection,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 const props = withDefaults(defineProps<{
   modelValue: KnowledgeSelection;

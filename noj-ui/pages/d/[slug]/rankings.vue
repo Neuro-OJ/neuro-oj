@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library', breadcrumbWidth: '1008px' });
 const { slug } = useWorkspace(), { user } = useAuth(), api = useDomainQuery(), page = ref(1);
 const { data, error, status, refresh } = await useAsyncData(

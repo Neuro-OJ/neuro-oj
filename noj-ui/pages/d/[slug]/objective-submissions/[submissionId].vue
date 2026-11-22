@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), workspace = useWorkspace(), { user } = useAuth(), api = useDomainObjectiveHistory();
 const slug = workspace.slug;
@@ -30,13 +30,13 @@ useSeoMeta({ title: '客观题提交详情' });
     </div>
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
-      <OwnSubmissionRecord v-if="data" :entry="data.data" />
+      <SubmissionOwnRecord v-if="data" :entry="data.data" />
       <ClientOnly v-if="data">
         <div class="flex flex-wrap gap-3">
-          <DomainUpgradeAction :slug="slug!" :source="{ kind: 'objective', id: data.data.id }"
+          <SubmissionUpgradeAction :slug="slug!" :source="{ kind: 'objective', id: data.data.id }"
             :source-version="data.data.submitted_version_id"
             :eligible="data.data.user_id === user?.id && data.data.resource_available && !data.data.contest_id && data.data.result_visibility !== 'hidden' && !['pending', 'judging'].includes(data.data.status)" />
-          <DomainRejudgeAction :slug="slug!"
+          <SubmissionRejudgeAction :slug="slug!"
             :scope="{ type: 'selected', submissions: [{ kind: 'objective', id: data.data.id }] }"
             label="重测此回答" :eligible="data.data.resource_available && !data.data.contest_id && can('submission:rejudge')" />
         </div>

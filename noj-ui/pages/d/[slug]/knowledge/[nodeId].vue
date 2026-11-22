@@ -8,8 +8,8 @@
  * - P3：顶部展示当前用户的掌握状态（来自 `me/mastery` 该节点项，回退诊断的 `state`）
  *   与已达标题数（优先复用阶梯 `passed` 计数）；根因诊断有未掌握前置链时提示「建议先掌握」。
  */
-import { extractApiError } from '~/utils/apiError';
-import type { ProblemKnowledgeView } from '~/utils/knowledge';
+import { extractApiError } from '~/utils/server/apiError';
+import type { ProblemKnowledgeView } from '~/utils/domain/education/knowledge';
 import {
   ladderEntryItem,
   ladderItemPath,
@@ -21,7 +21,7 @@ import {
   masteryStateLabel,
   type MyMasteryView,
   type NodeDiagnosisView,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context' });
 
@@ -274,7 +274,7 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
               class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3"
             >
               <span class="w-8 shrink-0 text-xs text-text-muted tabular-nums">{{ item.number ?? '—' }}</span>
-              <DifficultyBadge :difficulty="item.tier" />
+              <ProblemDifficultyBadge :difficulty="item.tier" />
               <span class="min-w-0 flex-1">
                 <NuxtLink
                   v-if="ladderItemPath(item)"

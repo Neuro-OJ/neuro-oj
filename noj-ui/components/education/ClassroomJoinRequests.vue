@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { educationCacheKey } from '~/utils/education';
-import type { ClassroomJoinRequest } from '~/utils/education-enrollment';
-import { extractApiError } from '~/utils/apiError';
-import { formatDateTime } from '~/utils/submissionFormat';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import type { ClassroomJoinRequest } from '~/utils/domain/education/education-enrollment';
+import { extractApiError } from '~/utils/server/apiError';
+import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
 
 const props = defineProps<{ slug: string; classroomId: string; revision: number; writable: boolean }>();
 const emit = defineEmits<{

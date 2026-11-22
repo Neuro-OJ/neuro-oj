@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, shallowRef, watch } from 'vue';
-import DomainProblemEditor from '~/components/editor/DomainProblemEditor.vue';
+import DomainProblemEditor from '~/components/editor/EditorProblemEditor.vue';
 import type { ProblemDraftView } from '~/composables/useDomainProblemEditor';
 import { useDomainProblemEditor as authorApi } from '~/composables/useDomainProblemEditor';
-import { newDomainEditorContent } from '~/utils/domain-problem-editor';
-import type { DomainAiRuntime } from '~/utils/domain-problem-editor';
+import { newDomainEditorContent } from '~/utils/domain/problem/domain-problem-editor';
+import type { DomainAiRuntime } from '~/utils/domain/problem/domain-problem-editor';
 const api = { save: vi.fn(), preflight: vi.fn(), publish: vi.fn(), importBundle: vi.fn() };
 const draft = {
   problem_id: 'p',
@@ -29,7 +29,7 @@ const stubs = {
   AdminFormField: { template: '<div><slot /></div>' },
   MarkdownEditor: { template: '<div />' },
   ProblemSampleEditor: { template: '<div />' },
-  DomainObjectiveQuestions: { template: '<div />' },
+  EditorObjectiveQuestions: { template: '<div />' },
 };
 beforeEach(() => {
   vi.clearAllMocks();

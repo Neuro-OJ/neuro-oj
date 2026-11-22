@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import Selector from '~/components/feature/DomainProblemVersionSelect.vue';
+import Selector from '~/components/problem/ProblemVersionSelect.vue';
 
 beforeEach(() => {
   for (const [name, value] of Object.entries({ computed, ref, watch })) vi.stubGlobal(name, value);

@@ -19,7 +19,7 @@
       <ToastBanner :visible="!!bannedMsg" color="error" icon="i-lucide-ban" :message="bannedMsg" @close="bannedMsg = ''" />
     </template>
 
-    <TextInput
+    <AuthTextInput
       id="login"
       v-model="form.login"
       :label="t('auth.usernameOrEmail')"
@@ -32,9 +32,9 @@
       <template #icon>
         <UIcon name="i-lucide-user" class="size-4.5" />
       </template>
-    </TextInput>
+    </AuthTextInput>
 
-    <PasswordField
+    <AuthPasswordField
       id="password"
       v-model="form.password"
       :label="t('auth.password')"
@@ -45,7 +45,7 @@
       @focus="fieldErrors.password = ''"
     />
 
-    <TextInput
+    <AuthTextInput
       v-if="tfaRequired"
       id="code"
       v-model="form.code"
@@ -59,7 +59,7 @@
       <template #icon>
         <UIcon name="i-lucide-shield-check" class="size-4.5" />
       </template>
-    </TextInput>
+    </AuthTextInput>
 
     <label class="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
       <input
@@ -133,7 +133,7 @@
       <p v-else class="text-sm text-text-secondary">{{ t('auth.twoFactorRecoveryHint') }}</p>
     </div>
 
-    <TextInput
+    <AuthTextInput
       v-if="!recoveryMode"
       id="code"
       v-model="form.code"
@@ -147,7 +147,7 @@
       <template #icon>
         <UIcon name="i-lucide-shield-check" class="size-4.5" />
       </template>
-    </TextInput>
+    </AuthTextInput>
 
     <div v-if="!recoveryMode" class="flex justify-center">
       <UButton
@@ -162,7 +162,7 @@
     </div>
 
     <template v-else>
-      <TextInput
+      <AuthTextInput
         id="code"
         v-model="form.code"
         :label="t('auth.recoveryCode')"
@@ -175,7 +175,7 @@
         <template #icon>
           <UIcon name="i-lucide-key-round" class="size-4.5" />
         </template>
-      </TextInput>
+      </AuthTextInput>
 
       <div class="flex flex-col gap-2">
         <div class="flex items-center gap-3">
@@ -249,13 +249,13 @@
 </template>
 
 <script setup lang="ts">
-import { extractApiError } from "~/utils/apiError"
-import { safeAuthRedirect } from "~/utils/authRedirect"
-import { postLoginDestination } from "~/utils/workspace"
+import { extractApiError } from "~/utils/server/apiError"
+import { safeAuthRedirect } from "~/utils/auth/authRedirect"
+import { postLoginDestination } from "~/utils/domain/workspace/workspace"
 import {
   assertRecoveryCodeFileSize,
   parseRecoveryCodesFile,
-} from "~/utils/recoveryCodes"
+} from "~/utils/auth/recoveryCodes"
 
 definePageMeta({ layout: "auth" })
 

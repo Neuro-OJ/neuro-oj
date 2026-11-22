@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import { contestProtectionFromError } from '~/utils/contestProtection';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
+import { workspaceCacheKey, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { contestProtectionFromError } from '~/utils/domain/contest/contestProtection';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
 definePageMeta({ layout: 'workspace-editor', middleware: 'workspace-context' });
 const route = useRoute(),
   router = useRouter(),
@@ -49,10 +49,10 @@ useSeoMeta({ title: () => data.value ? `${data.value.content.title} · 做题` :
           <h1 class="text-xl font-semibold">{{ data.content.title }}</h1>
           <UButton :to="backUrl" color="neutral" variant="outline">返回题目</UButton>
         </div>
-        <DomainProblemAnswer :key="`${key}`" :slug="slug!" :problem="data" :assignment-origin="origin"
+        <ProblemAnswer :key="`${key}`" :slug="slug!" :problem="data" :assignment-origin="origin"
           @refresh="refresh()" />
       </div>
-      <DomainCodeWorkspace v-else :key="`${key}`" :slug="slug!" :problem="data" :back-url="backUrl"
+      <EditorCodeWorkspace v-else :key="`${key}`" :slug="slug!" :problem="data" :back-url="backUrl"
         :assignment-origin="origin" @refresh="refresh()" />
     </template>
   </AsyncContent>

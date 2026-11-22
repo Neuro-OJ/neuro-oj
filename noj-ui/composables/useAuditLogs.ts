@@ -2,7 +2,7 @@
  * 审计日志列表 composable。
  * 状态：分页 + 筛选；自动请求 + 错误处理。
  */
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 
 export type AuditAction =
   | 'users.role_change'

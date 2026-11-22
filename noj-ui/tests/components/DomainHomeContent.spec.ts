@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense } from 'vue';
-import HomeContent from '~/components/workspace/DomainHomeContent.vue';
+import HomeContent from '~/components/workspace/WorkspaceHomeContent.vue';
 const dashboard = vi.fn();
 const domain = ref({ is_member: true, platform_admin: false, configuration: { features: { assignment: true } } });
 beforeEach(() => {

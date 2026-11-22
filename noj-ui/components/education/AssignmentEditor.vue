@@ -5,10 +5,10 @@ import {
   teachingScore,
   teachingTrainingId,
   teachingUtcTime,
-} from '~/utils/education';
-import type { AssignmentDetail, AssignmentDraftInput, TeachingProblemOption } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
-import type { KnowledgePickItem } from '~/utils/knowledge';
+} from '~/utils/domain/education/education';
+import type { AssignmentDetail, AssignmentDraftInput, TeachingProblemOption } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
+import type { KnowledgePickItem } from '~/utils/domain/education/knowledge';
 import AssignmentKnowledgePicker from '~/components/education/AssignmentKnowledgePicker.vue';
 const props = defineProps<{ slug: string; classroomId: string; initial?: AssignmentDetail }>();
 const emit = defineEmits<{ saved: [id: string] }>();

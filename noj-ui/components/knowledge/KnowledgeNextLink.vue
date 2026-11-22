@@ -5,7 +5,7 @@
  * 数据在组件内自行拉取，任何失败（未归类 / 无更高难度 / 功能关闭）都不渲染，
  * 不干扰题面主流程。
  */
-import { ladderItemPath, type KnowledgeLadderItem } from '~/utils/knowledge';
+import { ladderItemPath, type KnowledgeLadderItem } from '~/utils/domain/education/knowledge';
 
 const props = defineProps<{ problemId: string | null | undefined; userKey?: string | null }>();
 
@@ -42,7 +42,7 @@ const to = computed(() => (next.value ? ladderItemPath(next.value) : null));
           <span v-if="next.number !== null">#{{ next.number }} · </span>难度 {{ next.difficulty }}
         </span>
       </span>
-      <DifficultyBadge :difficulty="next.tier" />
+      <ProblemDifficultyBadge :difficulty="next.tier" />
     </NuxtLink>
   </section>
 </template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { educationCacheKey } from '~/utils/education';
-import { extractApiError } from '~/utils/apiError';
+import { educationCacheKey } from '~/utils/domain/education/education';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
 const actor = useState<{ id: string } | null>('auth:user', () => null),

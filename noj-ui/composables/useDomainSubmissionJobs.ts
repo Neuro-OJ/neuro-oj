@@ -1,10 +1,10 @@
-import type { Pagination } from '~/utils/contest-types';
+import type { Pagination } from '~/utils/domain/contest/contest-types';
 import type {
   DomainSubmissionJob,
   DomainSubmissionJobItem,
   DomainSubmissionJobReceipt,
   DomainSubmissionJobRequest,
-} from '~/utils/domain-submission-jobs';
+} from '~/utils/domain/submission/domain-submission-jobs';
 /** 任务所属域来自当前路径，受理与读取不回退到旧全局接口。 */
 export function useDomainSubmissionJobs() {
   const { api } = useApi();

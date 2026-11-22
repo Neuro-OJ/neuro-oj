@@ -1,0 +1,122 @@
+/**
+ * API 错误提取工具（纯函数，无 Nuxt/`import.meta` 依赖，可独立单元测试）。
+ *
+ * 统一从 `$fetch` 抛出的任意异常中提取「展示给用户的具体错误原因」，
+ * 避免各调用点重复编写 `e.data?.error || e.status` 之类的提取逻辑、
+ * 以及只显示状态码丢失具体原因的问题。
+ */
+
+/** 提取结果：可直接用于 toast/表单错误展示 */
+import { translate, translateErrorCode } from '../i18n.ts';
+
+export interface ApiErrorInfo {
+  /** 展示给用户的具体错误原因（优先为后端 `error` 字段，否则为兜底文案） */
+  message: string;
+  /** 后端错误码（如 VALIDATION_ERROR、CONFLICT_ERROR），无则 undefined */
+  code?: string;
+  /** HTTP 状态码（网络/超时等无响应错误时为 undefined） */
+  status?: number;
+  /** 后端 request_id（用于与服务端日志关联），无则 undefined */
+  requestId?: string;
+}
+
+/** 判断是否为超时/中止错误（ofetch `timeout` 选项或 AbortController.abort 触发） */
+export function isTimeoutError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'AbortError') return true;
+  const cause = (err as { cause?: unknown }).cause;
+  return cause instanceof Error && cause.name === 'AbortError';
+}
+
+/** 判断是否为网络层错误（请求未到达后端，如 fetch failed / Failed to fetch） */
+export function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err instanceof TypeError) return true;
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause instanceof TypeError) return true;
+  const msg = err.message ?? '';
+  return msg.includes('fetch failed') || msg.includes('Failed to fetch') ||
+    msg.includes('NetworkError');
+}
+
+/**
+ * 判断是否为 404（`$fetch`/`useFetch` 的 FetchError，或经 `extractApiError` 提取的结果）。
+ *
+ * 用于把"题目不存在/题目被公开赛保密而对当前用户不可见"渲染成真正的 404 页面，
+ * 而不是笼统的"加载失败"面板——后端对这两种情况刻意返回同一个 404
+ * `题目不存在`（防存在性探测），前端不应把它降级成 200。
+ */
+export function isNotFoundError(err: unknown): boolean {
+  if (!err) return false;
+  const status = (err as { status?: unknown; statusCode?: unknown }).status ??
+    (err as { statusCode?: unknown }).statusCode;
+  return status === 404;
+}
+
+/**
+ * 判断是否为「作答版本冲突」（Handbook §4.2/§4.4）。
+ *
+ * 服务端在客户端提交的版本与当前作答版本不一致（题库换版后旧页面）或未携带版本时
+ * 返回 409：`VERSION_REQUIRED` / `CONTEST_PROBLEM_VERSION_CHANGED`；
+ * 版本已被删除/未发布时为 404 `PROBLEM_VERSION_NOT_FOUND`。
+ *
+ * 调用方一律**不要自动改用其他版本重提**：保留用户已写内容，重新拉取题目让用户
+ * 确认新版本后再提交。
+ */
+export function isVersionConflictError(err: unknown): boolean {
+  if (!err) return false;
+  const data = (err as { data?: unknown }).data;
+  const code = data && typeof data === 'object' ? (data as { code?: unknown }).code : undefined;
+  return code === 'VERSION_REQUIRED' ||
+    code === 'CONTEST_PROBLEM_VERSION_CHANGED' ||
+    code === 'PROBLEM_VERSION_NOT_FOUND';
+}
+
+/**
+ * 从任意异常提取错误信息。
+ *
+ * 提取优先级：
+ * 1. 后端错误响应（`data.error` 字符串）——具体原因，直接展示
+ * 2. 超时（AbortError）→ 「请求超时，请稍后重试」
+ * 3. 网络错误（TypeError/fetch failed）→ 「网络连接失败，请检查网络」
+ * 4. 有 HTTP 状态码但无 error 字段 → 「请求失败（HTTP <status>）」
+ * 5. 未知错误 → 「操作失败，请稍后重试」
+ */
+export function extractApiError(err: unknown): ApiErrorInfo {
+  const e = err as {
+    data?: unknown;
+    status?: number;
+    statusCode?: number;
+    response?: { status?: number };
+  } | null;
+
+  const status = e?.status ?? e?.statusCode ?? e?.response?.status;
+
+  // 1. 后端错误响应：优先使用后端给出的具体业务原因，缺失时按机器 code 映射中文文案。
+  const data = e?.data;
+  if (data !== null && typeof data === 'object') {
+    const d = data as Record<string, unknown>;
+    const code = typeof d.code === 'string' ? d.code : undefined;
+    const localized = translateErrorCode(code);
+    if (typeof d.error === 'string' && d.error.length > 0) {
+      return {
+        message: d.error,
+        code,
+        status,
+        requestId: typeof d.request_id === 'string' ? d.request_id : undefined,
+      };
+    }
+    if (localized) {
+      return { message: localized, code, status };
+    }
+  }
+
+  // 2. 超时
+  if (isTimeoutError(err)) return { message: translate('error.timeout'), status };
+  // 3. 网络错误
+  if (isNetworkError(err)) return { message: translate('error.network'), status };
+  // 4. 有状态码但响应体无 error 字段：给出结构化兜底而非裸状态码
+  if (typeof status === 'number') return { message: translate('error.http', { status }), status };
+  // 5. 未知错误
+  return { message: translate('error.unknown') };
+}

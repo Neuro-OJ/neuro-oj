@@ -1,10 +1,10 @@
-import type { BffEnvelope, BffJsonValue, BffSectionName, BffViewKind } from '../../utils/bff-view.ts';
-import type { AuthUser } from '../../utils/auth-user.ts';
-import type { WorkspaceDetail } from '../../utils/workspace.ts';
-import type { AssignmentDetail, ClassroomDetail } from '../../utils/education.ts';
-import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain-trainings.ts';
+import type { BffEnvelope, BffJsonValue, BffSectionName, BffViewKind } from '../../utils/server/bff-view.ts';
+import type { AuthUser } from '../../utils/auth/auth-user.ts';
+import type { WorkspaceDetail } from '../../utils/domain/workspace/workspace.ts';
+import type { AssignmentDetail, ClassroomDetail } from '../../utils/domain/education/education.ts';
+import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain/problem/domain-trainings.ts';
 import { readProblemSummaries } from './bff-problem-summaries.ts';
-import { classroomCan } from '../../utils/education.ts';
+import { classroomCan } from '../../utils/domain/education/education.ts';
 import { BffError, type CoreReader } from './bff-request.ts';
 
 /** 聚合既有 API，不读 Core 数据库、不推导或替代上游授权。 */

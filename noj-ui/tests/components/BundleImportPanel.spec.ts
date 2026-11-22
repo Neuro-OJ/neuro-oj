@@ -1,8 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref } from 'vue';
-import ZipDropZone from '~/components/shared/ZipDropZone.vue';
-import BundleImportPanel from '~/components/editor/BundleImportPanel.vue';
+import ZipDropZone from '~/components/base/ZipDropZone.vue';
+import BundleImportPanel from '~/components/editor/EditorBundleImportPanel.vue';
 
 const post = vi.fn();
 const toastSuccess = vi.fn();

@@ -1,7 +1,7 @@
-import type { DomainProblemDetail, DomainProblemSummary } from '~/utils/domain-problems';
-import { domainProblemApiPath } from '~/utils/domain-problems';
+import type { DomainProblemDetail, DomainProblemSummary } from '~/utils/domain/problem/domain-problems';
+import { domainProblemApiPath } from '~/utils/domain/problem/domain-problems';
 import type { SubmitResult } from './useObjective';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
 
 /** 域内作答只使用明确域 API；失败不切换到默认域。 */
 export function useDomainProblems() {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAdminList } from '~/composables/useAdminList';
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import { useToast } from '~/composables/useToast';
 import type { AdminColumn } from '~/components/admin/AdminTable.vue';
 
@@ -274,7 +274,7 @@ async function confirmDeleteUser(user: User) {
       <template #actions>
         <AdminAccountDialogs :reset-user="resetTarget" @reset-closed="resetTarget = null"
           @changed="reloadAfterMutation" />
-        <RefreshControl
+        <AdminRefreshControl
           v-model:interval="pollInterval"
           :last-refresh="lastRefresh"
           @refresh="loadUsers(currentPage)"

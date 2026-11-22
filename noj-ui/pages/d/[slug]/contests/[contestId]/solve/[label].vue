@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { workspaceCacheKey } from '~/utils/workspace';
-import type { DomainCodeProblem } from '~/utils/domain-problems';
-import { extractApiError } from '~/utils/apiError';
-import { contestPhase } from '~/utils/contestWindow';
+import { workspaceCacheKey } from '~/utils/domain/workspace/workspace';
+import type { DomainCodeProblem } from '~/utils/domain/problem/domain-problems';
+import { extractApiError } from '~/utils/server/apiError';
+import { contestPhase } from '~/utils/domain/contest/contestWindow';
 definePageMeta({ layout: 'workspace-editor', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug } = useWorkspace(), { user } = useAuth();
 const api = useDomainContestAnswers(), contestApi = useDomainContests();
@@ -97,10 +97,10 @@ const emptyText = computed(() =>
           <h1 class="text-xl font-semibold">{{ data.data.label }} · {{ data.data.title }}</h1>
           <UButton :to="backUrl" color="neutral" variant="outline">返回赛题</UButton>
         </div>
-        <DomainContestAnswer :key="key" :slug="slug!" :contest-id="id"
+        <ContestAnswer :key="key" :slug="slug!" :contest-id="id"
           :problem="{...data.data,version_id:model.version_id}" :active="active" @refresh="refresh()" />
       </div>
-      <DomainCodeWorkspace v-else :key="key" :slug="slug!" :problem="model" :back-url="backUrl"
+      <EditorCodeWorkspace v-else :key="key" :slug="slug!" :problem="model" :back-url="backUrl"
         :contest="{id,label,title:row?.title ?? '比赛',active}" @refresh="refresh()" />
     </template>
     <template #empty>

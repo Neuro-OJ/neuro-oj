@@ -1,12 +1,13 @@
-import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/default-workspace';
-import { workspaceProblemPath, workspaceSolvePath } from '~/utils/workspace';
-import { isNotFoundError } from '~/utils/apiError';
-import { contestProtectionFromError } from '~/utils/contestProtection';
-/** 旧入口在页面 setup 前转到 main（规则见 `utils/default-workspace.ts`），旧表单不再发起业务写操作。 */
+import { defaultProblemReference, defaultWorkspaceDestination } from '~/utils/domain/workspace/default-workspace';
+import { workspaceProblemPath, workspaceSolvePath } from '~/utils/domain/workspace/workspace';
+import { isNotFoundError } from '~/utils/server/apiError';
+import { contestProtectionFromError } from '~/utils/domain/contest/contestProtection';
+/** 旧入口在页面 setup 前转到 main（规则见 `utils/domain/workspace/default-workspace.ts`），旧表单不再发起业务写操作。 */
 export default defineNuxtRouteMiddleware(async (to) => {
   const destination = defaultWorkspaceDestination(to.path);
   if (!destination) return;
   const query = { ...to.query };
+  // 静态路径段不区分大小写（与原 Vue Router 页面一致），`/Search` 仍是搜索页。
   const lower = to.path.toLowerCase();
   if (!lower.startsWith('/community') && lower !== '/search') delete query.type;
   if (

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspacePath } from '~/utils/workspace';
-import { workspaceNavigation } from '~/utils/workspace-navigation';
+import { workspacePath } from '~/utils/domain/workspace/workspace';
+import { workspaceNavigation } from '~/utils/domain/workspace/workspace-navigation';
 const { user } = useAuth();
 const route = useRoute(), slug = useNavigationDomain(), workspace = useOptionalWorkspace();
 const mobileOpen = ref(false), headerRef = ref<HTMLElement | null>(null);

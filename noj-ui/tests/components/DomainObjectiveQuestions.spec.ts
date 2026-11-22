@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref, watch } from 'vue';
-import DomainObjectiveQuestions from '~/components/editor/DomainObjectiveQuestions.vue';
+import DomainObjectiveQuestions from '~/components/editor/EditorObjectiveQuestions.vue';
 describe('域客观题草稿', () => {
   it('修改已有小题保持稳定 key，排序不创造新题', async () => {
     vi.stubGlobal('ref', ref);

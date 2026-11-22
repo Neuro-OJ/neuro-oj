@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ProblemSample } from "~/utils/oiWorkspace"
-import { extractStatementSamples } from "~/utils/oiWorkspace"
+import type { ProblemSample } from "~/utils/domain/problem/oiWorkspace"
+import { extractStatementSamples } from "~/utils/domain/problem/oiWorkspace"
 const samples = defineModel<ProblemSample[]>({ required: true })
 const statement = defineModel<string>("statement", {default:""})
 const extracted = ref<ReturnType<typeof extractStatementSamples> | null>(null)

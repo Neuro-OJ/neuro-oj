@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { DomainCreationRequest } from '~/utils/instance-governance';
-import { WORKSPACE_PRESETS } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import InstanceNav from '~/components/admin/InstanceNav.vue';
+import type { DomainCreationRequest } from '~/utils/server/instance-governance';
+import { WORKSPACE_PRESETS } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import AdminInstanceNav from '~/components/admin/AdminInstanceNav.vue';
 
 definePageMeta({ layout: 'admin', middleware: 'admin', });
 
@@ -72,7 +72,7 @@ useSeoMeta({ title: '空间创建申请 - 实例设置' });
       </template>
     </AdminPageHeader>
 
-    <InstanceNav />
+    <AdminInstanceNav />
 
     <div class="space-y-4">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

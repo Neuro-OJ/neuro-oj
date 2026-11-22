@@ -6,7 +6,7 @@
  * - 掌握状态徽标：已掌握=成功绿、学习中=品牌主色、未开始=中性灰（语义色映射设计 token）；
  * - 总开关关闭（`KNOWLEDGE_DISABLED`）时整块隐藏、不报错；未登录提示登录，不发请求。
  */
-import { extractApiError } from '~/utils/apiError';
+import { extractApiError } from '~/utils/server/apiError';
 import {
   type KnowledgeRecommendation,
   ladderItemPath,
@@ -17,7 +17,7 @@ import {
   type MyMasteryView,
   recommendationReasonText,
   type RecommendationReason,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library' });
 
@@ -154,7 +154,7 @@ useSeoMeta({ title: '我的学习' });
                   {{ item.next.number !== null ? `${item.next.number}. ` : '' }}{{ item.next.title }}
                 </NuxtLink>
                 <span v-else class="break-words font-medium text-text">{{ item.next.title }}</span>
-                <DifficultyBadge :difficulty="item.next.tier" />
+                <ProblemDifficultyBadge :difficulty="item.next.tier" />
               </div>
             </li>
           </ul>

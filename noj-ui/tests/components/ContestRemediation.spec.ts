@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
 import ContestRemediation from '~/components/education/ContestRemediationBuilder.vue';
 import RemediationSelection from '~/components/education/RemediationSelection.vue';
-import type { ContestRemediationPreview } from '~/utils/education-remediation-preview';
+import type { ContestRemediationPreview } from '~/utils/domain/education/education-remediation-preview';
 const education = { contestRemediationPreview: vi.fn(), createContestRemediation: vi.fn() };
 const contests = { list: vi.fn() }, navigate = vi.fn();
 const facts = (): ContestRemediationPreview => ({

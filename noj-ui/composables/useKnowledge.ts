@@ -28,7 +28,7 @@ import {
   type ProblemKnowledgeView,
   type TagEstimate,
   type TagUsage,
-} from '~/utils/knowledge';
+} from '~/utils/domain/education/knowledge';
 
 export function useKnowledge() {
   const { api } = useApi();

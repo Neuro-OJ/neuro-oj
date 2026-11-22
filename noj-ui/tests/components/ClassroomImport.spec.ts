@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { ref, watch } from 'vue';
 import ClassroomImport from '~/components/education/ClassroomImport.vue';
-import type { ClassroomImportPreview } from '~/utils/education-enrollment';
+import type { ClassroomImportPreview } from '~/utils/domain/education/education-enrollment';
 const api = { previewImport: vi.fn(), executeImport: vi.fn() };
 let current = true;
 const preview: ClassroomImportPreview = {

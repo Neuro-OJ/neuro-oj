@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { defineComponent, ref } from 'vue';
-import Workspace from '~/components/problem/DomainProblemWorkspace.vue';
+import Workspace from '~/components/problem/ProblemWorkspace.vue';
 
 describe('窄屏做题面板', () => {
   it('往返题面时保留作答实例与输入，桌面两栏均可访问', async () => {

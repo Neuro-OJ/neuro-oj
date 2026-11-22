@@ -50,7 +50,7 @@ const stubs = {
     props: ['slug', 'classroomId', 'writable'],
     template: '<div data-testid="classroom-join-requests" />',
   },
-  InvitationManager: {
+  WorkspaceInvitationManager: {
     props: ['domainSlug', 'classroomId', 'writable'],
     template:
       '<div data-testid="invitation-manager" :data-slug="domainSlug" :data-classroom="classroomId" :data-writable="String(writable)" />',

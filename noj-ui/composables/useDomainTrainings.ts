@@ -1,5 +1,5 @@
-import type { DomainTrainingDetail, DomainTrainingInput } from '~/utils/domain-trainings';
-export type { DomainTrainingDetail, DomainTrainingInput } from '~/utils/domain-trainings';
+import type { DomainTrainingDetail, DomainTrainingInput } from '~/utils/domain/problem/domain-trainings';
+export type { DomainTrainingDetail, DomainTrainingInput } from '~/utils/domain/problem/domain-trainings';
 const path = (slug: string, id?: string) =>
   `/api/v1/domains/${encodeURIComponent(slug)}/trainings${id ? `/${encodeURIComponent(id)}` : ''}`;
 /** 题单的创建、排序和题目链接保留当前使用域。 */

@@ -1,7 +1,7 @@
-import type { DomainProblemReference } from '~/utils/domain-problems';
+import type { DomainProblemReference } from '~/utils/domain/problem/domain-problems';
 import type { PolledSelfTest } from './useSelfTestPolling';
-import type { AssignmentSubmissionOrigin } from '~/utils/education';
-import type { Pagination } from '~/utils/contest-types';
+import type { AssignmentSubmissionOrigin } from '~/utils/domain/education/education';
+import type { Pagination } from '~/utils/domain/contest/contest-types';
 export interface DomainSelfTest extends PolledSelfTest {
   domain_id: string;
   reference: DomainProblemReference;

@@ -1,20 +1,24 @@
 import { useApi } from '~/composables/useApi';
-import type { EducationDashboardData } from '~/utils/education-dashboard';
+import type { EducationDashboardData } from '~/utils/domain/education/education-dashboard';
 import type {
   AssignmentRemediationInput,
   AssignmentRemediationPreview,
   ContestRemediationCriteria,
   ContestRemediationInput,
   ContestRemediationPreview,
-} from '~/utils/education-remediation-preview';
-import type { AssignmentSubmissionEvidence, TeachingAttempt, TeachingSubmission } from '~/utils/education-submissions';
-import type { TeachingNotice } from '~/utils/education-notifications';
+} from '~/utils/domain/education/education-remediation-preview';
+import type {
+  AssignmentSubmissionEvidence,
+  TeachingAttempt,
+  TeachingSubmission,
+} from '~/utils/domain/education/education-submissions';
+import type { TeachingNotice } from '~/utils/domain/education/education-notifications';
 import type {
   ClassroomImportPreview,
   ClassroomImportResult,
   ClassroomJoinRequest,
   ClassroomJoinView,
-} from '~/utils/education-enrollment';
+} from '~/utils/domain/education/education-enrollment';
 import type {
   Assignment,
   AssignmentDetail,
@@ -31,7 +35,7 @@ import type {
   TeachingPage,
   TeachingProblemOption,
   TeachingText,
-} from '~/utils/education';
+} from '~/utils/domain/education/education';
 
 /** 教学接口始终显式指定使用域和资源，页面权限仅控制展示，服务端再次授权。 */
 export function useEducationApi() {

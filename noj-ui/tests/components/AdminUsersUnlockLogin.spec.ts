@@ -62,7 +62,7 @@ function view() {
     global: {
       stubs: {
         AdminPageHeader: true,
-        RefreshControl: true,
+        AdminRefreshControl: true,
         AdminTable: TableStub,
         UButton: ButtonStub,
         AdminEditPanel: true,

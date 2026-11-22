@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
+import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/domain/submission/submissionFormat"
 import { problemUrl, publicUrl, workspaceProblemUrl } from "~/utils/publicIdentifiers"
-import { workspacePath } from "~/utils/workspace"
-import { contestHiddenRowClass } from "~/utils/contestHidden"
+import { workspacePath } from "~/utils/domain/workspace/workspace"
+import { contestHiddenRowClass } from "~/utils/domain/contest/contestHidden"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 definePageMeta({ breadcrumbWidth: '900px' })
@@ -174,7 +174,7 @@ const isOwnProfile = computed(
   () => currentUser.value?.username === userId,
 )
 
-// 语言标签（统一走 utils/submissionFormat 的 getLanguageLabel）
+// 语言标签（统一走 utils/domain/submission/submissionFormat 的 getLanguageLabel）
 
 // 结果状态
 const resultBadgeColors: Record<string, string> = {
@@ -379,7 +379,7 @@ function formatDate(iso: string): string {
                 {{ problem.title }}
               </NuxtLink>
               <!-- 公开赛收编标识（VULN-07）：接口未下发该字段时不渲染 -->
-              <ContestHiddenMark v-if="problem.is_contest_hidden" />
+              <ProblemContestHiddenMark v-if="problem.is_contest_hidden" />
             </div>
             <div class="flex items-center gap-3">
               <span
@@ -409,7 +409,7 @@ function formatDate(iso: string): string {
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <div class="flex items-center gap-3">
-              <ProblemId :display-id="problem.display_id" />
+              <ProblemIdBadge :display-id="problem.display_id" />
               <NuxtLink
                 :to="workspaceProblemUrl(problem.display_id)"
                 class="text-sm text-primary no-underline hover:underline"

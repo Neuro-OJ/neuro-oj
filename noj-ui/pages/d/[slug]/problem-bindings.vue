@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { workspaceCacheKey, workspaceProblemPath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
+import { workspaceCacheKey, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const { slug, domain, can } = useWorkspace(),
   { user } = useAuth(),
@@ -68,7 +68,7 @@ useSeoMeta({ title: '域题库资源管理' });
       <UAlert v-if="failure" class="mt-3" color="error" :title="failure" />
       <div class="mt-5 border-t border-border pt-5">
         <ClientOnly>
-          <DomainCopyCatalog :slug="slug!" kind="problem" @imported="refresh()" />
+          <AdminCopyCatalog :slug="slug!" kind="problem" @imported="refresh()" />
         </ClientOnly>
       </div>
     </UCard>
@@ -101,7 +101,7 @@ useSeoMeta({ title: '域题库资源管理' });
           <UButton v-if="selected.can_edit"
             :to="`/d/${slug}/editor/${selected.reference.number}`" variant="outline">编辑源题草稿</UButton>
           <ClientOnly>
-            <DomainProblemBindingEditor :slug="slug!" :initial="selected" :writable="domain?.status === 'active'"
+            <ProblemBindingEditor :slug="slug!" :initial="selected" :writable="domain?.status === 'active'"
               :can-policy="selected.can_manage_policy" @saved="refresh()" />
           </ClientOnly>
         </UCard>

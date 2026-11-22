@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { DOMAIN_STATUS_LABELS } from '~/utils/instance-governance';
-import type { InstanceDomain } from '~/utils/instance-governance';
-import { WORKSPACE_PRESETS, workspacePath } from '~/utils/workspace';
-import { extractApiError } from '~/utils/apiError';
-import InstanceNav from '~/components/admin/InstanceNav.vue';
+import { DOMAIN_STATUS_LABELS } from '~/utils/server/instance-governance';
+import type { InstanceDomain } from '~/utils/server/instance-governance';
+import { WORKSPACE_PRESETS, workspacePath } from '~/utils/domain/workspace/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import AdminInstanceNav from '~/components/admin/AdminInstanceNav.vue';
 
 definePageMeta({ layout: 'admin', middleware: 'admin', });
 
@@ -161,7 +161,7 @@ useSeoMeta({ title: '空间目录与治理 - 实例设置' });
       </template>
     </AdminPageHeader>
 
-    <InstanceNav />
+    <AdminInstanceNav />
 
     <div class="space-y-4 min-w-0 max-w-full">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

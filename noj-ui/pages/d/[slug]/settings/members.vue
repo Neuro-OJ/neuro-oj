@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { extractApiError } from '~/utils/apiError';
-import { WORKSPACE_ROLE_LABELS, workspaceCacheKey } from '~/utils/workspace';
-import type { WorkspaceJoinRequest, WorkspaceMember, WorkspaceMemberRole, WorkspaceRole } from '~/utils/workspace';
+import { extractApiError } from '~/utils/server/apiError';
+import { WORKSPACE_ROLE_LABELS, workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceJoinRequest, WorkspaceMember, WorkspaceMemberRole, WorkspaceRole } from '~/utils/domain/workspace/workspace';
 import { useToast } from '~/composables/useToast';
 
 definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
@@ -183,7 +183,7 @@ useSeoMeta({ title: '成员管理 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="managing" class="space-y-6">
       <AdminPageHeader title="成员管理" description="查看域内成员、分配角色及处理加入申请。" icon="i-lucide-users">
         <template #actions>
@@ -352,5 +352,5 @@ useSeoMeta({ title: '成员管理 - 域设置' });
       </UModal>
     </div>
     <UAlert v-else-if="context.status.value !== 'pending' && context.domain.value" color="neutral" variant="subtle" title="你没有管理此空间成员的权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

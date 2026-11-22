@@ -18,7 +18,7 @@
             <p class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
             <form @submit.prevent="handleRegister">
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
-                    <TextInput
+                    <AuthTextInput
                         id="username"
                         v-model="form.username"
                         :label="t('auth.username')"
@@ -29,11 +29,11 @@
                         @focus="fieldErrors.username = ''"
                     >
                         <template #icon><UIcon name="i-lucide-user" class="size-4.5" /></template>
-                    </TextInput>
+                    </AuthTextInput>
                 </div>
 
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
-                    <TextInput
+                    <AuthTextInput
                         id="email"
                         v-model="form.email"
                         type="email"
@@ -45,13 +45,13 @@
                         @focus="fieldErrors.email = ''"
                     >
                         <template #icon><UIcon name="i-lucide-mail" class="size-4.5" /></template>
-                    </TextInput>
+                    </AuthTextInput>
                 </div>
 
                 <!-- TODO 验证码 -->
 
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
-                    <PasswordField
+                    <AuthPasswordField
                         id="password"
                         v-model="form.password"
                         :label="t('auth.password')"
@@ -65,7 +65,7 @@
                 </div>
 
                 <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
-                    <PasswordField
+                    <AuthPasswordField
                         id="confirmPassword"
                         v-model="form.confirmPassword"
                         :label="t('auth.confirmPassword')"
@@ -124,11 +124,11 @@
 </template>
 
 <script setup lang="ts">
-import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/validatePassword"
-import { extractApiError } from "~/utils/apiError"
-import { submitRegistration } from "~/utils/registerFlow"
-import { workspaceInvitationToken, workspacePath } from "~/utils/workspace"
-import type { WorkspaceInvitationPreview } from "~/utils/workspace"
+import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/auth/validatePassword"
+import { extractApiError } from "~/utils/server/apiError"
+import { submitRegistration } from "~/utils/auth/registerFlow"
+import { workspaceInvitationToken, workspacePath } from "~/utils/domain/workspace/workspace"
+import type { WorkspaceInvitationPreview } from "~/utils/domain/workspace/workspace"
 
 definePageMeta({ layout: "auth" })
 
@@ -279,7 +279,7 @@ async function handleRegister() {
 
     loading.value = true
     try {
-        // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/registerFlow.ts）
+        // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/auth/registerFlow.ts）
         const result = await submitRegistration(
             {
                 register: (username, email, password, accepted) =>

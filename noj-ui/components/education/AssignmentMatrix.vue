@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { MatrixData, TeachingCell } from '~/utils/education';
-import { teachingCellLabel } from '~/utils/education';
+import type { MatrixData, TeachingCell } from '~/utils/domain/education/education';
+import { teachingCellLabel } from '~/utils/domain/education/education';
 const props = defineProps<{ matrix: MatrixData; titles?: Record<string, string> }>();
 const emit = defineEmits<{ select: [userId: string, cell: TeachingCell] }>();
 const expanded = ref<string | null>(null);

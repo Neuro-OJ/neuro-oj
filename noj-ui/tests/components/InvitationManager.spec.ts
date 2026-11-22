@@ -23,7 +23,7 @@ vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: mockToast }
 vi.mock('~/composables/useDialog', () => ({ useDialog: () => ({ dialog: mockDialog }) }));
 vi.mock('~/composables/useApi', () => ({ useApi: () => ({ api: mockApi }) }));
 
-import InvitationManager from '~/components/workspace/InvitationManager.vue';
+import InvitationManager from '~/components/workspace/WorkspaceInvitationManager.vue';
 
 const stubs = {
   UCard: { template: '<div><slot /></div>' },
