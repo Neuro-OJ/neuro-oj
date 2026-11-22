@@ -28,7 +28,7 @@ const DEFAULT_OFFPEAK_WINDOW = "00:30-08:30";
  */
 let nowOverride: Date | null = null;
 export function setOffpeakNowForTest(now: Date | null): void {
-    nowOverride = now;
+  nowOverride = now;
 }
 /** UTC+8 偏移（毫秒）。 */
 const CST_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -36,15 +36,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** 合法时段：`HH:MM-HH:MM`，起止不同。 */
 function parseWindow(
-    window: string,
+  window: string,
 ): { startMin: number; endMin: number } | null {
-    const match = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/.exec(
-        window.trim(),
-    );
-    if (!match) return null;
-    const startMin = Number(match[1]) * 60 + Number(match[2]);
-    const endMin = Number(match[3]) * 60 + Number(match[4]);
-    return startMin === endMin ? null : { startMin, endMin };
+  const match = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/.exec(
+    window.trim(),
+  );
+  if (!match) return null;
+  const startMin = Number(match[1]) * 60 + Number(match[2]);
+  const endMin = Number(match[3]) * 60 + Number(match[4]);
+  return startMin === endMin ? null : { startMin, endMin };
 }
 
 /**
@@ -55,29 +55,27 @@ function parseWindow(
  * 设置键名即两者的合同。
  */
 export function offpeakAvailableAt(
-    now: Date = nowOverride ?? new Date(),
+  now: Date = nowOverride ?? new Date(),
 ): string | null {
-    if (getSetting("knowledge_ai_offpeak_only")?.value === false) return null;
-    const raw = getSetting("knowledge_ai_offpeak_window")?.value;
-    const parsed = (typeof raw === "string" ? parseWindow(raw) : null) ??
-        parseWindow(DEFAULT_OFFPEAK_WINDOW)!;
-    const { startMin, endMin } = parsed;
-    const dayStart =
-        Math.floor((now.getTime() + CST_OFFSET_MS) / DAY_MS) * DAY_MS -
-        CST_OFFSET_MS;
-    const minute = Math.floor(
-        ((now.getTime() + CST_OFFSET_MS) % DAY_MS) / 60000,
-    );
-    const inside = startMin < endMin
-        ? minute >= startMin && minute < endMin
-        : minute >= startMin || minute < endMin;
-    if (inside) return null;
-    const todayStart = dayStart + startMin * 60000;
-    return new Date(
-        now.getTime() <= todayStart
-            ? todayStart
-            : dayStart + DAY_MS + startMin * 60000,
-    ).toISOString();
+  if (getSetting("knowledge_ai_offpeak_only")?.value === false) return null;
+  const raw = getSetting("knowledge_ai_offpeak_window")?.value;
+  const parsed = (typeof raw === "string" ? parseWindow(raw) : null) ??
+    parseWindow(DEFAULT_OFFPEAK_WINDOW)!;
+  const { startMin, endMin } = parsed;
+  const dayStart =
+    Math.floor((now.getTime() + CST_OFFSET_MS) / DAY_MS) * DAY_MS -
+    CST_OFFSET_MS;
+  const minute = Math.floor(((now.getTime() + CST_OFFSET_MS) % DAY_MS) / 60000);
+  const inside = startMin < endMin
+    ? minute >= startMin && minute < endMin
+    : minute >= startMin || minute < endMin;
+  if (inside) return null;
+  const todayStart = dayStart + startMin * 60000;
+  return new Date(
+    now.getTime() <= todayStart
+      ? todayStart
+      : dayStart + DAY_MS + startMin * 60000,
+  ).toISOString();
 }
 
 /**
@@ -87,19 +85,19 @@ export function offpeakAvailableAt(
  * 同样的取舍：宁可发布失败，也不留下「已发布但永远不打标」的静默缺口。
  */
 export async function enqueueKnowledgeTagTaskTx(
-    tx: DbTx,
-    problemId: string,
-    versionId: string,
+  tx: DbTx,
+  problemId: string,
+  versionId: string,
 ): Promise<void> {
-    if (getSetting("knowledge_enabled")?.value !== true) return;
-    if (getSetting("knowledge_ai_tagging_enabled")?.value !== true) return;
-    const availableAt = offpeakAvailableAt();
-    await enqueueTaskTx(tx, {
-        taskType: KNOWLEDGE_TAG_TASK_TYPE,
-        targetKind: "problem",
-        targetId: problemId,
-        dedupeKey: `tag:${versionId}`,
-        ...(availableAt ? { availableAt } : {}),
-        payload: { problem_id: problemId, version_id: versionId },
-    });
+  if (getSetting("knowledge_enabled")?.value !== true) return;
+  if (getSetting("knowledge_ai_tagging_enabled")?.value !== true) return;
+  const availableAt = offpeakAvailableAt();
+  await enqueueTaskTx(tx, {
+    taskType: KNOWLEDGE_TAG_TASK_TYPE,
+    targetKind: "problem",
+    targetId: problemId,
+    dedupeKey: `tag:${versionId}`,
+    ...(availableAt ? { availableAt } : {}),
+    payload: { problem_id: problemId, version_id: versionId },
+  });
 }

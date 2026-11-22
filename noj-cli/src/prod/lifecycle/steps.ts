@@ -24,25 +24,25 @@
 
 import { join } from "@std/path";
 import {
-    checkEnvFileMode,
-    judgeEnabledError,
+  checkEnvFileMode,
+  judgeEnabledError,
 } from "../../core/config-schema.ts";
 import { writeEnvFileAtomic } from "../../core/env-file.ts";
 import { type CommandRunner } from "../../runtime/command.ts";
 import {
-    backupPassphrasePath,
-    checkJudgeSocket,
-    checkPortValue,
-    checkRequiredValues,
-    ensureBackupPassphrase,
-    toEntries,
+  backupPassphrasePath,
+  checkJudgeSocket,
+  checkPortValue,
+  checkRequiredValues,
+  ensureBackupPassphrase,
+  toEntries,
 } from "../config.ts";
 import { type EnvValues, type RequiredValuesReport } from "../config.ts";
 import {
-    composeArgs,
-    composeConfig,
-    PROD_COMPOSE_FILE,
-    PROD_ENV_FILE,
+  composeArgs,
+  composeConfig,
+  PROD_COMPOSE_FILE,
+  PROD_ENV_FILE,
 } from "../compose.ts";
 import { type ComposeOptions, type ComposeResult } from "../compose.ts";
 import { isFile } from "../../util/fs.ts";
@@ -55,18 +55,18 @@ import { readEnvValues } from "../../core/env-file.ts";
  * {@link checkEnvFileMode} 产出报错。
  */
 export async function statMode(path: string): Promise<{
-    isFile: boolean;
-    mode: string | null;
+  isFile: boolean;
+  mode: string | null;
 }> {
-    try {
-        const st = await Deno.stat(path);
-        return {
-            isFile: st.isFile,
-            mode: ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0"),
-        };
-    } catch {
-        return { isFile: false, mode: null };
-    }
+  try {
+    const st = await Deno.stat(path);
+    return {
+      isFile: st.isFile,
+      mode: ((st.mode ?? 0) & 0o777).toString(8).padStart(3, "0"),
+    };
+  } catch {
+    return { isFile: false, mode: null };
+  }
 }
 
 /**
@@ -77,34 +77,34 @@ export async function statMode(path: string): Promise<{
  * 拒绝。judge **未设置/空串 = 启用**。
  */
 export function assertConfiguration(env: EnvValues): RequiredValuesReport {
-    const judgeError = judgeEnabledError(env["JUDGE_ENABLED"]);
-    if (judgeError !== null) throw new Error(judgeError);
-    const report = checkRequiredValues(env);
-    if (!report.ok) {
-        throw new Error("生产配置校验失败：\n" + report.errors.join("\n"));
-    }
-    return report;
+  const judgeError = judgeEnabledError(env["JUDGE_ENABLED"]);
+  if (judgeError !== null) throw new Error(judgeError);
+  const report = checkRequiredValues(env);
+  if (!report.ok) {
+    throw new Error("生产配置校验失败：\n" + report.errors.join("\n"));
+  }
+  return report;
 }
 
 // ---------------- prepare_and_check ----------------
 
 /** {@link prepareAndCheck} 的成功分支：已定位并校验的安装环境。 */
 export interface PreparedEnvironment {
-    ok: true;
-    /** 归一化安装目录（无尾斜杠）。 */
-    dir: string;
-    envFile: string;
-    composeFile: string;
-    /** `.env.prod` 的键值（含未设置键的 undefined）。 */
-    env: EnvValues;
-    /** judge 是否启用（决定 compose 是否带 `--profile judge`）。 */
-    judge: boolean;
+  ok: true;
+  /** 归一化安装目录（无尾斜杠）。 */
+  dir: string;
+  envFile: string;
+  composeFile: string;
+  /** `.env.prod` 的键值（含未设置键的 undefined）。 */
+  env: EnvValues;
+  /** judge 是否启用（决定 compose 是否带 `--profile judge`）。 */
+  judge: boolean;
 }
 
 /** {@link prepareAndCheck} 的失败分支：面向用户的错误文本。 */
 export interface PrepareFailure {
-    ok: false;
-    error: string;
+  ok: false;
+  error: string;
 }
 
 /** {@link prepareAndCheck} 的结果。 */
@@ -112,7 +112,7 @@ export type PrepareResult = PreparedEnvironment | PrepareFailure;
 
 /** compose 配置无效的报错前缀。 */
 export const COMPOSE_CONFIG_INVALID_HINT =
-    "Docker Compose 配置无效，请检查环境变量和生产 Compose 文件";
+  "Docker Compose 配置无效，请检查环境变量和生产 Compose 文件";
 
 /**
  * {@link prepareAndCheck} 的注入点。
@@ -122,25 +122,25 @@ export const COMPOSE_CONFIG_INVALID_HINT =
  * "已跳过"/"无 lsof"，测试与无真实机器场景都不会误触。
  */
 export interface PrepareOptions {
-    /** 生产安装目录（已归一化）。 */
-    dir: string;
-    /** 外部命令注入点（docker，步骤 6）。 */
-    runner: CommandRunner;
-    /**
-     * 步骤 4：judge socket 存在性探测（{@link checkJudgeSocket} 的注入点）。
-     *
-     * 仅在 judge 启用时被调用；judge 关闭即「已跳过」，**不探测**。
-     */
-    socketExists?: (path: string) => Promise<boolean>;
-    /**
-     * 步骤 5：端口占用探测（`lsof -nP -iTCP:<port> -sTCP:LISTEN` 的注入点）。
-     *
-     * 缺省不探测：`checkPortValue` 的端口*取值*校验（纯计算）始终执行，只有
-     * `lsof` 这类真实环境探测被延后到注入方。
-     */
-    probePort?: (port: number) => Promise<boolean>;
-    /** 步骤 5 端口冲突告警的写出点；缺省丢弃（调用方决定 stdout/stderr）。 */
-    write?: StepSink;
+  /** 生产安装目录（已归一化）。 */
+  dir: string;
+  /** 外部命令注入点（docker，步骤 6）。 */
+  runner: CommandRunner;
+  /**
+   * 步骤 4：judge socket 存在性探测（{@link checkJudgeSocket} 的注入点）。
+   *
+   * 仅在 judge 启用时被调用；judge 关闭即「已跳过」，**不探测**。
+   */
+  socketExists?: (path: string) => Promise<boolean>;
+  /**
+   * 步骤 5：端口占用探测（`lsof -nP -iTCP:<port> -sTCP:LISTEN` 的注入点）。
+   *
+   * 缺省不探测：`checkPortValue` 的端口*取值*校验（纯计算）始终执行，只有
+   * `lsof` 这类真实环境探测被延后到注入方。
+   */
+  probePort?: (port: number) => Promise<boolean>;
+  /** 步骤 5 端口冲突告警的写出点；缺省丢弃（调用方决定 stdout/stderr）。 */
+  write?: StepSink;
 }
 
 /**
@@ -166,93 +166,90 @@ export interface PrepareOptions {
  * `down` 之前返回错误，由命令入口转成退出码 1。
  */
 export async function prepareAndCheck(
-    opts: PrepareOptions,
+  opts: PrepareOptions,
 ): Promise<PrepareResult> {
-    const dir = opts.dir;
-    const envFile = join(dir, PROD_ENV_FILE);
-    const composeFile = join(dir, PROD_COMPOSE_FILE);
+  const dir = opts.dir;
+  const envFile = join(dir, PROD_ENV_FILE);
+  const composeFile = join(dir, PROD_COMPOSE_FILE);
 
-    // ---- compose 文件存在（先于配置校验）----
-    if (!(await isFile(composeFile))) {
-        return {
-            ok: false,
-            error: `找不到生产 Compose 文件：${composeFile}，请先执行 install`,
-        };
-    }
-
-    // ---- 1. [[ -f "$ENV_FILE" ]]----
-    if (!(await isFile(envFile))) {
-        return {
-            ok: false,
-            error: `找不到生产配置：${envFile}，请先执行 install`,
-        };
-    }
-
-    // ---- 2. check_file_permissions----
-    const { mode } = await statMode(envFile);
-    const verdict = checkEnvFileMode(mode, envFile);
-    if (verdict.kind !== "ok") return { ok: false, error: verdict.message };
-
-    // ---- 3. check_required_values----
-    const env = await readEnvValues(envFile);
-    let report: RequiredValuesReport;
-    try {
-        report = assertConfiguration(env);
-    } catch (err) {
-        return { ok: false, error: (err as Error).message };
-    }
-
-    // ---- 4. judge socket；judge 关闭即跳过 ----
-    if (report.judgeEnabled) {
-        const socket = await checkJudgeSocket(env, {
-            socketExists: opts.socketExists,
-        });
-        if (!socket.ok) {
-            return {
-                ok: false,
-                error: socket.error ?? "Judge Docker socket 校验失败",
-            };
-        }
-    }
-
-    // ---- 5. check_port_value：取值恒校验，占用探测经注入点 ----
-    const port = await checkPortValue(env);
-    if (port.error !== null) return { ok: false, error: port.error };
-    if (opts.probePort !== undefined && (await opts.probePort(port.port))) {
-        opts.write?.(port.warning ?? PORT_CONFLICT_HINT(port.port));
-    }
-
-    // ---- 6. compose config --quiet（只读解析）----
-    // `--quiet`：只判定可解析性，不把渲染结果写进 stdout。
-    const composeOptions: ComposeOptions = {
-        composeFile,
-        // 项目目录固定为安装目录：相对挂载不随调用时的工作目录变化。
-        projectDirectory: dir,
-        envFile,
-        judge: report.judgeEnabled,
-    };
-    const configCheck = await composeConfig(opts.runner, {
-        ...composeOptions,
-        quiet: true,
-    });
-    if (!Array.isArray(configCheck) && configCheck.code !== 0) {
-        const detail = configCheck.stderr.trim();
-        return {
-            ok: false,
-            error: detail === ""
-                ? COMPOSE_CONFIG_INVALID_HINT
-                : `${COMPOSE_CONFIG_INVALID_HINT}：${detail}`,
-        };
-    }
-
+  // ---- compose 文件存在（先于配置校验）----
+  if (!(await isFile(composeFile))) {
     return {
-        ok: true,
-        dir,
-        envFile,
-        composeFile,
-        env,
-        judge: report.judgeEnabled,
+      ok: false,
+      error: `找不到生产 Compose 文件：${composeFile}，请先执行 install`,
     };
+  }
+
+  // ---- 1. [[ -f "$ENV_FILE" ]]----
+  if (!(await isFile(envFile))) {
+    return { ok: false, error: `找不到生产配置：${envFile}，请先执行 install` };
+  }
+
+  // ---- 2. check_file_permissions----
+  const { mode } = await statMode(envFile);
+  const verdict = checkEnvFileMode(mode, envFile);
+  if (verdict.kind !== "ok") return { ok: false, error: verdict.message };
+
+  // ---- 3. check_required_values----
+  const env = await readEnvValues(envFile);
+  let report: RequiredValuesReport;
+  try {
+    report = assertConfiguration(env);
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+
+  // ---- 4. judge socket；judge 关闭即跳过 ----
+  if (report.judgeEnabled) {
+    const socket = await checkJudgeSocket(env, {
+      socketExists: opts.socketExists,
+    });
+    if (!socket.ok) {
+      return {
+        ok: false,
+        error: socket.error ?? "Judge Docker socket 校验失败",
+      };
+    }
+  }
+
+  // ---- 5. check_port_value：取值恒校验，占用探测经注入点 ----
+  const port = await checkPortValue(env);
+  if (port.error !== null) return { ok: false, error: port.error };
+  if (opts.probePort !== undefined && (await opts.probePort(port.port))) {
+    opts.write?.(port.warning ?? PORT_CONFLICT_HINT(port.port));
+  }
+
+  // ---- 6. compose config --quiet（只读解析）----
+  // `--quiet`：只判定可解析性，不把渲染结果写进 stdout。
+  const composeOptions: ComposeOptions = {
+    composeFile,
+    // 项目目录固定为安装目录：相对挂载不随调用时的工作目录变化。
+    projectDirectory: dir,
+    envFile,
+    judge: report.judgeEnabled,
+  };
+  const configCheck = await composeConfig(opts.runner, {
+    ...composeOptions,
+    quiet: true,
+  });
+  if (!Array.isArray(configCheck) && configCheck.code !== 0) {
+    const detail = configCheck.stderr.trim();
+    return {
+      ok: false,
+      error: detail === ""
+        ? COMPOSE_CONFIG_INVALID_HINT
+        : `${COMPOSE_CONFIG_INVALID_HINT}：${detail}`,
+    };
+  }
+
+  return {
+    ok: true,
+    dir,
+    envFile,
+    composeFile,
+    env,
+    judge: report.judgeEnabled,
+  };
 }
 
 // ---------------- compose 编排 ----------------
@@ -263,11 +260,11 @@ export async function prepareAndCheck(
  * 必须在调用点用 `Array.isArray` 收窄 `ComposeResult`。
  */
 export function runComposeSub(
-    runner: CommandRunner,
-    options: ComposeOptions,
-    command: string[],
+  runner: CommandRunner,
+  options: ComposeOptions,
+  command: string[],
 ): Promise<ComposeResult> {
-    return runner.run("docker", composeArgs({ ...options, command }));
+  return runner.run("docker", composeArgs({ ...options, command }));
 }
 
 /**
@@ -277,8 +274,8 @@ export function runComposeSub(
  * 由调用方决定写往 stdout 还是 stderr。
  */
 export function composeOutputText(result: ComposeResult): string {
-    if (Array.isArray(result)) return "";
-    return result.stdout + result.stderr;
+  if (Array.isArray(result)) return "";
+  return result.stdout + result.stderr;
 }
 
 /** 步骤输出的汇聚点：人类可读诊断，调用方决定去 stdout / stderr。 */
@@ -288,32 +285,32 @@ export type StepSink = (text: string) => void;
 
 /** 口令新生成时的告警文案。 */
 export const PASSPHRASE_CARRY_HINT =
-    "请将该口令文件安全复制到仓库外的异地位置，否则无法恢复加密快照";
+  "请将该口令文件安全复制到仓库外的异地位置，否则无法恢复加密快照";
 
 /** {@link ensureCommandPassphrase} 的输入。 */
 export interface PassphraseStepOptions {
-    /** `.env.prod` 路径（回填目标）。 */
-    envFile: string;
-    /** 当前 `.env.prod` 键值（`NOJ_BACKUP_PASSPHRASE_FILE` 参与选目标路径）。 */
-    env: EnvValues;
-    /** 进程环境快照（`NOJ_BACKUP_PASSPHRASE_FILE` 抑制回填且优先选路径）。 */
-    processEnv: Record<string, string | undefined>;
-    /** `--passphrase-file` 旗标（优先级最高，但**不**抑制回填）。 */
-    passphraseFile?: string;
-    /** 口令新生成时的告警汇聚点。 */
-    warn?: (message: string) => void;
+  /** `.env.prod` 路径（回填目标）。 */
+  envFile: string;
+  /** 当前 `.env.prod` 键值（`NOJ_BACKUP_PASSPHRASE_FILE` 参与选目标路径）。 */
+  env: EnvValues;
+  /** 进程环境快照（`NOJ_BACKUP_PASSPHRASE_FILE` 抑制回填且优先选路径）。 */
+  processEnv: Record<string, string | undefined>;
+  /** `--passphrase-file` 旗标（优先级最高，但**不**抑制回填）。 */
+  passphraseFile?: string;
+  /** 口令新生成时的告警汇聚点。 */
+  warn?: (message: string) => void;
 }
 
 /** {@link ensureCommandPassphrase} 的结果。 */
 export interface PassphraseStepResult {
-    /** 口令文件路径（无论新建还是复用）。 */
-    path: string;
-    /** 本次是否新生成口令文件。 */
-    created: boolean;
-    /** 回填后**重新读取**的 env（未回填时为传入的 `env` 原值）。 */
-    env: EnvValues;
-    /** 面向用户的失败文案；成功为 null。 */
-    error: string | null;
+  /** 口令文件路径（无论新建还是复用）。 */
+  path: string;
+  /** 本次是否新生成口令文件。 */
+  created: boolean;
+  /** 回填后**重新读取**的 env（未回填时为传入的 `env` 原值）。 */
+  env: EnvValues;
+  /** 面向用户的失败文案；成功为 null。 */
+  error: string | null;
 }
 
 /**
@@ -330,34 +327,34 @@ export interface PassphraseStepResult {
  * 失败以 `error` 返回而非抛错：调用方（install 抛错 / update 转退出码 1）各自决定。
  */
 export async function ensureCommandPassphrase(
-    opts: PassphraseStepOptions,
+  opts: PassphraseStepOptions,
 ): Promise<PassphraseStepResult> {
-    const explicit = opts.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"];
-    const target = backupPassphrasePath({
-        flag: opts.passphraseFile,
-        explicit,
-        configured: opts.env["NOJ_BACKUP_PASSPHRASE_FILE"],
-    });
-    const ensured = await ensureBackupPassphrase(opts.env, {
-        targetFile: target,
-        configuredFromEnv: (explicit ?? "") !== "",
-    });
-    if (ensured.error !== null) {
-        return {
-            path: ensured.path,
-            created: false,
-            env: opts.env,
-            error: ensured.error,
-        };
-    }
-    if (ensured.created) opts.warn?.(PASSPHRASE_CARRY_HINT);
+  const explicit = opts.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"];
+  const target = backupPassphrasePath({
+    flag: opts.passphraseFile,
+    explicit,
+    configured: opts.env["NOJ_BACKUP_PASSPHRASE_FILE"],
+  });
+  const ensured = await ensureBackupPassphrase(opts.env, {
+    targetFile: target,
+    configuredFromEnv: (explicit ?? "") !== "",
+  });
+  if (ensured.error !== null) {
+    return {
+      path: ensured.path,
+      created: false,
+      env: opts.env,
+      error: ensured.error,
+    };
+  }
+  if (ensured.created) opts.warn?.(PASSPHRASE_CARRY_HINT);
 
-    let env = opts.env;
-    if (ensured.envUpdate !== null) {
-        await writeEnvFileAtomic(opts.envFile, toEntries(ensured.envUpdate));
-        env = await readEnvValues(opts.envFile);
-    }
-    return { path: ensured.path, created: ensured.created, env, error: null };
+  let env = opts.env;
+  if (ensured.envUpdate !== null) {
+    await writeEnvFileAtomic(opts.envFile, toEntries(ensured.envUpdate));
+    env = await readEnvValues(opts.envFile);
+  }
+  return { path: ensured.path, created: ensured.created, env, error: null };
 }
 
 /**
@@ -373,43 +370,39 @@ export async function ensureCommandPassphrase(
  * `code`（成功真值），供 install 结果如实记录 `composeUpCode`——不再硬编码 0。
  */
 export async function waitForStack(
-    runner: CommandRunner,
-    options: ComposeOptions,
-    write: StepSink,
+  runner: CommandRunner,
+  options: ComposeOptions,
+  write: StepSink,
 ): Promise<WaitForStackResult> {
-    write("\n== 等待服务健康 ==\n");
+  write("\n== 等待服务健康 ==\n");
 
-    const healthy = await runComposeSub(runner, options, [
-        "up",
-        "-d",
-        "--wait",
-        "--wait-timeout",
-        WAIT_TIMEOUT_SECONDS,
-        "--remove-orphans",
-    ]);
-    write(composeOutputText(healthy));
-    if (!Array.isArray(healthy) && healthy.code !== 0) {
-        return { ok: false, error: WAIT_FAILURE_HINT, code: healthy.code };
-    }
+  const healthy = await runComposeSub(runner, options, [
+    "up",
+    "-d",
+    "--wait",
+    "--wait-timeout",
+    WAIT_TIMEOUT_SECONDS,
+    "--remove-orphans",
+  ]);
+  write(composeOutputText(healthy));
+  if (!Array.isArray(healthy) && healthy.code !== 0) {
+    return { ok: false, error: WAIT_FAILURE_HINT, code: healthy.code };
+  }
 
-    const nginx = await runComposeSub(runner, options, [
-        "up",
-        "-d",
-        "--force-recreate",
-        "--no-deps",
-        "nginx",
-    ]);
-    write(composeOutputText(nginx));
-    if (!Array.isArray(nginx) && nginx.code !== 0) {
-        return {
-            ok: false,
-            error: NGINX_REFRESH_FAILURE_HINT,
-            code: nginx.code,
-        };
-    }
+  const nginx = await runComposeSub(runner, options, [
+    "up",
+    "-d",
+    "--force-recreate",
+    "--no-deps",
+    "nginx",
+  ]);
+  write(composeOutputText(nginx));
+  if (!Array.isArray(nginx) && nginx.code !== 0) {
+    return { ok: false, error: NGINX_REFRESH_FAILURE_HINT, code: nginx.code };
+  }
 
-    write("✓ 生产服务已通过 Compose 健康检查\n");
-    return { ok: true, error: null, code: 0 };
+  write("✓ 生产服务已通过 Compose 健康检查\n");
+  return { ok: true, error: null, code: 0 };
 }
 
 /**
@@ -421,10 +414,10 @@ export async function waitForStack(
  * 而不是硬编码 `0`。
  */
 export interface WaitForStackResult {
-    ok: boolean;
-    error: string | null;
-    /** 第一段 `up` 的 compose 退出码（成功即 0）。 */
-    code: number;
+  ok: boolean;
+  error: string | null;
+  /** 第一段 `up` 的 compose 退出码（成功即 0）。 */
+  code: number;
 }
 
 /** `--wait-timeout` 的秒数。 */
@@ -432,11 +425,11 @@ export const WAIT_TIMEOUT_SECONDS = "180";
 
 /** 健康等待失败文案。 */
 export const WAIT_FAILURE_HINT =
-    "服务启动或健康检查失败，请执行 status 和 logs 排查";
+  "服务启动或健康检查失败，请执行 status 和 logs 排查";
 
 /** 反向代理刷新失败文案。 */
 export const NGINX_REFRESH_FAILURE_HINT =
-    "反向代理刷新失败，请执行 status 和 logs 排查";
+  "反向代理刷新失败，请执行 status 和 logs 排查";
 
 /**
  * 端口占用告警文案。
@@ -445,5 +438,5 @@ export const NGINX_REFRESH_FAILURE_HINT =
  * {@link prepareAndCheck} 在**注入** `probePort` 时统一措辞。
  */
 export function PORT_CONFLICT_HINT(port: number): string {
-    return `NGINX_PORT=${port} 已被其他进程监听；启动时可能发生端口冲突`;
+  return `NGINX_PORT=${port} 已被其他进程监听；启动时可能发生端口冲突`;
 }

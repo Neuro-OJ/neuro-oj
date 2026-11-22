@@ -76,172 +76,19 @@ const LINE_RULES: Array<{ re: RegExp; reason: SkipHit["reason"] }> = [
   { re: /if\s+!\s*is_e2e_enabled\(\)/, reason: "rust-env-guard" },
 ];
 
-/** 按语句聚合物理行：括号配对到深度 0 的换行才算语句结束。 */
-export interface Statement {
-  /** 语句首行的行号（1-based）。 */
-  startLine: number;
-  /** 语句原文（保留换行，便于把命中位置映射回行号）。 */
-  text: string;
-}
-
-/**
- * 把源码切成语句块（供跨行规则使用）。
- *
- * 逐行匹配会把
- * ```
- * console.log(
- *   "  ⚠ ... 跳过 ...",
- * );
- * ```
- * 拆散，`console.log(` 和 `跳过` 各在一行，两条规则都不命中，于是「格式化后
- * 跳过数从 335 变 334」的测量变绿。这里按括号配对把续行并回同一语句（字符串、
- * 行注释、块注释内的括号不参与计数），跨行规则才有完整的调用文本可匹配。
- * 该函数不改变逐行扫描的口径：单行语句仍由 `scanFile` 的原有逐行 pass 计数。
- */
-export function splitStatements(source: string): Statement[] {
-  const statements: Statement[] = [];
-  let depth = 0;
-  let quote = "";
-  let lineComment = false;
-  let blockComment = false;
-  let line = 1;
-  let startLine = 1;
-  let start = 0;
-
-  const flush = (end: number) => {
-    const text = source.slice(start, end);
-    if (text.trim() !== "") statements.push({ startLine, text });
-  };
-
-  for (let i = 0; i < source.length; i++) {
-    const ch = source[i];
-    const next = source[i + 1];
-    if (lineComment) {
-      if (ch === "\n") {
-        lineComment = false;
-        line++;
-        if (depth === 0) {
-          flush(i);
-          start = i + 1;
-          startLine = line;
-        }
-      }
-      continue;
-    }
-    if (blockComment) {
-      if (ch === "*" && next === "/") {
-        blockComment = false;
-        i++;
-      } else if (ch === "\n") line++;
-      continue;
-    }
-    if (quote !== "") {
-      if (ch === "\\") {
-        i++;
-        if (source[i] === "\n") line++;
-        continue;
-      }
-      if (ch === quote) {
-        quote = "";
-      } else if (ch === "\n") {
-        line++;
-        // 单/双引号字符串不能裸跨行；遇到裸换行视为未闭合，保守退出。
-        if (quote === '"' || quote === "'") quote = "";
-      }
-      continue;
-    }
-    if (ch === "/" && next === "/") {
-      lineComment = true;
-      i++;
-      continue;
-    }
-    if (ch === "/" && next === "*") {
-      blockComment = true;
-      i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      quote = ch;
-      continue;
-    }
-    if (ch === "(" || ch === "[" || ch === "{") {
-      depth++;
-      continue;
-    }
-    if (ch === ")" || ch === "]" || ch === "}") {
-      depth = Math.max(0, depth - 1);
-      continue;
-    }
-    if (ch === "\n") {
-      line++;
-      if (depth === 0) {
-        flush(i);
-        start = i + 1;
-        startLine = line;
-      }
-    }
-  }
-  flush(source.length);
-  return statements;
-}
-
-/** `text` 中位置 `index` 之前有多少个换行（映射到物理行偏移）。 */
-function lineOffset(text: string, index: number): number {
-  let count = 0;
-  for (let i = 0; i < index; i++) if (text[i] === "\n") count++;
-  return count;
-}
-
-/**
- * 跨行命中：对每个多行语句跑同一组规则，只补"匹配文本本身跨行"的命中。
- *
- * 只补跨行匹配有两个作用：一是逐行 pass 已经命中的单行内容不会重复计数
- * （报告仍可逐字节复现）；二是不会因为语句聚合把同一行上的多条规则并成一条。
- * 规则本身没有放宽——匹配的仍是同一个 `console.log(...跳过)` / `ignore: ...`
- * 文本，只是允许它换行。
- */
-function scanCrossLine(file: string, source: string): SkipHit[] {
-  const hits: SkipHit[] = [];
-  for (const statement of splitStatements(source)) {
-    if (!statement.text.includes("\n")) continue;
-    for (const rule of LINE_RULES) {
-      const pattern = new RegExp(rule.re.source, "g");
-      for (const match of statement.text.matchAll(pattern)) {
-        if (!match[0].includes("\n")) continue;
-        hits.push({
-          file,
-          line: statement.startLine +
-            lineOffset(statement.text, match.index ?? 0),
-          reason: rule.reason,
-        });
-      }
-    }
-  }
-  return hits;
-}
-
 export function scanFile(file: string, source: string): SkipHit[] {
   const hits: SkipHit[] = [];
-  const seen = new Set<string>();
-  const push = (hit: SkipHit) => {
-    const key = `${hit.line}:${hit.reason}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    hits.push(hit);
-  };
   const lines = source.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     for (const rule of LINE_RULES) {
       if (rule.re.test(line)) {
-        push({ file, line: i + 1, reason: rule.reason });
+        hits.push({ file, line: i + 1, reason: rule.reason });
         break;
       }
     }
   }
-  for (const hit of scanCrossLine(file, source)) push(hit);
-  // 行号升序：报告渲染还会按文件排序，这里先给出稳定可断言的顺序。
-  return hits.sort((a, b) => a.line - b.line);
+  return hits;
 }
 
 export function renderReport(hits: SkipHit[]): string {

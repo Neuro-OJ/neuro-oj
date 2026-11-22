@@ -13,18 +13,18 @@
  */
 
 import {
-    apiGet,
-    apiPost,
-    apiPut,
-    BASE_URL,
-    domainProblemPath,
-    e2eTest,
-    getAdminToken,
-    getProblemReference,
-    pollSubmission,
-    publishProblemVersion,
-    registerUser,
-    setProblemState,
+  apiGet,
+  apiPost,
+  apiPut,
+  BASE_URL,
+  domainProblemPath,
+  e2eTest,
+  getAdminToken,
+  getProblemReference,
+  pollSubmission,
+  publishProblemVersion,
+  registerUser,
+  setProblemState,
 } from "../helper.ts";
 
 // ── 测试常量 ─────────────────────────────────────────
@@ -37,72 +37,72 @@ const TEST_TAG = `e2e-${Date.now()}`;
 
 /** 创建（或复用）evaluator 镜像白名单条目 */
 async function ensureImage(
-    image: string,
-    kind: "evaluator" | "solution",
+  image: string,
+  kind: "evaluator" | "solution",
 ): Promise<string> {
-    const adminToken = await getAdminToken();
-    const list = await apiGet("/api/v1/admin/system/judge-images", adminToken);
-    type JiEntry = { id: string; image: string; kind: string };
-    const existing = ((list.body as { data: JiEntry[] }).data ?? []).find(
-        (ji) => ji.image === image && ji.kind === kind,
-    );
-    if (existing) return existing.id;
+  const adminToken = await getAdminToken();
+  const list = await apiGet("/api/v1/admin/system/judge-images", adminToken);
+  type JiEntry = { id: string; image: string; kind: string };
+  const existing = ((list.body as { data: JiEntry[] }).data ?? []).find(
+    (ji) => ji.image === image && ji.kind === kind,
+  );
+  if (existing) return existing.id;
 
-    const create = await apiPost(
-        "/api/v1/admin/system/judge-images",
-        {
-            image,
-            kind,
-            mode: "exact",
-            description: `e2e ${kind} image`,
-        },
-        adminToken,
+  const create = await apiPost(
+    "/api/v1/admin/system/judge-images",
+    {
+      image,
+      kind,
+      mode: "exact",
+      description: `e2e ${kind} image`,
+    },
+    adminToken,
+  );
+  if (create.status !== 201) {
+    throw new Error(
+      `Failed to create image ${image} (kind=${kind}): ${create.status} ${
+        JSON.stringify(create.body)
+      }`,
     );
-    if (create.status !== 201) {
-        throw new Error(
-            `Failed to create image ${image} (kind=${kind}): ${create.status} ${
-                JSON.stringify(create.body)
-            }`,
-        );
-    }
-    return (create.body as { data: JiEntry }).data.id;
+  }
+  return (create.body as { data: JiEntry }).data.id;
 }
 
 /** 导入真实双容器支持包，避免通过空包发布掩盖评测预检。 */
 async function createDualProblem(
-    adminToken: string,
-    title: string,
+  adminToken: string,
+  title: string,
 ): Promise<string> {
-    const directory = await Deno.makeTempDir();
-    try {
-        await Deno.writeTextFile(
-            `${directory}/problem.json`,
-            JSON.stringify({
-                format_version: 2,
-                title,
-                difficulty: "medium",
-                runtime_config: {
-                    evaluator: {
-                        image: EVALUATOR_IMAGE,
-                        command: "python3 /workspace/evaluate.py",
-                        time_limit_ms: 10_000,
-                        memory_limit_mb: 512,
-                    },
-                    solution: {
-                        image: SOLUTION_IMAGE,
-                        call_timeout_ms: 1_000,
-                        memory_limit_mb: 256,
-                    },
-                },
-            }),
-        );
-        await Deno.writeTextFile(
-            `${directory}/statement.md`,
-            `# ${title}\n返回两个数之和。`,
-        );
-        await Deno.writeTextFile(
-            `${directory}/evaluate.py`,
-            `from noj_evaluator_sdk import SolutionRunner, result
+  const directory = await Deno.makeTempDir();
+  try {
+    await Deno.writeTextFile(
+      `${directory}/problem.json`,
+      JSON.stringify({
+        format_version: 2,
+        title,
+        difficulty: "medium",
+        runtime_config: {
+          evaluator: {
+            image: EVALUATOR_IMAGE,
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 10_000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: SOLUTION_IMAGE,
+            call_timeout_ms: 1_000,
+            memory_limit_mb: 256,
+          },
+        },
+      }),
+    );
+    await Deno.writeTextFile(
+      `${directory}/statement.md`,
+      `# ${title}\n返回两个数之和。`,
+    );
+    await Deno.writeTextFile(
+      `${directory}/evaluate.py`,
+      `from noj_evaluator_sdk import SolutionRunner, result
 runner = SolutionRunner()
 try:
     value = runner.call("solve", 1, 2)
@@ -113,285 +113,270 @@ try:
 finally:
     runner.close()
 `,
-        );
-        const zipped = await new Deno.Command("zip", {
-            args: ["-r", `${directory}/bundle.zip`, "."],
-            cwd: directory,
-        }).output();
-        if (zipped.code !== 0) throw new Error("双容器题包打包失败");
-        const bytes = await Deno.readFile(`${directory}/bundle.zip`);
-        const body = new FormData();
-        body.set(
-            "file",
-            new Blob([bytes.buffer as ArrayBuffer], {
-                type: "application/zip",
-            }),
-            "dual.zip",
-        );
-        const response = await fetch(
-            `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
-            {
-                method: "POST",
-                headers: { Authorization: `Bearer ${adminToken}` },
-                body,
-            },
-        );
-        const imported = await response.json();
-        if (!response.ok) {
-            throw new Error(
-                `导入双容器题包失败 ${response.status}: ${
-                    JSON.stringify(imported)
-                }`,
-            );
-        }
-        return imported.data.problem_id as string;
-    } finally {
-        await Deno.remove(directory, { recursive: true });
+    );
+    const zipped = await new Deno.Command("zip", {
+      args: ["-r", `${directory}/bundle.zip`, "."],
+      cwd: directory,
+    }).output();
+    if (zipped.code !== 0) throw new Error("双容器题包打包失败");
+    const bytes = await Deno.readFile(`${directory}/bundle.zip`);
+    const body = new FormData();
+    body.set(
+      "file",
+      new Blob([bytes.buffer as ArrayBuffer], { type: "application/zip" }),
+      "dual.zip",
+    );
+    const response = await fetch(
+      `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${adminToken}` },
+        body,
+      },
+    );
+    const imported = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        `导入双容器题包失败 ${response.status}: ${JSON.stringify(imported)}`,
+      );
     }
+    return imported.data.problem_id as string;
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
 }
 
 // ── Tests ────────────────────────────────────────────
 
 e2eTest(
-    "dual_container_judge: admin 创建双容器题目成功（含 runtime_config）",
-    async () => {
-        const adminToken = await getAdminToken();
-        await ensureImage(EVALUATOR_IMAGE, "evaluator");
-        await ensureImage(SOLUTION_IMAGE, "solution");
+  "dual_container_judge: admin 创建双容器题目成功（含 runtime_config）",
+  async () => {
+    const adminToken = await getAdminToken();
+    await ensureImage(EVALUATOR_IMAGE, "evaluator");
+    await ensureImage(SOLUTION_IMAGE, "solution");
 
-        const problemId = await createDualProblem(
-            adminToken,
-            `[${TEST_TAG}] 双容器评测测试题`,
-        );
+    const problemId = await createDualProblem(
+      adminToken,
+      `[${TEST_TAG}] 双容器评测测试题`,
+    );
 
-        // 验证题目详情包含 runtime_config（敏感字段仅 owner/admin 可见）
-        const detail = await apiGet(
-            `/api/v1/problems/${problemId}`,
-            adminToken,
-        );
-        const problem = (detail.body as { data: { runtime_config: unknown } })
-            .data;
-        if (!problem.runtime_config) {
-            throw new Error("Expected runtime_config to be present");
-        }
-    },
+    // 验证题目详情包含 runtime_config（敏感字段仅 owner/admin 可见）
+    const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+    const problem = (detail.body as { data: { runtime_config: unknown } })
+      .data;
+    if (!problem.runtime_config) {
+      throw new Error("Expected runtime_config to be present");
+    }
+  },
 );
 
 e2eTest(
-    "dual_container_judge: 普通域成员不能通过 runtime_config 绕过建题权限",
-    async () => {
-        // 普通用户注册
-        const userToken = await registerUser(
-            `dual_user_${Date.now()}`,
-            `dual_user_${Date.now()}@test.local`,
-            "UserPass123!",
-        );
+  "dual_container_judge: 普通域成员不能通过 runtime_config 绕过建题权限",
+  async () => {
+    // 普通用户注册
+    const userToken = await registerUser(
+      `dual_user_${Date.now()}`,
+      `dual_user_${Date.now()}@test.local`,
+      "UserPass123!",
+    );
 
-        // 未获得当前域 editor 身份的账号不能直接创建题目。
-        const res = await apiPost(
-            "/api/v1/domains/main/problems",
-            {
-                title: `[${TEST_TAG}] 普通用户尝试双容器`,
-                description: "test",
-                difficulty: "easy",
-                runtime_config: {
-                    evaluator: {
-                        image: EVALUATOR_IMAGE,
-                        command: "bash /workspace/run.sh",
-                        time_limit_ms: 5000,
-                        memory_limit_mb: 512,
-                    },
-                    solution: {
-                        image: SOLUTION_IMAGE,
-                        call_timeout_ms: 1000,
-                        memory_limit_mb: 256,
-                    },
-                },
-            },
-            userToken,
-        );
+    // 未获得当前域 editor 身份的账号不能直接创建题目。
+    const res = await apiPost(
+      "/api/v1/domains/main/problems",
+      {
+        title: `[${TEST_TAG}] 普通用户尝试双容器`,
+        description: "test",
+        difficulty: "easy",
+        runtime_config: {
+          evaluator: {
+            image: EVALUATOR_IMAGE,
+            command: "bash /workspace/run.sh",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: SOLUTION_IMAGE,
+            call_timeout_ms: 1000,
+            memory_limit_mb: 256,
+          },
+        },
+      },
+      userToken,
+    );
 
-        if (res.status !== 403) {
-            throw new Error(
-                `Expected 403 for non-admin setting runtime_config, got ${res.status} ${
-                    JSON.stringify(res.body)
-                }`,
-            );
-        }
-    },
+    if (res.status !== 403) {
+      throw new Error(
+        `Expected 403 for non-admin setting runtime_config, got ${res.status} ${
+          JSON.stringify(res.body)
+        }`,
+      );
+    }
+  },
 );
 
 e2eTest("dual_container_judge: 镜像白名单 kind 不匹配被拒", async () => {
-    const adminToken = await getAdminToken();
-    await ensureImage(EVALUATOR_IMAGE, "evaluator");
-    // 注意：SOLUTION_IMAGE 在此测试中假定为 evaluator kind（已由其它测试设置）
-    // 实际上 ensureImage 会以 evaluator 创建（如果不存在），这里直接用
-    //   kind='solution' 作为 runtime_config.solution.image
-    //   会因为 kind 不匹配被拒。
+  const adminToken = await getAdminToken();
+  await ensureImage(EVALUATOR_IMAGE, "evaluator");
+  // 注意：SOLUTION_IMAGE 在此测试中假定为 evaluator kind（已由其它测试设置）
+  // 实际上 ensureImage 会以 evaluator 创建（如果不存在），这里直接用
+  //   kind='solution' 作为 runtime_config.solution.image
+  //   会因为 kind 不匹配被拒。
 
-    // 临时创建一个 evaluator 镜像：复用 EVALUATOR_IMAGE 当作 solution
-    const res = await apiPost(
-        "/api/v1/domains/main/problems",
-        {
-            title: `[${TEST_TAG}] kind 错配测试`,
-            description: "test",
-            difficulty: "easy",
-            runtime_config: {
-                evaluator: {
-                    image: EVALUATOR_IMAGE,
-                    command: "python3 /workspace/evaluate.py",
-                },
-                solution: {
-                    // 这里故意把 evaluator 镜像当 solution 用 → kind mismatch
-                    image: EVALUATOR_IMAGE,
-                    call_timeout_ms: 1000,
-                    memory_limit_mb: 256,
-                },
-            },
+  // 临时创建一个 evaluator 镜像：复用 EVALUATOR_IMAGE 当作 solution
+  const res = await apiPost(
+    "/api/v1/domains/main/problems",
+    {
+      title: `[${TEST_TAG}] kind 错配测试`,
+      description: "test",
+      difficulty: "easy",
+      runtime_config: {
+        evaluator: {
+          image: EVALUATOR_IMAGE,
+          command: "python3 /workspace/evaluate.py",
         },
-        adminToken,
-    );
+        solution: {
+          // 这里故意把 evaluator 镜像当 solution 用 → kind mismatch
+          image: EVALUATOR_IMAGE,
+          call_timeout_ms: 1000,
+          memory_limit_mb: 256,
+        },
+      },
+    },
+    adminToken,
+  );
 
-    // 期望 400 image kind mismatch
-    if (res.status !== 400) {
-        throw new Error(
-            `Expected 400 for kind mismatch, got ${res.status} ${
-                JSON.stringify(res.body)
-            }`,
-        );
-    }
+  // 期望 400 image kind mismatch
+  if (res.status !== 400) {
+    throw new Error(
+      `Expected 400 for kind mismatch, got ${res.status} ${
+        JSON.stringify(res.body)
+      }`,
+    );
+  }
 });
 
 e2eTest(
-    "dual_container_judge: 清空 runtime_config 被拒（必填字段）",
-    async () => {
-        const adminToken = await getAdminToken();
-        await ensureImage(EVALUATOR_IMAGE, "evaluator");
+  "dual_container_judge: 清空 runtime_config 被拒（必填字段）",
+  async () => {
+    const adminToken = await getAdminToken();
+    await ensureImage(EVALUATOR_IMAGE, "evaluator");
 
-        const problemId = await createDualProblem(
-            adminToken,
-            `[${TEST_TAG}] 清空 runtime 测试`,
-        );
+    const problemId = await createDualProblem(
+      adminToken,
+      `[${TEST_TAG}] 清空 runtime 测试`,
+    );
 
-        // 验证双容器已设置（敏感字段仅 owner/admin 可见）
-        const before = await apiGet(
-            `/api/v1/problems/${problemId}`,
-            adminToken,
-        );
-        if (
-            !(before.body as { data: { runtime_config: unknown } }).data
-                .runtime_config
-        ) {
-            throw new Error("Expected runtime_config before update");
-        }
+    // 验证双容器已设置（敏感字段仅 owner/admin 可见）
+    const before = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+    if (
+      !(before.body as { data: { runtime_config: unknown } }).data
+        .runtime_config
+    ) {
+      throw new Error("Expected runtime_config before update");
+    }
 
-        // 无域 `PUT /problems/:id` 已删除：清空 runtime_config 的拒绝由域创建校验
-        // 覆盖（见下一个用例「runtime_config 始终存在」），这里不再重复。
-    },
+    // 无域 `PUT /problems/:id` 已删除：清空 runtime_config 的拒绝由域创建校验
+    // 覆盖（见下一个用例「runtime_config 始终存在」），这里不再重复。
+  },
 );
 
 e2eTest(
-    "dual_container_judge: runtime_config 始终存在（双容器是唯一模式）",
-    async () => {
-        const adminToken = await getAdminToken();
-        await ensureImage(EVALUATOR_IMAGE, "evaluator");
+  "dual_container_judge: runtime_config 始终存在（双容器是唯一模式）",
+  async () => {
+    const adminToken = await getAdminToken();
+    await ensureImage(EVALUATOR_IMAGE, "evaluator");
 
-        // 创建题目时必须携带 runtime_config
-        const res = await apiPost(
-            "/api/v1/domains/main/problems",
-            {
-                title: `[${TEST_TAG}] runtime_config 必填`,
-                description: "test",
-                difficulty: "easy",
-                runtime_config: {
-                    evaluator: {
-                        image: EVALUATOR_IMAGE,
-                        command: "python3 /workspace/evaluate.py",
-                        time_limit_ms: 5000,
-                        memory_limit_mb: 512,
-                    },
-                    solution: {
-                        image: "noj-solution-python",
-                        call_timeout_ms: 2000,
-                        memory_limit_mb: 512,
-                    },
-                },
-            },
-            adminToken,
-        );
+    // 创建题目时必须携带 runtime_config
+    const res = await apiPost(
+      "/api/v1/domains/main/problems",
+      {
+        title: `[${TEST_TAG}] runtime_config 必填`,
+        description: "test",
+        difficulty: "easy",
+        runtime_config: {
+          evaluator: {
+            image: EVALUATOR_IMAGE,
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      },
+      adminToken,
+    );
 
-        if (res.status !== 201) {
-            throw new Error(`Create failed: ${res.status}`);
-        }
+    if (res.status !== 201) {
+      throw new Error(`Create failed: ${res.status}`);
+    }
 
-        const problemId = (res.body as { problem_id: string }).problem_id;
-        const detail = await apiGet(
-            `/api/v1/problems/${problemId}`,
-            adminToken,
-        );
-        const rc = (detail.body as { data: { runtime_config: unknown } }).data
-            .runtime_config;
-        if (!rc) {
-            throw new Error(
-                "Expected runtime_config to be present for dual-container mode",
-            );
-        }
-    },
+    const problemId = (res.body as { problem_id: string }).problem_id;
+    const detail = await apiGet(`/api/v1/problems/${problemId}`, adminToken);
+    const rc = (detail.body as { data: { runtime_config: unknown } }).data
+      .runtime_config;
+    if (!rc) {
+      throw new Error(
+        "Expected runtime_config to be present for dual-container mode",
+      );
+    }
+  },
 );
 
 e2eTest(
-    "dual_container_judge: 普通用户提交双容器题目 → 走 dual 评测",
-    async () => {
-        const adminToken = await getAdminToken();
-        await ensureImage(EVALUATOR_IMAGE, "evaluator");
-        await ensureImage(SOLUTION_IMAGE, "solution");
+  "dual_container_judge: 普通用户提交双容器题目 → 走 dual 评测",
+  async () => {
+    const adminToken = await getAdminToken();
+    await ensureImage(EVALUATOR_IMAGE, "evaluator");
+    await ensureImage(SOLUTION_IMAGE, "solution");
 
-        const problemId = await createDualProblem(
-            adminToken,
-            `[${TEST_TAG}] 普通用户提交双容器`,
-        );
-        // 先发布（建绑定）再公开：`/state` 的 If-Match 是题库配置 revision。
-        const versionId = await publishProblemVersion(
-            adminToken,
-            problemId,
-            "E2E 双容器作答版本",
-        );
-        const visibility = await setProblemState(adminToken, problemId, {
-            visibility: "public",
-        });
-        if (visibility.status !== 200) {
-            throw new Error(`公开题目失败 ${JSON.stringify(visibility)}`);
-        }
+    const problemId = await createDualProblem(
+      adminToken,
+      `[${TEST_TAG}] 普通用户提交双容器`,
+    );
+    // 先发布（建绑定）再公开：`/state` 的 If-Match 是题库配置 revision。
+    const versionId = await publishProblemVersion(
+      adminToken,
+      problemId,
+      "E2E 双容器作答版本",
+    );
+    const visibility = await setProblemState(adminToken, problemId, {
+      visibility: "public",
+    });
+    if (visibility.status !== 200) {
+      throw new Error(`公开题目失败 ${JSON.stringify(visibility)}`);
+    }
 
-        // 普通用户提交代码
-        const userToken = await registerUser(
-            `dual_sub_${Date.now()}`,
-            `dual_sub_${Date.now()}@test.local`,
-            "UserPass123!",
-        );
+    // 普通用户提交代码
+    const userToken = await registerUser(
+      `dual_sub_${Date.now()}`,
+      `dual_sub_${Date.now()}@test.local`,
+      "UserPass123!",
+    );
 
-        const sub = await apiPost(
-            "/api/v1/domains/main/submissions",
-            {
-                problem_ref: await getProblemReference(problemId, userToken),
-                version_id: versionId,
-                language: "python3",
-                code:
-                    "from noj_solution_sdk import register\n@register\ndef solve(a, b):\n    return a + b\n",
-            },
-            userToken,
-        );
-        if (sub.status !== 201) {
-            throw new Error(
-                `Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`,
-            );
-        }
-        const id = (sub.body as { data: { id: string } }).data.id;
-        const result = await pollSubmission(userToken, id, 60, 1000, true);
-        if (result.status !== "finished" || result.score !== 10000) {
-            throw new Error(
-                `双容器实际评测应满分完成 ${JSON.stringify(result)}`,
-            );
-        }
-    },
+    const sub = await apiPost(
+      "/api/v1/domains/main/submissions",
+      {
+        problem_ref: await getProblemReference(problemId, userToken),
+        version_id: versionId,
+        language: "python3",
+        code:
+          "from noj_solution_sdk import register\n@register\ndef solve(a, b):\n    return a + b\n",
+      },
+      userToken,
+    );
+    if (sub.status !== 201) {
+      throw new Error(
+        `Submit failed: ${sub.status} ${JSON.stringify(sub.body)}`,
+      );
+    }
+    const id = (sub.body as { data: { id: string } }).data.id;
+    const result = await pollSubmission(userToken, id, 60, 1000, true);
+    if (result.status !== "finished" || result.score !== 10000) {
+      throw new Error(`双容器实际评测应满分完成 ${JSON.stringify(result)}`);
+    }
+  },
 );

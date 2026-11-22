@@ -15,8 +15,8 @@
  */
 
 interface CacheEntry {
-    value: unknown;
-    expiresAt: number;
+  value: unknown;
+  expiresAt: number;
 }
 
 const cache: Map<string, CacheEntry> = new Map();
@@ -28,22 +28,22 @@ const CLEANUP_THRESHOLD = 4_000;
 
 /** 读取缓存（命中且未过期则直接返；miss 或过期则 fetcher 取值后写入）。 */
 export async function getCached<T>(
-    key: string,
-    fetcher: () => Promise<T>,
-    ttlMs = 60_000,
+  key: string,
+  fetcher: () => Promise<T>,
+  ttlMs = 60_000,
 ): Promise<T> {
-    const hit = cache.get(key);
-    if (hit && hit.expiresAt > Date.now()) {
-        return hit.value as T;
-    }
+  const hit = cache.get(key);
+  if (hit && hit.expiresAt > Date.now()) {
+    return hit.value as T;
+  }
 
-    const value = await fetcher();
-    cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  const value = await fetcher();
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
 
-    // 惰性驱逐：写入后检查是否超出阈值
-    lazyEvict();
+  // 惰性驱逐：写入后检查是否超出阈值
+  lazyEvict();
 
-    return value;
+  return value;
 }
 
 /**
@@ -51,25 +51,25 @@ export async function getCached<T>(
  * 仅在 cache.size > CLEANUP_THRESHOLD 时执行，高频路径不增加开销。
  */
 function lazyEvict(): void {
-    if (cache.size <= CLEANUP_THRESHOLD) return;
+  if (cache.size <= CLEANUP_THRESHOLD) return;
 
-    const now = Date.now();
+  const now = Date.now();
 
-    // Phase 1：清除过期条目
-    for (const [k, entry] of cache) {
-        if (cache.size <= MAX_CACHE_SIZE) break;
-        if (entry.expiresAt <= now) cache.delete(k);
+  // Phase 1：清除过期条目
+  for (const [k, entry] of cache) {
+    if (cache.size <= MAX_CACHE_SIZE) break;
+    if (entry.expiresAt <= now) cache.delete(k);
+  }
+
+  // Phase 2：清除过期后仍然超限 → 砍最旧的 25%
+  if (cache.size > MAX_CACHE_SIZE) {
+    const toDelete = Math.ceil(MAX_CACHE_SIZE * 0.25);
+    const iter = cache.keys();
+    for (let i = 0; i < toDelete; i++) {
+      const k = iter.next().value;
+      if (k) cache.delete(k);
     }
-
-    // Phase 2：清除过期后仍然超限 → 砍最旧的 25%
-    if (cache.size > MAX_CACHE_SIZE) {
-        const toDelete = Math.ceil(MAX_CACHE_SIZE * 0.25);
-        const iter = cache.keys();
-        for (let i = 0; i < toDelete; i++) {
-            const k = iter.next().value;
-            if (k) cache.delete(k);
-        }
-    }
+  }
 }
 
 /**
@@ -80,23 +80,23 @@ function lazyEvict(): void {
  * - 都传 → 两者都失效
  */
 export function invalidateBanCache(opts: {
-    userId?: string;
-    ipOrCidr?: string;
-    all?: boolean;
+  userId?: string;
+  ipOrCidr?: string;
+  all?: boolean;
 } = {}): void {
-    if (opts.all) {
-        cache.clear();
-        return;
-    }
-    if (opts.userId) cache.delete(`user:${opts.userId}`);
-    if (opts.ipOrCidr !== undefined) {
-        // 任何 IP/CIDR 变化都让 ip_bans 全表缓存失效（简单一致）
-        cache.delete("ip_bans:all");
-        cache.delete("ip_bans:detail");
-    }
+  if (opts.all) {
+    cache.clear();
+    return;
+  }
+  if (opts.userId) cache.delete(`user:${opts.userId}`);
+  if (opts.ipOrCidr !== undefined) {
+    // 任何 IP/CIDR 变化都让 ip_bans 全表缓存失效（简单一致）
+    cache.delete("ip_bans:all");
+    cache.delete("ip_bans:detail");
+  }
 }
 
 /** 测试用：清空全部缓存。 */
 export function _resetBanCacheForTest(): void {
-    cache.clear();
+  cache.clear();
 }

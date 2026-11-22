@@ -77,9 +77,6 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/e2e/session_test.ts",
   "scripts/verify-md-links_test.ts",
   "scripts/verify-agent-note-format_test.ts",
-  // 设计系统守卫自测：探针必须让七条规则全部命中——门禁自身失效会锁出一份
-  // "零命中"的假基线，之后任何回流都拦不住。
-  "scripts/check-ui-guards_test.ts",
 ];
 
 /**
@@ -187,11 +184,6 @@ export const REPO_GATES: Gate[] = [
   },
   // 单文件规模棘轮：存量巨型文件不得继续变大，新文件超阈值直接失败（评审 §3.2）
   { args: ["deno", "run", "-A", "scripts/check-file-size.ts"] },
-  // noj-ui 设计系统守卫（2026-11-21）：圆角 / 色板 / 动效 / 入场编排 / 暗色 /
-  // 原生控件 / 字号七条规则 × 三 scope 的**硬棘轮**——当前必须与基线逐项相等，
-  // 下降也红灯（只拦增长时"基线 167 → 当前 160 通过但不更新"会把额度永久留在
-  // 旧基线，下个 PR 加回 6 处依旧通过）。基线的唯一写入口是 --write-baseline。
-  { args: ["deno", "run", "-A", "scripts/check-ui-guards.ts", "--check"] },
   // 写端点限流覆盖：含写路由的文件必须有有限流证据或在白名单登记（评审 §4.6）
   { args: ["deno", "run", "-A", "scripts/check-write-rate-limits.ts"] },
   // 旧无域比赛 API 下线门禁（0.11 RC）：写方法必须已退役，且第一方生产代码

@@ -5,106 +5,99 @@ import { AppError } from "../../../../shared/base/errors.ts";
 import { deleteProblemEvaluationRowsTx } from "../../../evaluations/contracts/problem-deletion.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-    objectiveSubmissions,
-    problems,
-    submissions,
+  objectiveSubmissions,
+  problems,
+  submissions,
 } from "../../../../shared/db/schema.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
-    deleteProblemOwnedRowsTx,
-    prepareProblemDeletionTx,
+  deleteProblemOwnedRowsTx,
+  prepareProblemDeletionTx,
 } from "../../services/problems/problems-crud.ts";
 
 async function source(objective = false) {
-    await resetDbForTest();
-    await ensureDefaultWorkspace();
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    await getDb().insert(problems).values({
-        id,
-        domain_id: DEFAULT_DOMAIN_ID,
-        number: 1001,
-        title: "历史保护",
-        description: "题面",
-        is_objective: objective,
-        created_at: now,
-        updated_at: now,
-    });
-    return { id, now };
+  await resetDbForTest();
+  await ensureDefaultWorkspace();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await getDb().insert(problems).values({
+    id,
+    domain_id: DEFAULT_DOMAIN_ID,
+    number: 1001,
+    title: "历史保护",
+    description: "题面",
+    is_objective: objective,
+    created_at: now,
+    updated_at: now,
+  });
+  return { id, now };
 }
 
 /** 按 application 编排的同一事务顺序删除题目（不登记审计/投影）。 */
 async function deleteInTx(id: string): Promise<void> {
-    await getDb().transaction(async (tx) => {
-        const deleted = await prepareProblemDeletionTx(id, "0", tx);
-        await deleteProblemEvaluationRowsTx(tx, id);
-        await deleteProblemOwnedRowsTx(id, deleted.problem.domain_id, tx);
-    });
+  await getDb().transaction(async (tx) => {
+    const deleted = await prepareProblemDeletionTx(id, "0", tx);
+    await deleteProblemEvaluationRowsTx(tx, id);
+    await deleteProblemOwnedRowsTx(id, deleted.problem.domain_id, tx);
+  });
 }
 
 async function expectRetained(id: string) {
-    const error = await assertRejects(
-        () => deleteInTx(id),
-        AppError,
-    );
-    assertEquals(error.statusCode, 409);
-    assertEquals(error.code, "SOURCE_HAS_RETAINED_REFERENCES");
-    assertEquals(
-        (await getDb().select().from(problems).where(eq(problems.id, id)))
-            .length,
-        1,
-    );
+  const error = await assertRejects(
+    () => deleteInTx(id),
+    AppError,
+  );
+  assertEquals(error.statusCode, 409);
+  assertEquals(error.code, "SOURCE_HAS_RETAINED_REFERENCES");
+  assertEquals(
+    (await getDb().select().from(problems).where(eq(problems.id, id))).length,
+    1,
+  );
 }
 
 Deno.test("源题保留：未知旧版本的代码提交不能随源题清除", async () => {
-    const code = await source();
-    await getDb().insert(submissions).values({
-        domain_id: DEFAULT_DOMAIN_ID,
-        domain_problem_binding_id: await bindPublishedProblemForTest(code.id),
-        id: crypto.randomUUID(),
-        user_id: "0",
-        problem_id: code.id,
-        language: "python3",
-        code: "print(1)",
-        status: "finished",
-        created_at: code.now,
-    });
-    await expectRetained(code.id);
-    assertEquals(
-        (await getDb().select().from(submissions))[0].code,
-        "print(1)",
-    );
+  const code = await source();
+  await getDb().insert(submissions).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: await bindPublishedProblemForTest(code.id),
+    id: crypto.randomUUID(),
+    user_id: "0",
+    problem_id: code.id,
+    language: "python3",
+    code: "print(1)",
+    status: "finished",
+    created_at: code.now,
+  });
+  await expectRetained(code.id);
+  assertEquals((await getDb().select().from(submissions))[0].code, "print(1)");
 });
 Deno.test("源题保留：未知旧版本的客观题答案和成绩不能随源题清除", async () => {
-    const objective = await source(true);
-    await getDb().insert(objectiveSubmissions).values({
-        domain_id: DEFAULT_DOMAIN_ID,
-        domain_problem_binding_id: await bindPublishedProblemForTest(
-            objective.id,
-        ),
-        id: crypto.randomUUID(),
-        user_id: "0",
-        paper_id: objective.id,
-        submission_type: "practice",
-        answers: { q: ["A"] },
-        score: 6000,
-        created_at: objective.now,
-    });
-    await expectRetained(objective.id);
-    assertEquals(
-        (await getDb().select().from(objectiveSubmissions))[0].score,
-        6000,
-    );
+  const objective = await source(true);
+  await getDb().insert(objectiveSubmissions).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    domain_problem_binding_id: await bindPublishedProblemForTest(objective.id),
+    id: crypto.randomUUID(),
+    user_id: "0",
+    paper_id: objective.id,
+    submission_type: "practice",
+    answers: { q: ["A"] },
+    score: 6000,
+    created_at: objective.now,
+  });
+  await expectRetained(objective.id);
+  assertEquals(
+    (await getDb().select().from(objectiveSubmissions))[0].score,
+    6000,
+  );
 });
 Deno.test("源题保留：没有版本、绑定和历史提交的草稿仍可删除", async () => {
-    const { id } = await source();
-    await deleteInTx(id);
-    assertEquals(
-        (await getDb().select().from(problems).where(eq(problems.id, id)))
-            .length,
-        0,
-    );
+  const { id } = await source();
+  await deleteInTx(id);
+  assertEquals(
+    (await getDb().select().from(problems).where(eq(problems.id, id))).length,
+    0,
+  );
 });
 
 import { resetDbForTest } from "../default-fixture.ts";

@@ -26,33 +26,33 @@ import type { JudgeResult } from "../../types/index.ts";
  * 也不把未定义状态写进数据库。
  */
 export const ALLOWED_JUDGE_STATUSES: readonly string[] = [
-    "cancelled",
-    "finished",
-    "error",
-    "SystemError",
-    "TimeLimitExceeded",
-    "MemoryLimitExceeded",
-    "RuntimeError",
-    // OI 评测细分状态（分数与详情仍按既有结果封套落库）。
-    "AC",
-    "WA",
-    "TLE",
-    "MLE",
-    "OLE",
-    "RE",
-    "CE",
-    "SE",
-    "FE",
-    "IGN",
+  "cancelled",
+  "finished",
+  "error",
+  "SystemError",
+  "TimeLimitExceeded",
+  "MemoryLimitExceeded",
+  "RuntimeError",
+  // OI 评测细分状态（分数与详情仍按既有结果封套落库）。
+  "AC",
+  "WA",
+  "TLE",
+  "MLE",
+  "OLE",
+  "RE",
+  "CE",
+  "SE",
+  "FE",
+  "IGN",
 ];
 
 /** output 字段的防御性上限（judge 侧为 1 MiB，这里留一倍余量） */
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 
 export interface SanitizedJudgeResult {
-    result: JudgeResult;
-    /** 归一过程中实际发生的修正（空数组表示原始值全部合规） */
-    adjustments: string[];
+  result: JudgeResult;
+  /** 归一过程中实际发生的修正（空数组表示原始值全部合规） */
+  adjustments: string[];
 }
 
 /**
@@ -63,80 +63,76 @@ export interface SanitizedJudgeResult {
  * （tracking #29）。判定入口必须先用本函数校验，非法时按平台错误处理。
  */
 export function isValidGradedScore(value: unknown): value is number {
-    return typeof value === "number" && Number.isInteger(value) && value >= 0 &&
-        value <= FULL_SCORE;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 &&
+    value <= FULL_SCORE;
 }
 
 /** 把任意值收窄为非负有限整数；不合法时返回 null。 */
 function toNonNegativeIntOrNull(value: unknown): number | null {
-    if (typeof value !== "number" || !Number.isFinite(value)) return null;
-    const rounded = Math.round(value);
-    if (rounded < 0) return null;
-    // 上限防御：避免极端值溢出 int4（time_ms/memory_kb 为 INTEGER 列）
-    return Math.min(rounded, 2_147_483_647);
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const rounded = Math.round(value);
+  if (rounded < 0) return null;
+  // 上限防御：避免极端值溢出 int4（time_ms/memory_kb 为 INTEGER 列）
+  return Math.min(rounded, 2_147_483_647);
 }
 
 /**
  * 归一一条 judge 结果。返回新对象（不修改入参），并给出修正清单供日志记录。
  */
 export function sanitizeJudgeResult(result: JudgeResult): SanitizedJudgeResult {
-    const adjustments: string[] = [];
-    const safe: JudgeResult = { ...result };
+  const adjustments: string[] = [];
+  const safe: JudgeResult = { ...result };
 
-    // ── status：白名单 ──
-    if (!ALLOWED_JUDGE_STATUSES.includes(safe.status)) {
-        adjustments.push(`status ${JSON.stringify(safe.status)} → "error"`);
-        safe.status = "error";
-    }
+  // ── status：白名单 ──
+  if (!ALLOWED_JUDGE_STATUSES.includes(safe.status)) {
+    adjustments.push(`status ${JSON.stringify(safe.status)} → "error"`);
+    safe.status = "error";
+  }
 
-    // ── score：只报告非法，**绝不伪造** ──
-    // 这里刻意不做 clamp/置 0：`score` 非法属于平台错误，必须由调用方
-    // （`saveEvaluationResult`）整体降级为 `platform_error`，从而保留已有正式判定。
-    // 若在此处改成 0 或 FULL_SCORE，脏结果会以"正式 0 分/满分"落库并替换历史成绩。
-    if (!isValidGradedScore(safe.score)) {
-        adjustments.push(
-            `score ${
-                JSON.stringify(safe.score)
-            } 非法（要求 0..${FULL_SCORE} 的整数），保留原值由调用方判定`,
-        );
-    }
+  // ── score：只报告非法，**绝不伪造** ──
+  // 这里刻意不做 clamp/置 0：`score` 非法属于平台错误，必须由调用方
+  // （`saveEvaluationResult`）整体降级为 `platform_error`，从而保留已有正式判定。
+  // 若在此处改成 0 或 FULL_SCORE，脏结果会以"正式 0 分/满分"落库并替换历史成绩。
+  if (!isValidGradedScore(safe.score)) {
+    adjustments.push(
+      `score ${
+        JSON.stringify(safe.score)
+      } 非法（要求 0..${FULL_SCORE} 的整数），保留原值由调用方判定`,
+    );
+  }
 
-    // ── output：类型 + 字节上限 ──
-    if (typeof safe.output !== "string") {
-        adjustments.push("output 非字符串 → 空串");
-        safe.output = "";
-    } else if (safe.output.length > MAX_OUTPUT_BYTES) {
-        adjustments.push(`output 超过 ${MAX_OUTPUT_BYTES} 字节，已截断`);
-        safe.output = safe.output.slice(0, MAX_OUTPUT_BYTES);
-    }
+  // ── output：类型 + 字节上限 ──
+  if (typeof safe.output !== "string") {
+    adjustments.push("output 非字符串 → 空串");
+    safe.output = "";
+  } else if (safe.output.length > MAX_OUTPUT_BYTES) {
+    adjustments.push(`output 超过 ${MAX_OUTPUT_BYTES} 字节，已截断`);
+    safe.output = safe.output.slice(0, MAX_OUTPUT_BYTES);
+  }
 
-    // ── time_ms / memory_kb：允许缺省，拒绝负值/非有限值 ──
-    // 注意 JudgeResult 的可选字段类型是 `number | undefined`，因此不合法时置
-    // undefined（落库时由 `?? null` 转为 NULL）。
-    const timeMs = toNonNegativeIntOrNull(safe.time_ms);
-    if (timeMs === null) {
-        if (safe.time_ms !== undefined) {
-            adjustments.push(
-                `time_ms ${JSON.stringify(safe.time_ms)} → 未设置`,
-            );
-        }
-        safe.time_ms = undefined;
-    } else if (timeMs !== safe.time_ms) {
-        adjustments.push(`time_ms ${safe.time_ms} → ${timeMs}`);
-        safe.time_ms = timeMs;
+  // ── time_ms / memory_kb：允许缺省，拒绝负值/非有限值 ──
+  // 注意 JudgeResult 的可选字段类型是 `number | undefined`，因此不合法时置
+  // undefined（落库时由 `?? null` 转为 NULL）。
+  const timeMs = toNonNegativeIntOrNull(safe.time_ms);
+  if (timeMs === null) {
+    if (safe.time_ms !== undefined) {
+      adjustments.push(`time_ms ${JSON.stringify(safe.time_ms)} → 未设置`);
     }
-    const memoryKb = toNonNegativeIntOrNull(safe.memory_kb);
-    if (memoryKb === null) {
-        if (safe.memory_kb !== undefined) {
-            adjustments.push(
-                `memory_kb ${JSON.stringify(safe.memory_kb)} → 未设置`,
-            );
-        }
-        safe.memory_kb = undefined;
-    } else if (memoryKb !== safe.memory_kb) {
-        adjustments.push(`memory_kb ${safe.memory_kb} → ${memoryKb}`);
-        safe.memory_kb = memoryKb;
+    safe.time_ms = undefined;
+  } else if (timeMs !== safe.time_ms) {
+    adjustments.push(`time_ms ${safe.time_ms} → ${timeMs}`);
+    safe.time_ms = timeMs;
+  }
+  const memoryKb = toNonNegativeIntOrNull(safe.memory_kb);
+  if (memoryKb === null) {
+    if (safe.memory_kb !== undefined) {
+      adjustments.push(`memory_kb ${JSON.stringify(safe.memory_kb)} → 未设置`);
     }
+    safe.memory_kb = undefined;
+  } else if (memoryKb !== safe.memory_kb) {
+    adjustments.push(`memory_kb ${safe.memory_kb} → ${memoryKb}`);
+    safe.memory_kb = memoryKb;
+  }
 
-    return { result: safe, adjustments };
+  return { result: safe, adjustments };
 }

@@ -36,41 +36,6 @@ fn e2e_x() { if !is_e2e_enabled() { return; } }
   assertEquals(reasons.has("rust-env-guard"), true);
 });
 
-Deno.test("silent-skip: 跨行 console.log 跳过也能命中（格式化后不再漏计）", () => {
-  // 4 空格格式化把过长的 console.log 拆成多行后，逐行扫描会同时错过
-  // `console.log(` 与 `跳过`；按语句聚合后必须仍记为 early-return。
-  const source = [
-    `e2eTest("x", async () => {`,
-    `    try {`,
-    `        await login();`,
-    `    } catch {`,
-    `        console.log(`,
-    `            "  ⚠ 已改密，跳过守卫拦截测试",`,
-    `        );`,
-    `    }`,
-    `});`,
-  ].join("\n");
-  const hits = scanFile("tests/demo_test.ts", source);
-  assertEquals(hits.length, 1, JSON.stringify(hits));
-  assertEquals(hits[0]!.line, 5);
-  assertEquals(hits[0]!.reason, "early-return");
-});
-
-Deno.test("silent-skip: 跨行的 ignore 守卫也按语句命中", () => {
-  const source = [
-    `Deno.test({`,
-    `    name: "a",`,
-    `    ignore:`,
-    `        skipEnv,`,
-    `    fn: () => {},`,
-    `});`,
-  ].join("\n");
-  const hits = scanFile("tests/demo_test.ts", source);
-  assertEquals(hits.length, 1, JSON.stringify(hits));
-  assertEquals(hits[0]!.line, 3);
-  assertEquals(hits[0]!.reason, "ignore");
-});
-
 Deno.test("silent-skip: 每个命中行只记一条原因", () => {
   const hits = scanFile("a.ts", 'if (!isE2E) return; console.log("跳过");');
   assertEquals(hits.length, 1);

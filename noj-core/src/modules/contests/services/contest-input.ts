@@ -1,34 +1,34 @@
 // 竞赛输入规范化与校验：时间、计分配置、榜单策略、题目列表校验及题目可加入性断言，并含响应结构投影 toContestResponse。
 import { eq, inArray } from "drizzle-orm";
 import {
-    contests,
-    problems,
-    problemVersions,
+  contests,
+  problems,
+  problemVersions,
 } from "../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
 import { type ProblemContentV1 } from "../../problems/types/problem-content.ts";
 import { assertDefaultProblemSource } from "../../problems/contracts/cross-module/services_workspace_execution-context.ts";
 import {
-    computeContestStatus,
-    normalizeContestTime,
+  computeContestStatus,
+  normalizeContestTime,
 } from "./contest-window.ts";
 import {
-    type ContestConfig,
-    type ContestProblemInput,
-    type ContestResponse,
-    type ContestType,
-    isValidContestConfig,
-    isValidRankingVisibility,
+  type ContestConfig,
+  type ContestProblemInput,
+  type ContestResponse,
+  type ContestType,
+  isValidContestConfig,
+  isValidRankingVisibility,
 } from "../types/contests.ts";
 import { contestAllowsProblem } from "./contest-scoring.ts";
 
 /** 返回指定类型竞赛的默认配置（当前为空配置）。 */
 function defaultContestConfig(_type: ContestType): ContestConfig {
-    return _type === "acm"
-        ? { penalty_minutes: 20 }
-        : _type === "kaggle"
-        ? { scoreboard_scope: "self" }
-        : {};
+  return _type === "acm"
+    ? { penalty_minutes: 20 }
+    : _type === "kaggle"
+    ? { scoreboard_scope: "self" }
+    : {};
 }
 
 /**
@@ -40,27 +40,27 @@ function defaultContestConfig(_type: ContestType): ContestConfig {
  * @throws {BadRequestError} 配置不合法时
  */
 export function normalizeContestConfig(
-    _type: ContestType,
-    config: ContestConfig | undefined,
+  _type: ContestType,
+  config: ContestConfig | undefined,
 ): ContestConfig {
-    const value = config ?? defaultContestConfig(_type);
-    if (!isValidContestConfig(_type, value)) {
-        throw new BadRequestError("竞赛配置不合法");
-    }
+  const value = config ?? defaultContestConfig(_type);
+  if (!isValidContestConfig(_type, value)) {
+    throw new BadRequestError("竞赛配置不合法");
+  }
 
-    const raw = value as Record<string, unknown>;
-    const submissionLimits = raw.submission_limits as
-        | Record<string, number>
-        | undefined;
-    return {
-        ...(submissionLimits ? { submission_limits: submissionLimits } : {}),
-        ...(_type === "acm"
-            ? { penalty_minutes: value.penalty_minutes ?? 20 }
-            : {}),
-        ...(_type === "kaggle"
-            ? { scoreboard_scope: value.scoreboard_scope ?? "self" }
-            : {}),
-    };
+  const raw = value as Record<string, unknown>;
+  const submissionLimits = raw.submission_limits as
+    | Record<string, number>
+    | undefined;
+  return {
+    ...(submissionLimits ? { submission_limits: submissionLimits } : {}),
+    ...(_type === "acm"
+      ? { penalty_minutes: value.penalty_minutes ?? 20 }
+      : {}),
+    ...(_type === "kaggle"
+      ? { scoreboard_scope: value.scoreboard_scope ?? "self" }
+      : {}),
+  };
 }
 
 /**
@@ -75,16 +75,16 @@ export function normalizeContestConfig(
  * @throws {BadRequestError} 时间格式非法或结束时间不晚于开始时间时
  */
 export function validateTimes(startTime: string, endTime: string): void {
-    const start = Date.parse(startTime);
-    const end = Date.parse(endTime);
-    if (Number.isNaN(start) || Number.isNaN(end)) {
-        throw new BadRequestError(
-            "start_time 和 end_time 必须为合法 ISO 8601 时间",
-        );
-    }
-    if (end <= start) {
-        throw new BadRequestError("end_time 必须晚于 start_time");
-    }
+  const start = Date.parse(startTime);
+  const end = Date.parse(endTime);
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    throw new BadRequestError(
+      "start_time 和 end_time 必须为合法 ISO 8601 时间",
+    );
+  }
+  if (end <= start) {
+    throw new BadRequestError("end_time 必须晚于 start_time");
+  }
 }
 
 /**
@@ -100,69 +100,66 @@ export function validateTimes(startTime: string, endTime: string): void {
  * @throws {BadRequestError} 时间非法或结束不晚于开始时。
  */
 export function normalizeTimes(
-    startTime: string,
-    endTime: string,
+  startTime: string,
+  endTime: string,
 ): { start_time: string; end_time: string } {
-    validateTimes(startTime, endTime);
-    return {
-        start_time: normalizeContestTime(startTime),
-        end_time: normalizeContestTime(endTime),
-    };
+  validateTimes(startTime, endTime);
+  return {
+    start_time: normalizeContestTime(startTime),
+    end_time: normalizeContestTime(endTime),
+  };
 }
 
 export function normalizeRankingPolicy(input: {
-    start_time: string;
-    end_time: string;
-    ranking_visibility?: string;
-    freeze_start_time?: string | null;
-    freeze_duration_seconds?: number;
+  start_time: string;
+  end_time: string;
+  ranking_visibility?: string;
+  freeze_start_time?: string | null;
+  freeze_duration_seconds?: number;
 }): {
-    ranking_visibility: ContestResponse["ranking_visibility"];
-    freeze_start_time: string | null;
-    freeze_duration_seconds: number;
+  ranking_visibility: ContestResponse["ranking_visibility"];
+  freeze_start_time: string | null;
+  freeze_duration_seconds: number;
 } {
-    const visibility = input.ranking_visibility ?? "public";
-    if (!isValidRankingVisibility(visibility)) {
-        throw new BadRequestError(
-            "榜单可见性必须为 public、participants 或 hidden",
-        );
+  const visibility = input.ranking_visibility ?? "public";
+  if (!isValidRankingVisibility(visibility)) {
+    throw new BadRequestError(
+      "榜单可见性必须为 public、participants 或 hidden",
+    );
+  }
+  const duration = input.freeze_duration_seconds ?? 0;
+  if (!Number.isInteger(duration) || duration < 0) {
+    throw new BadRequestError("封榜时长必须为非负整数秒");
+  }
+  const start = Date.parse(input.start_time);
+  const end = Date.parse(input.end_time);
+  const rawExplicit = input.freeze_start_time ?? null;
+  // 规范化封榜时间：迁移 0083 的形态 CHECK 也约束 freeze_start_time，
+  // 原样落库会因非规范形态（如 +08:00）被约束拒绝（2026-09-14 评审 C1）
+  const explicit = rawExplicit === null
+    ? null
+    : normalizeContestTime(rawExplicit);
+  if (explicit !== null) {
+    const freezeStart = Date.parse(explicit);
+    if (
+      Number.isNaN(freezeStart) || freezeStart < start || freezeStart >= end
+    ) {
+      throw new BadRequestError("freeze_start_time 必须位于竞赛开始与结束之间");
     }
-    const duration = input.freeze_duration_seconds ?? 0;
-    if (!Number.isInteger(duration) || duration < 0) {
-        throw new BadRequestError("封榜时长必须为非负整数秒");
+    if (duration !== 0) {
+      throw new BadRequestError(
+        "freeze_start_time 与 freeze_duration_seconds 只能配置一个",
+      );
     }
-    const start = Date.parse(input.start_time);
-    const end = Date.parse(input.end_time);
-    const rawExplicit = input.freeze_start_time ?? null;
-    // 规范化封榜时间：迁移 0083 的形态 CHECK 也约束 freeze_start_time，
-    // 原样落库会因非规范形态（如 +08:00）被约束拒绝（2026-09-14 评审 C1）
-    const explicit = rawExplicit === null
-        ? null
-        : normalizeContestTime(rawExplicit);
-    if (explicit !== null) {
-        const freezeStart = Date.parse(explicit);
-        if (
-            Number.isNaN(freezeStart) || freezeStart < start ||
-            freezeStart >= end
-        ) {
-            throw new BadRequestError(
-                "freeze_start_time 必须位于竞赛开始与结束之间",
-            );
-        }
-        if (duration !== 0) {
-            throw new BadRequestError(
-                "freeze_start_time 与 freeze_duration_seconds 只能配置一个",
-            );
-        }
-    }
-    if (duration > Math.floor((end - start) / 1000)) {
-        throw new BadRequestError("封榜时长不能超过竞赛总时长");
-    }
-    return {
-        ranking_visibility: visibility,
-        freeze_start_time: explicit,
-        freeze_duration_seconds: duration,
-    };
+  }
+  if (duration > Math.floor((end - start) / 1000)) {
+    throw new BadRequestError("封榜时长不能超过竞赛总时长");
+  }
+  return {
+    ranking_visibility: visibility,
+    freeze_start_time: explicit,
+    freeze_duration_seconds: duration,
+  };
 }
 
 /**
@@ -174,52 +171,52 @@ export function normalizeRankingPolicy(input: {
  * @throws {BadRequestError} 题目为空、字段缺失、重复或取值非法时
  */
 export function normalizeProblems(
-    _type: ContestType,
-    values: ContestProblemInput[],
+  _type: ContestType,
+  values: ContestProblemInput[],
 ): ContestProblemInput[] {
-    if (values.length === 0) {
-        throw new BadRequestError("竞赛至少需要一道题目");
+  if (values.length === 0) {
+    throw new BadRequestError("竞赛至少需要一道题目");
+  }
+
+  const problemIds = new Set<string>();
+  const labels = new Set<string>();
+  const sortOrders = new Set<number>();
+
+  return values.map((value) => {
+    const problemId = value.problem_id.trim();
+    const label = value.label.trim();
+    if (!problemId || !label) {
+      throw new BadRequestError("竞赛题目 ID 和标签不能为空");
+    }
+    if (!Number.isInteger(value.sort_order) || value.sort_order < 0) {
+      throw new BadRequestError("竞赛题目 sort_order 必须为非负整数");
+    }
+    if (
+      value.score === undefined || value.score === null ||
+      !Number.isInteger(value.score) || value.score < 0
+    ) {
+      throw new BadRequestError("竞赛题目 score 必须为非负整数");
+    }
+    if (problemIds.has(problemId)) {
+      throw new BadRequestError("竞赛题目不能重复");
+    }
+    if (labels.has(label)) {
+      throw new BadRequestError("竞赛题目标签不能重复");
+    }
+    if (sortOrders.has(value.sort_order)) {
+      throw new BadRequestError("竞赛题目排序值不能重复");
     }
 
-    const problemIds = new Set<string>();
-    const labels = new Set<string>();
-    const sortOrders = new Set<number>();
-
-    return values.map((value) => {
-        const problemId = value.problem_id.trim();
-        const label = value.label.trim();
-        if (!problemId || !label) {
-            throw new BadRequestError("竞赛题目 ID 和标签不能为空");
-        }
-        if (!Number.isInteger(value.sort_order) || value.sort_order < 0) {
-            throw new BadRequestError("竞赛题目 sort_order 必须为非负整数");
-        }
-        if (
-            value.score === undefined || value.score === null ||
-            !Number.isInteger(value.score) || value.score < 0
-        ) {
-            throw new BadRequestError("竞赛题目 score 必须为非负整数");
-        }
-        if (problemIds.has(problemId)) {
-            throw new BadRequestError("竞赛题目不能重复");
-        }
-        if (labels.has(label)) {
-            throw new BadRequestError("竞赛题目标签不能重复");
-        }
-        if (sortOrders.has(value.sort_order)) {
-            throw new BadRequestError("竞赛题目排序值不能重复");
-        }
-
-        problemIds.add(problemId);
-        labels.add(label);
-        sortOrders.add(value.sort_order);
-        return {
-            problem_id: problemId,
-            label,
-            sort_order: value.sort_order,
-            score: value.score,
-        };
-    });
+    problemIds.add(problemId);
+    labels.add(label);
+    sortOrders.add(value.sort_order);
+    return {
+      problem_id: problemId,
+      label,
+      sort_order: value.sort_order,
+      score: value.score,
+    };
+  });
 }
 
 /**
@@ -240,49 +237,49 @@ export function normalizeProblems(
  * @throws {ForbiddenError} 普通用户加入他人私有题时
  */
 export async function assertContestProblemAddable(
-    problemInputs: ContestProblemInput[],
-    _creatorId: string,
-    _isAdmin: boolean,
-    // deno-lint-ignore no-explicit-any -- postgres.js 事务共享接口
-    db: any,
-    type: ContestType,
+  problemInputs: ContestProblemInput[],
+  _creatorId: string,
+  _isAdmin: boolean,
+  // deno-lint-ignore no-explicit-any -- postgres.js 事务共享接口
+  db: any,
+  type: ContestType,
 ): Promise<Map<string, string>> {
-    const ids = problemInputs.map((value) => value.problem_id);
-    const rows = await db.select({
-        id: problems.id,
-        owner_id: problems.owner_id,
-        visibility: problems.visibility,
-        latest_version_id: problems.latest_version_id,
-        content: problemVersions.content,
-        domain_id: problems.domain_id,
-    }).from(problems).leftJoin(
-        problemVersions,
-        eq(problemVersions.id, problems.latest_version_id),
-    )
-        .where(inArray(problems.id, ids));
-    if (rows.length !== ids.length) {
-        throw new BadRequestError("竞赛包含不存在的题目");
-    }
-    for (const row of rows) assertDefaultProblemSource(row);
-    const unpublished = rows.filter(
-        (row: { latest_version_id: string | null }) => !row.latest_version_id,
+  const ids = problemInputs.map((value) => value.problem_id);
+  const rows = await db.select({
+    id: problems.id,
+    owner_id: problems.owner_id,
+    visibility: problems.visibility,
+    latest_version_id: problems.latest_version_id,
+    content: problemVersions.content,
+    domain_id: problems.domain_id,
+  }).from(problems).leftJoin(
+    problemVersions,
+    eq(problemVersions.id, problems.latest_version_id),
+  )
+    .where(inArray(problems.id, ids));
+  if (rows.length !== ids.length) {
+    throw new BadRequestError("竞赛包含不存在的题目");
+  }
+  for (const row of rows) assertDefaultProblemSource(row);
+  const unpublished = rows.filter(
+    (row: { latest_version_id: string | null }) => !row.latest_version_id,
+  );
+  if (unpublished.length > 0) {
+    // 固定版本不可为空（NOT NULL + 复合外键）；未发布题目必须先发布版本
+    throw new BadRequestError(
+      `竞赛只能包含已发布题目：${unpublished.length} 道题尚未发布任何版本（请先发布题目版本）`,
     );
-    if (unpublished.length > 0) {
-        // 固定版本不可为空（NOT NULL + 复合外键）；未发布题目必须先发布版本
-        throw new BadRequestError(
-            `竞赛只能包含已发布题目：${unpublished.length} 道题尚未发布任何版本（请先发布题目版本）`,
-        );
+  }
+  for (const row of rows as Array<{ content: ProblemContentV1 }>) {
+    if (!contestAllowsProblem(type, row.content.kind)) {
+      throw new BadRequestError("此赛制不允许所选题型");
     }
-    for (const row of rows as Array<{ content: ProblemContentV1 }>) {
-        if (!contestAllowsProblem(type, row.content.kind)) {
-            throw new BadRequestError("此赛制不允许所选题型");
-        }
-    }
-    return new Map(
-        rows.map((
-            row: { id: string; latest_version_id: string | null },
-        ) => [row.id, row.latest_version_id as string]),
-    );
+  }
+  return new Map(
+    rows.map((
+      row: { id: string; latest_version_id: string | null },
+    ) => [row.id, row.latest_version_id as string]),
+  );
 }
 
 /**
@@ -293,36 +290,36 @@ export async function assertContestProblemAddable(
  * @returns 竞赛响应对象
  */
 export function toContestResponse(
-    row: typeof contests.$inferSelect & {
-        problem_count: number;
-        participant_count: number;
-    },
-    isRegistered?: boolean,
+  row: typeof contests.$inferSelect & {
+    problem_count: number;
+    participant_count: number;
+  },
+  isRegistered?: boolean,
 ): ContestResponse {
-    return {
-        id: row.id,
-        domain_id: row.domain_id,
-        revision: row.revision,
-        public_id: row.public_id,
-        title: row.title,
-        description: row.description,
-        start_time: row.start_time,
-        end_time: row.end_time,
-        type: row.type as ContestType,
-        ranking_visibility: row
-            .ranking_visibility as ContestResponse["ranking_visibility"],
-        freeze_start_time: row.freeze_start_time,
-        freeze_duration_seconds: row.freeze_duration_seconds,
-        secrecy_enabled: row.secrecy_enabled,
-        config: row.config as ContestConfig,
-        affect_global_ranking: row.affect_global_ranking,
-        created_by: row.created_by,
-        announcement: row.announcement,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        status: computeContestStatus(row.start_time, row.end_time),
-        problem_count: Number(row.problem_count),
-        participant_count: Number(row.participant_count),
-        ...(isRegistered === undefined ? {} : { is_registered: isRegistered }),
-    };
+  return {
+    id: row.id,
+    domain_id: row.domain_id,
+    revision: row.revision,
+    public_id: row.public_id,
+    title: row.title,
+    description: row.description,
+    start_time: row.start_time,
+    end_time: row.end_time,
+    type: row.type as ContestType,
+    ranking_visibility: row
+      .ranking_visibility as ContestResponse["ranking_visibility"],
+    freeze_start_time: row.freeze_start_time,
+    freeze_duration_seconds: row.freeze_duration_seconds,
+    secrecy_enabled: row.secrecy_enabled,
+    config: row.config as ContestConfig,
+    affect_global_ranking: row.affect_global_ranking,
+    created_by: row.created_by,
+    announcement: row.announcement,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    status: computeContestStatus(row.start_time, row.end_time),
+    problem_count: Number(row.problem_count),
+    participant_count: Number(row.participant_count),
+    ...(isRegistered === undefined ? {} : { is_registered: isRegistered }),
+  };
 }

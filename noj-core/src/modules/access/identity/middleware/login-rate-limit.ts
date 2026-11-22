@@ -15,37 +15,37 @@ import type { Context, Next } from "hono";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-    RateLimitedError,
-    ServiceUnavailableError,
+  RateLimitedError,
+  ServiceUnavailableError,
 } from "../../../../shared/base/errors.ts";
 import { users } from "../../../../shared/db/schema.ts";
 import {
-    checkRateLimit,
-    type RateLimitConfig,
-    rateLimitHeaders,
-    type RateLimitResult,
+  checkRateLimit,
+  type RateLimitConfig,
+  rateLimitHeaders,
+  type RateLimitResult,
 } from "../../../../shared/rate-limit/rate-limit.ts";
 import {
-    getClientIp,
-    isRateLimitEnabled,
-    settingInt,
+  getClientIp,
+  isRateLimitEnabled,
+  settingInt,
 } from "../../../platform/contracts/cross-module/system_services_rate-limit-env.ts";
 
 // ── 默认限流配置（可被环境变量覆盖） ────────────────────
 
 export const LOGIN_LIMITS = {
-    get ip() {
-        return {
-            windowSec: settingInt("rate_limit_login_ip_window"),
-            max: settingInt("rate_limit_login_ip_max"),
-        };
-    },
-    get acc() {
-        return {
-            windowSec: settingInt("rate_limit_login_acc_window"),
-            max: settingInt("rate_limit_login_acc_max"),
-        };
-    },
+  get ip() {
+    return {
+      windowSec: settingInt("rate_limit_login_ip_window"),
+      max: settingInt("rate_limit_login_ip_max"),
+    };
+  },
+  get acc() {
+    return {
+      windowSec: settingInt("rate_limit_login_acc_window"),
+      max: settingInt("rate_limit_login_acc_max"),
+    };
+  },
 };
 
 /**
@@ -59,22 +59,22 @@ export const LOGIN_LIMITS = {
  * Redis 不可用时由 checkRateLimit 内部抛 ServiceUnavailableError（503）。
  */
 export function loginIpRateLimit(namespace: string = "login") {
-    return async (c: Context, next: Next) => {
-        if (!isRateLimitEnabled()) return next();
+  return async (c: Context, next: Next) => {
+    if (!isRateLimitEnabled()) return next();
 
-        const ip = getClientIp(c);
-        const result = await checkRateLimit(
-            `${namespace}:ip:${ip}`,
-            LOGIN_LIMITS.ip,
-        );
-        if (!result.allowed) {
-            throw new RateLimitedError(
-                "请求过于频繁，请稍后重试",
-                rateLimitHeaders(LOGIN_LIMITS.ip, result),
-            );
-        }
-        await next();
-    };
+    const ip = getClientIp(c);
+    const result = await checkRateLimit(
+      `${namespace}:ip:${ip}`,
+      LOGIN_LIMITS.ip,
+    );
+    if (!result.allowed) {
+      throw new RateLimitedError(
+        "请求过于频繁，请稍后重试",
+        rateLimitHeaders(LOGIN_LIMITS.ip, result),
+      );
+    }
+    await next();
+  };
 }
 
 /**
@@ -88,15 +88,15 @@ export function loginIpRateLimit(namespace: string = "login") {
  *   `resolveLoginAccountKey` 时传入，避免同一请求重复查库
  */
 export async function checkLoginAccountRateLimit(
-    login: string,
-    namespace: string = "login",
-    accountKey?: string,
+  login: string,
+  namespace: string = "login",
+  accountKey?: string,
 ): Promise<RateLimitResult> {
-    if (!isRateLimitEnabled()) {
-        return { allowed: true, remaining: 0, resetAt: 0, retryAfter: 0 };
-    }
-    const key = accountKey ?? await resolveLoginAccountKey(login);
-    return checkRateLimit(`${namespace}:acc:${key}`, LOGIN_LIMITS.acc);
+  if (!isRateLimitEnabled()) {
+    return { allowed: true, remaining: 0, resetAt: 0, retryAfter: 0 };
+  }
+  const key = accountKey ?? await resolveLoginAccountKey(login);
+  return checkRateLimit(`${namespace}:acc:${key}`, LOGIN_LIMITS.acc);
 }
 
 /**
@@ -109,29 +109,27 @@ export async function checkLoginAccountRateLimit(
  * `unknown:<login>` 桶——否则攻击者可借 DB 抖动把自己的限流桶重置为全新计数。
  */
 export async function resolveLoginAccountKey(login: string): Promise<string> {
-    const fallback = (login || "anonymous").toLowerCase().slice(0, 64);
-    try {
-        const db = getDb();
-        const rows = await db
-            .select({ id: users.id })
-            .from(users)
-            .where(or(eq(users.username, login), eq(users.email, login)))
-            .limit(1);
-        return rows[0]?.id ?? `unknown:${fallback}`;
-    } catch (err) {
-        if (err instanceof ServiceUnavailableError) throw err;
-        throw new ServiceUnavailableError("登录限流服务暂时不可用", {
-            cause: err,
-        });
-    }
+  const fallback = (login || "anonymous").toLowerCase().slice(0, 64);
+  try {
+    const db = getDb();
+    const rows = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(or(eq(users.username, login), eq(users.email, login)))
+      .limit(1);
+    return rows[0]?.id ?? `unknown:${fallback}`;
+  } catch (err) {
+    if (err instanceof ServiceUnavailableError) throw err;
+    throw new ServiceUnavailableError("登录限流服务暂时不可用", { cause: err });
+  }
 }
 /** 429 抛错器供路由层使用 */
 export function throwRateLimited(
-    cfg: RateLimitConfig,
-    result: RateLimitResult,
+  cfg: RateLimitConfig,
+  result: RateLimitResult,
 ) {
-    throw new RateLimitedError(
-        "请求过于频繁，请稍后重试",
-        rateLimitHeaders(cfg, result),
-    );
+  throw new RateLimitedError(
+    "请求过于频繁，请稍后重试",
+    rateLimitHeaders(cfg, result),
+  );
 }

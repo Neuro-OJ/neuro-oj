@@ -7,94 +7,92 @@ import IORedis from "ioredis";
  * 本地 Redis 客户端接口（避免 ioredis 在 Deno 下类型解析问题）。
  */
 export interface RedisClient {
-    /** Redis 进程身份用于发现重启后恢复的旧快照。 */
-    serverId?(): Promise<string>;
-    /** 治理基线所需扫描/TTL；运行时适配器提供，普通单测可省略。 */
-    scan?(
-        cursor: string,
-        pattern: string,
-        count: number,
-    ): Promise<[string, string[]]>;
-    pttl?(key: string): Promise<number>;
-    ping(): Promise<string>;
-    incr(key: string): Promise<number>;
-    incrby(key: string, amount: number): Promise<number>;
-    expire(key: string, seconds: number): Promise<number>;
-    get(key: string): Promise<string | null>;
-    set(key: string, value: string): Promise<unknown>;
-    /** SET key value EX ttl NX：仅在键不存在时写入，返回是否写入成功（去重 / 互斥锁）。 */
-    setNx(key: string, value: string, ttlSeconds: number): Promise<boolean>;
-    sadd(key: string, member: string): Promise<number>;
-    scard(key: string): Promise<number>;
-    /** 执行 Lua 脚本；keys 为 KEYS，args 为 ARGV */
-    eval(
-        script: string,
-        keys: string[],
-        args: (string | number)[],
-    ): Promise<unknown>;
-    /** 关闭连接（可选；测试与优雅退出使用） */
-    quit?(): Promise<unknown>;
+  /** Redis 进程身份用于发现重启后恢复的旧快照。 */
+  serverId?(): Promise<string>;
+  /** 治理基线所需扫描/TTL；运行时适配器提供，普通单测可省略。 */
+  scan?(
+    cursor: string,
+    pattern: string,
+    count: number,
+  ): Promise<[string, string[]]>;
+  pttl?(key: string): Promise<number>;
+  ping(): Promise<string>;
+  incr(key: string): Promise<number>;
+  incrby(key: string, amount: number): Promise<number>;
+  expire(key: string, seconds: number): Promise<number>;
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<unknown>;
+  /** SET key value EX ttl NX：仅在键不存在时写入，返回是否写入成功（去重 / 互斥锁）。 */
+  setNx(key: string, value: string, ttlSeconds: number): Promise<boolean>;
+  sadd(key: string, member: string): Promise<number>;
+  scard(key: string): Promise<number>;
+  /** 执行 Lua 脚本；keys 为 KEYS，args 为 ARGV */
+  eval(
+    script: string,
+    keys: string[],
+    args: (string | number)[],
+  ): Promise<unknown>;
+  /** 关闭连接（可选；测试与优雅退出使用） */
+  quit?(): Promise<unknown>;
 }
 
 /** 创建 Redis 客户端适配器，统一暴露限流所需的最小操作集。 */
 export function createRedis(redisUrl: string): RedisClient {
-    // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
-    const redis = new IORedis(redisUrl, {
-        maxRetriesPerRequest: 2,
-        lazyConnect: false,
-    });
-    return {
-        serverId: async () => {
-            const info: string = await redis.info("server");
-            const id = info.split("\n").find((line) =>
-                line.startsWith("run_id:")
-            )
-                ?.slice(7).trim();
-            if (!id) throw new Error("redis_server_identity_unavailable");
-            return id;
-        },
-        scan: (cursor, pattern, count) =>
-            redis.scan(cursor, "MATCH", pattern, "COUNT", count),
-        pttl: (key) => redis.pttl(key),
-        ping: () => redis.ping(),
-        incr: (key) => redis.incr(key),
-        incrby: (key, amount) => redis.incrby(key, amount),
-        expire: (key, seconds) => redis.expire(key, seconds),
-        get: (key) => redis.get(key),
-        set: (key, value) => redis.set(key, value),
-        setNx: async (key, value, ttlSeconds) =>
-            (await redis.set(key, value, "EX", ttlSeconds, "NX")) === "OK",
-        sadd: (key, member) => redis.sadd(key, member),
-        scard: (key) => redis.scard(key),
-        eval: (script, keys, args) =>
-            redis.eval(script, keys.length, ...keys, ...args),
-        quit: () => redis.quit(),
-    };
+  // @ts-ignore - ioredis 构造函数类型在 Deno 中解析受限
+  const redis = new IORedis(redisUrl, {
+    maxRetriesPerRequest: 2,
+    lazyConnect: false,
+  });
+  return {
+    serverId: async () => {
+      const info: string = await redis.info("server");
+      const id = info.split("\n").find((line) => line.startsWith("run_id:"))
+        ?.slice(7).trim();
+      if (!id) throw new Error("redis_server_identity_unavailable");
+      return id;
+    },
+    scan: (cursor, pattern, count) =>
+      redis.scan(cursor, "MATCH", pattern, "COUNT", count),
+    pttl: (key) => redis.pttl(key),
+    ping: () => redis.ping(),
+    incr: (key) => redis.incr(key),
+    incrby: (key, amount) => redis.incrby(key, amount),
+    expire: (key, seconds) => redis.expire(key, seconds),
+    get: (key) => redis.get(key),
+    set: (key, value) => redis.set(key, value),
+    setNx: async (key, value, ttlSeconds) =>
+      (await redis.set(key, value, "EX", ttlSeconds, "NX")) === "OK",
+    sadd: (key, member) => redis.sadd(key, member),
+    scard: (key) => redis.scard(key),
+    eval: (script, keys, args) =>
+      redis.eval(script, keys.length, ...keys, ...args),
+    quit: () => redis.quit(),
+  };
 }
 
 /** 原子自增并设置 TTL（首次自增时设置） */
 export async function incrWithTtl(
-    redis: RedisClient,
-    key: string,
-    ttlSeconds: number,
+  redis: RedisClient,
+  key: string,
+  ttlSeconds: number,
 ): Promise<number> {
-    const value = await redis.incr(key);
-    if (value === 1) {
-        await redis.expire(key, ttlSeconds);
-    }
-    return value;
+  const value = await redis.incr(key);
+  if (value === 1) {
+    await redis.expire(key, ttlSeconds);
+  }
+  return value;
 }
 
 /** 原子自增指定数量并设置 TTL（首次自增时设置） */
 export async function incrByWithTtl(
-    redis: RedisClient,
-    key: string,
-    amount: number,
-    ttlSeconds: number,
+  redis: RedisClient,
+  key: string,
+  amount: number,
+  ttlSeconds: number,
 ): Promise<number> {
-    const value = await redis.incrby(key, amount);
-    if (value === amount) {
-        await redis.expire(key, ttlSeconds);
-    }
-    return value;
+  const value = await redis.incrby(key, amount);
+  if (value === amount) {
+    await redis.expire(key, ttlSeconds);
+  }
+  return value;
 }

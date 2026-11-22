@@ -6,5 +6,5 @@
 
 /** 创建临时目录（统一封装，便于后续统一清理策略）。 */
 export function makeTempDir(): Promise<string> {
-    return Deno.makeTempDir();
+  return Deno.makeTempDir();
 }

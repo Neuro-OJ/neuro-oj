@@ -7,16 +7,16 @@ import type { Ref } from 'vue';
  * loading 已为 false 时立即返回。
  */
 export async function useAuthReady(loading: Ref<boolean>): Promise<void> {
-    if (!loading.value) return;
-    await Promise.race([
-        new Promise<void>((resolve) => {
-            const unwatch = watch(loading, (val) => {
-                if (!val) {
-                    unwatch();
-                    resolve();
-                }
-            });
-        }),
-        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-    ]);
+  if (!loading.value) return;
+  await Promise.race([
+    new Promise<void>((resolve) => {
+      const unwatch = watch(loading, (val) => {
+        if (!val) {
+          unwatch();
+          resolve();
+        }
+      });
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+  ]);
 }

@@ -17,9 +17,9 @@ import { zipSync } from "fflate";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { problems, users } from "../../../../shared/db/schema.ts";
 import {
-    AppError,
-    BadRequestError,
-    ForbiddenError,
+  AppError,
+  BadRequestError,
+  ForbiddenError,
 } from "../../../../shared/base/errors.ts";
 import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { createProblem, updateProblem } from "../../index.ts";
@@ -32,47 +32,47 @@ const ts = Date.now();
 
 // 共享 runtime_config 样例（含 network 用于敏感字段触发）
 const VALID_RUNTIME_CONFIG = {
-    evaluator: {
-        image: "noj-evaluator-python",
-        command: "python3 /workspace/evaluate.py",
-        time_limit_ms: 5000,
-        memory_limit_mb: 512,
-    },
-    solution: {
-        image: "noj-solution-python",
-        call_timeout_ms: 2000,
-        memory_limit_mb: 512,
-    },
+  evaluator: {
+    image: "noj-evaluator-python",
+    command: "python3 /workspace/evaluate.py",
+    time_limit_ms: 5000,
+    memory_limit_mb: 512,
+  },
+  solution: {
+    image: "noj-solution-python",
+    call_timeout_ms: 2000,
+    memory_limit_mb: 512,
+  },
 };
 
 const NETWORKED_RUNTIME_CONFIG = {
-    ...VALID_RUNTIME_CONFIG,
-    evaluator: {
-        ...VALID_RUNTIME_CONFIG.evaluator,
-        network: { enabled: true },
-    },
+  ...VALID_RUNTIME_CONFIG,
+  evaluator: {
+    ...VALID_RUNTIME_CONFIG.evaluator,
+    network: { enabled: true },
+  },
 };
 
 /** 构造统一题目包 zip（结构对齐 tests/routes/problem-bundle.test.ts） */
 function makeBundleZip(
-    manifestOverrides: Record<string, unknown> = {},
+  manifestOverrides: Record<string, unknown> = {},
 ): Uint8Array {
-    const manifest = {
-        format_version: 2,
-        title: `导入测试题 ${ts}`,
-        difficulty: "easy",
-        runtime_config: VALID_RUNTIME_CONFIG,
-        ...manifestOverrides,
-    };
-    const enc = new TextEncoder();
-    return zipSync({
-        "problem.json": enc.encode(JSON.stringify(manifest)),
-        "statement.md": enc.encode(
-            `# ${manifest.title}\n\n## 样例输入 1\n\`\`\`\n1 2\n\`\`\`\n`,
-        ),
-        "evaluate.py": enc.encode("print('evaluator')"),
-        "visible.jsonl": enc.encode('{"input": "1 2", "output": "3"}\n'),
-    }, { level: 6 });
+  const manifest = {
+    format_version: 2,
+    title: `导入测试题 ${ts}`,
+    difficulty: "easy",
+    runtime_config: VALID_RUNTIME_CONFIG,
+    ...manifestOverrides,
+  };
+  const enc = new TextEncoder();
+  return zipSync({
+    "problem.json": enc.encode(JSON.stringify(manifest)),
+    "statement.md": enc.encode(
+      `# ${manifest.title}\n\n## 样例输入 1\n\`\`\`\n1 2\n\`\`\`\n`,
+    ),
+    "evaluate.py": enc.encode("print('evaluator')"),
+    "visible.jsonl": enc.encode('{"input": "1 2", "output": "3"}\n'),
+  }, { level: 6 });
 }
 
 // ── 模块级 setup ──────────────────────────────────
@@ -80,20 +80,20 @@ function makeBundleZip(
 // @std/assert 1.0.19 的 assertRejects 不支持谓词函数（类型检查失败），
 // 用 try/catch 手动断言 AppError 的 code 与状态码
 async function assertResourceLimitExceeded(
-    fn: () => Promise<unknown>,
+  fn: () => Promise<unknown>,
 ): Promise<void> {
-    let caught: unknown;
-    try {
-        await fn();
-    } catch (err) {
-        caught = err;
-    }
-    assert(
-        caught instanceof AppError &&
-            caught.statusCode === 400 &&
-            caught.code === "RESOURCE_LIMIT_EXCEEDED",
-        "应抛 RESOURCE_LIMIT_EXCEEDED（400）",
-    );
+  let caught: unknown;
+  try {
+    await fn();
+  } catch (err) {
+    caught = err;
+  }
+  assert(
+    caught instanceof AppError &&
+      caught.statusCode === 400 &&
+      caught.code === "RESOURCE_LIMIT_EXCEEDED",
+    "应抛 RESOURCE_LIMIT_EXCEEDED（400）",
+  );
 }
 
 await resetDbForTest();
@@ -105,564 +105,563 @@ const db = getDb();
 
 /** 确保测试用户存在（problems.owner_id 外键） */
 async function ensureCliUser(id: string): Promise<void> {
-    const isoNow = new Date().toISOString();
-    await getDb().insert(users).values({
-        id,
-        username: `${id}-${ts}`,
-        email: `${id}-${ts}@test.com`,
-        password_hash: "not-used",
-        created_at: isoNow,
-        updated_at: isoNow,
-    }).onConflictDoNothing();
+  const isoNow = new Date().toISOString();
+  await getDb().insert(users).values({
+    id,
+    username: `${id}-${ts}`,
+    email: `${id}-${ts}@test.com`,
+    password_hash: "not-used",
+    created_at: isoNow,
+    updated_at: isoNow,
+  }).onConflictDoNothing();
 }
 
 // ── createProblem ────────────────────────────────
 
 Deno.test({
-    name: "createProblem: 内部调用（无 c、无 userRole）默认放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const problem = await createProblem({
-            title: `内部创建 ${ts}`,
-            description: "内部调用",
+  name: "createProblem: 内部调用（无 c、无 userRole）默认放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem({
+      title: `内部创建 ${ts}`,
+      description: "内部调用",
+      difficulty: "easy",
+      runtime_config: NETWORKED_RUNTIME_CONFIG,
+    });
+    assertEquals(problem.title, `内部创建 ${ts}`);
+  },
+});
+
+Deno.test({
+  name: "createProblem: CLI admin 放行（显式 userRole=admin）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem(
+      {
+        title: `CLI admin ${ts}`,
+        description: "CLI",
+        difficulty: "easy",
+        runtime_config: NETWORKED_RUNTIME_CONFIG,
+      },
+      ROOT_USER_ID,
+      "admin",
+    );
+    assertEquals(problem.title, `CLI admin ${ts}`);
+  },
+});
+
+Deno.test({
+  name: "createProblem: CLI 显式非 admin 设置敏感字段被拒（403）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await assertRejects(
+      () =>
+        createProblem(
+          {
+            title: `CLI user ${ts}`,
+            description: "CLI",
             difficulty: "easy",
             runtime_config: NETWORKED_RUNTIME_CONFIG,
-        });
-        assertEquals(problem.title, `内部创建 ${ts}`);
-    },
-});
-
-Deno.test({
-    name: "createProblem: CLI admin 放行（显式 userRole=admin）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const problem = await createProblem(
-            {
-                title: `CLI admin ${ts}`,
-                description: "CLI",
-                difficulty: "easy",
-                runtime_config: NETWORKED_RUNTIME_CONFIG,
-            },
-            ROOT_USER_ID,
-            "admin",
-        );
-        assertEquals(problem.title, `CLI admin ${ts}`);
-    },
-});
-
-Deno.test({
-    name: "createProblem: CLI 显式非 admin 设置敏感字段被拒（403）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await assertRejects(
-            () =>
-                createProblem(
-                    {
-                        title: `CLI user ${ts}`,
-                        description: "CLI",
-                        difficulty: "easy",
-                        runtime_config: NETWORKED_RUNTIME_CONFIG,
-                    },
-                    "cli-user-id",
-                    "user",
-                ),
-            ForbiddenError,
-            "权限不足",
-        );
-    },
+          },
+          "cli-user-id",
+          "user",
+        ),
+      ForbiddenError,
+      "权限不足",
+    );
+  },
 });
 
 // ── updateProblem ────────────────────────────────
 
 Deno.test({
-    name: "updateProblem: 内部调用（无 c、无 userRole）默认放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const problem = await createProblem(
-            {
-                title: `待更新 ${ts}`,
-                description: "owner",
-                difficulty: "easy",
-                runtime_config: VALID_RUNTIME_CONFIG,
-            },
-            ROOT_USER_ID,
-            "admin",
-        );
-        const updated = await updateProblem(
-            problem.id,
-            { runtime_config: NETWORKED_RUNTIME_CONFIG },
-            ROOT_USER_ID, // owner
-        );
-        assertEquals(updated.title, `待更新 ${ts}`);
-    },
+  name: "updateProblem: 内部调用（无 c、无 userRole）默认放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem(
+      {
+        title: `待更新 ${ts}`,
+        description: "owner",
+        difficulty: "easy",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      ROOT_USER_ID,
+      "admin",
+    );
+    const updated = await updateProblem(
+      problem.id,
+      { runtime_config: NETWORKED_RUNTIME_CONFIG },
+      ROOT_USER_ID, // owner
+    );
+    assertEquals(updated.title, `待更新 ${ts}`);
+  },
 });
 
 Deno.test({
-    name: "updateProblem: CLI 显式非 admin 更新敏感字段被拒（403）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        // owner 为普通用户（非 root），updateProblem 的 owner 检查可通过，
-        // 守卫按 fail-closed 拒绝（非 root 且 userRole 非 admin）
-        await db.insert(users).values({
-            id: "cli-owner-id",
-            username: `cli-owner-${ts}`,
-            email: `cli-owner-${ts}@test.com`,
-            password_hash: "not-used",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-        }).onConflictDoNothing();
-        await grantDefaultCatalogRole("cli-owner-id", "educator");
-        const problem = await createProblem(
-            {
-                title: `待收紧 ${ts}`,
-                description: "owner",
-                difficulty: "easy",
-                runtime_config: VALID_RUNTIME_CONFIG,
-            },
-            "cli-owner-id",
-            "admin",
-        );
-        await assertRejects(
-            () =>
-                updateProblem(
-                    problem.id,
-                    { runtime_config: NETWORKED_RUNTIME_CONFIG },
-                    "cli-owner-id",
-                    "user",
-                ),
-            ForbiddenError,
-            "权限不足",
-        );
-    },
+  name: "updateProblem: CLI 显式非 admin 更新敏感字段被拒（403）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // owner 为普通用户（非 root），updateProblem 的 owner 检查可通过，
+    // 守卫按 fail-closed 拒绝（非 root 且 userRole 非 admin）
+    await db.insert(users).values({
+      id: "cli-owner-id",
+      username: `cli-owner-${ts}`,
+      email: `cli-owner-${ts}@test.com`,
+      password_hash: "not-used",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).onConflictDoNothing();
+    await grantDefaultCatalogRole("cli-owner-id", "educator");
+    const problem = await createProblem(
+      {
+        title: `待收紧 ${ts}`,
+        description: "owner",
+        difficulty: "easy",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      "cli-owner-id",
+      "admin",
+    );
+    await assertRejects(
+      () =>
+        updateProblem(
+          problem.id,
+          { runtime_config: NETWORKED_RUNTIME_CONFIG },
+          "cli-owner-id",
+          "user",
+        ),
+      ForbiddenError,
+      "权限不足",
+    );
+  },
 });
 
 Deno.test({
-    name: "createProblem: CLI 显式非 admin 使用默认 command、不联网放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        // 回归：command 为必填字段，"显式设置即检查"会让无权限用户无法创建任何编程题
-        await ensureCliUser("cli-user-id");
-        await grantDefaultCatalogRole("cli-user-id", "educator");
-        const problem = await createProblem(
-            {
-                title: `CLI user 默认 ${ts}`,
-                description: "CLI",
-                difficulty: "easy",
-                runtime_config: VALID_RUNTIME_CONFIG,
-            },
-            "cli-user-id",
-            "user",
-        );
-        assertEquals(problem.title, `CLI user 默认 ${ts}`);
-    },
+  name: "createProblem: CLI 显式非 admin 使用默认 command、不联网放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 回归：command 为必填字段，"显式设置即检查"会让无权限用户无法创建任何编程题
+    await ensureCliUser("cli-user-id");
+    await grantDefaultCatalogRole("cli-user-id", "educator");
+    const problem = await createProblem(
+      {
+        title: `CLI user 默认 ${ts}`,
+        description: "CLI",
+        difficulty: "easy",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      "cli-user-id",
+      "user",
+    );
+    assertEquals(problem.title, `CLI user 默认 ${ts}`);
+  },
 });
 
 Deno.test({
-    name: "importProblemBundle: CLI 显式非 admin 导入缺省 command 的包放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await ensureCliUser("cli-user");
-        await grantDefaultCatalogRole("cli-user", "educator");
-        const { command: _omit, ...evaluator } = VALID_RUNTIME_CONFIG.evaluator;
-        const zip = makeBundleZip({
-            title: `CLI user 导入 ${ts}`,
-            runtime_config: { ...VALID_RUNTIME_CONFIG, evaluator },
-        });
-        const result = await importProblemBundle(
-            { name: "cli-bundle.zip", data: zip },
-            { userId: "cli-user", userRole: "user" },
-        );
-        assertEquals(result.title, `CLI user 导入 ${ts}`);
-    },
+  name: "importProblemBundle: CLI 显式非 admin 导入缺省 command 的包放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await ensureCliUser("cli-user");
+    await grantDefaultCatalogRole("cli-user", "educator");
+    const { command: _omit, ...evaluator } = VALID_RUNTIME_CONFIG.evaluator;
+    const zip = makeBundleZip({
+      title: `CLI user 导入 ${ts}`,
+      runtime_config: { ...VALID_RUNTIME_CONFIG, evaluator },
+    });
+    const result = await importProblemBundle(
+      { name: "cli-bundle.zip", data: zip },
+      { userId: "cli-user", userRole: "user" },
+    );
+    assertEquals(result.title, `CLI user 导入 ${ts}`);
+  },
 });
 
 // ── 资源上限 ─────────────────────────────────────
 
 Deno.test({
-    name: "资源上限: 创建超限被拒（400 RESOURCE_LIMIT_EXCEEDED）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await updateSetting(
-            "judge_max_evaluator_memory_limit_mb",
-            512,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            await assertResourceLimitExceeded(
-                () =>
-                    createProblem({
-                        title: `超限 ${ts}`,
-                        description: "超限",
-                        difficulty: "easy",
-                        runtime_config: {
-                            ...VALID_RUNTIME_CONFIG,
-                            evaluator: {
-                                ...VALID_RUNTIME_CONFIG.evaluator,
-                                memory_limit_mb: 1024,
-                            },
-                        },
-                    }),
-            );
-        } finally {
-            await resetSetting(
-                "judge_max_evaluator_memory_limit_mb",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
+  name: "资源上限: 创建超限被拒（400 RESOURCE_LIMIT_EXCEEDED）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_evaluator_memory_limit_mb",
+      512,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      await assertResourceLimitExceeded(
+        () =>
+          createProblem({
+            title: `超限 ${ts}`,
+            description: "超限",
+            difficulty: "easy",
+            runtime_config: {
+              ...VALID_RUNTIME_CONFIG,
+              evaluator: {
+                ...VALID_RUNTIME_CONFIG.evaluator,
+                memory_limit_mb: 1024,
+              },
+            },
+          }),
+      );
+    } finally {
+      await resetSetting(
+        "judge_max_evaluator_memory_limit_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
 });
 
 Deno.test({
-    name: "资源上限: 未超限放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await updateSetting(
-            "judge_max_evaluator_memory_limit_mb",
-            512,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            const problem = await createProblem({
-                title: `未超限 ${ts}`,
-                description: "未超限",
-                difficulty: "easy",
-                runtime_config: {
-                    ...VALID_RUNTIME_CONFIG,
-                    evaluator: {
-                        ...VALID_RUNTIME_CONFIG.evaluator,
-                        memory_limit_mb: 256,
-                    },
-                },
-            });
-            assertEquals(problem.title, `未超限 ${ts}`);
-        } finally {
-            await resetSetting(
-                "judge_max_evaluator_memory_limit_mb",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
+  name: "资源上限: 未超限放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_evaluator_memory_limit_mb",
+      512,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      const problem = await createProblem({
+        title: `未超限 ${ts}`,
+        description: "未超限",
+        difficulty: "easy",
+        runtime_config: {
+          ...VALID_RUNTIME_CONFIG,
+          evaluator: {
+            ...VALID_RUNTIME_CONFIG.evaluator,
+            memory_limit_mb: 256,
+          },
+        },
+      });
+      assertEquals(problem.title, `未超限 ${ts}`);
+    } finally {
+      await resetSetting(
+        "judge_max_evaluator_memory_limit_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
 });
 
 Deno.test({
-    name: "资源上限: 更新超限被拒（400）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const problem = await createProblem(
+  name: "资源上限: 更新超限被拒（400）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const problem = await createProblem(
+      {
+        title: `更新超限 ${ts}`,
+        description: "owner",
+        difficulty: "easy",
+        runtime_config: VALID_RUNTIME_CONFIG,
+      },
+      ROOT_USER_ID,
+      "admin",
+    );
+    await updateSetting(
+      "judge_max_solution_call_timeout_ms",
+      5000,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      await assertResourceLimitExceeded(
+        () =>
+          updateProblem(
+            problem.id,
             {
-                title: `更新超限 ${ts}`,
-                description: "owner",
-                difficulty: "easy",
-                runtime_config: VALID_RUNTIME_CONFIG,
+              runtime_config: {
+                ...VALID_RUNTIME_CONFIG,
+                solution: {
+                  ...VALID_RUNTIME_CONFIG.solution,
+                  call_timeout_ms: 10000,
+                },
+              },
             },
             ROOT_USER_ID,
             "admin",
-        );
-        await updateSetting(
-            "judge_max_solution_call_timeout_ms",
-            5000,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            await assertResourceLimitExceeded(
-                () =>
-                    updateProblem(
-                        problem.id,
-                        {
-                            runtime_config: {
-                                ...VALID_RUNTIME_CONFIG,
-                                solution: {
-                                    ...VALID_RUNTIME_CONFIG.solution,
-                                    call_timeout_ms: 10000,
-                                },
-                            },
-                        },
-                        ROOT_USER_ID,
-                        "admin",
-                    ),
-            );
-        } finally {
-            await resetSetting(
-                "judge_max_solution_call_timeout_ms",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
+          ),
+      );
+    } finally {
+      await resetSetting(
+        "judge_max_solution_call_timeout_ms",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
 });
 
 // ── importProblemBundle（CLI 路径）───────────────
 
 Deno.test({
-    name: "importProblemBundle: CLI admin 导入含敏感字段的包放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const zip = makeBundleZip({
-            runtime_config: {
-                ...VALID_RUNTIME_CONFIG,
-                evaluator: {
-                    ...VALID_RUNTIME_CONFIG.evaluator,
-                    network: { enabled: true },
-                },
-            },
-        });
-        const result = await importProblemBundle(
+  name: "importProblemBundle: CLI admin 导入含敏感字段的包放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const zip = makeBundleZip({
+      runtime_config: {
+        ...VALID_RUNTIME_CONFIG,
+        evaluator: {
+          ...VALID_RUNTIME_CONFIG.evaluator,
+          network: { enabled: true },
+        },
+      },
+    });
+    const result = await importProblemBundle(
+      { name: "cli-bundle.zip", data: zip },
+      { userId: ROOT_USER_ID, userRole: "admin" },
+    );
+    assertEquals(result.title, `导入测试题 ${ts}`);
+  },
+});
+
+Deno.test({
+  name: "importProblemBundle: CLI 显式非 admin 导入自定义 command 被拒（403）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const actorToken = await createDefaultCatalogToken("educator");
+    const actorId = decodeJwt(actorToken).sub!;
+    const zip = makeBundleZip({
+      runtime_config: {
+        ...VALID_RUNTIME_CONFIG,
+        evaluator: {
+          ...VALID_RUNTIME_CONFIG.evaluator,
+          command: "bash /workspace/run.sh",
+        },
+      },
+    });
+    await assertRejects(
+      () =>
+        importProblemBundle(
+          { name: "cli-bundle.zip", data: zip },
+          { userId: actorId, userRole: "user" },
+        ),
+      ForbiddenError,
+      "权限不足",
+    );
+  },
+});
+
+Deno.test({
+  name: "importProblemBundle: 导入超限包被拒（400）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_evaluator_time_limit_ms",
+      5000,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      const zip = makeBundleZip({
+        runtime_config: {
+          ...VALID_RUNTIME_CONFIG,
+          evaluator: {
+            ...VALID_RUNTIME_CONFIG.evaluator,
+            time_limit_ms: 10000,
+          },
+        },
+      });
+      await assertResourceLimitExceeded(
+        () =>
+          importProblemBundle(
             { name: "cli-bundle.zip", data: zip },
             { userId: ROOT_USER_ID, userRole: "admin" },
-        );
-        assertEquals(result.title, `导入测试题 ${ts}`);
-    },
+          ),
+      );
+    } finally {
+      await resetSetting(
+        "judge_max_evaluator_time_limit_ms",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
 });
 
 Deno.test({
-    name:
-        "importProblemBundle: CLI 显式非 admin 导入自定义 command 被拒（403）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const actorToken = await createDefaultCatalogToken("educator");
-        const actorId = decodeJwt(actorToken).sub!;
-        const zip = makeBundleZip({
-            runtime_config: {
-                ...VALID_RUNTIME_CONFIG,
-                evaluator: {
-                    ...VALID_RUNTIME_CONFIG.evaluator,
-                    command: "bash /workspace/run.sh",
-                },
-            },
-        });
-        await assertRejects(
-            () =>
-                importProblemBundle(
-                    { name: "cli-bundle.zip", data: zip },
-                    { userId: actorId, userRole: "user" },
-                ),
-            ForbiddenError,
-            "权限不足",
-        );
-    },
-});
+  name:
+    "importProblemBundle: admin 按 number 更新超限包被拒且旧数据不变（I4 前置校验）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    // 预置既有题目（owner=root），admin 带 number 导入超限包走 updateExisting
+    const problemId = `i4-existing-${ts}`;
+    const isoNow = new Date().toISOString();
+    await db.insert(problems).values({
+      domain_id: "00000000-0000-4000-8000-000000000001",
+      id: problemId,
+      title: "旧标题",
+      description: "旧题面",
+      difficulty: "medium",
+      runtime_config: VALID_RUNTIME_CONFIG,
+      number: 95000 + (ts % 4000),
+      owner_id: ROOT_USER_ID,
+      created_at: isoNow,
+      updated_at: isoNow,
+    }).onConflictDoNothing();
 
-Deno.test({
-    name: "importProblemBundle: 导入超限包被拒（400）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await updateSetting(
-            "judge_max_evaluator_time_limit_ms",
-            5000,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            const zip = makeBundleZip({
-                runtime_config: {
-                    ...VALID_RUNTIME_CONFIG,
-                    evaluator: {
-                        ...VALID_RUNTIME_CONFIG.evaluator,
-                        time_limit_ms: 10000,
-                    },
-                },
-            });
-            await assertResourceLimitExceeded(
-                () =>
-                    importProblemBundle(
-                        { name: "cli-bundle.zip", data: zip },
-                        { userId: ROOT_USER_ID, userRole: "admin" },
-                    ),
-            );
-        } finally {
-            await resetSetting(
-                "judge_max_evaluator_time_limit_ms",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
-});
+    await bindDefaultCatalogFixture(problemId);
 
-Deno.test({
-    name:
-        "importProblemBundle: admin 按 number 更新超限包被拒且旧数据不变（I4 前置校验）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        // 预置既有题目（owner=root），admin 带 number 导入超限包走 updateExisting
-        const problemId = `i4-existing-${ts}`;
-        const isoNow = new Date().toISOString();
-        await db.insert(problems).values({
-            domain_id: "00000000-0000-4000-8000-000000000001",
-            id: problemId,
-            title: "旧标题",
-            description: "旧题面",
-            difficulty: "medium",
-            runtime_config: VALID_RUNTIME_CONFIG,
-            number: 95000 + (ts % 4000),
-            owner_id: ROOT_USER_ID,
-            created_at: isoNow,
-            updated_at: isoNow,
-        }).onConflictDoNothing();
-
-        await bindDefaultCatalogFixture(problemId);
-
-        await updateSetting(
-            "judge_max_solution_memory_limit_mb",
-            256,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            const zip = makeBundleZip({
-                number: 95000 + (ts % 4000),
-                title: "新标题",
-                runtime_config: {
-                    ...VALID_RUNTIME_CONFIG,
-                    solution: {
-                        ...VALID_RUNTIME_CONFIG.solution,
-                        memory_limit_mb: 1024,
-                    },
-                },
-            });
-            await assertResourceLimitExceeded(
-                () =>
-                    importProblemBundle(
-                        { name: "cli-bundle.zip", data: zip },
-                        { userId: ROOT_USER_ID, userRole: "admin" },
-                    ),
-            );
-            // DB 未变：标题与 runtime_config 保持旧值（updateExisting 前置校验
-            // 失败，不触碰 storage、不落库）
-            const [row] = await db.select().from(problems).where(
-                eq(problems.id, problemId),
-            ).limit(1);
-            assertEquals(row.title, "旧标题");
-            assertEquals(
-                (row.runtime_config as { evaluator: { time_limit_ms: number } })
-                    .evaluator.time_limit_ms,
-                5000,
-            );
-        } finally {
-            await resetSetting(
-                "judge_max_solution_memory_limit_mb",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
+    await updateSetting(
+      "judge_max_solution_memory_limit_mb",
+      256,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      const zip = makeBundleZip({
+        number: 95000 + (ts % 4000),
+        title: "新标题",
+        runtime_config: {
+          ...VALID_RUNTIME_CONFIG,
+          solution: {
+            ...VALID_RUNTIME_CONFIG.solution,
+            memory_limit_mb: 1024,
+          },
+        },
+      });
+      await assertResourceLimitExceeded(
+        () =>
+          importProblemBundle(
+            { name: "cli-bundle.zip", data: zip },
+            { userId: ROOT_USER_ID, userRole: "admin" },
+          ),
+      );
+      // DB 未变：标题与 runtime_config 保持旧值（updateExisting 前置校验
+      // 失败，不触碰 storage、不落库）
+      const [row] = await db.select().from(problems).where(
+        eq(problems.id, problemId),
+      ).limit(1);
+      assertEquals(row.title, "旧标题");
+      assertEquals(
+        (row.runtime_config as { evaluator: { time_limit_ms: number } })
+          .evaluator.time_limit_ms,
+        5000,
+      );
+    } finally {
+      await resetSetting(
+        "judge_max_solution_memory_limit_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
 });
 
 // ── prediction workspace 上限 ─────────────────────
 // evaluator.workspace_size_mb 直接决定 /workspace tmpfs 的 size，原先既不在
 // RESOURCE_LIMIT_SETTINGS（管理员无法设全局上限），judge 侧也不收敛题目级覆盖值。
 Deno.test({
-    name: "资源上限: prediction workspace_size_mb 超管理员上限被拒（400）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await updateSetting(
-            "judge_max_prediction_workspace_mb",
-            4096,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            await assertResourceLimitExceeded(
-                () =>
-                    createProblem(
-                        {
-                            title: `workspace 超限 ${ts}`,
-                            description: "超限",
-                            difficulty: "easy",
-                            submission_mode: "prediction",
-                            runtime_config: {
-                                evaluator: {
-                                    image: "noj-evaluator-python",
-                                    command: "python3 /workspace/evaluate.py",
-                                    time_limit_ms: 5000,
-                                    memory_limit_mb: 512,
-                                    workspace_size_mb: 8192,
-                                },
-                            },
-                        },
-                        ROOT_USER_ID,
-                        "admin",
-                    ),
-            );
-        } finally {
-            await resetSetting(
-                "judge_max_prediction_workspace_mb",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
-});
-
-Deno.test({
-    name: "资源上限: prediction workspace_size_mb 未超限放行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await updateSetting(
-            "judge_max_prediction_workspace_mb",
-            4096,
-            userActorFromAuthenticatedId(ROOT_USER_ID),
-        );
-        try {
-            const created = await createProblem(
-                {
-                    title: `workspace 合规 ${ts}`,
-                    description: "未超限",
-                    difficulty: "easy",
-                    submission_mode: "prediction",
-                    runtime_config: {
-                        evaluator: {
-                            image: "noj-evaluator-python",
-                            command: "python3 /workspace/evaluate.py",
-                            time_limit_ms: 5000,
-                            memory_limit_mb: 512,
-                            workspace_size_mb: 2048,
-                        },
-                    },
+  name: "资源上限: prediction workspace_size_mb 超管理员上限被拒（400）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_prediction_workspace_mb",
+      4096,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      await assertResourceLimitExceeded(
+        () =>
+          createProblem(
+            {
+              title: `workspace 超限 ${ts}`,
+              description: "超限",
+              difficulty: "easy",
+              submission_mode: "prediction",
+              runtime_config: {
+                evaluator: {
+                  image: "noj-evaluator-python",
+                  command: "python3 /workspace/evaluate.py",
+                  time_limit_ms: 5000,
+                  memory_limit_mb: 512,
+                  workspace_size_mb: 8192,
                 },
-                ROOT_USER_ID,
-                "admin",
-            );
-            assertEquals(created.submission_mode, "prediction");
-        } finally {
-            await resetSetting(
-                "judge_max_prediction_workspace_mb",
-                userActorFromAuthenticatedId(ROOT_USER_ID),
-            );
-        }
-    },
+              },
+            },
+            ROOT_USER_ID,
+            "admin",
+          ),
+      );
+    } finally {
+      await resetSetting(
+        "judge_max_prediction_workspace_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
 });
 
 Deno.test({
-    // 2026-09-25 评审：软废弃后 samples 不再做形状校验，历史坏值必须能导入
-    // （服务层只记 warning，不再 400）——此前非法形状会被拒绝，测试也从未覆盖。
-    name: "importProblemBundle: 独立样例保留且非法形状拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        for (const samples of ["legacy-shape", [{ input: 1 }], 42]) {
-            const zip = makeBundleZip({ samples });
-            await assertRejects(() =>
-                importProblemBundle(
-                    { name: "invalid-samples.zip", data: zip },
-                    { userId: ROOT_USER_ID, userRole: "admin" },
-                ), BadRequestError);
-        }
-    },
+  name: "资源上限: prediction workspace_size_mb 未超限放行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await updateSetting(
+      "judge_max_prediction_workspace_mb",
+      4096,
+      userActorFromAuthenticatedId(ROOT_USER_ID),
+    );
+    try {
+      const created = await createProblem(
+        {
+          title: `workspace 合规 ${ts}`,
+          description: "未超限",
+          difficulty: "easy",
+          submission_mode: "prediction",
+          runtime_config: {
+            evaluator: {
+              image: "noj-evaluator-python",
+              command: "python3 /workspace/evaluate.py",
+              time_limit_ms: 5000,
+              memory_limit_mb: 512,
+              workspace_size_mb: 2048,
+            },
+          },
+        },
+        ROOT_USER_ID,
+        "admin",
+      );
+      assertEquals(created.submission_mode, "prediction");
+    } finally {
+      await resetSetting(
+        "judge_max_prediction_workspace_mb",
+        userActorFromAuthenticatedId(ROOT_USER_ID),
+      );
+    }
+  },
+});
+
+Deno.test({
+  // 2026-09-25 评审：软废弃后 samples 不再做形状校验，历史坏值必须能导入
+  // （服务层只记 warning，不再 400）——此前非法形状会被拒绝，测试也从未覆盖。
+  name: "importProblemBundle: 独立样例保留且非法形状拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    for (const samples of ["legacy-shape", [{ input: 1 }], 42]) {
+      const zip = makeBundleZip({ samples });
+      await assertRejects(() =>
+        importProblemBundle(
+          { name: "invalid-samples.zip", data: zip },
+          { userId: ROOT_USER_ID, userRole: "admin" },
+        ), BadRequestError);
+    }
+  },
 });
 
 import {
-    bindDefaultCatalogFixture,
-    resetDbForTest,
+  bindDefaultCatalogFixture,
+  resetDbForTest,
 } from "../default-fixture.ts";
 
 import { grantDefaultCatalogRole } from "../default-fixture.ts";

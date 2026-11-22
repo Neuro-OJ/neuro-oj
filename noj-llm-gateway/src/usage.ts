@@ -7,58 +7,58 @@ import { logger } from "./logger.ts";
 import type { ManagedTask } from "./runtime.ts";
 
 export interface UsageEntry {
-    id: string;
-    domain_id: string;
-    submission_id: string;
-    /** 评测尝试 ID（版本化后必填；旧 core 缺省为 null） */
-    attempt_id?: string | null;
-    /** 评测使用的题目版本（版本化后必填；旧 core 缺省为 null） */
-    problem_version_id?: string | null;
-    problem_id: string;
-    user_id: string;
-    provider_id: string;
-    model: string;
-    request_messages: unknown;
-    request_params: unknown;
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-    cached_prompt_tokens?: number;
-    billed_prompt_tokens?: number;
-    billed_total_tokens?: number;
-    estimated_cost: number;
-    latency_ms: number;
-    status: string;
-    error_code?: string | null;
-    prompt_hash: string;
-    created_at: string;
+  id: string;
+  domain_id: string;
+  submission_id: string;
+  /** 评测尝试 ID（版本化后必填；旧 core 缺省为 null） */
+  attempt_id?: string | null;
+  /** 评测使用的题目版本（版本化后必填；旧 core 缺省为 null） */
+  problem_version_id?: string | null;
+  problem_id: string;
+  user_id: string;
+  provider_id: string;
+  model: string;
+  request_messages: unknown;
+  request_params: unknown;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cached_prompt_tokens?: number;
+  billed_prompt_tokens?: number;
+  billed_total_tokens?: number;
+  estimated_cost: number;
+  latency_ms: number;
+  status: string;
+  error_code?: string | null;
+  prompt_hash: string;
+  created_at: string;
 }
 
 /** 限制单条审计记录中 request_messages 大小，避免超大包塞爆 DB（GW-03）。 */
 const MAX_STORED_MESSAGES_BYTES = 64 * 1024;
 
 function sanitizeMessagesForStorage(messages: unknown): unknown {
-    try {
-        const serialized = JSON.stringify(messages);
-        if (serialized.length <= MAX_STORED_MESSAGES_BYTES) {
-            return messages;
-        }
-        return [
-            {
-                role: "system",
-                content:
-                    `[messages_truncated: original size ${serialized.length} bytes exceeded 64KB limit]`,
-            },
-        ];
-    } catch {
-        return [];
+  try {
+    const serialized = JSON.stringify(messages);
+    if (serialized.length <= MAX_STORED_MESSAGES_BYTES) {
+      return messages;
     }
+    return [
+      {
+        role: "system",
+        content:
+          `[messages_truncated: original size ${serialized.length} bytes exceeded 64KB limit]`,
+      },
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /** 写入一条 LLM 用量审计记录；调用方负责在成功/失败/拒绝各分支调用。 */
 export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
-    const safeMessages = sanitizeMessagesForStorage(entry.request_messages);
-    await db`
+  const safeMessages = sanitizeMessagesForStorage(entry.request_messages);
+  await db`
     INSERT INTO llm_usage (
       id, domain_id, submission_id, attempt_id, problem_version_id, problem_id, user_id, provider_id, model,
       request_messages, request_params, prompt_tokens, completion_tokens,
@@ -67,16 +67,16 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
       prompt_hash, created_at
     ) VALUES (
       ${entry.id}, ${entry.domain_id}, ${entry.submission_id}, ${
-        entry.attempt_id ?? null
-    },
+    entry.attempt_id ?? null
+  },
       ${entry.problem_version_id ?? null},
       ${entry.problem_id}, ${entry.user_id},
       ${entry.provider_id}, ${entry.model}, ${
-        JSON.stringify(safeMessages)
-    }::text::jsonb,
+    JSON.stringify(safeMessages)
+  }::text::jsonb,
       ${
-        JSON.stringify(entry.request_params)
-    }::text::jsonb, ${entry.prompt_tokens},
+    JSON.stringify(entry.request_params)
+  }::text::jsonb, ${entry.prompt_tokens},
       ${entry.completion_tokens}, ${entry.total_tokens},
       ${entry.cached_prompt_tokens ?? 0}, ${entry.billed_prompt_tokens ?? 0},
       ${entry.billed_total_tokens ?? 0}, ${entry.estimated_cost},
@@ -88,24 +88,24 @@ export async function recordUsage(db: Db, entry: UsageEntry): Promise<void> {
 
 /** 平台身份调用的记账输入（不涉及 submission/attempt/user）。 */
 export interface PlatformUsageEntry {
-    /** 记账行 ID（= 平台请求 ID，便于 core 对账）。 */
-    id: string;
-    domain_id: string;
-    provider_id: string;
-    /** 上游真实模型名。 */
-    model: string;
-    /** 调用用途（白名单，如 knowledge.tag）；作为 `principal_id` 记录。 */
-    purpose: string;
-    /** 请求的模型别名（便于对账，记入 request_params）。 */
-    alias: string;
-    prompt_tokens: number;
-    completion_tokens: number;
-    cached_tokens: number;
-    estimated_cost: number;
-    latency_ms: number;
-    status: string;
-    error_code: string | null;
-    max_tokens: number;
+  /** 记账行 ID（= 平台请求 ID，便于 core 对账）。 */
+  id: string;
+  domain_id: string;
+  provider_id: string;
+  /** 上游真实模型名。 */
+  model: string;
+  /** 调用用途（白名单，如 knowledge.tag）；作为 `principal_id` 记录。 */
+  purpose: string;
+  /** 请求的模型别名（便于对账，记入 request_params）。 */
+  alias: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
+  status: string;
+  error_code: string | null;
+  max_tokens: number;
 }
 
 /**
@@ -123,23 +123,23 @@ export interface PlatformUsageEntry {
  * `prompt_hash`；`request_params` 只保留 purpose / 别名 / 输出上限。
  */
 export async function recordPlatformUsage(
-    db: Db,
-    entry: PlatformUsageEntry,
+  db: Db,
+  entry: PlatformUsageEntry,
 ): Promise<void> {
-    const billedPrompt = Math.max(0, entry.prompt_tokens - entry.cached_tokens);
-    const billedTotal = billedPrompt + entry.completion_tokens;
-    const totalTokens = entry.prompt_tokens + entry.completion_tokens;
-    const requestParams = JSON.stringify({
-        purpose: entry.purpose,
-        model_alias: entry.alias,
-        max_tokens: entry.max_tokens,
-    });
-    const createdAt = new Date().toISOString();
-    // 平台调用不保存 prompt 原文，事件本身即 purpose；prompt_hash 记录该事件键。
-    const promptHash = `platform:${entry.purpose}`;
-    const principalType = "platform";
-    const EMPTY_MESSAGES = JSON.stringify([]);
-    await db`
+  const billedPrompt = Math.max(0, entry.prompt_tokens - entry.cached_tokens);
+  const billedTotal = billedPrompt + entry.completion_tokens;
+  const totalTokens = entry.prompt_tokens + entry.completion_tokens;
+  const requestParams = JSON.stringify({
+    purpose: entry.purpose,
+    model_alias: entry.alias,
+    max_tokens: entry.max_tokens,
+  });
+  const createdAt = new Date().toISOString();
+  // 平台调用不保存 prompt 原文，事件本身即 purpose；prompt_hash 记录该事件键。
+  const promptHash = `platform:${entry.purpose}`;
+  const principalType = "platform";
+  const EMPTY_MESSAGES = JSON.stringify([]);
+  await db`
     INSERT INTO llm_usage (
       id, domain_id, submission_id, attempt_id, problem_version_id, problem_id,
       user_id, provider_id, model, request_messages, request_params,
@@ -176,27 +176,27 @@ export const REJECTED_DEDUP_WINDOW_SECONDS = 60;
  * @returns 是否实际写入了记录。
  */
 export async function recordRejectedUsage(
-    db: Db,
-    redis: RedisClient,
-    entry: UsageEntry,
+  db: Db,
+  redis: RedisClient,
+  entry: UsageEntry,
 ): Promise<boolean> {
-    // 去重键按**尝试**优先：同一提交的重测是独立预算，拒绝窗口也必须独立，
-    // 否则新尝试的首次拒绝会被旧尝试的窗口吞掉（旧 core 回退提交维度）。
-    const dedupKey = `llm:usage:rejected:${entry.domain_id}:${
-        entry.attempt_id ?? entry.submission_id
-    }:${entry.error_code ?? "unknown"}`;
-    let first = true;
-    try {
-        first = await redis.setNx(dedupKey, "1", REJECTED_DEDUP_WINDOW_SECONDS);
-    } catch {
-        first = true;
-    }
-    if (!first) return false;
-    await recordUsage(db, {
-        ...entry,
-        request_messages: [],
-    });
-    return true;
+  // 去重键按**尝试**优先：同一提交的重测是独立预算，拒绝窗口也必须独立，
+  // 否则新尝试的首次拒绝会被旧尝试的窗口吞掉（旧 core 回退提交维度）。
+  const dedupKey = `llm:usage:rejected:${entry.domain_id}:${
+    entry.attempt_id ?? entry.submission_id
+  }:${entry.error_code ?? "unknown"}`;
+  let first = true;
+  try {
+    first = await redis.setNx(dedupKey, "1", REJECTED_DEDUP_WINDOW_SECONDS);
+  } catch {
+    first = true;
+  }
+  if (!first) return false;
+  await recordUsage(db, {
+    ...entry,
+    request_messages: [],
+  });
+  return true;
 }
 
 /** 单批删除的行数上限：避免首次清理时一条 DELETE 长时间持锁。 */
@@ -212,16 +212,16 @@ const PRUNE_BATCH_SIZE = 5000;
  * @returns 删除的总行数。
  */
 export async function pruneUsage(
-    db: Db,
-    retentionDays: number,
-    now: Date = new Date(),
+  db: Db,
+  retentionDays: number,
+  now: Date = new Date(),
 ): Promise<number> {
-    if (retentionDays <= 0) return 0;
-    const cutoff = new Date(now.getTime() - retentionDays * 86_400_000)
-        .toISOString();
-    let total = 0;
-    while (true) {
-        const rows = await db`
+  if (retentionDays <= 0) return 0;
+  const cutoff = new Date(now.getTime() - retentionDays * 86_400_000)
+    .toISOString();
+  let total = 0;
+  while (true) {
+    const rows = await db`
       DELETE FROM llm_usage
       WHERE id IN (
         SELECT id FROM llm_usage WHERE created_at < ${cutoff}
@@ -229,10 +229,10 @@ export async function pruneUsage(
       )
       RETURNING id
     `;
-        total += rows.length;
-        if (rows.length < PRUNE_BATCH_SIZE) break;
-    }
-    return total;
+    total += rows.length;
+    if (rows.length < PRUNE_BATCH_SIZE) break;
+  }
+  return total;
 }
 
 /** 清理任务间隔：6 小时。 */
@@ -246,35 +246,32 @@ const PRUNE_LOCK_TTL_SECONDS = 5 * 60 * 60;
  * @returns 删除的行数；未抢到锁或保留期关闭时为 0。
  */
 export async function runUsageRetention(
-    db: Db,
-    redis: RedisClient,
-    retentionDays: number,
+  db: Db,
+  redis: RedisClient,
+  retentionDays: number,
 ): Promise<number> {
-    if (retentionDays <= 0) return 0;
-    try {
-        const locked = await redis.setNx(
-            "llm:usage:prune:lock",
-            "1",
-            PRUNE_LOCK_TTL_SECONDS,
-        );
-        if (!locked) return 0;
-        const deleted = await pruneUsage(db, retentionDays);
-        if (deleted > 0) {
-            logger.info(
-                "llm_usage 保留期清理: 删除 {deleted} 行（保留 {days} 天）",
-                {
-                    deleted,
-                    days: retentionDays,
-                },
-            );
-        }
-        return deleted;
-    } catch (err) {
-        logger.warn("llm_usage 保留期清理失败: {error}", {
-            error: err instanceof Error ? err.message : String(err),
-        });
-        return 0;
+  if (retentionDays <= 0) return 0;
+  try {
+    const locked = await redis.setNx(
+      "llm:usage:prune:lock",
+      "1",
+      PRUNE_LOCK_TTL_SECONDS,
+    );
+    if (!locked) return 0;
+    const deleted = await pruneUsage(db, retentionDays);
+    if (deleted > 0) {
+      logger.info("llm_usage 保留期清理: 删除 {deleted} 行（保留 {days} 天）", {
+        deleted,
+        days: retentionDays,
+      });
     }
+    return deleted;
+  } catch (err) {
+    logger.warn("llm_usage 保留期清理失败: {error}", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return 0;
+  }
 }
 
 /**
@@ -283,46 +280,46 @@ export async function runUsageRetention(
  * @returns 停止函数（测试/优雅关闭用）。
  */
 export function startUsageRetention(
-    db: Db,
-    redis: RedisClient,
-    retentionDays: number,
+  db: Db,
+  redis: RedisClient,
+  retentionDays: number,
 ): ManagedTask {
-    if (retentionDays <= 0) {
-        return {
-            name: "gateway-usage-retention",
-            stop() {},
-            done: Promise.resolve(),
-        };
-    }
-    let stopped = false;
-    let inFlight: Promise<unknown> | null = null;
-    let resolveDone: () => void = () => {};
-    const done = new Promise<void>((resolve) => resolveDone = resolve);
-    const settleDone = (): void => {
-        if (stopped && inFlight === null) resolveDone();
+  if (retentionDays <= 0) {
+    return {
+      name: "gateway-usage-retention",
+      stop() {},
+      done: Promise.resolve(),
     };
-    const run = (): void => {
-        if (stopped || inFlight !== null) return;
-        const current = runUsageRetention(db, redis, retentionDays);
-        inFlight = current;
-        current.finally(() => {
-            if (inFlight === current) inFlight = null;
-            settleDone();
-        }).catch(() => {});
-    };
-    run();
-    const timer = setInterval(run, PRUNE_INTERVAL_MS);
-    Deno.unrefTimer(timer);
-    const task: ManagedTask = {
-        name: "gateway-usage-retention",
-        stop() {
-            if (stopped) return;
-            stopped = true;
-            clearInterval(timer);
-            settleDone();
-        },
-        done,
-    };
-    done.catch(() => {});
-    return task;
+  }
+  let stopped = false;
+  let inFlight: Promise<unknown> | null = null;
+  let resolveDone: () => void = () => {};
+  const done = new Promise<void>((resolve) => resolveDone = resolve);
+  const settleDone = (): void => {
+    if (stopped && inFlight === null) resolveDone();
+  };
+  const run = (): void => {
+    if (stopped || inFlight !== null) return;
+    const current = runUsageRetention(db, redis, retentionDays);
+    inFlight = current;
+    current.finally(() => {
+      if (inFlight === current) inFlight = null;
+      settleDone();
+    }).catch(() => {});
+  };
+  run();
+  const timer = setInterval(run, PRUNE_INTERVAL_MS);
+  Deno.unrefTimer(timer);
+  const task: ManagedTask = {
+    name: "gateway-usage-retention",
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      clearInterval(timer);
+      settleDone();
+    },
+    done,
+  };
+  done.catch(() => {});
+  return task;
 }

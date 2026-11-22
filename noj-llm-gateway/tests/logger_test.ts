@@ -12,32 +12,32 @@
  */
 
 import {
-    assertEquals,
-    assertMatch,
-    assertStrictEquals,
-    assertStringIncludes,
+  assertEquals,
+  assertMatch,
+  assertStrictEquals,
+  assertStringIncludes,
 } from "jsr:@std/assert@^1";
 import {
-    configureSync,
-    getLogger,
-    type LogRecord as LtRecord,
-    type Sink,
+  configureSync,
+  getLogger,
+  type LogRecord as LtRecord,
+  type Sink,
 } from "@logtape/logtape";
 import {
-    formatPretty,
-    makeGatewayJsonFormatter,
-    makeGatewayPrettyFormatter,
-    redactFields,
-    resolveColor,
-    resolveFormat,
-    SGR,
-    sgr,
-    toCoreLevel,
+  formatPretty,
+  makeGatewayJsonFormatter,
+  makeGatewayPrettyFormatter,
+  redactFields,
+  resolveColor,
+  resolveFormat,
+  SGR,
+  sgr,
+  toCoreLevel,
 } from "../src/logger.ts";
 import {
-    gatewayContextStorage,
-    getRequestId,
-    runWithRequestId,
+  gatewayContextStorage,
+  getRequestId,
+  runWithRequestId,
 } from "../src/context.ts";
 
 /** SGR 转义起始符（ESC）；单独抽出以规避 lint 的 no-control-regex。 */
@@ -45,11 +45,11 @@ const ESC = String.fromCharCode(27);
 
 /** 解析后的一段文本及其累计 SGR 状态。 */
 interface ParsedSpan {
-    text: string;
-    /** 该段生效的原始参数串（如 "1;31"）；无样式为 ""。 */
-    codes: string;
-    bold: boolean;
-    dim: boolean;
+  text: string;
+  /** 该段生效的原始参数串（如 "1;31"）；无样式为 ""。 */
+  codes: string;
+  bold: boolean;
+  dim: boolean;
 }
 
 /**
@@ -60,471 +60,452 @@ interface ParsedSpan {
  * 终端的状态机才能测到这个缺陷。
  */
 function sgrSpans(line: string): ParsedSpan[] {
-    const spans: ParsedSpan[] = [];
-    const active = new Set<string>();
-    const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
-    let last = 0;
-    let m: RegExpExecArray | null;
-    const push = (t: string) => {
-        if (t.length === 0) return;
-        spans.push({
-            text: t,
-            codes: [...active].join(";"),
-            bold: active.has("1"),
-            dim: active.has("2"),
-        });
-    };
-    while ((m = re.exec(line))) {
-        push(line.slice(last, m.index));
-        last = m.index + m[0].length;
-        const codes = m[1]!.split(";").filter((c) => c.length > 0);
-        if (codes.length === 0 || codes.includes("0")) {
-            active.clear();
-            continue;
-        }
-        for (const c of codes) active.add(c);
+  const spans: ParsedSpan[] = [];
+  const active = new Set<string>();
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
+  let last = 0;
+  let m: RegExpExecArray | null;
+  const push = (t: string) => {
+    if (t.length === 0) return;
+    spans.push({
+      text: t,
+      codes: [...active].join(";"),
+      bold: active.has("1"),
+      dim: active.has("2"),
+    });
+  };
+  while ((m = re.exec(line))) {
+    push(line.slice(last, m.index));
+    last = m.index + m[0].length;
+    const codes = m[1]!.split(";").filter((c) => c.length > 0);
+    if (codes.length === 0 || codes.includes("0")) {
+      active.clear();
+      continue;
     }
-    push(line.slice(last));
-    return spans;
+    for (const c of codes) active.add(c);
+  }
+  push(line.slice(last));
+  return spans;
 }
 
 /** 判断一行结束时是否仍处于「已开样式」状态（样式泄漏）。 */
 function hasUnclosedSgr(line: string): boolean {
-    const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
-    let active = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(line))) {
-        const codes = m[1]!.split(";").filter((c) => c.length > 0);
-        if (codes.length === 0 || codes.includes("0")) active = 0;
-        else active += codes.length;
-    }
-    return active > 0;
+  const re = new RegExp(`${ESC}\\[([0-9;]*)m`, "g");
+  let active = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line))) {
+    const codes = m[1]!.split(";").filter((c) => c.length > 0);
+    if (codes.length === 0 || codes.includes("0")) active = 0;
+    else active += codes.length;
+  }
+  return active > 0;
 }
 
 /** 在受控 env 下执行 `fn`（自动还原）。 */
 function withEnv<T>(env: Record<string, string | undefined>, fn: () => T): T {
-    const prev = new Map(Object.keys(env).map((k) => [k, Deno.env.get(k)]));
-    for (const [k, v] of Object.entries(env)) {
-        if (v === undefined) Deno.env.delete(k);
-        else Deno.env.set(k, v);
+  const prev = new Map(Object.keys(env).map((k) => [k, Deno.env.get(k)]));
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) Deno.env.delete(k);
+    else Deno.env.set(k, v);
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [k, v] of prev) {
+      if (v === undefined) Deno.env.delete(k);
+      else Deno.env.set(k, v);
     }
-    try {
-        return fn();
-    } finally {
-        for (const [k, v] of prev) {
-            if (v === undefined) Deno.env.delete(k);
-            else Deno.env.set(k, v);
-        }
-    }
+  }
 }
 
 /** 装配捕获 sink，返回收集到的真实 LogTape 记录。 */
 function capture(
-    emit: (log: ReturnType<typeof getLogger>) => void,
+  emit: (log: ReturnType<typeof getLogger>) => void,
 ): LtRecord[] {
-    const seen: LtRecord[] = [];
-    const sink: Sink = (r) => seen.push(r as LtRecord);
-    configureSync({
-        reset: true,
-        sinks: { cap: sink },
-        contextLocalStorage: gatewayContextStorage,
-        loggers: [
-            { category: [], sinks: ["cap"], lowestLevel: "trace" },
-            // meta logger 会干扰捕获，静音
-            { category: ["logtape", "meta"], sinks: [], lowestLevel: "fatal" },
-        ],
-    });
-    emit(getLogger(["noj", "llm-gateway"]));
-    return seen;
+  const seen: LtRecord[] = [];
+  const sink: Sink = (r) => seen.push(r as LtRecord);
+  configureSync({
+    reset: true,
+    sinks: { cap: sink },
+    contextLocalStorage: gatewayContextStorage,
+    loggers: [
+      { category: [], sinks: ["cap"], lowestLevel: "trace" },
+      // meta logger 会干扰捕获，静音
+      { category: ["logtape", "meta"], sinks: [], lowestLevel: "fatal" },
+    ],
+  });
+  emit(getLogger(["noj", "llm-gateway"]));
+  return seen;
 }
 
 Deno.test("formatPretty 产出契约布局（时间戳 + 定宽徽章 + 模块列 + msg + 字段平铺）", () => {
-    const [record] = capture((log) => {
-        log.info("评测任务入队", { request_id: "550e8400aa", queue_length: 3 });
-    });
-    const line = formatPretty(
-        { timestamp: "14:32:07.412", record: record! },
-        { color: false },
-    ).trimEnd();
-    // 整行精确断言：列宽/间距漂移立即变红。
-    // capture() 用 ["noj","llm-gateway"]，模块列渲染为 "llm-gateway"（11 字符
-    // + 3 空格补足 14）。
-    assertEquals(
-        line,
-        "14:32:07.412  INFO   llm-gateway     评测任务入队  rid=550e8400  queue_length=3",
-    );
-    assertEquals(
-        line.slice(0, 37),
-        "14:32:07.412  INFO   llm-gateway     ",
-        "msg 必须从第 37 列开始",
-    );
+  const [record] = capture((log) => {
+    log.info("评测任务入队", { request_id: "550e8400aa", queue_length: 3 });
+  });
+  const line = formatPretty(
+    { timestamp: "14:32:07.412", record: record! },
+    { color: false },
+  ).trimEnd();
+  // 整行精确断言：列宽/间距漂移立即变红。
+  // capture() 用 ["noj","llm-gateway"]，模块列渲染为 "llm-gateway"（11 字符
+  // + 3 空格补足 14）。
+  assertEquals(
+    line,
+    "14:32:07.412  INFO   llm-gateway     评测任务入队  rid=550e8400  queue_length=3",
+  );
+  assertEquals(
+    line.slice(0, 37),
+    "14:32:07.412  INFO   llm-gateway     ",
+    "msg 必须从第 37 列开始",
+  );
 });
 
 Deno.test("formatPretty 着色时使用契约 SGR（dim 时间戳 / 级别色 / ERROR 粗体整行）", () => {
-    const [info] = capture((log) => log.info("启动"));
-    const infoLine = formatPretty(
-        { timestamp: "14:32:07.412", record: info! },
-        { color: true },
-    ).trimEnd();
-    assertStringIncludes(
-        infoLine,
-        `${sgr(SGR.dim)}14:32:07.412${sgr(SGR.reset)}`,
-    );
-    assertStringIncludes(infoLine, `${sgr(SGR.info)}INFO ${sgr(SGR.reset)}`);
+  const [info] = capture((log) => log.info("启动"));
+  const infoLine = formatPretty(
+    { timestamp: "14:32:07.412", record: info! },
+    { color: true },
+  ).trimEnd();
+  assertStringIncludes(
+    infoLine,
+    `${sgr(SGR.dim)}14:32:07.412${sgr(SGR.reset)}`,
+  );
+  assertStringIncludes(infoLine, `${sgr(SGR.info)}INFO ${sgr(SGR.reset)}`);
 
-    // ERROR：整行粗体必须**真的覆盖 message**。旧实现把 \x1b[1m 套在整行
-    // 最外层，被行内第一个 \x1b[0m 清掉，message 从未变粗。
-    const [err] = capture((log) => log.error("失败"));
-    const errLine = formatPretty(
-        { timestamp: "14:32:07.412", record: err! },
-        { color: true },
-    ).trimEnd();
-    const errSpans = sgrSpans(errLine);
-    assertStrictEquals(
-        errSpans.find((s) => s.text.includes("失败"))?.bold,
-        true,
-        "ERROR 整行粗体必须覆盖 message 本体",
-    );
-    assertStrictEquals(
-        errSpans.find((s) => s.text.trim() === "ERROR")?.codes,
-        "1;31",
-        "ERROR 徽章应为粗体红 1;31",
-    );
+  // ERROR：整行粗体必须**真的覆盖 message**。旧实现把 \x1b[1m 套在整行
+  // 最外层，被行内第一个 \x1b[0m 清掉，message 从未变粗。
+  const [err] = capture((log) => log.error("失败"));
+  const errLine = formatPretty(
+    { timestamp: "14:32:07.412", record: err! },
+    { color: true },
+  ).trimEnd();
+  const errSpans = sgrSpans(errLine);
+  assertStrictEquals(
+    errSpans.find((s) => s.text.includes("失败"))?.bold,
+    true,
+    "ERROR 整行粗体必须覆盖 message 本体",
+  );
+  assertStrictEquals(
+    errSpans.find((s) => s.text.trim() === "ERROR")?.codes,
+    "1;31",
+    "ERROR 徽章应为粗体红 1;31",
+  );
 
-    // WARN 不再整行粗体（决策：粗体为 ERROR 专属）
-    const [warn] = capture((log) => log.warn("失败"));
-    const warnLine = formatPretty(
-        { timestamp: "14:32:07.412", record: warn! },
-        { color: true },
-    ).trimEnd();
-    const warnSpans = sgrSpans(warnLine);
-    assertStrictEquals(
-        warnSpans.find((s) => s.text.includes("失败"))?.bold,
-        false,
-        "WARN 不得整行粗体",
-    );
-    assertStrictEquals(
-        warnSpans.find((s) => s.text.trim() === "WARN")?.codes,
-        "33",
-        "WARN 徽章为黄色 33",
-    );
-    // 样式不得跨片段泄漏
-    assertStrictEquals(hasUnclosedSgr(errLine), false, "不得留下未闭合 SGR");
-    assertStrictEquals(hasUnclosedSgr(warnLine), false, "不得留下未闭合 SGR");
+  // WARN 不再整行粗体（决策：粗体为 ERROR 专属）
+  const [warn] = capture((log) => log.warn("失败"));
+  const warnLine = formatPretty(
+    { timestamp: "14:32:07.412", record: warn! },
+    { color: true },
+  ).trimEnd();
+  const warnSpans = sgrSpans(warnLine);
+  assertStrictEquals(
+    warnSpans.find((s) => s.text.includes("失败"))?.bold,
+    false,
+    "WARN 不得整行粗体",
+  );
+  assertStrictEquals(
+    warnSpans.find((s) => s.text.trim() === "WARN")?.codes,
+    "33",
+    "WARN 徽章为黄色 33",
+  );
+  // 样式不得跨片段泄漏
+  assertStrictEquals(hasUnclosedSgr(errLine), false, "不得留下未闭合 SGR");
+  assertStrictEquals(hasUnclosedSgr(warnLine), false, "不得留下未闭合 SGR");
 });
 
 Deno.test("message 中的插值值按占位符名脱敏（生产保留 ID、抹除 IP）", () => {
-    const uuid = "550e8400-e29b-41d4-a716-446655440000";
-    const [record] = capture((log) => {
-        log.warn("eval_token 多来源 IP 调用 {submission_id} {client_ip}", {
-            submission_id: uuid,
-            client_ip: "203.0.113.7",
-        });
+  const uuid = "550e8400-e29b-41d4-a716-446655440000";
+  const [record] = capture((log) => {
+    log.warn("eval_token 多来源 IP 调用 {submission_id} {client_ip}", {
+      submission_id: uuid,
+      client_ip: "203.0.113.7",
     });
-    withEnv({ NOJ_ENV: "production" }, () => {
-        const line = formatPretty(
-            { timestamp: "14:32:07.412", record: record! },
-            { color: false },
-        );
-        assertEquals(
-            line.includes(uuid),
-            true,
-            `完整 UUID 必须保留在日志中: ${line}`,
-        );
-        assertEquals(
-            line.includes("203.0.113.7"),
-            false,
-            `明文 IP 不得出现在日志中: ${line}`,
-        );
-        assertStringIncludes(line, uuid);
-    });
+  });
+  withEnv({ NOJ_ENV: "production" }, () => {
+    const line = formatPretty(
+      { timestamp: "14:32:07.412", record: record! },
+      { color: false },
+    );
+    assertEquals(
+      line.includes(uuid),
+      true,
+      `完整 UUID 必须保留在日志中: ${line}`,
+    );
+    assertEquals(
+      line.includes("203.0.113.7"),
+      false,
+      `明文 IP 不得出现在日志中: ${line}`,
+    );
+    assertStringIncludes(line, uuid);
+  });
 });
 
 Deno.test("redactFields：生产脱敏敏感键、保留 ID 和分数；开发保留原值", () => {
-    const fields = {
-        password: "hunter2",
-        eval_token: "tok_live_abc",
-        api_key: "sk-live-xyz",
-        submission_id: "550e8400-e29b-41d4-a716-446655440000",
-        client_ip: "203.0.113.7",
-        queue_length: 3,
-        score: 9500,
-        payload: { user_id: "short", score: 0, token: "nested-secret" },
-    };
-    withEnv({ NOJ_ENV: "production" }, () => {
-        const out = redactFields(fields);
-        assertEquals(out.password, "[redacted]");
-        assertEquals(out.eval_token, "[redacted]");
-        assertEquals(out.api_key, "[redacted]");
-        assertEquals(out.submission_id, fields.submission_id);
-        assertEquals(out.client_ip, "[redacted]");
-        assertEquals(out.queue_length, 3);
-        assertEquals(out.score, 9500);
-        assertEquals(out.payload, {
-            user_id: "short",
-            score: 0,
-            token: "[redacted]",
-        });
+  const fields = {
+    password: "hunter2",
+    eval_token: "tok_live_abc",
+    api_key: "sk-live-xyz",
+    submission_id: "550e8400-e29b-41d4-a716-446655440000",
+    client_ip: "203.0.113.7",
+    queue_length: 3,
+    score: 9500,
+    payload: { user_id: "short", score: 0, token: "nested-secret" },
+  };
+  withEnv({ NOJ_ENV: "production" }, () => {
+    const out = redactFields(fields);
+    assertEquals(out.password, "[redacted]");
+    assertEquals(out.eval_token, "[redacted]");
+    assertEquals(out.api_key, "[redacted]");
+    assertEquals(out.submission_id, fields.submission_id);
+    assertEquals(out.client_ip, "[redacted]");
+    assertEquals(out.queue_length, 3);
+    assertEquals(out.score, 9500);
+    assertEquals(out.payload, {
+      user_id: "short",
+      score: 0,
+      token: "[redacted]",
     });
-    withEnv({ NOJ_ENV: "development" }, () => {
-        const out = redactFields(fields);
-        assertEquals(out.password, "hunter2");
-        assertEquals(out.submission_id, "550e8400-e29b-41d4-a716-446655440000");
-    });
+  });
+  withEnv({ NOJ_ENV: "development" }, () => {
+    const out = redactFields(fields);
+    assertEquals(out.password, "hunter2");
+    assertEquals(out.submission_id, "550e8400-e29b-41d4-a716-446655440000");
+  });
 });
 
 Deno.test("production 显式注入：覆盖环境判定，两个方向都生效", () => {
-    // review 复审指出：网关侧此前零处使用 production 注入，全部靠 withEnv 改
-    // NOJ_ENV。于是"构造器忘了下传 production"这类死接线完全测不到——把
-    // makeGatewayPrettyFormatter/JsonFormatter 还原成读全局 env，15 个测试照样全绿。
-    // 这里直接以参数驱动，两个方向都断言，使该路径不可静默回退。
-    const secret = "sk-live-SHOULD-BE-REDACTED";
-    const uuid = "550e8400-e29b-41d4-a716-446655440000";
-    const record = {
-        category: ["noj", "llm"],
-        level: "info" as const,
-        message: ["评测 ", uuid, ""],
-        rawMessage: "评测 {submission_id}",
-        timestamp: Date.now(),
-        properties: {
-            api_key: secret,
-            submission_id: uuid,
-            client_ip: "203.0.113.7",
-        },
-    };
+  // review 复审指出：网关侧此前零处使用 production 注入，全部靠 withEnv 改
+  // NOJ_ENV。于是"构造器忘了下传 production"这类死接线完全测不到——把
+  // makeGatewayPrettyFormatter/JsonFormatter 还原成读全局 env，15 个测试照样全绿。
+  // 这里直接以参数驱动，两个方向都断言，使该路径不可静默回退。
+  const secret = "sk-live-SHOULD-BE-REDACTED";
+  const uuid = "550e8400-e29b-41d4-a716-446655440000";
+  const record = {
+    category: ["noj", "llm"],
+    level: "info" as const,
+    message: ["评测 ", uuid, ""],
+    rawMessage: "评测 {submission_id}",
+    timestamp: Date.now(),
+    properties: {
+      api_key: secret,
+      submission_id: uuid,
+      client_ip: "203.0.113.7",
+    },
+  };
 
-    // 关键：进程 env 设为 development，仍要求 production:true 生效
-    withEnv({ NOJ_ENV: "development" }, () => {
-        const prodJson = makeGatewayJsonFormatter({ production: true })(record);
-        assertEquals(
-            prodJson.includes(secret),
-            false,
-            "注入 production 必须脱敏",
-        );
-        assertEquals(prodJson.includes(uuid), true, "id 必须完整保留");
+  // 关键：进程 env 设为 development，仍要求 production:true 生效
+  withEnv({ NOJ_ENV: "development" }, () => {
+    const prodJson = makeGatewayJsonFormatter({ production: true })(record);
+    assertEquals(prodJson.includes(secret), false, "注入 production 必须脱敏");
+    assertEquals(prodJson.includes(uuid), true, "id 必须完整保留");
 
-        const devJson = makeGatewayJsonFormatter({ production: false })(record);
-        assertEquals(
-            devJson.includes(secret),
-            true,
-            "production:false 不得脱敏",
-        );
+    const devJson = makeGatewayJsonFormatter({ production: false })(record);
+    assertEquals(devJson.includes(secret), true, "production:false 不得脱敏");
 
-        // pretty 构造器同样必须把 production 下传（死接线就在这里）
-        const prodPretty = makeGatewayPrettyFormatter({
-            color: false,
-            production: true,
-        })(record);
-        assertEquals(prodPretty.includes(secret), false, "pretty 注入必须脱敏");
-    });
+    // pretty 构造器同样必须把 production 下传（死接线就在这里）
+    const prodPretty = makeGatewayPrettyFormatter({
+      color: false,
+      production: true,
+    })(record);
+    assertEquals(prodPretty.includes(secret), false, "pretty 注入必须脱敏");
+  });
 
-    // 反向：进程 env 是 production，显式 production:false 必须不脱敏
-    withEnv({ NOJ_ENV: "production" }, () => {
-        const devJson = makeGatewayJsonFormatter({ production: false })(record);
-        assertEquals(
-            devJson.includes(secret),
-            true,
-            "显式 false 须覆盖环境判定",
-        );
-    });
+  // 反向：进程 env 是 production，显式 production:false 必须不脱敏
+  withEnv({ NOJ_ENV: "production" }, () => {
+    const devJson = makeGatewayJsonFormatter({ production: false })(record);
+    assertEquals(devJson.includes(secret), true, "显式 false 须覆盖环境判定");
+  });
 });
 
 Deno.test("字段去重只发生在 pretty 呈现层；JSON 与 properties 保留全字段", () => {
-    const [record] = capture((log) => {
-        log.info("提交 {submission_id}", { submission_id: "abc", extra: 1 });
-    });
-    // 契约 §2：pretty 字段区必须排除已插值进 message 的键（否则同字段出现两次）
-    const pretty = makeGatewayPrettyFormatter({ color: false })(record!);
-    assertStringIncludes(pretty, "提交 abc");
-    assertEquals(
-        pretty.includes("submission_id="),
-        false,
-        `pretty 字段区不得重复已插值键: ${pretty}`,
-    );
-    assertStringIncludes(pretty, "extra=1");
+  const [record] = capture((log) => {
+    log.info("提交 {submission_id}", { submission_id: "abc", extra: 1 });
+  });
+  // 契约 §2：pretty 字段区必须排除已插值进 message 的键（否则同字段出现两次）
+  const pretty = makeGatewayPrettyFormatter({ color: false })(record!);
+  assertStringIncludes(pretty, "提交 abc");
+  assertEquals(
+    pretty.includes("submission_id="),
+    false,
+    `pretty 字段区不得重复已插值键: ${pretty}`,
+  );
+  assertStringIncludes(pretty, "extra=1");
 
-    // JSON 是结构化输出，保留全部字段（与 noj-core 的 makeJsonFormatter 同构）
-    const parsed = JSON.parse(makeGatewayJsonFormatter()(record!));
-    assertEquals(parsed.submission_id, "abc");
-    assertEquals(parsed.extra, 1);
-    assertStringIncludes(parsed.msg, "abc");
+  // JSON 是结构化输出，保留全部字段（与 noj-core 的 makeJsonFormatter 同构）
+  const parsed = JSON.parse(makeGatewayJsonFormatter()(record!));
+  assertEquals(parsed.submission_id, "abc");
+  assertEquals(parsed.extra, 1);
+  assertStringIncludes(parsed.msg, "abc");
 
-    // 原始 properties 未被破坏（兼容层与既有断言依赖它）
-    assertEquals(record!.properties.submission_id, "abc");
+  // 原始 properties 未被破坏（兼容层与既有断言依赖它）
+  assertEquals(record!.properties.submission_id, "abc");
 });
 
 Deno.test("JSON formatter 形状契约（ts/level/msg/字段平铺、无 properties 嵌套）", () => {
-    const [record] = capture((log) => {
-        log.info("入队", { request_id: "rid-1", limit: 10 });
-    });
-    const parsed = JSON.parse(makeGatewayJsonFormatter()(record!));
-    assertEquals(parsed.level, "info");
-    assertEquals(parsed.msg, "入队");
-    assertEquals(parsed.request_id, "rid-1");
-    assertEquals(parsed.limit, 10);
-    assertEquals("properties" in parsed, false);
-    assertMatch(parsed.ts, /^\d{4}-\d{2}-\d{2}T/);
+  const [record] = capture((log) => {
+    log.info("入队", { request_id: "rid-1", limit: 10 });
+  });
+  const parsed = JSON.parse(makeGatewayJsonFormatter()(record!));
+  assertEquals(parsed.level, "info");
+  assertEquals(parsed.msg, "入队");
+  assertEquals(parsed.request_id, "rid-1");
+  assertEquals(parsed.limit, 10);
+  assertEquals("properties" in parsed, false);
+  assertMatch(parsed.ts, /^\d{4}-\d{2}-\d{2}T/);
 });
 
 Deno.test("resolveColor 优先级：NO_COLOR > LOG_COLOR > TTY，json 恒无色", () => {
-    withEnv(
-        { NO_COLOR: "1", LOG_COLOR: "always", LOG_FORMAT: "pretty" },
-        () => {
-            assertEquals(resolveColor("stdout"), false);
-        },
-    );
-    withEnv(
-        { NO_COLOR: undefined, LOG_COLOR: "never", LOG_FORMAT: "pretty" },
-        () => {
-            assertEquals(resolveColor("stdout"), false);
-        },
-    );
-    withEnv(
-        { NO_COLOR: undefined, LOG_COLOR: "always", LOG_FORMAT: "pretty" },
-        () => {
-            assertEquals(resolveColor("stdout"), true);
-        },
-    );
-    withEnv(
-        { NO_COLOR: undefined, LOG_COLOR: "always", LOG_FORMAT: "json" },
-        () => {
-            // json 优先于一切开关：防止 ANSI 写进结构化日志流
-            assertEquals(resolveColor("stdout"), false);
-        },
-    );
+  withEnv({ NO_COLOR: "1", LOG_COLOR: "always", LOG_FORMAT: "pretty" }, () => {
+    assertEquals(resolveColor("stdout"), false);
+  });
+  withEnv(
+    { NO_COLOR: undefined, LOG_COLOR: "never", LOG_FORMAT: "pretty" },
+    () => {
+      assertEquals(resolveColor("stdout"), false);
+    },
+  );
+  withEnv(
+    { NO_COLOR: undefined, LOG_COLOR: "always", LOG_FORMAT: "pretty" },
+    () => {
+      assertEquals(resolveColor("stdout"), true);
+    },
+  );
+  withEnv(
+    { NO_COLOR: undefined, LOG_COLOR: "always", LOG_FORMAT: "json" },
+    () => {
+      // json 优先于一切开关：防止 ANSI 写进结构化日志流
+      assertEquals(resolveColor("stdout"), false);
+    },
+  );
 });
 
 Deno.test("resolveFormat 按环境回退（生产 json，否则 pretty）", () => {
-    withEnv({ LOG_FORMAT: undefined, NOJ_ENV: "production" }, () => {
-        assertEquals(resolveFormat(), "json");
-    });
-    withEnv({ LOG_FORMAT: undefined, NOJ_ENV: "development" }, () => {
-        assertEquals(resolveFormat(), "pretty");
-    });
-    withEnv({ LOG_FORMAT: "pretty", NOJ_ENV: "production" }, () => {
-        assertEquals(resolveFormat(), "pretty");
-    });
+  withEnv({ LOG_FORMAT: undefined, NOJ_ENV: "production" }, () => {
+    assertEquals(resolveFormat(), "json");
+  });
+  withEnv({ LOG_FORMAT: undefined, NOJ_ENV: "development" }, () => {
+    assertEquals(resolveFormat(), "pretty");
+  });
+  withEnv({ LOG_FORMAT: "pretty", NOJ_ENV: "production" }, () => {
+    assertEquals(resolveFormat(), "pretty");
+  });
 });
 
 Deno.test("toCoreLevel 映射 LogTape 级别名（warning → warn）", () => {
-    assertEquals(toCoreLevel("warning"), "warn");
-    assertEquals(toCoreLevel("warn"), "warn");
-    assertEquals(toCoreLevel("trace"), "debug");
-    assertEquals(toCoreLevel("fatal"), "error");
-    assertEquals(toCoreLevel("info"), "info");
+  assertEquals(toCoreLevel("warning"), "warn");
+  assertEquals(toCoreLevel("warn"), "warn");
+  assertEquals(toCoreLevel("trace"), "debug");
+  assertEquals(toCoreLevel("fatal"), "error");
+  assertEquals(toCoreLevel("info"), "info");
 });
 
 Deno.test("request 上下文：runWithRequestId 内可取到，外部 undefined", async () => {
-    assertEquals(getRequestId(), undefined);
-    const seen = await runWithRequestId("rid-abc", () => getRequestId());
-    assertEquals(seen, "rid-abc");
-    assertEquals(getRequestId(), undefined);
+  assertEquals(getRequestId(), undefined);
+  const seen = await runWithRequestId("rid-abc", () => getRequestId());
+  assertEquals(seen, "rid-abc");
+  assertEquals(getRequestId(), undefined);
 });
 
 Deno.test("request_id 自动附加到日志行（rid 截断 8 位）", () => {
-    const [record] = capture((log) => {
-        log.info("调用", { request_id: "abcdefgh-1234" });
-    });
-    const line = formatPretty(
-        { timestamp: "14:32:07.412", record: record! },
-        { color: false },
-    );
-    assertStringIncludes(line, "rid=abcdefgh");
-    assertEquals(line.includes("abcdefgh-1234"), false);
+  const [record] = capture((log) => {
+    log.info("调用", { request_id: "abcdefgh-1234" });
+  });
+  const line = formatPretty(
+    { timestamp: "14:32:07.412", record: record! },
+    { color: false },
+  );
+  assertStringIncludes(line, "rid=abcdefgh");
+  assertEquals(line.includes("abcdefgh-1234"), false);
 });
 
 Deno.test("pretty formatter 无色输出不含 ANSI，且含结构化字段", () => {
-    const [record] = capture((log) => {
-        log.info("入队 {submission_id}", { submission_id: "abc", q: 2 });
-    });
-    const out = makeGatewayPrettyFormatter({ color: false })(record!);
-    assertEquals(out.includes("\x1b["), false);
-    assertStringIncludes(out, "INFO ");
-    assertStringIncludes(out, "入队");
-    assertStringIncludes(out, "q=2");
+  const [record] = capture((log) => {
+    log.info("入队 {submission_id}", { submission_id: "abc", q: 2 });
+  });
+  const out = makeGatewayPrettyFormatter({ color: false })(record!);
+  assertEquals(out.includes("\x1b["), false);
+  assertStringIncludes(out, "INFO ");
+  assertStringIncludes(out, "入队");
+  assertStringIncludes(out, "q=2");
 });
 
 Deno.test("setupGatewayLogging 幂等可重复装配，且上下文 request_id 自动注入", async () => {
-    const { setupGatewayLogging, logger } = await import("../src/logger.ts");
-    // 重复装配不得抛（内部 reset: true）
-    setupGatewayLogging();
-    setupGatewayLogging();
+  const { setupGatewayLogging, logger } = await import("../src/logger.ts");
+  // 重复装配不得抛（内部 reset: true）
+  setupGatewayLogging();
+  setupGatewayLogging();
 
-    const seen: LtRecord[] = [];
-    const sink: Sink = (r) => seen.push(r as LtRecord);
-    configureSync({
-        reset: true,
-        sinks: { cap: sink },
-        contextLocalStorage: gatewayContextStorage,
-        loggers: [
-            { category: [], sinks: ["cap"], lowestLevel: "trace" },
-            { category: ["logtape", "meta"], sinks: [], lowestLevel: "fatal" },
-        ],
-    });
+  const seen: LtRecord[] = [];
+  const sink: Sink = (r) => seen.push(r as LtRecord);
+  configureSync({
+    reset: true,
+    sinks: { cap: sink },
+    contextLocalStorage: gatewayContextStorage,
+    loggers: [
+      { category: [], sinks: ["cap"], lowestLevel: "trace" },
+      { category: ["logtape", "meta"], sinks: [], lowestLevel: "fatal" },
+    ],
+  });
 
-    logger.info("测试事件", { k: 1 });
-    assertEquals(seen.length, 1);
-    assertEquals(seen[0]!.properties.k, 1);
+  logger.info("测试事件", { k: 1 });
+  assertEquals(seen.length, 1);
+  assertEquals(seen[0]!.properties.k, 1);
 
-    // 上下文中的 request_id 应自动附加到记录
-    await runWithRequestId("rid-ctx", () => {
-        logger.warn("带上下文");
-    });
-    assertEquals(seen.length, 2);
-    assertEquals(seen[1]!.properties.request_id, "rid-ctx");
+  // 上下文中的 request_id 应自动附加到记录
+  await runWithRequestId("rid-ctx", () => {
+    logger.warn("带上下文");
+  });
+  assertEquals(seen.length, 2);
+  assertEquals(seen[1]!.properties.request_id, "rid-ctx");
 
-    setupGatewayLogging();
+  setupGatewayLogging();
 });
 
 Deno.test("formatPretty: 模块列 / 数值着色 / Error 详情块", () => {
-    // 模块列取 category 末段
-    const [r1] = capture((log) => log.info("启动"));
-    assertStringIncludes(
-        formatPretty({ timestamp: "14:32:07.412", record: r1! }, {
-            color: false,
-        }),
-        "llm-gateway   ",
-        "模块列应渲染 category 末段",
-    );
+  // 模块列取 category 末段
+  const [r1] = capture((log) => log.info("启动"));
+  assertStringIncludes(
+    formatPretty({ timestamp: "14:32:07.412", record: r1! }, { color: false }),
+    "llm-gateway   ",
+    "模块列应渲染 category 末段",
+  );
 
-    // 数值 magenta 35，字符串保持默认色
-    const [r2] = capture((log) => log.info("入队", { n: 3, s: "events" }));
-    const spans = sgrSpans(
-        formatPretty({ timestamp: "14:32:07.412", record: r2! }, {
-            color: true,
-        })
-            .trimEnd(),
-    );
-    assertStrictEquals(spans.find((s) => s.text === "3")?.codes, "35");
-    assertStrictEquals(spans.find((s) => s.text === "events")?.codes, "");
+  // 数值 magenta 35，字符串保持默认色
+  const [r2] = capture((log) => log.info("入队", { n: 3, s: "events" }));
+  const spans = sgrSpans(
+    formatPretty({ timestamp: "14:32:07.412", record: r2! }, { color: true })
+      .trimEnd(),
+  );
+  assertStrictEquals(spans.find((s) => s.text === "3")?.codes, "35");
+  assertStrictEquals(spans.find((s) => s.text === "events")?.codes, "");
 
-    // Error 展开为多行详情块，不压 JSON 行
-    const [r3] = capture((log) =>
-        log.error("失败", { error: new Error("boom") })
-    );
-    const line = formatPretty(
-        { timestamp: "14:32:07.412", record: r3! },
-        { color: false },
-    );
-    assertStrictEquals(line.includes('{"name"'), false, "不得压行 JSON");
-    const lines = line.trimEnd().split("\n");
-    assertStrictEquals(lines.length > 1, true, "Error 应展开为多行");
-    assertStrictEquals(lines[1]!.startsWith(" ".repeat(37)), true);
-    assertStrictEquals(lines[1]!.includes("error: boom"), true);
+  // Error 展开为多行详情块，不压 JSON 行
+  const [r3] = capture((log) =>
+    log.error("失败", { error: new Error("boom") })
+  );
+  const line = formatPretty(
+    { timestamp: "14:32:07.412", record: r3! },
+    { color: false },
+  );
+  assertStrictEquals(line.includes('{"name"'), false, "不得压行 JSON");
+  const lines = line.trimEnd().split("\n");
+  assertStrictEquals(lines.length > 1, true, "Error 应展开为多行");
+  assertStrictEquals(lines[1]!.startsWith(" ".repeat(37)), true);
+  assertStrictEquals(lines[1]!.includes("error: boom"), true);
 });
 
 Deno.test("formatPretty: 无色输出零转义，且样式不跨片段泄漏", () => {
-    const [rec] = capture((log) =>
-        log.error("失败", { error: new Error("x"), n: 3 })
-    );
-    const plain = formatPretty(
-        { timestamp: "14:32:07.412", record: rec! },
-        { color: false },
-    );
-    assertStrictEquals(plain.includes(ESC), false, "无色模式不得含转义序列");
-    const colored = formatPretty(
-        { timestamp: "14:32:07.412", record: rec! },
-        { color: true },
-    ).trimEnd();
-    assertStrictEquals(hasUnclosedSgr(colored), false, "不得留下未闭合 SGR");
+  const [rec] = capture((log) =>
+    log.error("失败", { error: new Error("x"), n: 3 })
+  );
+  const plain = formatPretty(
+    { timestamp: "14:32:07.412", record: rec! },
+    { color: false },
+  );
+  assertStrictEquals(plain.includes(ESC), false, "无色模式不得含转义序列");
+  const colored = formatPretty(
+    { timestamp: "14:32:07.412", record: rec! },
+    { color: true },
+  ).trimEnd();
+  assertStrictEquals(hasUnclosedSgr(colored), false, "不得留下未闭合 SGR");
 });

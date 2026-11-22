@@ -23,8 +23,8 @@ import { ROOT_USER_ID } from "../../../../shared/base/constants.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import { AppError, UnauthorizedError } from "../../../../shared/base/errors.ts";
 import {
-    type DrainStatusDeps,
-    readDrainStatus,
+  type DrainStatusDeps,
+  readDrainStatus,
 } from "../services/drain-status.ts";
 import { getSetting, updateSetting } from "../../services/system-settings.ts";
 
@@ -33,8 +33,8 @@ const INTERNAL_SERVICE_TOKEN_KEY = "NOJ_INTERNAL_SERVICE_TOKEN";
 
 /** 提取 `Authorization: Bearer <token>` 中的 token；缺失时返回空串。 */
 function bearerToken(c: Context): string {
-    const header = c.req.header("Authorization") ?? "";
-    return header.startsWith("Bearer ") ? header.slice(7) : "";
+  const header = c.req.header("Authorization") ?? "";
+  return header.startsWith("Bearer ") ? header.slice(7) : "";
 }
 
 /**
@@ -43,34 +43,32 @@ function bearerToken(c: Context): string {
  * 比较使用 timingSafeEqual 且先比较长度，避免短路比较泄露长度/前缀信息。
  */
 async function requireInternalServiceToken(
-    c: Context,
-    next: Next,
+  c: Context,
+  next: Next,
 ): Promise<void> {
-    const configured = String(
-        getSetting(INTERNAL_SERVICE_TOKEN_KEY)?.value ?? "",
+  const configured = String(
+    getSetting(INTERNAL_SERVICE_TOKEN_KEY)?.value ?? "",
+  );
+  if (!configured) {
+    throw new AppError(
+      "内部服务凭据未配置（NOJ_INTERNAL_SERVICE_TOKEN），排空端点不可用",
+      503,
+      "drain_unavailable",
     );
-    if (!configured) {
-        throw new AppError(
-            "内部服务凭据未配置（NOJ_INTERNAL_SERVICE_TOKEN），排空端点不可用",
-            503,
-            "drain_unavailable",
-        );
-    }
-    const encoder = new TextEncoder();
-    const expected = encoder.encode(configured);
-    const actual = encoder.encode(bearerToken(c));
-    if (
-        expected.length !== actual.length || !timingSafeEqual(expected, actual)
-    ) {
-        throw new UnauthorizedError("内部服务凭据无效");
-    }
-    await next();
+  }
+  const encoder = new TextEncoder();
+  const expected = encoder.encode(configured);
+  const actual = encoder.encode(bearerToken(c));
+  if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) {
+    throw new UnauthorizedError("内部服务凭据无效");
+  }
+  await next();
 }
 
 /** enter/exit 的响应 data。 */
 interface MaintenanceChange {
-    maintenance: boolean;
-    changed: boolean;
+  maintenance: boolean;
+  changed: boolean;
 }
 
 /**
@@ -83,14 +81,14 @@ interface MaintenanceChange {
  * @returns 当前维护模式与是否发生变更
  */
 async function setMaintenanceMode(target: boolean): Promise<MaintenanceChange> {
-    const current = getSetting("maintenance_mode")?.value === true;
-    if (current === target) return { maintenance: target, changed: false };
-    await updateSetting(
-        "maintenance_mode",
-        target,
-        userActorFromAuthenticatedId(ROOT_USER_ID),
-    );
-    return { maintenance: target, changed: true };
+  const current = getSetting("maintenance_mode")?.value === true;
+  if (current === target) return { maintenance: target, changed: false };
+  await updateSetting(
+    "maintenance_mode",
+    target,
+    userActorFromAuthenticatedId(ROOT_USER_ID),
+  );
+  return { maintenance: target, changed: true };
 }
 
 /**
@@ -101,27 +99,27 @@ async function setMaintenanceMode(target: boolean): Promise<MaintenanceChange> {
  * @returns Hono 路由实例
  */
 export function createInternalDrainRouter(
-    deps: Partial<DrainStatusDeps> = {},
+  deps: Partial<DrainStatusDeps> = {},
 ): Hono {
-    const router = new Hono();
-    router.use("/internal/*", requireInternalServiceToken);
+  const router = new Hono();
+  router.use("/internal/*", requireInternalServiceToken);
 
-    router.get("/internal/drain/status", async (c) => {
-        const data = await readDrainStatus(deps);
-        // 排空状态是瞬时值，禁止任何中间缓存（代理/浏览器）。
-        c.header("Cache-Control", "no-store");
-        return c.json({ data });
-    });
+  router.get("/internal/drain/status", async (c) => {
+    const data = await readDrainStatus(deps);
+    // 排空状态是瞬时值，禁止任何中间缓存（代理/浏览器）。
+    c.header("Cache-Control", "no-store");
+    return c.json({ data });
+  });
 
-    router.post(
-        "/internal/drain/enter",
-        async (c) => c.json({ data: await setMaintenanceMode(true) }),
-    );
+  router.post(
+    "/internal/drain/enter",
+    async (c) => c.json({ data: await setMaintenanceMode(true) }),
+  );
 
-    router.post(
-        "/internal/drain/exit",
-        async (c) => c.json({ data: await setMaintenanceMode(false) }),
-    );
+  router.post(
+    "/internal/drain/exit",
+    async (c) => c.json({ data: await setMaintenanceMode(false) }),
+  );
 
-    return router;
+  return router;
 }

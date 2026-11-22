@@ -24,54 +24,52 @@ import { tierToPrior } from "./difficulty.ts";
  * @throws {ForbiddenError} 无编辑权限
  */
 export async function setPassRatioOverride(
-    actor: UserActor,
-    problemId: string,
-    value: unknown,
-    meta: { ipAddress: string; requestId?: string },
+  actor: UserActor,
+  problemId: string,
+  value: unknown,
+  meta: { ipAddress: string; requestId?: string },
 ): Promise<number | null> {
-    let ratio: number | null;
-    if (value === null) {
-        ratio = null;
-    } else if (
-        typeof value === "number" && Number.isInteger(value) && value >= 0 &&
-        value <= 100
-    ) {
-        ratio = value;
-    } else {
-        throw new ValidationError(
-            "pass_ratio_override 必须是 0–100 的整数或 null",
-        );
-    }
-    const [problem] = await getDb().select({
-        id: problems.id,
-        difficulty: problems.difficulty,
-        domain_id: problems.domain_id,
-        owner_id: problems.owner_id,
-    }).from(problems).where(eq(problems.id, problemId));
-    if (!problem) throw new NotFoundError("题目不存在");
-    await assertProblemEditPermissionForActor(problem, actor);
-    const now = new Date().toISOString();
-    const prior = tierToPrior(problem.difficulty);
-    await getDb().insert(problemDifficulty).values({
-        problem_id: problemId,
-        prior,
-        calibrated: prior,
-        sample_size: 0,
-        pass_ratio_override: ratio,
-        updated_at: now,
-    }).onConflictDoUpdate({
-        target: problemDifficulty.problem_id,
-        set: { pass_ratio_override: ratio, updated_at: now },
-    });
-    await recordAudit(
-        actor,
-        meta,
-        "knowledge.difficulty.pass_ratio",
-        {
-            action: "knowledge.difficulty.pass_ratio",
-            pass_ratio_override: ratio,
-        } as unknown as AuditDetail,
-        { type: "problem", id: problemId },
-    );
-    return ratio;
+  let ratio: number | null;
+  if (value === null) {
+    ratio = null;
+  } else if (
+    typeof value === "number" && Number.isInteger(value) && value >= 0 &&
+    value <= 100
+  ) {
+    ratio = value;
+  } else {
+    throw new ValidationError("pass_ratio_override 必须是 0–100 的整数或 null");
+  }
+  const [problem] = await getDb().select({
+    id: problems.id,
+    difficulty: problems.difficulty,
+    domain_id: problems.domain_id,
+    owner_id: problems.owner_id,
+  }).from(problems).where(eq(problems.id, problemId));
+  if (!problem) throw new NotFoundError("题目不存在");
+  await assertProblemEditPermissionForActor(problem, actor);
+  const now = new Date().toISOString();
+  const prior = tierToPrior(problem.difficulty);
+  await getDb().insert(problemDifficulty).values({
+    problem_id: problemId,
+    prior,
+    calibrated: prior,
+    sample_size: 0,
+    pass_ratio_override: ratio,
+    updated_at: now,
+  }).onConflictDoUpdate({
+    target: problemDifficulty.problem_id,
+    set: { pass_ratio_override: ratio, updated_at: now },
+  });
+  await recordAudit(
+    actor,
+    meta,
+    "knowledge.difficulty.pass_ratio",
+    {
+      action: "knowledge.difficulty.pass_ratio",
+      pass_ratio_override: ratio,
+    } as unknown as AuditDetail,
+    { type: "problem", id: problemId },
+  );
+  return ratio;
 }

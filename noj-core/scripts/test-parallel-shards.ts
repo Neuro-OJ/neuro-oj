@@ -37,40 +37,40 @@ export const SHARED_TEST_ROOTS = ["tests"] as const;
 
 /** 单个分片的执行计划。 */
 export interface Shard {
-    /** 稳定名称：`shard1`…`shardN`，同时用于数据库、Redis 标签与存储目录。 */
-    name: string;
-    /** 该分片要执行的测试文件（迁移入口固定在首位），仓库相对路径。 */
-    files: string[];
-    /** 按基线/中位数估值的分片耗时（毫秒），仅用于调度与报告。 */
-    estimatedMs: number;
+  /** 稳定名称：`shard1`…`shardN`，同时用于数据库、Redis 标签与存储目录。 */
+  name: string;
+  /** 该分片要执行的测试文件（迁移入口固定在首位），仓库相对路径。 */
+  files: string[];
+  /** 按基线/中位数估值的分片耗时（毫秒），仅用于调度与报告。 */
+  estimatedMs: number;
 }
 
 /** 文件级耗时基线的解析结果。 */
 export interface FileDurationBaseline {
-    version: number;
-    generatedAt: string;
-    source: string;
-    /** 仓库（noj-core）相对路径 → 实测耗时毫秒。 */
-    files: Record<string, number>;
+  version: number;
+  generatedAt: string;
+  source: string;
+  /** 仓库（noj-core）相对路径 → 实测耗时毫秒。 */
+  files: Record<string, number>;
 }
 
 /** 一次分片计划的完整输入与产出，供启动器写报告与零依赖测试断言。 */
 export interface ShardPlan {
-    shardCount: number;
-    jobs: number;
-    /** 发现后进入计划的全部测试文件（含迁移入口一次），已去重排序。 */
-    selectedFiles: string[];
-    /** 被显式排除的性能基准文件。 */
-    excludedFiles: string[];
-    shards: Shard[];
-    baseline: {
-        /** 基线来源；未读到基线时为 `none`。 */
-        source: string;
-        generatedAt: string;
-        knownFiles: number;
-        /** 未知文件的估值（毫秒）：基线中位数或内置回退值。 */
-        unknownMs: number;
-    };
+  shardCount: number;
+  jobs: number;
+  /** 发现后进入计划的全部测试文件（含迁移入口一次），已去重排序。 */
+  selectedFiles: string[];
+  /** 被显式排除的性能基准文件。 */
+  excludedFiles: string[];
+  shards: Shard[];
+  baseline: {
+    /** 基线来源；未读到基线时为 `none`。 */
+    source: string;
+    generatedAt: string;
+    knownFiles: number;
+    /** 未知文件的估值（毫秒）：基线中位数或内置回退值。 */
+    unknownMs: number;
+  };
 }
 
 /**
@@ -80,17 +80,15 @@ export interface ShardPlan {
  * 它们必须在这里登记，覆盖守卫才不会把遗漏误报成完整覆盖。
  */
 export const PERF_EXCLUDED_PREFIXES = [
-    "tests/perf/",
-    "src/modules/read-models/search/tests/perf/",
-    "src/modules/education/tests/perf/",
+  "tests/perf/",
+  "src/modules/read-models/search/tests/perf/",
+  "src/modules/education/tests/perf/",
 ] as const;
 
 /** 某测试文件是否属于刻意排除的性能基准。 */
 export function isPerfExcluded(relativePath: string): boolean {
-    const normalized = normalizeTestPath(relativePath);
-    return PERF_EXCLUDED_PREFIXES.some((prefix) =>
-        normalized.startsWith(prefix)
-    );
+  const normalized = normalizeTestPath(relativePath);
+  return PERF_EXCLUDED_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
 /**
@@ -100,70 +98,70 @@ export function isPerfExcluded(relativePath: string): boolean {
  * 真实测试文件路径，接受越界路径会让清理与报告不可审计。
  */
 export function normalizeTestPath(relativePath: string): string {
-    return relativePath
-        .replaceAll("\\", "/")
-        .replace(/\/+/g, "/")
-        .replace(/^\.\//, "")
-        .replace(/\/$/, "");
+  return relativePath
+    .replaceAll("\\", "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/$/, "");
 }
 
 /** Deno 测试运行器会发现的文件名约定（与 `test:logic` 的检查口径一致）。 */
 export function isTestFileName(fileName: string): boolean {
-    return /(?:_test|\.test)\.ts$/.test(fileName);
+  return /(?:_test|\.test)\.ts$/.test(fileName);
 }
 
 /** 分片发现时要跳过的目录：依赖、缓存、构建产物与嵌套仓库。 */
 const DISCOVERY_SKIP_DIRS = new Set([
-    "node_modules",
-    ".deno_cache",
-    ".deno_cov_cache",
-    ".test-cache",
-    ".test-storage",
-    ".git",
-    ".jj",
-    ".output",
-    ".nuxt",
-    "coverage",
-    "dist",
-    "bin",
-    "target",
+  "node_modules",
+  ".deno_cache",
+  ".deno_cov_cache",
+  ".test-cache",
+  ".test-storage",
+  ".git",
+  ".jj",
+  ".output",
+  ".nuxt",
+  "coverage",
+  "dist",
+  "bin",
+  "target",
 ]);
 
 /** 一次测试文件发现的结果；`excluded` 只记录被登记的 perf 文件。 */
 export interface TestFileDiscovery {
-    files: string[];
-    /** 被性能基准前缀排除的文件（相对路径，升序）。 */
-    excluded: string[];
-    /** 元数据登记但当前不存在的测试根（迁移期/尚未创建），由启动器显式打印。 */
-    missingRoots: string[];
+  files: string[];
+  /** 被性能基准前缀排除的文件（相对路径，升序）。 */
+  excluded: string[];
+  /** 元数据登记但当前不存在的测试根（迁移期/尚未创建），由启动器显式打印。 */
+  missingRoots: string[];
 }
 
 async function walkTestFiles(
-    rootDir: string,
-    relativeDir: string,
-    out: TestFileDiscovery,
+  rootDir: string,
+  relativeDir: string,
+  out: TestFileDiscovery,
 ): Promise<void> {
-    const absoluteDir = relativeDir ? `${rootDir}/${relativeDir}` : rootDir;
-    for await (const entry of Deno.readDir(absoluteDir)) {
-        if (entry.isDirectory) {
-            if (DISCOVERY_SKIP_DIRS.has(entry.name)) continue;
-            await walkTestFiles(
-                rootDir,
-                relativeDir ? `${relativeDir}/${entry.name}` : entry.name,
-                out,
-            );
-            continue;
-        }
-        if (!entry.isFile || !isTestFileName(entry.name)) continue;
-        const relativePath = normalizeTestPath(
-            relativeDir ? `${relativeDir}/${entry.name}` : entry.name,
-        );
-        if (isPerfExcluded(relativePath)) {
-            out.excluded.push(relativePath);
-        } else {
-            out.files.push(relativePath);
-        }
+  const absoluteDir = relativeDir ? `${rootDir}/${relativeDir}` : rootDir;
+  for await (const entry of Deno.readDir(absoluteDir)) {
+    if (entry.isDirectory) {
+      if (DISCOVERY_SKIP_DIRS.has(entry.name)) continue;
+      await walkTestFiles(
+        rootDir,
+        relativeDir ? `${relativeDir}/${entry.name}` : entry.name,
+        out,
+      );
+      continue;
     }
+    if (!entry.isFile || !isTestFileName(entry.name)) continue;
+    const relativePath = normalizeTestPath(
+      relativeDir ? `${relativeDir}/${entry.name}` : entry.name,
+    );
+    if (isPerfExcluded(relativePath)) {
+      out.excluded.push(relativePath);
+    } else {
+      out.files.push(relativePath);
+    }
+  }
 }
 
 /**
@@ -174,51 +172,51 @@ async function walkTestFiles(
  * @returns 去重、规范化并升序排序的测试文件列表、perf 排除清单与缺失测试根
  */
 export async function discoverTestFiles(
-    rootDir: string,
-    roots: readonly string[] = [
-        ...SHARED_TEST_ROOTS,
-        FEATURE_TEST_ROOT,
-        ...allTargetModuleTestRoots(),
-    ],
+  rootDir: string,
+  roots: readonly string[] = [
+    ...SHARED_TEST_ROOTS,
+    FEATURE_TEST_ROOT,
+    ...allTargetModuleTestRoots(),
+  ],
 ): Promise<TestFileDiscovery> {
-    const normalizedRoot = rootDir.replace(/\/+$/, "");
-    const seen = new Set<string>();
-    const excluded = new Set<string>();
-    const missingRoots: string[] = [];
-    for (const root of [...new Set(roots.map(normalizeTestPath))]) {
-        const discovery: TestFileDiscovery = {
-            files: [],
-            excluded: [],
-            missingRoots: [],
-        };
-        try {
-            await walkTestFiles(normalizedRoot, root, discovery);
-        } catch (error) {
-            if (error instanceof Deno.errors.NotFound) {
-                // 迁移期模块根可能尚未创建；由启动器统一打印，避免每个根一条噪声。
-                missingRoots.push(root);
-                continue;
-            }
-            throw error;
-        }
-        for (const file of discovery.files) seen.add(file);
-        for (const file of discovery.excluded) excluded.add(file);
-    }
-    return {
-        files: [...seen].sort(),
-        excluded: [...excluded].sort(),
-        missingRoots: missingRoots.sort(),
+  const normalizedRoot = rootDir.replace(/\/+$/, "");
+  const seen = new Set<string>();
+  const excluded = new Set<string>();
+  const missingRoots: string[] = [];
+  for (const root of [...new Set(roots.map(normalizeTestPath))]) {
+    const discovery: TestFileDiscovery = {
+      files: [],
+      excluded: [],
+      missingRoots: [],
     };
+    try {
+      await walkTestFiles(normalizedRoot, root, discovery);
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) {
+        // 迁移期模块根可能尚未创建；由启动器统一打印，避免每个根一条噪声。
+        missingRoots.push(root);
+        continue;
+      }
+      throw error;
+    }
+    for (const file of discovery.files) seen.add(file);
+    for (const file of discovery.excluded) excluded.add(file);
+  }
+  return {
+    files: [...seen].sort(),
+    excluded: [...excluded].sort(),
+    missingRoots: missingRoots.sort(),
+  };
 }
 
 /** 计算中位数；空数组返回 undefined。 */
 export function median(values: readonly number[]): number | undefined {
-    if (values.length === 0) return undefined;
-    const sorted = [...values].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0
-        ? Math.round((sorted[middle - 1]! + sorted[middle]!) / 2)
-        : sorted[middle]!;
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[middle - 1]! + sorted[middle]!) / 2)
+    : sorted[middle]!;
 }
 
 /**
@@ -228,53 +226,50 @@ export function median(values: readonly number[]): number | undefined {
  * 里显示为均衡。
  */
 export async function loadFileDurationBaseline(
-    path: string,
+  path: string,
 ): Promise<FileDurationBaseline> {
-    const parsed = JSON.parse(await Deno.readTextFile(path)) as unknown;
-    if (!parsed || typeof parsed !== "object") {
-        throw new Error(`测试耗时基线不是对象：${path}`);
+  const parsed = JSON.parse(await Deno.readTextFile(path)) as unknown;
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`测试耗时基线不是对象：${path}`);
+  }
+  const baseline = parsed as Partial<FileDurationBaseline>;
+  if (baseline.version !== 1) {
+    throw new Error(`不支持的测试耗时基线版本：${String(baseline.version)}`);
+  }
+  if (typeof baseline.generatedAt !== "string" || !baseline.generatedAt) {
+    throw new Error("测试耗时基线缺少 generatedAt");
+  }
+  if (typeof baseline.source !== "string" || !baseline.source) {
+    throw new Error("测试耗时基线缺少 source（必须说明数据来源）");
+  }
+  if (!baseline.files || typeof baseline.files !== "object") {
+    throw new Error("测试耗时基线缺少 files 映射");
+  }
+  const files: Record<string, number> = {};
+  for (const [file, duration] of Object.entries(baseline.files)) {
+    if (
+      typeof duration !== "number" || !Number.isFinite(duration) || duration < 0
+    ) {
+      throw new Error(`测试耗时基线中 ${file} 的耗时不合法：${duration}`);
     }
-    const baseline = parsed as Partial<FileDurationBaseline>;
-    if (baseline.version !== 1) {
-        throw new Error(
-            `不支持的测试耗时基线版本：${String(baseline.version)}`,
-        );
-    }
-    if (typeof baseline.generatedAt !== "string" || !baseline.generatedAt) {
-        throw new Error("测试耗时基线缺少 generatedAt");
-    }
-    if (typeof baseline.source !== "string" || !baseline.source) {
-        throw new Error("测试耗时基线缺少 source（必须说明数据来源）");
-    }
-    if (!baseline.files || typeof baseline.files !== "object") {
-        throw new Error("测试耗时基线缺少 files 映射");
-    }
-    const files: Record<string, number> = {};
-    for (const [file, duration] of Object.entries(baseline.files)) {
-        if (
-            typeof duration !== "number" || !Number.isFinite(duration) ||
-            duration < 0
-        ) {
-            throw new Error(`测试耗时基线中 ${file} 的耗时不合法：${duration}`);
-        }
-        files[normalizeTestPath(file)] = duration;
-    }
-    return {
-        version: 1,
-        generatedAt: baseline.generatedAt,
-        source: baseline.source,
-        files,
-    };
+    files[normalizeTestPath(file)] = duration;
+  }
+  return {
+    version: 1,
+    generatedAt: baseline.generatedAt,
+    source: baseline.source,
+    files,
+  };
 }
 
 /** 基线不可用时的空基线；调用方仍会显式记录来源为 `none`。 */
 export function emptyBaseline(): FileDurationBaseline {
-    return {
-        version: 1,
-        generatedAt: new Date(0).toISOString(),
-        source: "none",
-        files: {},
-    };
+  return {
+    version: 1,
+    generatedAt: new Date(0).toISOString(),
+    source: "none",
+    files: {},
+  };
 }
 
 /**
@@ -292,58 +287,56 @@ export function emptyBaseline(): FileDurationBaseline {
  * @param unknownMs - 未知文件估值（毫秒）
  */
 export function partitionTestFiles(
-    files: readonly string[],
-    shardCount: number,
-    durations: Record<string, number> = {},
-    unknownMs = FALLBACK_FILE_DURATION_MS,
+  files: readonly string[],
+  shardCount: number,
+  durations: Record<string, number> = {},
+  unknownMs = FALLBACK_FILE_DURATION_MS,
 ): Shard[] {
-    if (!Number.isInteger(shardCount) || shardCount < 1) {
-        throw new Error(`分片数必须为 ≥1 的整数，实际 ${shardCount}`);
-    }
-    const unique = [
-        ...new Set(
-            files.map(normalizeTestPath).filter((file) => file.length > 0),
-        ),
-    ].sort();
-    const hasMigration = unique.includes(MIGRATION_TEST_FILE);
-    const candidates = unique.filter((file) => file !== MIGRATION_TEST_FILE);
+  if (!Number.isInteger(shardCount) || shardCount < 1) {
+    throw new Error(`分片数必须为 ≥1 的整数，实际 ${shardCount}`);
+  }
+  const unique = [
+    ...new Set(files.map(normalizeTestPath).filter((file) => file.length > 0)),
+  ].sort();
+  const hasMigration = unique.includes(MIGRATION_TEST_FILE);
+  const candidates = unique.filter((file) => file !== MIGRATION_TEST_FILE);
 
-    const shards: Shard[] = Array.from({ length: shardCount }, (_, index) => ({
-        name: `shard${index + 1}`,
-        files: [],
-        estimatedMs: 0,
-    }));
+  const shards: Shard[] = Array.from({ length: shardCount }, (_, index) => ({
+    name: `shard${index + 1}`,
+    files: [],
+    estimatedMs: 0,
+  }));
 
-    const weighted = candidates.map((file) => ({
-        file,
-        duration: durations[file] ?? unknownMs,
-    }));
-    weighted.sort((left, right) =>
-        right.duration === left.duration
-            ? left.file < right.file ? -1 : left.file === right.file ? 0 : 1
-            : right.duration - left.duration
-    );
+  const weighted = candidates.map((file) => ({
+    file,
+    duration: durations[file] ?? unknownMs,
+  }));
+  weighted.sort((left, right) =>
+    right.duration === left.duration
+      ? left.file < right.file ? -1 : left.file === right.file ? 0 : 1
+      : right.duration - left.duration
+  );
 
-    for (const { file, duration } of weighted) {
-        let target = shards[0]!;
-        for (const shard of shards) {
-            if (shard.estimatedMs < target.estimatedMs) target = shard;
-        }
-        target.files.push(file);
-        target.estimatedMs += duration;
-    }
-
-    const migrationCost = hasMigration
-        ? durations[MIGRATION_TEST_FILE] ?? unknownMs
-        : 0;
+  for (const { file, duration } of weighted) {
+    let target = shards[0]!;
     for (const shard of shards) {
-        shard.files.sort();
-        if (hasMigration) {
-            shard.files = [MIGRATION_TEST_FILE, ...shard.files];
-            shard.estimatedMs += migrationCost;
-        }
+      if (shard.estimatedMs < target.estimatedMs) target = shard;
     }
-    return shards;
+    target.files.push(file);
+    target.estimatedMs += duration;
+  }
+
+  const migrationCost = hasMigration
+    ? durations[MIGRATION_TEST_FILE] ?? unknownMs
+    : 0;
+  for (const shard of shards) {
+    shard.files.sort();
+    if (hasMigration) {
+      shard.files = [MIGRATION_TEST_FILE, ...shard.files];
+      shard.estimatedMs += migrationCost;
+    }
+  }
+  return shards;
 }
 
 /**
@@ -356,43 +349,41 @@ export function partitionTestFiles(
  * @param baseline - 文件级耗时基线
  */
 export function buildShardPlan(
-    files: readonly string[],
-    excluded: readonly string[],
-    shardCount: number,
-    jobs: number,
-    baseline: FileDurationBaseline,
+  files: readonly string[],
+  excluded: readonly string[],
+  shardCount: number,
+  jobs: number,
+  baseline: FileDurationBaseline,
 ): ShardPlan {
-    const knownDurations = Object.values(baseline.files);
-    const baselineMedian = median(knownDurations);
-    const unknownMs = baselineMedian ?? FALLBACK_FILE_DURATION_MS;
-    const selected = [
-        ...new Set(
-            files.map(normalizeTestPath).filter((file) => file.length > 0),
-        ),
-    ].sort();
-    if (!selected.includes(MIGRATION_TEST_FILE)) {
-        throw new Error(
-            `分片计划缺少迁移入口 ${MIGRATION_TEST_FILE}；拒绝在没有迁移验证的分片上运行`,
-        );
-    }
-    return {
-        shardCount,
-        jobs,
-        selectedFiles: selected,
-        excludedFiles: [...new Set(excluded.map(normalizeTestPath))].sort(),
-        shards: partitionTestFiles(
-            selected,
-            shardCount,
-            baseline.files,
-            unknownMs,
-        ),
-        baseline: {
-            source: baseline.source,
-            generatedAt: baseline.generatedAt,
-            knownFiles: Object.keys(baseline.files).length,
-            unknownMs,
-        },
-    };
+  const knownDurations = Object.values(baseline.files);
+  const baselineMedian = median(knownDurations);
+  const unknownMs = baselineMedian ?? FALLBACK_FILE_DURATION_MS;
+  const selected = [
+    ...new Set(files.map(normalizeTestPath).filter((file) => file.length > 0)),
+  ].sort();
+  if (!selected.includes(MIGRATION_TEST_FILE)) {
+    throw new Error(
+      `分片计划缺少迁移入口 ${MIGRATION_TEST_FILE}；拒绝在没有迁移验证的分片上运行`,
+    );
+  }
+  return {
+    shardCount,
+    jobs,
+    selectedFiles: selected,
+    excludedFiles: [...new Set(excluded.map(normalizeTestPath))].sort(),
+    shards: partitionTestFiles(
+      selected,
+      shardCount,
+      baseline.files,
+      unknownMs,
+    ),
+    baseline: {
+      source: baseline.source,
+      generatedAt: baseline.generatedAt,
+      knownFiles: Object.keys(baseline.files).length,
+      unknownMs,
+    },
+  };
 }
 
 /**
@@ -401,42 +392,38 @@ export function buildShardPlan(
  * @returns 违规说明列表；空数组表示计划完整
  */
 export function auditShardPlan(plan: ShardPlan): string[] {
-    const problems: string[] = [];
-    const seen = new Map<string, string>();
-    for (const shard of plan.shards) {
-        const local = new Set<string>();
-        for (const file of shard.files) {
-            if (local.has(file)) {
-                problems.push(`分片 ${shard.name} 重复包含 ${file}`);
-                continue;
-            }
-            local.add(file);
-            if (file === MIGRATION_TEST_FILE) continue;
-            const previous = seen.get(file);
-            if (previous) {
-                problems.push(
-                    `${file} 同时出现在 ${previous} 与 ${shard.name}`,
-                );
-            }
-            seen.set(file, shard.name);
-        }
-        if (!local.has(MIGRATION_TEST_FILE)) {
-            problems.push(
-                `分片 ${shard.name} 缺少迁移入口 ${MIGRATION_TEST_FILE}`,
-            );
-        }
+  const problems: string[] = [];
+  const seen = new Map<string, string>();
+  for (const shard of plan.shards) {
+    const local = new Set<string>();
+    for (const file of shard.files) {
+      if (local.has(file)) {
+        problems.push(`分片 ${shard.name} 重复包含 ${file}`);
+        continue;
+      }
+      local.add(file);
+      if (file === MIGRATION_TEST_FILE) continue;
+      const previous = seen.get(file);
+      if (previous) {
+        problems.push(`${file} 同时出现在 ${previous} 与 ${shard.name}`);
+      }
+      seen.set(file, shard.name);
     }
-    const expected = plan.selectedFiles.filter((file) =>
-        file !== MIGRATION_TEST_FILE
-    );
-    const missing = expected.filter((file) => !seen.has(file));
-    if (missing.length > 0) {
-        problems.push(`以下测试文件未被任何分片执行：${missing.join("、")}`);
+    if (!local.has(MIGRATION_TEST_FILE)) {
+      problems.push(`分片 ${shard.name} 缺少迁移入口 ${MIGRATION_TEST_FILE}`);
     }
-    for (const file of plan.excludedFiles) {
-        if (seen.has(file)) {
-            problems.push(`性能基准 ${file} 不应进入普通分片`);
-        }
+  }
+  const expected = plan.selectedFiles.filter((file) =>
+    file !== MIGRATION_TEST_FILE
+  );
+  const missing = expected.filter((file) => !seen.has(file));
+  if (missing.length > 0) {
+    problems.push(`以下测试文件未被任何分片执行：${missing.join("、")}`);
+  }
+  for (const file of plan.excludedFiles) {
+    if (seen.has(file)) {
+      problems.push(`性能基准 ${file} 不应进入普通分片`);
     }
-    return problems;
+  }
+  return problems;
 }

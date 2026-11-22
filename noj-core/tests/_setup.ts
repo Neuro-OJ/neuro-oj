@@ -5,8 +5,8 @@
  * 生产连接模块。
  */
 export {
-    assertOwnedTestDatabase,
-    resetDbForTest,
-    seedTestDatabase,
-    setupSchemaForTest,
+  assertOwnedTestDatabase,
+  resetDbForTest,
+  seedTestDatabase,
+  setupSchemaForTest,
 } from "./helpers/db.ts";

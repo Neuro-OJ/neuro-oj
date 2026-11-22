@@ -25,19 +25,19 @@ const MIGRATION_LOCK_RETRY_MS = 2_000;
  * 测试隔离使用独立数据库，不使用 `TEST_SCHEMA`。
  */
 export function schemaLockKey(schema: string | undefined): number {
-    // FNV-1a 32-bit，取正数以适配 int4 参数
-    let h = 0x811c9dc5;
-    for (const ch of schema ?? "public") {
-        h ^= ch.codePointAt(0) ?? 0;
-        h = Math.imul(h, 0x01000193) >>> 0;
-    }
-    return h & 0x7fffffff;
+  // FNV-1a 32-bit，取正数以适配 int4 参数
+  let h = 0x811c9dc5;
+  for (const ch of schema ?? "public") {
+    h ^= ch.codePointAt(0) ?? 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h & 0x7fffffff;
 }
 
 /** 专用锁连接（独立于主连接池，避免池耗尽导致自死锁）。 */
 export interface LockConnection {
-    unsafe(query: string, params?: unknown[]): Promise<unknown>;
-    end(options?: { timeout?: number }): Promise<void>;
+  unsafe(query: string, params?: unknown[]): Promise<unknown>;
+  end(options?: { timeout?: number }): Promise<void>;
 }
 
 /**
@@ -47,18 +47,18 @@ export interface LockConnection {
  * 真实 `setTimeout` 与 `Date.now`、5 分钟等待上限、2 秒重试间隔。
  */
 export interface MigrationLockDeps {
-    /** 读取 DATABASE_URL（默认读进程环境变量）。 */
-    getDatabaseUrl: () => string | undefined;
-    /** 用连接串创建专用锁连接（默认 postgres.js `max: 1`，首次查询时才真正建连）。 */
-    createConnection: (databaseUrl: string) => LockConnection;
-    /** 重试等待（默认真实 setTimeout；测试注入假 sleep 不创建定时器）。 */
-    sleep: (ms: number) => Promise<void>;
-    /** 时钟（默认 Date.now），与 sleep 配合判断等待截止时间。 */
-    now: () => number;
-    /** 获取锁的最长等待时间（毫秒），超时即失败。 */
-    waitTimeoutMs: number;
-    /** 获取锁失败后的重试间隔（毫秒）。 */
-    retryIntervalMs: number;
+  /** 读取 DATABASE_URL（默认读进程环境变量）。 */
+  getDatabaseUrl: () => string | undefined;
+  /** 用连接串创建专用锁连接（默认 postgres.js `max: 1`，首次查询时才真正建连）。 */
+  createConnection: (databaseUrl: string) => LockConnection;
+  /** 重试等待（默认真实 setTimeout；测试注入假 sleep 不创建定时器）。 */
+  sleep: (ms: number) => Promise<void>;
+  /** 时钟（默认 Date.now），与 sleep 配合判断等待截止时间。 */
+  now: () => number;
+  /** 获取锁的最长等待时间（毫秒），超时即失败。 */
+  waitTimeoutMs: number;
+  /** 获取锁失败后的重试间隔（毫秒）。 */
+  retryIntervalMs: number;
 }
 
 /**
@@ -69,29 +69,28 @@ export interface MigrationLockDeps {
  * 无锁执行（否则两个迁移器会竞争 `__drizzle_migrations` 并重复施加同一条迁移）。
  */
 export class MigrationLockError extends Error {
-    constructor(message: string, options?: ErrorOptions) {
-        super(message, options);
-        this.name = "MigrationLockError";
-    }
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "MigrationLockError";
+  }
 }
 
 /** 把 unknown 异常转成可读文本（拼接错误信息时保留原始原因）。 */
 function errorText(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
+  return err instanceof Error ? err.message : String(err);
 }
 
 /** 生产默认依赖：真实 postgres.js 单连接、真实 setTimeout 与 Date.now。 */
 function defaultMigrationLockDeps(): MigrationLockDeps {
-    return {
-        getDatabaseUrl: () => Deno.env.get("DATABASE_URL"),
-        createConnection: (databaseUrl) =>
-            postgres(databaseUrl, { max: 1 }) as unknown as LockConnection,
-        sleep: (ms) =>
-            new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
-        now: () => Date.now(),
-        waitTimeoutMs: MIGRATION_LOCK_WAIT_MS,
-        retryIntervalMs: MIGRATION_LOCK_RETRY_MS,
-    };
+  return {
+    getDatabaseUrl: () => Deno.env.get("DATABASE_URL"),
+    createConnection: (databaseUrl) =>
+      postgres(databaseUrl, { max: 1 }) as unknown as LockConnection,
+    sleep: (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)),
+    now: () => Date.now(),
+    waitTimeoutMs: MIGRATION_LOCK_WAIT_MS,
+    retryIntervalMs: MIGRATION_LOCK_RETRY_MS,
+  };
 }
 
 /**
@@ -121,101 +120,96 @@ function defaultMigrationLockDeps(): MigrationLockDeps {
  * @throws {MigrationLockError} 无法获取迁移锁（含未配置 DATABASE_URL）
  */
 export async function withMigrationLock<T>(
-    schema: string | undefined,
-    fn: () => Promise<T>,
-    overrides: Partial<MigrationLockDeps> = {},
+  schema: string | undefined,
+  fn: () => Promise<T>,
+  overrides: Partial<MigrationLockDeps> = {},
 ): Promise<T> {
-    const schemaName = schema ?? "public";
-    const deps: MigrationLockDeps = {
-        ...defaultMigrationLockDeps(),
-        ...overrides,
-    };
+  const schemaName = schema ?? "public";
+  const deps: MigrationLockDeps = {
+    ...defaultMigrationLockDeps(),
+    ...overrides,
+  };
 
-    const databaseUrl = deps.getDatabaseUrl();
-    if (!databaseUrl) {
-        // 能走到这里的调用方都是要执行真实文件迁移的路径，缺 DATABASE_URL
-        // 属于配置缺失，必须失败。
+  const databaseUrl = deps.getDatabaseUrl();
+  if (!databaseUrl) {
+    // 能走到这里的调用方都是要执行真实文件迁移的路径，缺 DATABASE_URL
+    // 属于配置缺失，必须失败。
+    throw new MigrationLockError(
+      `未配置 DATABASE_URL，无法获取数据库迁移 advisory lock（schema=${schemaName}）。` +
+        "迁移禁止在无锁状态下执行 DDL，已终止；请配置 DATABASE_URL 指向可用的 PostgreSQL 后重试。",
+    );
+  }
+
+  const secondKey = schemaLockKey(schema);
+  let lockConn: LockConnection;
+  try {
+    lockConn = deps.createConnection(databaseUrl);
+  } catch (err) {
+    throw new MigrationLockError(
+      `创建迁移锁连接失败（schema=${schemaName}）：${errorText(err)}。` +
+        "迁移必须持有 advisory lock 才能执行 DDL，已终止；请确认 DATABASE_URL 正确、" +
+        "数据库可达且连接数未耗尽，并确认没有其它迁移器占用锁连接后重试。",
+      { cause: err },
+    );
+  }
+
+  let locked = false;
+  try {
+    const deadline = deps.now() + deps.waitTimeoutMs;
+    while (deps.now() < deadline) {
+      let rows: Array<{ locked: boolean }>;
+      try {
+        rows = await lockConn.unsafe(
+          "SELECT pg_try_advisory_lock($1, $2) AS locked",
+          [MIGRATION_LOCK_NAMESPACE, secondKey],
+        ) as Array<{ locked: boolean }>;
+      } catch (err) {
         throw new MigrationLockError(
-            `未配置 DATABASE_URL，无法获取数据库迁移 advisory lock（schema=${schemaName}）。` +
-                "迁移禁止在无锁状态下执行 DDL，已终止；请配置 DATABASE_URL 指向可用的 PostgreSQL 后重试。",
+          `执行 pg_try_advisory_lock 失败（schema=${schemaName}）：${
+            errorText(err)
+          }。` +
+            "迁移必须持有 advisory lock 才能执行 DDL，已终止；请检查数据库连接是否被中断后重试。",
+          { cause: err },
         );
+      }
+      if (rows?.[0]?.locked === true) {
+        locked = true;
+        break;
+      }
+      logger.warn("另一个实例正在对同一 schema 执行数据库迁移，等待锁释放", {
+        schema: schemaName,
+      });
+      await deps.sleep(deps.retryIntervalMs);
     }
-
-    const secondKey = schemaLockKey(schema);
-    let lockConn: LockConnection;
+    if (!locked) {
+      const waitSeconds = Math.round(deps.waitTimeoutMs / 1000);
+      throw new MigrationLockError(
+        `等待数据库迁移 advisory lock 超时（schema=${schemaName}，已等待 ${waitSeconds} 秒）：` +
+          "另一个实例可能正在对同一 schema 执行迁移，或存在未释放锁的残留会话。" +
+          "迁移必须持有 advisory lock 才能执行 DDL，本次未执行任何迁移操作；" +
+          "请确认没有其它迁移器/锁连接占用，必要时查询 pg_locks 并结束残留会话后重试。",
+      );
+    }
+    return await fn();
+  } finally {
+    if (locked) {
+      await lockConn
+        .unsafe("SELECT pg_advisory_unlock($1, $2)", [
+          MIGRATION_LOCK_NAMESPACE,
+          secondKey,
+        ])
+        .catch((err) => {
+          // 释放失败不覆盖主流程错误；关闭专用连接同样会释放会话级锁。
+          logger.warn("释放迁移锁失败（连接关闭时会自动释放）", { err });
+        });
+    }
     try {
-        lockConn = deps.createConnection(databaseUrl);
-    } catch (err) {
-        throw new MigrationLockError(
-            `创建迁移锁连接失败（schema=${schemaName}）：${errorText(err)}。` +
-                "迁移必须持有 advisory lock 才能执行 DDL，已终止；请确认 DATABASE_URL 正确、" +
-                "数据库可达且连接数未耗尽，并确认没有其它迁移器占用锁连接后重试。",
-            { cause: err },
-        );
+      // 关闭专用连接：即使解锁语句失败，连接结束也会释放会话级锁
+      await lockConn.end({ timeout: 5 });
+    } catch {
+      // 忽略关闭异常（进程退出/连接超时后由 PostgreSQL 释放会话级锁）
     }
-
-    let locked = false;
-    try {
-        const deadline = deps.now() + deps.waitTimeoutMs;
-        while (deps.now() < deadline) {
-            let rows: Array<{ locked: boolean }>;
-            try {
-                rows = await lockConn.unsafe(
-                    "SELECT pg_try_advisory_lock($1, $2) AS locked",
-                    [MIGRATION_LOCK_NAMESPACE, secondKey],
-                ) as Array<{ locked: boolean }>;
-            } catch (err) {
-                throw new MigrationLockError(
-                    `执行 pg_try_advisory_lock 失败（schema=${schemaName}）：${
-                        errorText(err)
-                    }。` +
-                        "迁移必须持有 advisory lock 才能执行 DDL，已终止；请检查数据库连接是否被中断后重试。",
-                    { cause: err },
-                );
-            }
-            if (rows?.[0]?.locked === true) {
-                locked = true;
-                break;
-            }
-            logger.warn(
-                "另一个实例正在对同一 schema 执行数据库迁移，等待锁释放",
-                {
-                    schema: schemaName,
-                },
-            );
-            await deps.sleep(deps.retryIntervalMs);
-        }
-        if (!locked) {
-            const waitSeconds = Math.round(deps.waitTimeoutMs / 1000);
-            throw new MigrationLockError(
-                `等待数据库迁移 advisory lock 超时（schema=${schemaName}，已等待 ${waitSeconds} 秒）：` +
-                    "另一个实例可能正在对同一 schema 执行迁移，或存在未释放锁的残留会话。" +
-                    "迁移必须持有 advisory lock 才能执行 DDL，本次未执行任何迁移操作；" +
-                    "请确认没有其它迁移器/锁连接占用，必要时查询 pg_locks 并结束残留会话后重试。",
-            );
-        }
-        return await fn();
-    } finally {
-        if (locked) {
-            await lockConn
-                .unsafe("SELECT pg_advisory_unlock($1, $2)", [
-                    MIGRATION_LOCK_NAMESPACE,
-                    secondKey,
-                ])
-                .catch((err) => {
-                    // 释放失败不覆盖主流程错误；关闭专用连接同样会释放会话级锁。
-                    logger.warn("释放迁移锁失败（连接关闭时会自动释放）", {
-                        err,
-                    });
-                });
-        }
-        try {
-            // 关闭专用连接：即使解锁语句失败，连接结束也会释放会话级锁
-            await lockConn.end({ timeout: 5 });
-        } catch {
-            // 忽略关闭异常（进程退出/连接超时后由 PostgreSQL 释放会话级锁）
-        }
-    }
+  }
 }
 
 /**
@@ -228,25 +222,25 @@ export async function withMigrationLock<T>(
  * `MigrationLockError`，调用方必须按失败处理（CLI 与 dev-setup 均应终止）。
  */
 export async function runMigrations(): Promise<void> {
-    try {
-        const db = getDb();
+  try {
+    const db = getDb();
 
-        // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖；
-        // deno compile 后 import.meta.url 指向二进制路径，生产镜像通过
-        // NOJ_MIGRATIONS_DIR 显式指定迁移目录。
-        const migrationsFolder = resolveMigrationsDirectory();
-        logger.info("开始数据库迁移", {
-            migrations_folder: migrationsFolder,
-            migrations_schema: "drizzle",
-        });
-        await withMigrationLock(undefined, async () => {
-            // 旧库门禁必须与迁移同处锁内、先于任何 DDL：旧授权模型无法无损转换。
-            await assertDatabaseSupportsAuthorizationSwitch();
-            await migrate(db, { migrationsFolder });
-        });
-        logger.info("数据库迁移完成");
-    } catch (err) {
-        logger.error("数据库迁移失败", { err });
-        throw err;
-    }
+    // 基于 import.meta.url 解析绝对路径，避免 CWD 依赖；
+    // deno compile 后 import.meta.url 指向二进制路径，生产镜像通过
+    // NOJ_MIGRATIONS_DIR 显式指定迁移目录。
+    const migrationsFolder = resolveMigrationsDirectory();
+    logger.info("开始数据库迁移", {
+      migrations_folder: migrationsFolder,
+      migrations_schema: "drizzle",
+    });
+    await withMigrationLock(undefined, async () => {
+      // 旧库门禁必须与迁移同处锁内、先于任何 DDL：旧授权模型无法无损转换。
+      await assertDatabaseSupportsAuthorizationSwitch();
+      await migrate(db, { migrationsFolder });
+    });
+    logger.info("数据库迁移完成");
+  } catch (err) {
+    logger.error("数据库迁移失败", { err });
+    throw err;
+  }
 }

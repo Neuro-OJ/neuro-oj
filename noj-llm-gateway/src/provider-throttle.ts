@@ -136,97 +136,97 @@ return 1
 
 /** 某 Provider 的限流键（hash tag 保证 Redis Cluster 下同槽）。 */
 export function providerThrottleKeys(providerId: string): {
-    rpm: string;
-    tpm: string;
-    queue: string;
-    hb: string;
-    seq: string;
+  rpm: string;
+  tpm: string;
+  queue: string;
+  hb: string;
+  seq: string;
 } {
-    const base = `llm:provider:{${providerId}}`;
-    return {
-        rpm: `${base}:rpm`,
-        tpm: `${base}:tpm`,
-        queue: `${base}:queue`,
-        hb: `${base}:queue-hb`,
-        seq: `${base}:queue-seq`,
-    };
+  const base = `llm:provider:{${providerId}}`;
+  return {
+    rpm: `${base}:rpm`,
+    tpm: `${base}:tpm`,
+    queue: `${base}:queue`,
+    hb: `${base}:queue-hb`,
+    seq: `${base}:queue-seq`,
+  };
 }
 
 /** 排队超时：调用方应返回 429，并提示 `retryAfterSeconds` 后重试。 */
 export class ProviderQueueTimeoutError extends Error {
-    constructor(public readonly retryAfterSeconds: number) {
-        super("provider_queue_timeout");
-        this.name = "ProviderQueueTimeoutError";
-    }
+  constructor(public readonly retryAfterSeconds: number) {
+    super("provider_queue_timeout");
+    this.name = "ProviderQueueTimeoutError";
+  }
 }
 
 /** 排队期间客户端断开（请求已中止），调用方无需再响应。 */
 export class ProviderQueueAbortedError extends Error {
-    constructor() {
-        super("provider_queue_aborted");
-        this.name = "ProviderQueueAbortedError";
-    }
+  constructor() {
+    super("provider_queue_aborted");
+    this.name = "ProviderQueueAbortedError";
+  }
 }
 
 /** 已放行的一次上游调用占用的额度；无限制时为空操作。 */
 export interface ProviderSlot {
-    /** 本次请求在排队中等待的毫秒数（未排队为 0） */
-    waitedMs: number;
-    /** 请求未发往上游（如额度校验拒绝）时归还窗口额度 */
-    release(): Promise<void>;
-    /** 用上游返回的实际 token 数修正 TPM 记录 */
-    settle(actualTokens: number): Promise<void>;
+  /** 本次请求在排队中等待的毫秒数（未排队为 0） */
+  waitedMs: number;
+  /** 请求未发往上游（如额度校验拒绝）时归还窗口额度 */
+  release(): Promise<void>;
+  /** 用上游返回的实际 token 数修正 TPM 记录 */
+  settle(actualTokens: number): Promise<void>;
 }
 
 /** 等待 Provider 速率额度的参数。 */
 export interface AcquireProviderSlotOptions {
-    providerId: string;
-    /** 每分钟请求数上限（0 = 不限） */
-    rpmLimit: number;
-    /** 每分钟 token 上限（0 = 不限） */
-    tpmLimit: number;
-    /** 本次请求预估占用的 token（prompt 估算 + max_tokens） */
-    tokens: number;
-    /** 最长排队毫秒数；0 表示不排队，超限立即超时 */
-    timeoutMs: number;
-    /** 客户端断开时中止排队 */
-    signal?: AbortSignal;
-    /** 滑动窗口长度（测试注入；默认 60 秒） */
-    windowMs?: number;
+  providerId: string;
+  /** 每分钟请求数上限（0 = 不限） */
+  rpmLimit: number;
+  /** 每分钟 token 上限（0 = 不限） */
+  tpmLimit: number;
+  /** 本次请求预估占用的 token（prompt 估算 + max_tokens） */
+  tokens: number;
+  /** 最长排队毫秒数；0 表示不排队，超限立即超时 */
+  timeoutMs: number;
+  /** 客户端断开时中止排队 */
+  signal?: AbortSignal;
+  /** 滑动窗口长度（测试注入；默认 60 秒） */
+  windowMs?: number;
 }
 
 const NOOP_SLOT: ProviderSlot = {
-    waitedMs: 0,
-    release: () => Promise.resolve(),
-    settle: () => Promise.resolve(),
+  waitedMs: 0,
+  release: () => Promise.resolve(),
+  settle: () => Promise.resolve(),
 };
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-    return new Promise((resolve, reject) => {
-        if (signal?.aborted) return reject(new ProviderQueueAbortedError());
-        const onAbort = () => {
-            clearTimeout(timer);
-            reject(new ProviderQueueAbortedError());
-        };
-        const timer = setTimeout(() => {
-            signal?.removeEventListener("abort", onAbort);
-            resolve();
-        }, ms);
-        signal?.addEventListener("abort", onAbort, { once: true });
-    });
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new ProviderQueueAbortedError());
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new ProviderQueueAbortedError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function parseAcquireResult(raw: unknown): {
-    admitted: boolean;
-    waitMs: number;
-    rank: number;
+  admitted: boolean;
+  waitMs: number;
+  rank: number;
 } {
-    const arr = Array.isArray(raw) ? raw.map(Number) : [];
-    return {
-        admitted: arr[0] === 1,
-        waitMs: Number.isFinite(arr[1]) ? Math.max(0, arr[1]) : 0,
-        rank: Number.isFinite(arr[2]) ? Math.max(0, arr[2]) : 0,
-    };
+  const arr = Array.isArray(raw) ? raw.map(Number) : [];
+  return {
+    admitted: arr[0] === 1,
+    waitMs: Number.isFinite(arr[1]) ? Math.max(0, arr[1]) : 0,
+    rank: Number.isFinite(arr[2]) ? Math.max(0, arr[2]) : 0,
+  };
 }
 
 /**
@@ -238,69 +238,69 @@ function parseAcquireResult(raw: unknown): {
  * @throws {ProviderQueueAbortedError} 排队期间 signal 中止（客户端断开）
  */
 export async function acquireProviderSlot(
-    redis: RedisClient,
-    opts: AcquireProviderSlotOptions,
+  redis: RedisClient,
+  opts: AcquireProviderSlotOptions,
 ): Promise<ProviderSlot> {
-    const rpmLimit = Math.max(0, Math.floor(opts.rpmLimit || 0));
-    const tpmLimit = Math.max(0, Math.floor(opts.tpmLimit || 0));
-    if (rpmLimit === 0 && tpmLimit === 0) return NOOP_SLOT;
+  const rpmLimit = Math.max(0, Math.floor(opts.rpmLimit || 0));
+  const tpmLimit = Math.max(0, Math.floor(opts.tpmLimit || 0));
+  if (rpmLimit === 0 && tpmLimit === 0) return NOOP_SLOT;
 
-    const keys = providerThrottleKeys(opts.providerId);
-    const id = crypto.randomUUID();
-    const tokens = Math.max(0, Math.floor(opts.tokens || 0));
-    const windowMs = opts.windowMs ?? WINDOW_MS;
-    const startedAt = Date.now();
-    const deadline = startedAt + Math.max(0, opts.timeoutMs);
+  const keys = providerThrottleKeys(opts.providerId);
+  const id = crypto.randomUUID();
+  const tokens = Math.max(0, Math.floor(opts.tokens || 0));
+  const windowMs = opts.windowMs ?? WINDOW_MS;
+  const startedAt = Date.now();
+  const deadline = startedAt + Math.max(0, opts.timeoutMs);
 
-    const leaveQueue = () =>
-        redis.eval(LEAVE_QUEUE_SCRIPT, [keys.queue, keys.hb], [id])
-            .catch(() => undefined);
+  const leaveQueue = () =>
+    redis.eval(LEAVE_QUEUE_SCRIPT, [keys.queue, keys.hb], [id])
+      .catch(() => undefined);
 
-    while (true) {
-        const result = parseAcquireResult(
-            await redis.eval(
-                ACQUIRE_SCRIPT,
-                [keys.rpm, keys.tpm, keys.queue, keys.hb, keys.seq],
-                [id, tokens, rpmLimit, tpmLimit, STALE_MS, windowMs],
-            ),
-        );
-        if (result.admitted) {
-            let settledTokens = tokens;
-            return {
-                waitedMs: Date.now() - startedAt,
-                release: async () => {
-                    await redis.eval(RELEASE_SCRIPT, [keys.rpm, keys.tpm], [
-                        id,
-                        settledTokens,
-                    ]);
-                },
-                settle: async (actualTokens: number) => {
-                    const next = Math.max(0, Math.floor(actualTokens || 0));
-                    if (next === settledTokens) return;
-                    await redis.eval(SETTLE_SCRIPT, [keys.tpm], [
-                        id,
-                        settledTokens,
-                        next,
-                    ]);
-                    settledTokens = next;
-                },
-            };
-        }
-
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) {
-            await leaveQueue();
-            const retryAfterMs = result.waitMs > 0 ? result.waitMs : 1_000;
-            throw new ProviderQueueTimeoutError(Math.ceil(retryAfterMs / 1000));
-        }
-        const pollMs = result.rank > 0
-            ? QUEUE_POLL_MS
-            : Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, result.waitMs));
-        try {
-            await sleep(Math.min(pollMs, remaining), opts.signal);
-        } catch (err) {
-            await leaveQueue();
-            throw err;
-        }
+  while (true) {
+    const result = parseAcquireResult(
+      await redis.eval(
+        ACQUIRE_SCRIPT,
+        [keys.rpm, keys.tpm, keys.queue, keys.hb, keys.seq],
+        [id, tokens, rpmLimit, tpmLimit, STALE_MS, windowMs],
+      ),
+    );
+    if (result.admitted) {
+      let settledTokens = tokens;
+      return {
+        waitedMs: Date.now() - startedAt,
+        release: async () => {
+          await redis.eval(RELEASE_SCRIPT, [keys.rpm, keys.tpm], [
+            id,
+            settledTokens,
+          ]);
+        },
+        settle: async (actualTokens: number) => {
+          const next = Math.max(0, Math.floor(actualTokens || 0));
+          if (next === settledTokens) return;
+          await redis.eval(SETTLE_SCRIPT, [keys.tpm], [
+            id,
+            settledTokens,
+            next,
+          ]);
+          settledTokens = next;
+        },
+      };
     }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      await leaveQueue();
+      const retryAfterMs = result.waitMs > 0 ? result.waitMs : 1_000;
+      throw new ProviderQueueTimeoutError(Math.ceil(retryAfterMs / 1000));
+    }
+    const pollMs = result.rank > 0
+      ? QUEUE_POLL_MS
+      : Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, result.waitMs));
+    try {
+      await sleep(Math.min(pollMs, remaining), opts.signal);
+    } catch (err) {
+      await leaveQueue();
+      throw err;
+    }
+  }
 }

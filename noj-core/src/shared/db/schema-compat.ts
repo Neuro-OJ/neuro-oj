@@ -13,207 +13,200 @@ import { resolveMigrationsDirectory } from "./migrations-path.ts";
 const MIGRATION_LEDGER = "drizzle.__drizzle_migrations";
 
 export interface ExpectedMigration {
-    tag: string;
-    hash: string;
-    createdAt: string;
+  tag: string;
+  hash: string;
+  createdAt: string;
 }
 
 export interface ActualMigration {
-    id: string;
-    hash: string;
-    createdAt: string;
+  id: string;
+  hash: string;
+  createdAt: string;
 }
 
 export interface SchemaCompatibilityDeps {
-    /** 读取数据库迁移 ledger；生产实现只执行 SELECT。 */
-    queryLedger: () => Promise<ActualMigration[]>;
-    /** 读取文件内容；测试可注入内存文件。 */
-    readText: (path: string) => Promise<string>;
-    /** 读取迁移目录文件名；测试可注入文件清单。 */
-    listFiles: (directory: string) => Promise<string[]>;
+  /** 读取数据库迁移 ledger；生产实现只执行 SELECT。 */
+  queryLedger: () => Promise<ActualMigration[]>;
+  /** 读取文件内容；测试可注入内存文件。 */
+  readText: (path: string) => Promise<string>;
+  /** 读取迁移目录文件名；测试可注入文件清单。 */
+  listFiles: (directory: string) => Promise<string[]>;
 }
 
 export class SchemaCompatibilityError extends Error {
-    constructor(message: string, options?: ErrorOptions) {
-        super(message, options);
-        this.name = "SchemaCompatibilityError";
-    }
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SchemaCompatibilityError";
+  }
 }
 
 interface JournalEntry {
-    idx: number;
-    when: number;
-    tag: string;
-    breakpoints?: boolean;
+  idx: number;
+  when: number;
+  tag: string;
+  breakpoints?: boolean;
 }
 
 interface JournalDocument {
-    entries?: JournalEntry[];
+  entries?: JournalEntry[];
 }
 
 function asErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function sha256Hex(value: string): Promise<string> {
-    const bytes = new TextEncoder().encode(value);
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return [...new Uint8Array(digest)]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function migrationDirFromModule(): string {
-    return resolveMigrationsDirectory();
+  return resolveMigrationsDirectory();
 }
 
 /** 唯一的 ledger 读取实现：启动检查与迁移前门禁共用。 */
 export async function readMigrationLedger(): Promise<ActualMigration[]> {
-    const rows = await getDb().execute(sql`
+  const rows = await getDb().execute(sql`
     SELECT migration_ledger.id::text AS id,
       migration_ledger.hash,
       migration_ledger.created_at::text AS created_at
     FROM ${sql.raw(MIGRATION_LEDGER)} AS migration_ledger
     ORDER BY migration_ledger.id ASC
   `) as unknown as Array<Record<string, unknown>>;
-    return rows.map((row) => ({
-        id: String(row.id ?? ""),
-        hash: String(row.hash ?? ""),
-        createdAt: String(row.created_at ?? ""),
-    }));
+  return rows.map((row) => ({
+    id: String(row.id ?? ""),
+    hash: String(row.hash ?? ""),
+    createdAt: String(row.created_at ?? ""),
+  }));
 }
 
 function defaultDeps(): SchemaCompatibilityDeps {
-    return {
-        queryLedger: readMigrationLedger,
-        readText: (path) => Deno.readTextFile(path),
-        listFiles: async (directory) => {
-            const names: string[] = [];
-            for await (const entry of Deno.readDir(directory)) {
-                if (entry.isFile) names.push(entry.name);
-            }
-            return names;
-        },
-    };
+  return {
+    queryLedger: readMigrationLedger,
+    readText: (path) => Deno.readTextFile(path),
+    listFiles: async (directory) => {
+      const names: string[] = [];
+      for await (const entry of Deno.readDir(directory)) {
+        if (entry.isFile) names.push(entry.name);
+      }
+      return names;
+    },
+  };
 }
 
 /** 从打包的 journal + SQL 读取期望 ledger，严格拒绝文件差集。 */
 export async function readExpectedMigrations(
-    migrationsDir = migrationDirFromModule(),
-    deps: Pick<SchemaCompatibilityDeps, "readText" | "listFiles"> =
-        defaultDeps(),
+  migrationsDir = migrationDirFromModule(),
+  deps: Pick<SchemaCompatibilityDeps, "readText" | "listFiles"> = defaultDeps(),
 ): Promise<ExpectedMigration[]> {
-    const journalPath = resolve(migrationsDir, "meta", "_journal.json");
-    let journal: JournalDocument;
+  const journalPath = resolve(migrationsDir, "meta", "_journal.json");
+  let journal: JournalDocument;
+  try {
+    journal = JSON.parse(await deps.readText(journalPath)) as JournalDocument;
+  } catch (error) {
+    throw new SchemaCompatibilityError(
+      `读取打包迁移 journal 失败（${journalPath}）：${
+        asErrorMessage(error)
+      }。` +
+        "HTTP 启动拒绝继续；请执行显式迁移并确认发布集包含完整 drizzle 资产。",
+      { cause: error },
+    );
+  }
+
+  const entries = journal.entries;
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new SchemaCompatibilityError(
+      `打包迁移 journal 无有效 entries（${journalPath}）。` +
+        "HTTP 启动拒绝继续；请检查发布集并执行显式迁移。",
+    );
+  }
+
+  const seenTags = new Set<string>();
+  const expectedFiles = new Set<string>();
+  const expected: ExpectedMigration[] = [];
+  const seenIndexes = new Set<number>();
+  let previousIndex = -1;
+  for (const entry of entries) {
+    if (
+      !entry || typeof entry.tag !== "string" || entry.tag.length === 0 ||
+      !Number.isSafeInteger(entry.when) || entry.when < 0
+    ) {
+      throw new SchemaCompatibilityError(
+        `打包迁移 journal 包含非法条目：${JSON.stringify(entry)}。` +
+          "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
+      );
+    }
+    if (
+      !Number.isSafeInteger(entry.idx) || entry.idx < 0 ||
+      /[^A-Za-z0-9_-]/.test(entry.tag)
+    ) {
+      throw new SchemaCompatibilityError(
+        `打包迁移 journal 包含非法 tag/idx：${JSON.stringify(entry)}。` +
+          "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
+      );
+    }
+    if (seenIndexes.has(entry.idx)) {
+      throw new SchemaCompatibilityError(
+        `打包迁移 journal 存在重复 idx：${entry.idx}。` +
+          "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
+      );
+    }
+    if (entry.idx <= previousIndex) {
+      throw new SchemaCompatibilityError(
+        `打包迁移 journal 的 idx 未严格递增：${entry.idx}。` +
+          "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
+      );
+    }
+    seenIndexes.add(entry.idx);
+    previousIndex = entry.idx;
+    if (seenTags.has(entry.tag)) {
+      throw new SchemaCompatibilityError(
+        `打包迁移 journal 存在重复 tag：${entry.tag}。` +
+          "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
+      );
+    }
+    seenTags.add(entry.tag);
+    const fileName = `${entry.tag}.sql`;
+    expectedFiles.add(fileName);
+    let content: string;
     try {
-        journal = JSON.parse(
-            await deps.readText(journalPath),
-        ) as JournalDocument;
+      content = await deps.readText(resolve(migrationsDir, fileName));
     } catch (error) {
-        throw new SchemaCompatibilityError(
-            `读取打包迁移 journal 失败（${journalPath}）：${
-                asErrorMessage(error)
-            }。` +
-                "HTTP 启动拒绝继续；请执行显式迁移并确认发布集包含完整 drizzle 资产。",
-            { cause: error },
-        );
+      throw new SchemaCompatibilityError(
+        `打包迁移缺少 SQL 文件：${fileName}。` +
+          "HTTP 启动拒绝继续；请先执行显式迁移或修复发布集。",
+        { cause: error },
+      );
     }
+    expected.push({
+      tag: entry.tag,
+      hash: await sha256Hex(content),
+      createdAt: String(entry.when),
+    });
+  }
 
-    const entries = journal.entries;
-    if (!Array.isArray(entries) || entries.length === 0) {
-        throw new SchemaCompatibilityError(
-            `打包迁移 journal 无有效 entries（${journalPath}）。` +
-                "HTTP 启动拒绝继续；请检查发布集并执行显式迁移。",
-        );
-    }
-
-    const seenTags = new Set<string>();
-    const expectedFiles = new Set<string>();
-    const expected: ExpectedMigration[] = [];
-    const seenIndexes = new Set<number>();
-    let previousIndex = -1;
-    for (const entry of entries) {
-        if (
-            !entry || typeof entry.tag !== "string" || entry.tag.length === 0 ||
-            !Number.isSafeInteger(entry.when) || entry.when < 0
-        ) {
-            throw new SchemaCompatibilityError(
-                `打包迁移 journal 包含非法条目：${JSON.stringify(entry)}。` +
-                    "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
-            );
-        }
-        if (
-            !Number.isSafeInteger(entry.idx) || entry.idx < 0 ||
-            /[^A-Za-z0-9_-]/.test(entry.tag)
-        ) {
-            throw new SchemaCompatibilityError(
-                `打包迁移 journal 包含非法 tag/idx：${
-                    JSON.stringify(entry)
-                }。` +
-                    "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
-            );
-        }
-        if (seenIndexes.has(entry.idx)) {
-            throw new SchemaCompatibilityError(
-                `打包迁移 journal 存在重复 idx：${entry.idx}。` +
-                    "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
-            );
-        }
-        if (entry.idx <= previousIndex) {
-            throw new SchemaCompatibilityError(
-                `打包迁移 journal 的 idx 未严格递增：${entry.idx}。` +
-                    "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
-            );
-        }
-        seenIndexes.add(entry.idx);
-        previousIndex = entry.idx;
-        if (seenTags.has(entry.tag)) {
-            throw new SchemaCompatibilityError(
-                `打包迁移 journal 存在重复 tag：${entry.tag}。` +
-                    "HTTP 启动拒绝继续；请重新生成并发布迁移资产。",
-            );
-        }
-        seenTags.add(entry.tag);
-        const fileName = `${entry.tag}.sql`;
-        expectedFiles.add(fileName);
-        let content: string;
-        try {
-            content = await deps.readText(resolve(migrationsDir, fileName));
-        } catch (error) {
-            throw new SchemaCompatibilityError(
-                `打包迁移缺少 SQL 文件：${fileName}。` +
-                    "HTTP 启动拒绝继续；请先执行显式迁移或修复发布集。",
-                { cause: error },
-            );
-        }
-        expected.push({
-            tag: entry.tag,
-            hash: await sha256Hex(content),
-            createdAt: String(entry.when),
-        });
-    }
-
-    let files: string[];
-    try {
-        files = await deps.listFiles(migrationsDir);
-    } catch (error) {
-        throw new SchemaCompatibilityError(
-            `读取打包迁移目录失败（${migrationsDir}）：${
-                asErrorMessage(error)
-            }。` +
-                "HTTP 启动拒绝继续；请确认发布集包含完整 drizzle 资产。",
-            { cause: error },
-        );
-    }
-    const actualSqlFiles = files.filter((file) => file.endsWith(".sql"));
-    const extras = actualSqlFiles.filter((file) => !expectedFiles.has(file));
-    if (extras.length > 0) {
-        throw new SchemaCompatibilityError(
-            `打包迁移存在未登记 SQL 文件：${extras.sort().join(", ")}。` +
-                "journal 与 SQL 不匹配，HTTP 启动拒绝继续；请显式生成/应用迁移并修复发布集。",
-        );
-    }
-    return expected;
+  let files: string[];
+  try {
+    files = await deps.listFiles(migrationsDir);
+  } catch (error) {
+    throw new SchemaCompatibilityError(
+      `读取打包迁移目录失败（${migrationsDir}）：${asErrorMessage(error)}。` +
+        "HTTP 启动拒绝继续；请确认发布集包含完整 drizzle 资产。",
+      { cause: error },
+    );
+  }
+  const actualSqlFiles = files.filter((file) => file.endsWith(".sql"));
+  const extras = actualSqlFiles.filter((file) => !expectedFiles.has(file));
+  if (extras.length > 0) {
+    throw new SchemaCompatibilityError(
+      `打包迁移存在未登记 SQL 文件：${extras.sort().join(", ")}。` +
+        "journal 与 SQL 不匹配，HTTP 启动拒绝继续；请显式生成/应用迁移并修复发布集。",
+    );
+  }
+  return expected;
 }
 
 /**
@@ -230,77 +223,73 @@ export type MigrationValidationMode = "startup" | "pre-migration";
  * （`assertDatabaseSupportsAuthorizationSwitch`）共用本函数，避免两套口径分叉。
  */
 export function validateMigrationLedger(
-    expected: ExpectedMigration[],
-    actual: ReadonlyArray<{ hash: string; createdAt: string }>,
-    mode: MigrationValidationMode,
+  expected: ExpectedMigration[],
+  actual: ReadonlyArray<{ hash: string; createdAt: string }>,
+  mode: MigrationValidationMode,
 ): string | null {
-    if (expected.length === 0) {
-        return "打包迁移集为空，无法判断数据库兼容性";
+  if (expected.length === 0) {
+    return "打包迁移集为空，无法判断数据库兼容性";
+  }
+  if (actual.length > expected.length) {
+    return `数据库迁移 ledger 存在发布集之外的记录（期望最多 ${expected.length} 条，实际 ${actual.length} 条）`;
+  }
+  for (let index = 0; index < actual.length; index++) {
+    const wanted = expected[index]!;
+    const found = actual[index]!;
+    if (wanted.hash !== found.hash || wanted.createdAt !== found.createdAt) {
+      return `数据库迁移 ledger 第 ${index + 1} 条不匹配（${wanted.tag}）：` +
+        `期望 hash=${wanted.hash}, created_at=${wanted.createdAt}；` +
+        `实际 hash=${found.hash}, created_at=${found.createdAt}`;
     }
-    if (actual.length > expected.length) {
-        return `数据库迁移 ledger 存在发布集之外的记录（期望最多 ${expected.length} 条，实际 ${actual.length} 条）`;
-    }
-    for (let index = 0; index < actual.length; index++) {
-        const wanted = expected[index]!;
-        const found = actual[index]!;
-        if (
-            wanted.hash !== found.hash || wanted.createdAt !== found.createdAt
-        ) {
-            return `数据库迁移 ledger 第 ${
-                index + 1
-            } 条不匹配（${wanted.tag}）：` +
-                `期望 hash=${wanted.hash}, created_at=${wanted.createdAt}；` +
-                `实际 hash=${found.hash}, created_at=${found.createdAt}`;
-        }
-    }
-    if (mode === "startup" && actual.length !== expected.length) {
-        return `数据库迁移 ledger 缺少记录（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
-    }
-    return null;
+  }
+  if (mode === "startup" && actual.length !== expected.length) {
+    return `数据库迁移 ledger 缺少记录（期望 ${expected.length} 条，实际 ${actual.length} 条）`;
+  }
+  return null;
 }
 
 function compareMigrationLedgers(
-    expected: ExpectedMigration[],
-    actual: ActualMigration[],
+  expected: ExpectedMigration[],
+  actual: ActualMigration[],
 ): string | null {
-    return validateMigrationLedger(expected, actual, "startup");
+  return validateMigrationLedger(expected, actual, "startup");
 }
 
 /** 执行只读 schema 检查；成功返回期望/实际 ledger，失败抛显式迁移错误。 */
 export async function assertSchemaCompatible(
-    options: {
-        migrationsDir?: string;
-        deps?: Partial<SchemaCompatibilityDeps>;
-    } = {},
+  options: {
+    migrationsDir?: string;
+    deps?: Partial<SchemaCompatibilityDeps>;
+  } = {},
 ): Promise<{ expected: ExpectedMigration[]; actual: ActualMigration[] }> {
-    const defaults = defaultDeps();
-    const deps: SchemaCompatibilityDeps = { ...defaults, ...options.deps };
-    const expected = await readExpectedMigrations(options.migrationsDir, deps);
-    let actual: ActualMigration[];
-    try {
-        actual = await deps.queryLedger();
-    } catch (error) {
-        throw new SchemaCompatibilityError(
-            `读取数据库迁移 ledger ${MIGRATION_LEDGER} 失败：${
-                asErrorMessage(error)
-            }。` +
-                "HTTP 启动仅支持已迁移数据库，未执行任何 DDL；请先运行 `noj db migrate`。",
-            { cause: error },
-        );
-    }
-    const mismatch = compareMigrationLedgers(expected, actual);
-    if (mismatch) {
-        throw new SchemaCompatibilityError(
-            `${mismatch}。HTTP 启动拒绝继续，未执行任何 DDL 或初始化；请先运行 noj db migrate。`,
-        );
-    }
-    return { expected, actual };
+  const defaults = defaultDeps();
+  const deps: SchemaCompatibilityDeps = { ...defaults, ...options.deps };
+  const expected = await readExpectedMigrations(options.migrationsDir, deps);
+  let actual: ActualMigration[];
+  try {
+    actual = await deps.queryLedger();
+  } catch (error) {
+    throw new SchemaCompatibilityError(
+      `读取数据库迁移 ledger ${MIGRATION_LEDGER} 失败：${
+        asErrorMessage(error)
+      }。` +
+        "HTTP 启动仅支持已迁移数据库，未执行任何 DDL；请先运行 `noj db migrate`。",
+      { cause: error },
+    );
+  }
+  const mismatch = compareMigrationLedgers(expected, actual);
+  if (mismatch) {
+    throw new SchemaCompatibilityError(
+      `${mismatch}。HTTP 启动拒绝继续，未执行任何 DDL 或初始化；请先运行 noj db migrate。`,
+    );
+  }
+  return { expected, actual };
 }
 
 /** 仅用于测试的纯 ledger 比较入口。 */
 export function compareSchemaLedgers(
-    expected: ExpectedMigration[],
-    actual: ActualMigration[],
+  expected: ExpectedMigration[],
+  actual: ActualMigration[],
 ): string | null {
-    return compareMigrationLedgers(expected, actual);
+  return compareMigrationLedgers(expected, actual);
 }

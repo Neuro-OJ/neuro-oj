@@ -14,9 +14,9 @@ import type { UserActor } from "../../modules/access/contracts/actor.ts";
 import type { LegalKind, UserConsentSnapshot } from "./types.ts";
 import { LEGAL_KINDS } from "./types.ts";
 import {
-    getCurrentDocument,
-    getRequiredConsentInfo,
-    getRequiredConsentVersion,
+  getCurrentDocument,
+  getRequiredConsentInfo,
+  getRequiredConsentVersion,
 } from "./documents.ts";
 
 const logger = getLogger(["noj", "legal", "consent"]);
@@ -29,25 +29,25 @@ const logger = getLogger(["noj", "legal", "consent"]);
  * @returns 最新同意快照；从未同意返回 null
  */
 export async function getUserConsent(
-    userId: string,
-    kind: LegalKind,
+  userId: string,
+  kind: LegalKind,
 ): Promise<UserConsentSnapshot | null> {
-    const db = getDb();
-    const [row] = await db
-        .select({
-            version: userConsents.version,
-            agreed_at: userConsents.agreed_at,
-        })
-        .from(userConsents)
-        .where(
-            and(
-                eq(userConsents.user_id, userId),
-                eq(userConsents.document_kind, kind),
-            ),
-        )
-        .orderBy(desc(userConsents.version))
-        .limit(1);
-    return row ?? null;
+  const db = getDb();
+  const [row] = await db
+    .select({
+      version: userConsents.version,
+      agreed_at: userConsents.agreed_at,
+    })
+    .from(userConsents)
+    .where(
+      and(
+        eq(userConsents.user_id, userId),
+        eq(userConsents.document_kind, kind),
+      ),
+    )
+    .orderBy(desc(userConsents.version))
+    .limit(1);
+  return row ?? null;
 }
 
 /**
@@ -61,27 +61,27 @@ export async function getUserConsent(
  * @param ua User-Agent（可为 null）
  */
 export async function recordConsent(
-    actor: UserActor,
-    kind: LegalKind,
-    version: number,
-    hash: string,
-    ip: string | null,
-    ua: string | null,
+  actor: UserActor,
+  kind: LegalKind,
+  version: number,
+  hash: string,
+  ip: string | null,
+  ua: string | null,
 ): Promise<void> {
-    const db = getDb();
-    await db
-        .insert(userConsents)
-        .values({
-            id: crypto.randomUUID(),
-            user_id: actor.userId,
-            document_kind: kind,
-            version,
-            content_hash: hash,
-            agreed_at: new Date().toISOString(),
-            ip,
-            user_agent: ua,
-        })
-        .onConflictDoNothing();
+  const db = getDb();
+  await db
+    .insert(userConsents)
+    .values({
+      id: crypto.randomUUID(),
+      user_id: actor.userId,
+      document_kind: kind,
+      version,
+      content_hash: hash,
+      agreed_at: new Date().toISOString(),
+      ip,
+      user_agent: ua,
+    })
+    .onConflictDoNothing();
 }
 
 /**
@@ -95,42 +95,42 @@ export async function recordConsent(
  * @param ua User-Agent
  */
 export async function recordConsentsForRegistration(
-    tx: DbTx,
-    actor: UserActor,
-    ip: string | null,
-    ua: string | null,
+  tx: DbTx,
+  actor: UserActor,
+  ip: string | null,
+  ua: string | null,
 ): Promise<void> {
-    const now = new Date().toISOString();
-    const unpublished: LegalKind[] = [];
-    for (const kind of LEGAL_KINDS) {
-        const doc = await getCurrentDocument(kind, tx);
-        if (!doc) {
-            // 尚未发布该文档时无法记录（部署者应先发布）。2026-09-25 评审：这里必须
-            // 留痕——否则"允许注册但无政策可同意"的新部署会静默产出一批零同意记录，
-            // 运维无从发现漏发布（首版发布后用户会被 needs_consent 弹窗补同意）。
-            unpublished.push(kind);
-            continue;
-        }
-        await tx
-            .insert(userConsents)
-            .values({
-                id: crypto.randomUUID(),
-                user_id: actor.userId,
-                document_kind: kind,
-                version: doc.version,
-                content_hash: doc.content_hash,
-                agreed_at: now,
-                ip,
-                user_agent: ua,
-            })
-            .onConflictDoNothing();
+  const now = new Date().toISOString();
+  const unpublished: LegalKind[] = [];
+  for (const kind of LEGAL_KINDS) {
+    const doc = await getCurrentDocument(kind, tx);
+    if (!doc) {
+      // 尚未发布该文档时无法记录（部署者应先发布）。2026-09-25 评审：这里必须
+      // 留痕——否则"允许注册但无政策可同意"的新部署会静默产出一批零同意记录，
+      // 运维无从发现漏发布（首版发布后用户会被 needs_consent 弹窗补同意）。
+      unpublished.push(kind);
+      continue;
     }
-    if (unpublished.length > 0) {
-        logger.warn(
-            "注册时未找到已发布的法律文档，本次未写入同意记录（部署者应尽快发布政策）",
-            { user_id: actor.userId, kinds: unpublished.join(",") },
-        );
-    }
+    await tx
+      .insert(userConsents)
+      .values({
+        id: crypto.randomUUID(),
+        user_id: actor.userId,
+        document_kind: kind,
+        version: doc.version,
+        content_hash: doc.content_hash,
+        agreed_at: now,
+        ip,
+        user_agent: ua,
+      })
+      .onConflictDoNothing();
+  }
+  if (unpublished.length > 0) {
+    logger.warn(
+      "注册时未找到已发布的法律文档，本次未写入同意记录（部署者应尽快发布政策）",
+      { user_id: actor.userId, kinds: unpublished.join(",") },
+    );
+  }
 }
 
 /**
@@ -140,29 +140,29 @@ export async function recordConsentsForRegistration(
  * @returns kind → 已同意版本号（未同意则不含该 key）
  */
 export async function getConsentedVersions(
-    userId: string,
+  userId: string,
 ): Promise<Partial<Record<LegalKind, number>>> {
-    const db = getDb();
-    const rows = await db
-        .select({
-            kind: userConsents.document_kind,
-            version: userConsents.version,
-        })
-        .from(userConsents)
-        .where(
-            and(
-                eq(userConsents.user_id, userId),
-                inArray(userConsents.document_kind, [...LEGAL_KINDS]),
-            ),
-        );
-    const out: Partial<Record<LegalKind, number>> = {};
-    for (const row of rows) {
-        out[row.kind as LegalKind] = Math.max(
-            out[row.kind as LegalKind] ?? 0,
-            row.version,
-        );
-    }
-    return out;
+  const db = getDb();
+  const rows = await db
+    .select({
+      kind: userConsents.document_kind,
+      version: userConsents.version,
+    })
+    .from(userConsents)
+    .where(
+      and(
+        eq(userConsents.user_id, userId),
+        inArray(userConsents.document_kind, [...LEGAL_KINDS]),
+      ),
+    );
+  const out: Partial<Record<LegalKind, number>> = {};
+  for (const row of rows) {
+    out[row.kind as LegalKind] = Math.max(
+      out[row.kind as LegalKind] ?? 0,
+      row.version,
+    );
+  }
+  return out;
 }
 
 /**
@@ -176,38 +176,38 @@ export async function getConsentedVersions(
  * @returns kind → 同意状态
  */
 export async function getLegalStatus(
-    userId: string,
+  userId: string,
 ): Promise<
-    Record<LegalKind, {
-        required_version: number;
-        agreed_version: number;
-        needs_consent: boolean;
-        is_material: boolean;
-        /** 需同意的重大版本的变更摘要（供弹窗展示）；无需同意时为 null */
-        change_summary: string | null;
-    }>
+  Record<LegalKind, {
+    required_version: number;
+    agreed_version: number;
+    needs_consent: boolean;
+    is_material: boolean;
+    /** 需同意的重大版本的变更摘要（供弹窗展示）；无需同意时为 null */
+    change_summary: string | null;
+  }>
 > {
-    const agreed = await getConsentedVersions(userId);
-    const out = {} as Record<LegalKind, {
-        required_version: number;
-        agreed_version: number;
-        needs_consent: boolean;
-        is_material: boolean;
-        change_summary: string | null;
-    }>;
-    for (const kind of LEGAL_KINDS) {
-        const required = await getRequiredConsentVersion(kind);
-        const agreedVersion = agreed[kind] ?? 0;
-        const needsConsent = agreedVersion < required;
-        // 仅在需要重新同意时取摘要，避免无谓查询。
-        const info = needsConsent ? await getRequiredConsentInfo(kind) : null;
-        out[kind] = {
-            required_version: required,
-            agreed_version: agreedVersion,
-            needs_consent: needsConsent,
-            is_material: required > 0,
-            change_summary: info?.change_summary ?? null,
-        };
-    }
-    return out;
+  const agreed = await getConsentedVersions(userId);
+  const out = {} as Record<LegalKind, {
+    required_version: number;
+    agreed_version: number;
+    needs_consent: boolean;
+    is_material: boolean;
+    change_summary: string | null;
+  }>;
+  for (const kind of LEGAL_KINDS) {
+    const required = await getRequiredConsentVersion(kind);
+    const agreedVersion = agreed[kind] ?? 0;
+    const needsConsent = agreedVersion < required;
+    // 仅在需要重新同意时取摘要，避免无谓查询。
+    const info = needsConsent ? await getRequiredConsentInfo(kind) : null;
+    out[kind] = {
+      required_version: required,
+      agreed_version: agreedVersion,
+      needs_consent: needsConsent,
+      is_material: required > 0,
+      change_summary: info?.change_summary ?? null,
+    };
+  }
+  return out;
 }

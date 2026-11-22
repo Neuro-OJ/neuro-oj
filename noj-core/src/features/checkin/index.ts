@@ -8,19 +8,19 @@ import { defineFeature } from "../../shared/feature.ts";
 import { checkinRouter } from "./routes.ts";
 
 export const feature = defineFeature({
-    name: "checkin",
-    router: checkinRouter,
+  name: "checkin",
+  router: checkinRouter,
 });
 
 export {
-    checkIn,
-    type CheckinHistory,
-    type CheckinLeaderboard,
-    type CheckinLeaderboardRow,
-    type CheckInResponse,
-    type CheckinStats,
-    getCheckinHistory,
-    getCheckinLeaderboard,
-    getCheckinStats,
-    getTodayCheckIn,
+  checkIn,
+  type CheckinHistory,
+  type CheckinLeaderboard,
+  type CheckinLeaderboardRow,
+  type CheckInResponse,
+  type CheckinStats,
+  getCheckinHistory,
+  getCheckinLeaderboard,
+  getCheckinStats,
+  getTodayCheckIn,
 } from "./service.ts";

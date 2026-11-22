@@ -16,9 +16,9 @@ import * as trainings from "./features/trainings/index.ts";
 
 /** 已迁入 `features/` 结构的功能（迁移期与旧 `modules/` 并存）。 */
 export const FEATURES: readonly FeatureDefinition[] = [
-    trainings.feature,
-    legal.feature,
-    tags.feature,
-    checkin.feature,
-    knowledge.feature,
+  trainings.feature,
+  legal.feature,
+  tags.feature,
+  checkin.feature,
+  knowledge.feature,
 ];

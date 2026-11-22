@@ -31,11 +31,11 @@ export const REQUEST_ID_KEY = "request_id";
  * 使用，两边必须共用这一个实例。
  */
 export const requestContextStorage = new AsyncLocalStorage<
-    Record<string, unknown>
+  Record<string, unknown>
 >();
 
 export interface RequestContext {
-    requestId: string;
+  requestId: string;
 }
 
 /**
@@ -45,14 +45,14 @@ export interface RequestContext {
  * 使其内部（含 service 层）的所有 logger 调用自动附带同一 request_id。
  */
 export function runWithRequestContext<T>(requestId: string, fn: () => T): T {
-    return requestContextStorage.run(
-        { [REQUEST_ID_KEY]: requestId },
-        fn,
-    );
+  return requestContextStorage.run(
+    { [REQUEST_ID_KEY]: requestId },
+    fn,
+  );
 }
 
 /** 读取当前请求上下文的 request_id（不在请求上下文中时返回 undefined）。 */
 export function getRequestId(): string | undefined {
-    const value = requestContextStorage.getStore()?.[REQUEST_ID_KEY];
-    return typeof value === "string" ? value : undefined;
+  const value = requestContextStorage.getStore()?.[REQUEST_ID_KEY];
+  return typeof value === "string" ? value : undefined;
 }

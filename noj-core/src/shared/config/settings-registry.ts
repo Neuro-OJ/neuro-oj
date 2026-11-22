@@ -34,954 +34,952 @@ export type SettingType = "boolean" | "string" | "text" | "integer";
 export type ConfigScope = "runtime" | "bootstrap";
 
 export type SettingCategory =
-    | "auth"
-    | "maintenance"
-    | "email"
-    | "rate_limit"
-    | "storage"
-    | "database"
-    | "redis"
-    | "cors"
-    | "community"
-    | "judge"
-    | "llm"
-    | "legal"
-    | "knowledge"
-    | "other";
+  | "auth"
+  | "maintenance"
+  | "email"
+  | "rate_limit"
+  | "storage"
+  | "database"
+  | "redis"
+  | "cors"
+  | "community"
+  | "judge"
+  | "llm"
+  | "legal"
+  | "knowledge"
+  | "other";
 
 /** 配置项元数据（统一注册表条目） */
 export interface SettingDefinition {
-    key: string;
-    type: SettingType;
-    /** 默认值（DB 与 env 均未配置时回退至此；bootstrap env-only 项可无默认值） */
-    default?: boolean | string | number;
-    description: string;
-    is_secret: boolean;
-    /** 生命周期归属：runtime=DB 可热改；bootstrap=env 启动期定型只读 */
-    scope: ConfigScope;
-    /** runtime 专属：env 兜底键名（仅首次启动/开发环境兜底用） */
-    envFallback?: string;
-    /** bootstrap 专属：env 事实源键名（唯一） */
-    envKey?: string;
-    category: SettingCategory;
-    /** integer 类型专用：最小值（含） */
-    min?: number;
-    /** integer 类型专用：最大值（含） */
-    max?: number;
-    /** 修改后需重启 noj-core 才能生效（如启动时单例读取的配置） */
-    needsRestart?: boolean;
-    /** 是否在管理后台展示（false=仅参与校验/登记，如开发测试专用键） */
-    visible?: boolean;
-    /** 字符串设置的合法选项；避免拼写错误导致访问政策失效。 */
-    choices?: readonly string[];
-    /** 结构化文本的格式约束，在写入设置时校验。 */
-    valueSchema?:
-        | "domain_limits"
-        | "domain_features"
-        | "domain_llm_quota_caps"
-        | "knowledge_offpeak_window";
+  key: string;
+  type: SettingType;
+  /** 默认值（DB 与 env 均未配置时回退至此；bootstrap env-only 项可无默认值） */
+  default?: boolean | string | number;
+  description: string;
+  is_secret: boolean;
+  /** 生命周期归属：runtime=DB 可热改；bootstrap=env 启动期定型只读 */
+  scope: ConfigScope;
+  /** runtime 专属：env 兜底键名（仅首次启动/开发环境兜底用） */
+  envFallback?: string;
+  /** bootstrap 专属：env 事实源键名（唯一） */
+  envKey?: string;
+  category: SettingCategory;
+  /** integer 类型专用：最小值（含） */
+  min?: number;
+  /** integer 类型专用：最大值（含） */
+  max?: number;
+  /** 修改后需重启 noj-core 才能生效（如启动时单例读取的配置） */
+  needsRestart?: boolean;
+  /** 是否在管理后台展示（false=仅参与校验/登记，如开发测试专用键） */
+  visible?: boolean;
+  /** 字符串设置的合法选项；避免拼写错误导致访问政策失效。 */
+  choices?: readonly string[];
+  /** 结构化文本的格式约束，在写入设置时校验。 */
+  valueSchema?:
+    | "domain_limits"
+    | "domain_features"
+    | "domain_llm_quota_caps"
+    | "knowledge_offpeak_window";
 }
 
 /** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */
 export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
-    ...WORKSPACE_CONFIG_DEFINITIONS,
-    // 数据说明只公开以下专用字段，运营者补充真实部署信息。
-    // ── runtime（DB-owned，运行时可热改）───────────────────────
-    // bootstrap 半区见 ./settings-registry-bootstrap.ts（下方展开处拼接）。
-    // ── legal（法律与合规，PIPL，2026-09-23）───────────────────
-    {
-        key: "legal_operator_name",
-        type: "string",
-        default: "",
-        description: "个人信息处理者名称（运营主体，公开展示）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_OPERATOR_NAME",
-        category: "legal",
-    },
-    {
-        key: "legal_contact",
-        type: "string",
-        default: "",
-        description: "法律与隐私事务联系方式（邮箱或说明，公开展示）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_CONTACT",
-        category: "legal",
-    },
-    {
-        key: "legal_icp_number",
-        type: "string",
-        default: "",
-        description: "ICP 备案号（未备案留空，页脚不显示）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_ICP_NUMBER",
-        category: "legal",
-    },
-    {
-        key: "legal_icp_url",
-        type: "string",
-        default: "",
-        description: "ICP 备案查询链接（可选）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_ICP_URL",
-        category: "legal",
-    },
-    {
-        key: "legal_police_number",
-        type: "string",
-        default: "",
-        description: "公安联网备案号（未备案留空，页脚不显示）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_POLICE_NUMBER",
-        category: "legal",
-    },
-    {
-        key: "legal_police_url",
-        type: "string",
-        default: "",
-        description: "公安联网备案查询链接（可选）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_POLICE_URL",
-        category: "legal",
-    },
-    {
-        key: "legal_third_parties",
-        type: "text",
-        default: "",
-        description:
-            "第三方服务清单（JSON 数组：名称/用途/数据种类；经 /api/v1/site/meta 公开展示）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_THIRD_PARTIES",
-        category: "legal",
-    },
-    {
-        // 2026-09-25 评审：旧键 `data_policy_deployment` 的语义是"部署补充说明"
-        // （存储区域/保留期限/备份/第三方服务…），0088 迁移一度把它搬进
-        // `legal_operator_name`（个人信息处理者名称），导致 /data-policy 页把多行
-        // 说明渲染成"处理者：<说明>"。这里恢复语义：独立键承载部署说明。
-        key: "legal_deployment_notes",
-        type: "text",
-        default: "",
-        description:
-            "部署补充说明（存储区域、保留期限、备份、第三方服务及额外用途；/data-policy 公开展示）",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "LEGAL_DEPLOYMENT_NOTES",
-        category: "legal",
-    },
-    {
-        // 老 env 名兼容（对位 bootstrap 的 OAUTH_GITHUB_SECRET 别名做法）：
-        // 升级后仍在 .env.prod 里配 DATA_POLICY_CONTACT 的部署不应静默失去联系方式。
-        // 该键不展示在后台（值应写入 legal_contact），只在读取链里作为兜底。
-        key: "data_policy_contact",
-        type: "string",
-        default: "",
-        description:
-            "【已废弃别名】旧 env `DATA_POLICY_CONTACT` 的兼容项；请改用 legal_contact / LEGAL_CONTACT",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "DATA_POLICY_CONTACT",
-        category: "legal",
-        visible: false,
-    },
-    {
-        key: "data_policy_deployment",
-        type: "text",
-        default: "",
-        description:
-            "【已废弃别名】旧 env `DATA_POLICY_DEPLOYMENT` 的兼容项；请改用 legal_deployment_notes / LEGAL_DEPLOYMENT_NOTES",
-        is_secret: false,
-        scope: "runtime",
-        envFallback: "DATA_POLICY_DEPLOYMENT",
-        category: "legal",
-        visible: false,
-    },
-    // ── auth ──────────────────────────────────────────────────
-    {
-        key: "allow_register",
-        type: "boolean",
-        default: true,
-        description:
-            "是否开放新用户注册（关闭后 /api/v1/auth/register 返回 403）",
-        is_secret: false,
-        envFallback: "ALLOW_REGISTER",
-        category: "auth",
-        scope: "runtime",
-    },
-    {
-        key: "jwt_expires_in",
-        type: "string",
-        default: "24h",
-        description: "JWT Token 有效期",
-        is_secret: false,
-        envFallback: "JWT_EXPIRES_IN",
-        category: "auth",
-        scope: "runtime",
-    },
-    {
-        key: "jwt_remember_expires_in",
-        type: "string",
-        default: "30d",
-        description: "勾选「记住我」登录时的 JWT Token 有效期",
-        is_secret: false,
-        envFallback: "JWT_REMEMBER_EXPIRES_IN",
-        category: "auth",
-        scope: "runtime",
-    },
+  ...WORKSPACE_CONFIG_DEFINITIONS,
+  // 数据说明只公开以下专用字段，运营者补充真实部署信息。
+  // ── runtime（DB-owned，运行时可热改）───────────────────────
+  // bootstrap 半区见 ./settings-registry-bootstrap.ts（下方展开处拼接）。
+  // ── legal（法律与合规，PIPL，2026-09-23）───────────────────
+  {
+    key: "legal_operator_name",
+    type: "string",
+    default: "",
+    description: "个人信息处理者名称（运营主体，公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_OPERATOR_NAME",
+    category: "legal",
+  },
+  {
+    key: "legal_contact",
+    type: "string",
+    default: "",
+    description: "法律与隐私事务联系方式（邮箱或说明，公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_CONTACT",
+    category: "legal",
+  },
+  {
+    key: "legal_icp_number",
+    type: "string",
+    default: "",
+    description: "ICP 备案号（未备案留空，页脚不显示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_ICP_NUMBER",
+    category: "legal",
+  },
+  {
+    key: "legal_icp_url",
+    type: "string",
+    default: "",
+    description: "ICP 备案查询链接（可选）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_ICP_URL",
+    category: "legal",
+  },
+  {
+    key: "legal_police_number",
+    type: "string",
+    default: "",
+    description: "公安联网备案号（未备案留空，页脚不显示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_POLICE_NUMBER",
+    category: "legal",
+  },
+  {
+    key: "legal_police_url",
+    type: "string",
+    default: "",
+    description: "公安联网备案查询链接（可选）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_POLICE_URL",
+    category: "legal",
+  },
+  {
+    key: "legal_third_parties",
+    type: "text",
+    default: "",
+    description:
+      "第三方服务清单（JSON 数组：名称/用途/数据种类；经 /api/v1/site/meta 公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_THIRD_PARTIES",
+    category: "legal",
+  },
+  {
+    // 2026-09-25 评审：旧键 `data_policy_deployment` 的语义是"部署补充说明"
+    // （存储区域/保留期限/备份/第三方服务…），0088 迁移一度把它搬进
+    // `legal_operator_name`（个人信息处理者名称），导致 /data-policy 页把多行
+    // 说明渲染成"处理者：<说明>"。这里恢复语义：独立键承载部署说明。
+    key: "legal_deployment_notes",
+    type: "text",
+    default: "",
+    description:
+      "部署补充说明（存储区域、保留期限、备份、第三方服务及额外用途；/data-policy 公开展示）",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "LEGAL_DEPLOYMENT_NOTES",
+    category: "legal",
+  },
+  {
+    // 老 env 名兼容（对位 bootstrap 的 OAUTH_GITHUB_SECRET 别名做法）：
+    // 升级后仍在 .env.prod 里配 DATA_POLICY_CONTACT 的部署不应静默失去联系方式。
+    // 该键不展示在后台（值应写入 legal_contact），只在读取链里作为兜底。
+    key: "data_policy_contact",
+    type: "string",
+    default: "",
+    description:
+      "【已废弃别名】旧 env `DATA_POLICY_CONTACT` 的兼容项；请改用 legal_contact / LEGAL_CONTACT",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "DATA_POLICY_CONTACT",
+    category: "legal",
+    visible: false,
+  },
+  {
+    key: "data_policy_deployment",
+    type: "text",
+    default: "",
+    description:
+      "【已废弃别名】旧 env `DATA_POLICY_DEPLOYMENT` 的兼容项；请改用 legal_deployment_notes / LEGAL_DEPLOYMENT_NOTES",
+    is_secret: false,
+    scope: "runtime",
+    envFallback: "DATA_POLICY_DEPLOYMENT",
+    category: "legal",
+    visible: false,
+  },
+  // ── auth ──────────────────────────────────────────────────
+  {
+    key: "allow_register",
+    type: "boolean",
+    default: true,
+    description: "是否开放新用户注册（关闭后 /api/v1/auth/register 返回 403）",
+    is_secret: false,
+    envFallback: "ALLOW_REGISTER",
+    category: "auth",
+    scope: "runtime",
+  },
+  {
+    key: "jwt_expires_in",
+    type: "string",
+    default: "24h",
+    description: "JWT Token 有效期",
+    is_secret: false,
+    envFallback: "JWT_EXPIRES_IN",
+    category: "auth",
+    scope: "runtime",
+  },
+  {
+    key: "jwt_remember_expires_in",
+    type: "string",
+    default: "30d",
+    description: "勾选「记住我」登录时的 JWT Token 有效期",
+    is_secret: false,
+    envFallback: "JWT_REMEMBER_EXPIRES_IN",
+    category: "auth",
+    scope: "runtime",
+  },
 
-    // ── maintenance ───────────────────────────────────────────
-    {
-        key: "maintenance_mode",
-        type: "boolean",
-        default: false,
-        description: "维护模式（启用后写操作 API 返回 503，仅读操作可用）",
-        is_secret: false,
-        envFallback: "MAINTENANCE_MODE",
-        category: "maintenance",
-        scope: "runtime",
-    },
+  // ── maintenance ───────────────────────────────────────────
+  {
+    key: "maintenance_mode",
+    type: "boolean",
+    default: false,
+    description: "维护模式（启用后写操作 API 返回 503，仅读操作可用）",
+    is_secret: false,
+    envFallback: "MAINTENANCE_MODE",
+    category: "maintenance",
+    scope: "runtime",
+  },
 
-    // ── email ─────────────────────────────────────────────────
-    {
-        key: "email_provider",
-        type: "string",
-        default: "mock",
-        description: "邮件服务（disabled / aliyun / tencent）",
-        is_secret: false,
-        envKey: "EMAIL_PROVIDER",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "alibaba_access_key_id",
-        type: "string",
-        default: "",
-        description: "阿里云 DirectMail AccessKey ID",
-        is_secret: false,
-        envKey: "ALIBABA_ACCESS_KEY_ID",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "alibaba_access_key_secret",
-        type: "string",
-        default: "",
-        description:
-            "阿里云 DirectMail AccessKey Secret（已脱敏：仅保留前 3 后 3 字符）",
-        is_secret: true,
-        envKey: "ALIBABA_ACCESS_KEY_SECRET",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "alibaba_from_email",
-        type: "string",
-        default: "",
-        description: "阿里云发信地址（需控制台验证域名）",
-        is_secret: false,
-        envKey: "ALIBABA_FROM_EMAIL",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "tencent_secret_id",
-        type: "string",
-        default: "",
-        description: "腾讯云 SES SecretId",
-        is_secret: false,
-        envKey: "TENCENT_SECRET_ID",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "tencent_secret_key",
-        type: "string",
-        default: "",
-        description: "腾讯云 SES SecretKey（已脱敏：仅保留前 3 后 3 字符）",
-        is_secret: true,
-        envKey: "TENCENT_SECRET_KEY",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "tencent_from_email",
-        type: "string",
-        default: "",
-        description: "腾讯云发信地址（需控制台验证域名）",
-        is_secret: false,
-        envKey: "TENCENT_FROM_EMAIL",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "tencent_region",
-        type: "string",
-        default: "ap-guangzhou",
-        description: "腾讯云地域",
-        is_secret: false,
-        envKey: "TENCENT_REGION",
-        category: "email",
-        scope: "bootstrap",
-    },
-    {
-        key: "email_webhook_secret",
-        type: "string",
-        default: "",
-        description:
-            "内部 fixture 邮件回调签名密钥；真实 Provider 需按官方协议单独适配",
-        is_secret: true,
-        envKey: "EMAIL_WEBHOOK_SECRET",
-        category: "email",
-        scope: "bootstrap",
-    },
+  // ── email ─────────────────────────────────────────────────
+  {
+    key: "email_provider",
+    type: "string",
+    default: "mock",
+    description: "邮件服务（disabled / aliyun / tencent）",
+    is_secret: false,
+    envKey: "EMAIL_PROVIDER",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "alibaba_access_key_id",
+    type: "string",
+    default: "",
+    description: "阿里云 DirectMail AccessKey ID",
+    is_secret: false,
+    envKey: "ALIBABA_ACCESS_KEY_ID",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "alibaba_access_key_secret",
+    type: "string",
+    default: "",
+    description:
+      "阿里云 DirectMail AccessKey Secret（已脱敏：仅保留前 3 后 3 字符）",
+    is_secret: true,
+    envKey: "ALIBABA_ACCESS_KEY_SECRET",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "alibaba_from_email",
+    type: "string",
+    default: "",
+    description: "阿里云发信地址（需控制台验证域名）",
+    is_secret: false,
+    envKey: "ALIBABA_FROM_EMAIL",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "tencent_secret_id",
+    type: "string",
+    default: "",
+    description: "腾讯云 SES SecretId",
+    is_secret: false,
+    envKey: "TENCENT_SECRET_ID",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "tencent_secret_key",
+    type: "string",
+    default: "",
+    description: "腾讯云 SES SecretKey（已脱敏：仅保留前 3 后 3 字符）",
+    is_secret: true,
+    envKey: "TENCENT_SECRET_KEY",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "tencent_from_email",
+    type: "string",
+    default: "",
+    description: "腾讯云发信地址（需控制台验证域名）",
+    is_secret: false,
+    envKey: "TENCENT_FROM_EMAIL",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "tencent_region",
+    type: "string",
+    default: "ap-guangzhou",
+    description: "腾讯云地域",
+    is_secret: false,
+    envKey: "TENCENT_REGION",
+    category: "email",
+    scope: "bootstrap",
+  },
+  {
+    key: "email_webhook_secret",
+    type: "string",
+    default: "",
+    description:
+      "内部 fixture 邮件回调签名密钥；真实 Provider 需按官方协议单独适配",
+    is_secret: true,
+    envKey: "EMAIL_WEBHOOK_SECRET",
+    category: "email",
+    scope: "bootstrap",
+  },
 
-    // ── rate_limit ────────────────────────────────────────────
-    // 注：登录限流没有独立开关（issue #496）。此前登记的 rate_limit_login_enabled
-    // 无任何读取点——真实开关是下方的 rate_limit_enabled 总开关，
-    // 搜索限流另有 rate_limit_search_enabled。多一个不生效的开关只增加误配面。
-    {
-        key: "rate_limit_enabled",
-        type: "boolean",
-        default: true,
-        description: "速率限制总开关（NOJ_ENV=test 时强制关闭）",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_ENABLED",
-        category: "rate_limit",
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_ip_window",
-        type: "integer",
-        default: 30,
-        description: "IP 维度限流窗口（秒）",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_IP_WINDOW",
-        category: "rate_limit",
-        min: 1,
-        max: 3600,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_ip_max",
-        type: "integer",
-        default: 10,
-        description: "IP 维度窗口内最大尝试次数",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_IP_MAX",
-        category: "rate_limit",
-        min: 1,
-        max: 1000,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_acc_window",
-        type: "integer",
-        default: 30,
-        description: "账号维度限流窗口（秒）",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_ACC_WINDOW",
-        category: "rate_limit",
-        min: 1,
-        max: 3600,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_acc_max",
-        type: "integer",
-        default: 5,
-        description: "账号维度窗口内最大尝试次数",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_ACC_MAX",
-        category: "rate_limit",
-        min: 1,
-        max: 100,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_backoff_sec",
-        type: "integer",
-        default: 15,
-        description: "每次失败退避秒数",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_BACKOFF_SEC",
-        category: "rate_limit",
-        min: 0,
-        max: 300,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_lock_threshold",
-        type: "integer",
-        default: 10,
-        description: "连续失败锁定阈值",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_LOCK_THRESHOLD",
-        category: "rate_limit",
-        min: 1,
-        max: 100,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_login_lock_seconds",
-        type: "integer",
-        default: 3600,
-        description: "锁定时长（秒）",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_LOGIN_LOCK_SECONDS",
-        category: "rate_limit",
-        min: 60,
-        max: 86400,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_search_enabled",
-        type: "boolean",
-        default: true,
-        description: "是否启用搜索速率限制（NOJ_ENV=test 时强制关闭）",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_SEARCH_ENABLED",
-        category: "rate_limit",
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_search_window",
-        type: "integer",
-        default: 30,
-        description: "搜索限流窗口（秒）",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_SEARCH_WINDOW",
-        category: "rate_limit",
-        min: 1,
-        max: 3600,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_search_max_anon",
-        type: "integer",
-        default: 60,
-        description: "匿名 IP 窗口内最大搜索次数",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_SEARCH_MAX_ANON",
-        category: "rate_limit",
-        min: 1,
-        max: 10000,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_search_max_authed",
-        type: "integer",
-        default: 120,
-        description: "登录用户窗口内最大搜索次数",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_SEARCH_MAX_AUTHED",
-        category: "rate_limit",
-        min: 1,
-        max: 10000,
-        scope: "runtime",
-    },
-    {
-        key: "rate_limit_search_max_ip_total",
-        type: "integer",
-        default: 600,
-        description:
-            "登录用户在同一 IP 上的窗口内搜索引擎兜底上限（0 = 关闭）。" +
-            "量级远高于用户桶，只用于防止账号轮换绕过与保留 IP 维度的洪水线索",
-        is_secret: false,
-        envFallback: "RATE_LIMIT_SEARCH_MAX_IP_TOTAL",
-        category: "rate_limit",
-        min: 0,
-        max: 100000,
-        scope: "runtime",
-    },
-    {
-        key: "trusted_proxies",
-        type: "string",
-        default: "",
-        description: "可信代理白名单（IP/CIDR，逗号分隔）",
-        is_secret: false,
-        envFallback: "TRUSTED_PROXIES",
-        category: "rate_limit",
-        scope: "runtime",
-    },
+  // ── rate_limit ────────────────────────────────────────────
+  // 注：登录限流没有独立开关（issue #496）。此前登记的 rate_limit_login_enabled
+  // 无任何读取点——真实开关是下方的 rate_limit_enabled 总开关，
+  // 搜索限流另有 rate_limit_search_enabled。多一个不生效的开关只增加误配面。
+  {
+    key: "rate_limit_enabled",
+    type: "boolean",
+    default: true,
+    description: "速率限制总开关（NOJ_ENV=test 时强制关闭）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_ENABLED",
+    category: "rate_limit",
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_ip_window",
+    type: "integer",
+    default: 30,
+    description: "IP 维度限流窗口（秒）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_IP_WINDOW",
+    category: "rate_limit",
+    min: 1,
+    max: 3600,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_ip_max",
+    type: "integer",
+    default: 10,
+    description: "IP 维度窗口内最大尝试次数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_IP_MAX",
+    category: "rate_limit",
+    min: 1,
+    max: 1000,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_acc_window",
+    type: "integer",
+    default: 30,
+    description: "账号维度限流窗口（秒）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_ACC_WINDOW",
+    category: "rate_limit",
+    min: 1,
+    max: 3600,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_acc_max",
+    type: "integer",
+    default: 5,
+    description: "账号维度窗口内最大尝试次数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_ACC_MAX",
+    category: "rate_limit",
+    min: 1,
+    max: 100,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_backoff_sec",
+    type: "integer",
+    default: 15,
+    description: "每次失败退避秒数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_BACKOFF_SEC",
+    category: "rate_limit",
+    min: 0,
+    max: 300,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_lock_threshold",
+    type: "integer",
+    default: 10,
+    description: "连续失败锁定阈值",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_LOCK_THRESHOLD",
+    category: "rate_limit",
+    min: 1,
+    max: 100,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_login_lock_seconds",
+    type: "integer",
+    default: 3600,
+    description: "锁定时长（秒）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_LOGIN_LOCK_SECONDS",
+    category: "rate_limit",
+    min: 60,
+    max: 86400,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_search_enabled",
+    type: "boolean",
+    default: true,
+    description: "是否启用搜索速率限制（NOJ_ENV=test 时强制关闭）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_ENABLED",
+    category: "rate_limit",
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_search_window",
+    type: "integer",
+    default: 30,
+    description: "搜索限流窗口（秒）",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_WINDOW",
+    category: "rate_limit",
+    min: 1,
+    max: 3600,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_search_max_anon",
+    type: "integer",
+    default: 60,
+    description: "匿名 IP 窗口内最大搜索次数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_ANON",
+    category: "rate_limit",
+    min: 1,
+    max: 10000,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_search_max_authed",
+    type: "integer",
+    default: 120,
+    description: "登录用户窗口内最大搜索次数",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_AUTHED",
+    category: "rate_limit",
+    min: 1,
+    max: 10000,
+    scope: "runtime",
+  },
+  {
+    key: "rate_limit_search_max_ip_total",
+    type: "integer",
+    default: 600,
+    description: "登录用户在同一 IP 上的窗口内搜索引擎兜底上限（0 = 关闭）。" +
+      "量级远高于用户桶，只用于防止账号轮换绕过与保留 IP 维度的洪水线索",
+    is_secret: false,
+    envFallback: "RATE_LIMIT_SEARCH_MAX_IP_TOTAL",
+    category: "rate_limit",
+    min: 0,
+    max: 100000,
+    scope: "runtime",
+  },
+  {
+    key: "trusted_proxies",
+    type: "string",
+    default: "",
+    description: "可信代理白名单（IP/CIDR，逗号分隔）",
+    is_secret: false,
+    envFallback: "TRUSTED_PROXIES",
+    category: "rate_limit",
+    scope: "runtime",
+  },
 
-    // ── llm（题目 LLM 能力的平台全局默认）────────────────────
-    {
-        key: "llm_default_provider_id",
-        type: "string",
-        default: "",
-        description: "LLM 题全局默认 Provider ID（gateway 内部 Provider UUID）",
-        is_secret: false,
-        envFallback: "NOJ_LLM_DEFAULT_PROVIDER_ID",
-        category: "llm",
-        scope: "runtime",
-    },
-    {
-        key: "llm_default_model",
-        type: "string",
-        default: "",
-        description: "LLM 题全局默认模型名（必须显式配置，无 Provider 级回退）",
-        is_secret: false,
-        envFallback: "NOJ_LLM_DEFAULT_MODEL",
-        category: "llm",
-        scope: "runtime",
-    },
+  // ── llm（题目 LLM 能力的平台全局默认）────────────────────
+  {
+    key: "llm_default_provider_id",
+    type: "string",
+    default: "",
+    description: "LLM 题全局默认 Provider ID（gateway 内部 Provider UUID）",
+    is_secret: false,
+    envFallback: "NOJ_LLM_DEFAULT_PROVIDER_ID",
+    category: "llm",
+    scope: "runtime",
+  },
+  {
+    key: "llm_default_model",
+    type: "string",
+    default: "",
+    description: "LLM 题全局默认模型名（必须显式配置，无 Provider 级回退）",
+    is_secret: false,
+    envFallback: "NOJ_LLM_DEFAULT_MODEL",
+    category: "llm",
+    scope: "runtime",
+  },
 
-    // ── storage（修改需重启 noj-core：Provider 为启动时初始化的单例）───────
-    {
-        key: "storage_provider",
-        type: "string",
-        default: "local",
-        description: "存储 Provider（local / s3）",
-        is_secret: false,
-        envKey: "STORAGE_PROVIDER",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
-    {
-        key: "s3_endpoint",
-        type: "string",
-        default: "",
-        description: "S3 兼容对象存储端点",
-        is_secret: false,
-        envKey: "S3_ENDPOINT",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
-    {
-        key: "s3_region",
-        type: "string",
-        default: "us-east-1",
-        description: "S3 区域",
-        is_secret: false,
-        envKey: "S3_REGION",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
-    {
-        key: "s3_access_key",
-        type: "string",
-        default: "",
-        description: "S3 访问密钥",
-        is_secret: false,
-        envKey: "S3_ACCESS_KEY",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
-    {
-        key: "s3_secret_key",
-        type: "string",
-        default: "",
-        description: "S3 秘密密钥（已脱敏：仅保留前 3 后 3 字符）",
-        is_secret: true,
-        envKey: "S3_SECRET_KEY",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
-    {
-        key: "s3_bucket",
-        type: "string",
-        default: "noj-support-packages",
-        description: "S3 存储桶名",
-        is_secret: false,
-        envKey: "S3_BUCKET",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
-    {
-        key: "s3_force_path_style",
-        type: "boolean",
-        default: false,
-        description: "启用路径风格 URL（MinIO 等 S3 兼容存储需要设为 true）",
-        is_secret: false,
-        envKey: "S3_FORCE_PATH_STYLE",
-        category: "storage",
-        needsRestart: true,
-        scope: "bootstrap",
-    },
+  // ── storage（修改需重启 noj-core：Provider 为启动时初始化的单例）───────
+  {
+    key: "storage_provider",
+    type: "string",
+    default: "local",
+    description: "存储 Provider（local / s3）",
+    is_secret: false,
+    envKey: "STORAGE_PROVIDER",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
+  {
+    key: "s3_endpoint",
+    type: "string",
+    default: "",
+    description: "S3 兼容对象存储端点",
+    is_secret: false,
+    envKey: "S3_ENDPOINT",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
+  {
+    key: "s3_region",
+    type: "string",
+    default: "us-east-1",
+    description: "S3 区域",
+    is_secret: false,
+    envKey: "S3_REGION",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
+  {
+    key: "s3_access_key",
+    type: "string",
+    default: "",
+    description: "S3 访问密钥",
+    is_secret: false,
+    envKey: "S3_ACCESS_KEY",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
+  {
+    key: "s3_secret_key",
+    type: "string",
+    default: "",
+    description: "S3 秘密密钥（已脱敏：仅保留前 3 后 3 字符）",
+    is_secret: true,
+    envKey: "S3_SECRET_KEY",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
+  {
+    key: "s3_bucket",
+    type: "string",
+    default: "noj-support-packages",
+    description: "S3 存储桶名",
+    is_secret: false,
+    envKey: "S3_BUCKET",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
+  {
+    key: "s3_force_path_style",
+    type: "boolean",
+    default: false,
+    description: "启用路径风格 URL（MinIO 等 S3 兼容存储需要设为 true）",
+    is_secret: false,
+    envKey: "S3_FORCE_PATH_STYLE",
+    category: "storage",
+    needsRestart: true,
+    scope: "bootstrap",
+  },
 
-    // ── community ───────────────────────────────────────────
-    {
-        key: "community_enabled",
-        type: "boolean",
-        default: true,
-        description: "是否启用社区功能总开关",
-        is_secret: false,
-        envFallback: "COMMUNITY_ENABLED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_guest_read_enabled",
-        type: "boolean",
-        default: false,
-        description: "是否允许游客阅读社区公开内容",
-        is_secret: false,
-        envFallback: "COMMUNITY_GUEST_READ_ENABLED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_read_only",
-        type: "boolean",
-        default: false,
-        description: "社区只读模式（审核员与管理员除外）",
-        is_secret: false,
-        envFallback: "COMMUNITY_READ_ONLY",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_solutions_enabled",
-        type: "boolean",
-        default: true,
-        description: "是否启用题解区",
-        is_secret: false,
-        envFallback: "COMMUNITY_SOLUTIONS_ENABLED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_discussions_enabled",
-        type: "boolean",
-        default: true,
-        description: "是否启用讨论区",
-        is_secret: false,
-        envFallback: "COMMUNITY_DISCUSSIONS_ENABLED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_comments_enabled",
-        type: "boolean",
-        default: true,
-        description: "是否启用评论",
-        is_secret: false,
-        envFallback: "COMMUNITY_COMMENTS_ENABLED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_external_images_enabled",
-        type: "boolean",
-        default: false,
-        description: "是否允许 Markdown 渲染 HTTPS 外链图片",
-        is_secret: false,
-        envFallback: "COMMUNITY_EXTERNAL_IMAGES_ENABLED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_solution_requires_accepted",
-        type: "boolean",
-        default: true,
-        description: "发布题解是否必须先通过对应题目",
-        is_secret: false,
-        envFallback: "COMMUNITY_SOLUTION_REQUIRES_ACCEPTED",
-        category: "community",
-        scope: "runtime",
-    },
-    {
-        key: "community_new_user_review_hours",
-        type: "integer",
-        default: 0,
-        description: "注册不足指定小时的用户发布内容需审核（0 为关闭）",
-        is_secret: false,
-        envFallback: "COMMUNITY_NEW_USER_REVIEW_HOURS",
-        category: "community",
-        min: 0,
-        max: 8760,
-        scope: "runtime",
-    },
-    {
-        key: "community_post_max_length",
-        type: "integer",
-        default: 20000,
-        description: "题解和讨论正文最大字符数",
-        is_secret: false,
-        envFallback: "COMMUNITY_POST_MAX_LENGTH",
-        category: "community",
-        min: 100,
-        max: 100000,
-        scope: "runtime",
-    },
-    {
-        key: "community_comment_max_length",
-        type: "integer",
-        default: 10000,
-        description: "评论最大字符数",
-        is_secret: false,
-        envFallback: "COMMUNITY_COMMENT_MAX_LENGTH",
-        category: "community",
-        min: 20,
-        max: 50000,
-        scope: "runtime",
-    },
-    {
-        key: "community_post_interval_seconds",
-        type: "integer",
-        default: 0,
-        description: "用户发布内容最小间隔秒数（0 为不限制）",
-        is_secret: false,
-        envFallback: "COMMUNITY_POST_INTERVAL_SECONDS",
-        category: "community",
-        min: 0,
-        max: 86400,
-        scope: "runtime",
-    },
+  // ── community ───────────────────────────────────────────
+  {
+    key: "community_enabled",
+    type: "boolean",
+    default: true,
+    description: "是否启用社区功能总开关",
+    is_secret: false,
+    envFallback: "COMMUNITY_ENABLED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_guest_read_enabled",
+    type: "boolean",
+    default: false,
+    description: "是否允许游客阅读社区公开内容",
+    is_secret: false,
+    envFallback: "COMMUNITY_GUEST_READ_ENABLED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_read_only",
+    type: "boolean",
+    default: false,
+    description: "社区只读模式（审核员与管理员除外）",
+    is_secret: false,
+    envFallback: "COMMUNITY_READ_ONLY",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_solutions_enabled",
+    type: "boolean",
+    default: true,
+    description: "是否启用题解区",
+    is_secret: false,
+    envFallback: "COMMUNITY_SOLUTIONS_ENABLED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_discussions_enabled",
+    type: "boolean",
+    default: true,
+    description: "是否启用讨论区",
+    is_secret: false,
+    envFallback: "COMMUNITY_DISCUSSIONS_ENABLED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_comments_enabled",
+    type: "boolean",
+    default: true,
+    description: "是否启用评论",
+    is_secret: false,
+    envFallback: "COMMUNITY_COMMENTS_ENABLED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_external_images_enabled",
+    type: "boolean",
+    default: false,
+    description: "是否允许 Markdown 渲染 HTTPS 外链图片",
+    is_secret: false,
+    envFallback: "COMMUNITY_EXTERNAL_IMAGES_ENABLED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_solution_requires_accepted",
+    type: "boolean",
+    default: true,
+    description: "发布题解是否必须先通过对应题目",
+    is_secret: false,
+    envFallback: "COMMUNITY_SOLUTION_REQUIRES_ACCEPTED",
+    category: "community",
+    scope: "runtime",
+  },
+  {
+    key: "community_new_user_review_hours",
+    type: "integer",
+    default: 0,
+    description: "注册不足指定小时的用户发布内容需审核（0 为关闭）",
+    is_secret: false,
+    envFallback: "COMMUNITY_NEW_USER_REVIEW_HOURS",
+    category: "community",
+    min: 0,
+    max: 8760,
+    scope: "runtime",
+  },
+  {
+    key: "community_post_max_length",
+    type: "integer",
+    default: 20000,
+    description: "题解和讨论正文最大字符数",
+    is_secret: false,
+    envFallback: "COMMUNITY_POST_MAX_LENGTH",
+    category: "community",
+    min: 100,
+    max: 100000,
+    scope: "runtime",
+  },
+  {
+    key: "community_comment_max_length",
+    type: "integer",
+    default: 10000,
+    description: "评论最大字符数",
+    is_secret: false,
+    envFallback: "COMMUNITY_COMMENT_MAX_LENGTH",
+    category: "community",
+    min: 20,
+    max: 50000,
+    scope: "runtime",
+  },
+  {
+    key: "community_post_interval_seconds",
+    type: "integer",
+    default: 0,
+    description: "用户发布内容最小间隔秒数（0 为不限制）",
+    is_secret: false,
+    envFallback: "COMMUNITY_POST_INTERVAL_SECONDS",
+    category: "community",
+    min: 0,
+    max: 86400,
+    scope: "runtime",
+  },
 
-    // ── judge ───────────────────────────────────────────────
-    {
-        // issue #499：此前未登记（后台不可见），运维排查「缺 Judge 为何不告警」时不可发现。
-        key: "JUDGE_ENABLED",
-        type: "boolean",
-        description:
-            "是否启用评测组件。生产环境为 true 且无 judge 心跳时触发告警；显式设为 false 可关闭该告警",
-        is_secret: false,
-        scope: "bootstrap",
-        envKey: "JUDGE_ENABLED",
-        category: "judge",
-    },
-    {
-        // issue #499：此前未登记。core 与 noj-judge **必须使用同一前缀**，
-        // 配错表现为评测任务静默积压（无任何告警），故必须可见、可校验。
-        key: "JUDGE_QUEUE",
-        type: "string",
-        default: "noj:judge:queue",
-        description:
-            "评测任务队列名前缀（需与 noj-judge 的 JUDGE_QUEUE 完全一致，否则任务静默积压）",
-        is_secret: false,
-        scope: "bootstrap",
-        envKey: "JUDGE_QUEUE",
-        category: "judge",
-    },
-    {
-        key: "JUDGE_QUEUE_LAYOUT",
-        type: "string",
-        default: "pools",
-        description:
-            "评测队列布局：pools 为分资源池，legacy 仅用于协调升级前兼容旧 Worker；启动时固定",
-        is_secret: false,
-        scope: "bootstrap",
-        envKey: "JUDGE_QUEUE_LAYOUT",
-        category: "judge",
-    },
-    {
-        // 正式提交评测以偶发平台错误（Evaluator 总超时、judge 内部错误、LLM 网关
-        // 连接失败/5xx）结束时，core 自动重新派发的次数上限；选手缺函数、LLM 额度/
-        // 计费/鉴权与未知错误不重试。次数持久化在尝试快照中（多副本安全）。
-        key: "judge_platform_error_max_retries",
-        type: "integer",
-        default: 3,
-        description:
-            "正式提交评测出现偶发平台错误（超时、内部错误、LLM 网关断连/5xx）时的自动重试次数上限（初次评测之外），0 = 不自动重试",
-        is_secret: false,
-        envFallback: "JUDGE_PLATFORM_ERROR_MAX_RETRIES",
-        category: "judge",
-        min: 0,
-        max: 10,
-        scope: "runtime",
-    },
-    {
-        key: "judge_max_evaluator_time_limit_ms",
-        type: "integer",
-        default: 0,
-        description: "evaluator 单用例时限上限（毫秒），0 = 不限制",
-        is_secret: false,
-        envFallback: "JUDGE_MAX_EVALUATOR_TIME_LIMIT_MS",
-        category: "judge",
-        min: 0,
-        scope: "runtime",
-    },
-    {
-        key: "judge_max_evaluator_memory_limit_mb",
-        type: "integer",
-        default: 0,
-        description: "evaluator 内存上限（MB），0 = 不限制",
-        is_secret: false,
-        envFallback: "JUDGE_MAX_EVALUATOR_MEMORY_LIMIT_MB",
-        category: "judge",
-        min: 0,
-        scope: "runtime",
-    },
-    {
-        key: "judge_max_solution_call_timeout_ms",
-        type: "integer",
-        default: 0,
-        description: "solution 调用超时上限（毫秒），0 = 不限制",
-        is_secret: false,
-        envFallback: "JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS",
-        category: "judge",
-        min: 0,
-        scope: "runtime",
-    },
-    {
-        key: "judge_max_solution_memory_limit_mb",
-        type: "integer",
-        default: 0,
-        description: "solution 内存上限（MB），0 = 不限制",
-        is_secret: false,
-        envFallback: "JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB",
-        category: "judge",
-        min: 0,
-        scope: "runtime",
-    },
-    {
-        key: "judge_max_prediction_workspace_mb",
-        type: "integer",
-        default: 0,
-        description:
-            "prediction 题 /workspace tmpfs 上限（MB），0 = 仅受 judge 侧 512–16384 硬范围约束",
-        is_secret: false,
-        envFallback: "JUDGE_MAX_PREDICTION_WORKSPACE_MB",
-        category: "judge",
-        min: 0,
-        scope: "runtime",
-    },
+  // ── judge ───────────────────────────────────────────────
+  {
+    // issue #499：此前未登记（后台不可见），运维排查「缺 Judge 为何不告警」时不可发现。
+    key: "JUDGE_ENABLED",
+    type: "boolean",
+    description:
+      "是否启用评测组件。生产环境为 true 且无 judge 心跳时触发告警；显式设为 false 可关闭该告警",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_ENABLED",
+    category: "judge",
+  },
+  {
+    // issue #499：此前未登记。core 与 noj-judge **必须使用同一前缀**，
+    // 配错表现为评测任务静默积压（无任何告警），故必须可见、可校验。
+    key: "JUDGE_QUEUE",
+    type: "string",
+    default: "noj:judge:queue",
+    description:
+      "评测任务队列名前缀（需与 noj-judge 的 JUDGE_QUEUE 完全一致，否则任务静默积压）",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_QUEUE",
+    category: "judge",
+  },
+  {
+    key: "JUDGE_QUEUE_LAYOUT",
+    type: "string",
+    default: "pools",
+    description:
+      "评测队列布局：pools 为分资源池，legacy 仅用于协调升级前兼容旧 Worker；启动时固定",
+    is_secret: false,
+    scope: "bootstrap",
+    envKey: "JUDGE_QUEUE_LAYOUT",
+    category: "judge",
+  },
+  {
+    // 正式提交评测以偶发平台错误（Evaluator 总超时、judge 内部错误、LLM 网关
+    // 连接失败/5xx）结束时，core 自动重新派发的次数上限；选手缺函数、LLM 额度/
+    // 计费/鉴权与未知错误不重试。次数持久化在尝试快照中（多副本安全）。
+    key: "judge_platform_error_max_retries",
+    type: "integer",
+    default: 3,
+    description:
+      "正式提交评测出现偶发平台错误（超时、内部错误、LLM 网关断连/5xx）时的自动重试次数上限（初次评测之外），0 = 不自动重试",
+    is_secret: false,
+    envFallback: "JUDGE_PLATFORM_ERROR_MAX_RETRIES",
+    category: "judge",
+    min: 0,
+    max: 10,
+    scope: "runtime",
+  },
+  {
+    key: "judge_max_evaluator_time_limit_ms",
+    type: "integer",
+    default: 0,
+    description: "evaluator 单用例时限上限（毫秒），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_EVALUATOR_TIME_LIMIT_MS",
+    category: "judge",
+    min: 0,
+    scope: "runtime",
+  },
+  {
+    key: "judge_max_evaluator_memory_limit_mb",
+    type: "integer",
+    default: 0,
+    description: "evaluator 内存上限（MB），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_EVALUATOR_MEMORY_LIMIT_MB",
+    category: "judge",
+    min: 0,
+    scope: "runtime",
+  },
+  {
+    key: "judge_max_solution_call_timeout_ms",
+    type: "integer",
+    default: 0,
+    description: "solution 调用超时上限（毫秒），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS",
+    category: "judge",
+    min: 0,
+    scope: "runtime",
+  },
+  {
+    key: "judge_max_solution_memory_limit_mb",
+    type: "integer",
+    default: 0,
+    description: "solution 内存上限（MB），0 = 不限制",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_SOLUTION_MEMORY_LIMIT_MB",
+    category: "judge",
+    min: 0,
+    scope: "runtime",
+  },
+  {
+    key: "judge_max_prediction_workspace_mb",
+    type: "integer",
+    default: 0,
+    description:
+      "prediction 题 /workspace tmpfs 上限（MB），0 = 仅受 judge 侧 512–16384 硬范围约束",
+    is_secret: false,
+    envFallback: "JUDGE_MAX_PREDICTION_WORKSPACE_MB",
+    category: "judge",
+    min: 0,
+    scope: "runtime",
+  },
 
-    // ── knowledge（知识图谱，2026-11-12）───────────────────────
-    // 只读图接口每次请求经 getSetting() 读取开关；配置变更由既有设置失效通道
-    // 广播各副本重载，无需额外适配。
-    {
-        key: "knowledge_enabled",
-        type: "boolean",
-        default: true,
-        description:
-            "知识图谱总开关（关闭后 /api/v1/knowledge/* 只读接口返回 404 KNOWLEDGE_DISABLED）",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_ENABLED",
-        category: "knowledge",
-        scope: "runtime",
-    },
-    // AI 打标（P1，`features/knowledge/tagging.ts` 读取）；默认关闭，须实例管理员
-    // 显式开启并在网关配置别名 `platform.tagger`。以下三项只登记打标实际读取的键。
-    {
-        key: "knowledge_ai_tagging_enabled",
-        type: "boolean",
-        default: false,
-        description:
-            "知识图谱 AI 打标开关（关闭时不调用模型，题目只能人工挂载知识点）",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_AI_TAGGING_ENABLED",
-        category: "knowledge",
-        scope: "runtime",
-    },
-    {
-        key: "knowledge_auto_accept_threshold",
-        type: "integer",
-        default: 75,
-        description:
-            "AI 打标置信度自动生效阈值（0–100）：不低于此值的挂载直接生效（auto），否则进入人工审核（pending）",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_AUTO_ACCEPT_THRESHOLD",
-        category: "knowledge",
-        min: 0,
-        max: 100,
-        scope: "runtime",
-    },
-    {
-        key: "knowledge_ai_monthly_token_budget",
-        type: "integer",
-        default: 2000000,
-        description:
-            "AI 打标每月 token 预算（输入+输出 token 合计，按自然月）：用量达到预算后打标任务暂停到下个自然月；0 表示暂停所有调用",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_AI_MONTHLY_TOKEN_BUDGET",
-        category: "knowledge",
-        min: 0,
-        scope: "runtime",
-    },
-    // 低峰时段（任务 E）：AI 打标不要求实时完成，默认只在北京时间低峰时段调用
-    // 模型以降低成本（`features/knowledge/offpeak.ts` 读取）。
-    {
-        key: "knowledge_ai_offpeak_only",
-        type: "boolean",
-        default: true,
-        description:
-            "AI 打标仅在低峰时段调用模型（北京时间每日时段，见 knowledge_ai_offpeak_window）；关闭后任何时刻都可调用",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_AI_OFFPEAK_ONLY",
-        category: "knowledge",
-        scope: "runtime",
-    },
-    {
-        key: "knowledge_ai_offpeak_window",
-        type: "string",
-        default: "00:30-08:30",
-        description:
-            "AI 打标低峰时段（北京时间 Asia/Shanghai，UTC+8），格式 HH:MM-HH:MM，允许跨零点（如 22:00-06:00）；开始时刻算在内、结束时刻不算在内",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_AI_OFFPEAK_WINDOW",
-        category: "knowledge",
-        valueSchema: "knowledge_offpeak_window",
-        scope: "runtime",
-    },
-    // 及格线、掌握题数等配置随使用它们的阶段（P2–P3）登记；只登记不消费的
-    // runtime 键会被 check-config-usage 判为死键。
-    // 达标判定（P2，`features/knowledge/difficulty.ts` 读取）：非客观题默认及格线。
-    {
-        key: "knowledge_pass_ratio",
-        type: "integer",
-        default: 60,
-        description:
-            "知识图谱「达标」默认及格线（百分数 0–100）：非客观题有效得分不低于满分的此比例即达标；客观题套卷恒为满分达标，出题人可按题覆盖",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_PASS_RATIO",
-        category: "knowledge",
-        min: 0,
-        max: 100,
-        scope: "runtime",
-    },
-    // 掌握度（P3，`features/knowledge/mastery.ts` 读取）：「已掌握」所需达标题数。
-    {
-        key: "knowledge_mastery_min_solved",
-        type: "integer",
-        default: 3,
-        description:
-            "知识点「已掌握」所需达标题数（节点题量少于该值时视为全部达标即掌握）；同时用于覆盖度面板的「题量不足」判定",
-        is_secret: false,
-        envFallback: "KNOWLEDGE_MASTERY_MIN_SOLVED",
-        category: "knowledge",
-        min: 1,
-        max: 20,
-        scope: "runtime",
-    },
+  // ── knowledge（知识图谱，2026-11-12）───────────────────────
+  // 只读图接口每次请求经 getSetting() 读取开关；配置变更由既有设置失效通道
+  // 广播各副本重载，无需额外适配。
+  {
+    key: "knowledge_enabled",
+    type: "boolean",
+    default: true,
+    description:
+      "知识图谱总开关（关闭后 /api/v1/knowledge/* 只读接口返回 404 KNOWLEDGE_DISABLED）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_ENABLED",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  // AI 打标（P1，`features/knowledge/tagging.ts` 读取）；默认关闭，须实例管理员
+  // 显式开启并在网关配置别名 `platform.tagger`。以下三项只登记打标实际读取的键。
+  {
+    key: "knowledge_ai_tagging_enabled",
+    type: "boolean",
+    default: false,
+    description:
+      "知识图谱 AI 打标开关（关闭时不调用模型，题目只能人工挂载知识点）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_TAGGING_ENABLED",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_auto_accept_threshold",
+    type: "integer",
+    default: 75,
+    description:
+      "AI 打标置信度自动生效阈值（0–100）：不低于此值的挂载直接生效（auto），否则进入人工审核（pending）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AUTO_ACCEPT_THRESHOLD",
+    category: "knowledge",
+    min: 0,
+    max: 100,
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_ai_monthly_token_budget",
+    type: "integer",
+    default: 2000000,
+    description:
+      "AI 打标每月 token 预算（输入+输出 token 合计，按自然月）：用量达到预算后打标任务暂停到下个自然月；0 表示暂停所有调用",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_MONTHLY_TOKEN_BUDGET",
+    category: "knowledge",
+    min: 0,
+    scope: "runtime",
+  },
+  // 低峰时段（任务 E）：AI 打标不要求实时完成，默认只在北京时间低峰时段调用
+  // 模型以降低成本（`features/knowledge/offpeak.ts` 读取）。
+  {
+    key: "knowledge_ai_offpeak_only",
+    type: "boolean",
+    default: true,
+    description:
+      "AI 打标仅在低峰时段调用模型（北京时间每日时段，见 knowledge_ai_offpeak_window）；关闭后任何时刻都可调用",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_OFFPEAK_ONLY",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_ai_offpeak_window",
+    type: "string",
+    default: "00:30-08:30",
+    description:
+      "AI 打标低峰时段（北京时间 Asia/Shanghai，UTC+8），格式 HH:MM-HH:MM，允许跨零点（如 22:00-06:00）；开始时刻算在内、结束时刻不算在内",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_OFFPEAK_WINDOW",
+    category: "knowledge",
+    valueSchema: "knowledge_offpeak_window",
+    scope: "runtime",
+  },
+  // 及格线、掌握题数等配置随使用它们的阶段（P2–P3）登记；只登记不消费的
+  // runtime 键会被 check-config-usage 判为死键。
+  // 达标判定（P2，`features/knowledge/difficulty.ts` 读取）：非客观题默认及格线。
+  {
+    key: "knowledge_pass_ratio",
+    type: "integer",
+    default: 60,
+    description:
+      "知识图谱「达标」默认及格线（百分数 0–100）：非客观题有效得分不低于满分的此比例即达标；客观题套卷恒为满分达标，出题人可按题覆盖",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_PASS_RATIO",
+    category: "knowledge",
+    min: 0,
+    max: 100,
+    scope: "runtime",
+  },
+  // 掌握度（P3，`features/knowledge/mastery.ts` 读取）：「已掌握」所需达标题数。
+  {
+    key: "knowledge_mastery_min_solved",
+    type: "integer",
+    default: 3,
+    description:
+      "知识点「已掌握」所需达标题数（节点题量少于该值时视为全部达标即掌握）；同时用于覆盖度面板的「题量不足」判定",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_MASTERY_MIN_SOLVED",
+    category: "knowledge",
+    min: 1,
+    max: 20,
+    scope: "runtime",
+  },
 
-    // ── other ─────────────────────────────────────────────────
-    {
-        key: "audit_log_retention_days",
-        type: "integer",
-        default: 90,
-        description: "审计日志保留天数（0 = 禁用自动清理）",
-        is_secret: false,
-        envKey: "AUDIT_LOG_RETENTION_DAYS",
-        category: "other",
-        min: 0,
-        max: 365,
-        scope: "bootstrap",
-    },
+  // ── other ─────────────────────────────────────────────────
+  {
+    key: "audit_log_retention_days",
+    type: "integer",
+    default: 90,
+    description: "审计日志保留天数（0 = 禁用自动清理）",
+    is_secret: false,
+    envKey: "AUDIT_LOG_RETENTION_DAYS",
+    category: "other",
+    min: 0,
+    max: 365,
+    scope: "bootstrap",
+  },
 
-    // ── bootstrap（env-owned，启动期定型只读）─────────────────
-    // 展开处保持拆分前顺序：runtime 段在前，bootstrap 段在后。
-    ...BOOTSTRAP_CONFIG_DEFINITIONS,
+  // ── bootstrap（env-owned，启动期定型只读）─────────────────
+  // 展开处保持拆分前顺序：runtime 段在前，bootstrap 段在后。
+  ...BOOTSTRAP_CONFIG_DEFINITIONS,
 ] as const;
 
 const VALID_TYPES: readonly SettingType[] = [
-    "boolean",
-    "string",
-    "text",
-    "integer",
+  "boolean",
+  "string",
+  "text",
+  "integer",
 ] as const;
 
 /**
@@ -991,83 +989,82 @@ const VALID_TYPES: readonly SettingType[] = [
  * - env 键唯一：任一 env 键至多被一项声明（bootstrap envKey 或 runtime envFallback）。
  */
 export function validateRegistry(): void {
-    const seenKeys = new Set<string>();
-    const seenEnvKeys = new Set<string>();
-    for (const def of CONFIG_DEFINITIONS) {
-        if (seenKeys.has(def.key)) {
-            throw new Error(
-                `[settings-registry] 重复的 key: ${def.key}（每个设置项 key 必须唯一）`,
-            );
-        }
-        seenKeys.add(def.key);
-
-        if (!VALID_TYPES.includes(def.type)) {
-            throw new Error(
-                `[settings-registry] 非法 type: ${def.key} -> ${def.type}（合法值: ${
-                    VALID_TYPES.join(", ")
-                }）`,
-            );
-        }
-
-        if (def.scope !== "runtime" && def.scope !== "bootstrap") {
-            throw new Error(
-                `[settings-registry] 非法 scope: ${def.key} -> ${def.scope}（合法值: runtime/bootstrap）`,
-            );
-        }
-
-        // scope 完整性
-        if (def.scope === "bootstrap" && !def.envKey) {
-            throw new Error(
-                `[settings-registry] bootstrap 项必须声明 envKey: ${def.key}`,
-            );
-        }
-        if (def.scope === "runtime" && def.envKey) {
-            throw new Error(
-                `[settings-registry] runtime 项不应声明 envKey: ${def.key}（runtime 使用 envFallback）`,
-            );
-        }
-
-        // env 键唯一性
-        const envKey = def.envKey ?? def.envFallback;
-        if (envKey) {
-            if (seenEnvKeys.has(envKey)) {
-                throw new Error(
-                    `[settings-registry] env 键重复声明: ${envKey}（两个设置项不能共用一个 env 变量）`,
-                );
-            }
-            seenEnvKeys.add(envKey);
-        }
-
-        // integer 类型需校验 min ≤ max
-        if (
-            def.type === "integer" && def.min !== undefined &&
-            def.max !== undefined
-        ) {
-            if (def.min > def.max) {
-                throw new Error(
-                    `[settings-registry] ${def.key} 的 min（${def.min}）大于 max（${def.max}）`,
-                );
-            }
-        }
+  const seenKeys = new Set<string>();
+  const seenEnvKeys = new Set<string>();
+  for (const def of CONFIG_DEFINITIONS) {
+    if (seenKeys.has(def.key)) {
+      throw new Error(
+        `[settings-registry] 重复的 key: ${def.key}（每个设置项 key 必须唯一）`,
+      );
     }
+    seenKeys.add(def.key);
+
+    if (!VALID_TYPES.includes(def.type)) {
+      throw new Error(
+        `[settings-registry] 非法 type: ${def.key} -> ${def.type}（合法值: ${
+          VALID_TYPES.join(", ")
+        }）`,
+      );
+    }
+
+    if (def.scope !== "runtime" && def.scope !== "bootstrap") {
+      throw new Error(
+        `[settings-registry] 非法 scope: ${def.key} -> ${def.scope}（合法值: runtime/bootstrap）`,
+      );
+    }
+
+    // scope 完整性
+    if (def.scope === "bootstrap" && !def.envKey) {
+      throw new Error(
+        `[settings-registry] bootstrap 项必须声明 envKey: ${def.key}`,
+      );
+    }
+    if (def.scope === "runtime" && def.envKey) {
+      throw new Error(
+        `[settings-registry] runtime 项不应声明 envKey: ${def.key}（runtime 使用 envFallback）`,
+      );
+    }
+
+    // env 键唯一性
+    const envKey = def.envKey ?? def.envFallback;
+    if (envKey) {
+      if (seenEnvKeys.has(envKey)) {
+        throw new Error(
+          `[settings-registry] env 键重复声明: ${envKey}（两个设置项不能共用一个 env 变量）`,
+        );
+      }
+      seenEnvKeys.add(envKey);
+    }
+
+    // integer 类型需校验 min ≤ max
+    if (
+      def.type === "integer" && def.min !== undefined && def.max !== undefined
+    ) {
+      if (def.min > def.max) {
+        throw new Error(
+          `[settings-registry] ${def.key} 的 min（${def.min}）大于 max（${def.max}）`,
+        );
+      }
+    }
+  }
 }
 
 /** 按 key 快速查找注册表条目（O(1) 命中，miss 返回 undefined） */
 export function findDefinition(key: string): SettingDefinition | undefined {
-    return CONFIG_DEFINITIONS.find((d) => d.key === key);
+  return CONFIG_DEFINITIONS.find((d) => d.key === key);
 }
 
 /** 是否为 bootstrap（env-owned，启动期定型只读） */
 export function isBootstrap(key: string): boolean {
-    return findDefinition(key)?.scope === "bootstrap";
+  return findDefinition(key)?.scope === "bootstrap";
 }
 
 /** 是否为 runtime（DB-owned，运行时可热改） */
 export function isRuntime(key: string): boolean {
-    return findDefinition(key)?.scope === "runtime";
+  return findDefinition(key)?.scope === "runtime";
 }
 
 /** 是否在管理后台可见（visible !== false） */
 export function isVisible(key: string): boolean {
-    return findDefinition(key)?.visible !== false;
+  return findDefinition(key)?.visible !== false;
 }

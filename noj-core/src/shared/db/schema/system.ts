@@ -1,14 +1,14 @@
 import {
-    bigint,
-    boolean,
-    check,
-    index,
-    integer,
-    jsonb,
-    pgTable,
-    primaryKey,
-    text,
-    unique,
+  bigint,
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  unique,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { publicIdColumn } from "./common.ts";
@@ -24,34 +24,34 @@ import { WORKSPACE_AUDIT_ACTION_SQL } from "../../workspace/audit.ts";
  * mode='all_versions' 时匹配该镜像名（不含标签部分）的所有版本。
  */
 export const judgeImages = pgTable(
-    "judge_images",
-    {
-        id: text("id").primaryKey(),
-        image: text("image").notNull(),
-        mode: text("mode").notNull().default("exact"),
-        /**
-         * 镜像用途分类（dual-container-judge §5）。
-         * - 'evaluator'：单容器 / 双容器 Evaluator 角色
-         * - 'solution' ：双容器 Solution 角色
-         *
-         * 历史数据迁移时默认 'evaluator'。
-         */
-        kind: text("kind").notNull().default("evaluator"),
-        /** 管理员配置的介绍，在题目编辑器下拉中展示 */
-        description: text("description").notNull().default(""),
-        created_at: text("created_at").notNull(),
-        updated_at: text("updated_at").notNull(),
-    },
-    (table) => ({
-        modeCheck: check(
-            "judge_images_mode_check",
-            sql`${table.mode} IN ('exact', 'all_versions')`,
-        ),
-        kindCheck: check(
-            "judge_images_kind_check",
-            sql`${table.kind} IN ('evaluator', 'solution')`,
-        ),
-    }),
+  "judge_images",
+  {
+    id: text("id").primaryKey(),
+    image: text("image").notNull(),
+    mode: text("mode").notNull().default("exact"),
+    /**
+     * 镜像用途分类（dual-container-judge §5）。
+     * - 'evaluator'：单容器 / 双容器 Evaluator 角色
+     * - 'solution' ：双容器 Solution 角色
+     *
+     * 历史数据迁移时默认 'evaluator'。
+     */
+    kind: text("kind").notNull().default("evaluator"),
+    /** 管理员配置的介绍，在题目编辑器下拉中展示 */
+    description: text("description").notNull().default(""),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    modeCheck: check(
+      "judge_images_mode_check",
+      sql`${table.mode} IN ('exact', 'all_versions')`,
+    ),
+    kindCheck: check(
+      "judge_images_kind_check",
+      sql`${table.kind} IN ('evaluator', 'solution')`,
+    ),
+  }),
 );
 
 /**
@@ -71,23 +71,23 @@ export const judgeImages = pgTable(
  * - 审计日志走 console.log("[admin] ...")，issue #101 落库后迁移
  */
 export const systemSettings = pgTable(
-    "system_settings",
-    {
-        key: text("key").primaryKey(),
-        /** JSON 编码字符串（boolean/string/text 三种类型共存） */
-        value: text("value").notNull(),
-        description: text("description").notNull().default(""),
-        is_secret: boolean("is_secret").notNull().default(false),
-        updated_at: text("updated_at").notNull(),
-        updated_by: text("updated_by").references(() => users.id, {
-            onDelete: "set null",
-        }),
-    },
-    (table) => ({
-        updatedAtIdx: index("idx_system_settings_updated_at").on(
-            table.updated_at,
-        ),
+  "system_settings",
+  {
+    key: text("key").primaryKey(),
+    /** JSON 编码字符串（boolean/string/text 三种类型共存） */
+    value: text("value").notNull(),
+    description: text("description").notNull().default(""),
+    is_secret: boolean("is_secret").notNull().default(false),
+    updated_at: text("updated_at").notNull(),
+    updated_by: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
     }),
+  },
+  (table) => ({
+    updatedAtIdx: index("idx_system_settings_updated_at").on(
+      table.updated_at,
+    ),
+  }),
 );
 
 /**
@@ -105,45 +105,44 @@ export const systemSettings = pgTable(
  * - content 为 Markdown 文本
  */
 export const announcements = pgTable(
-    "announcements",
-    {
-        id: text("id").primaryKey(),
-        /** NULL 为实例公告；域公告不经实例公开入口返回。 */
-        domain_id: text("domain_id").references(() => domains.id),
-        public_id: publicIdColumn("ann"),
-        /** 标题，1–100 字符 */
-        title: text("title").notNull(),
-        /** Markdown 正文，1–50000 字符 */
-        content: text("content").notNull(),
-        /**
-         * 横幅文字（导航栏下方可关闭横幅的内容）。
-         * 与 `content`（详情页正文）独立；为空则此公告不出横幅。
-         */
-        banner_text: text("banner_text"),
-        /** 是否置顶（公开列表优先展示） */
-        is_pinned: boolean("is_pinned").notNull().default(false),
-        /** 是否发布中（false = 已下架，公开列表不可见） */
-        is_active: boolean("is_active").notNull().default(true),
-        /** 创建者用户 id */
-        created_by: text("created_by").notNull().references(() => users.id),
-        /** ISO 8601，创建时间 */
-        created_at: text("created_at").notNull(),
-        /** ISO 8601，最后更新时间 */
-        updated_at: text("updated_at").notNull(),
-    },
-    (table) => ({
-        publicIdUnique: unique("announcements_public_id_unique").on(
-            table.public_id,
-        ),
-        /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
-        activePinnedCreatedIdx: index("idx_announcements_active_pinned_created")
-            .on(
-                table.domain_id,
-                table.is_active,
-                table.is_pinned,
-                table.created_at,
-            ),
-    }),
+  "announcements",
+  {
+    id: text("id").primaryKey(),
+    /** NULL 为实例公告；域公告不经实例公开入口返回。 */
+    domain_id: text("domain_id").references(() => domains.id),
+    public_id: publicIdColumn("ann"),
+    /** 标题，1–100 字符 */
+    title: text("title").notNull(),
+    /** Markdown 正文，1–50000 字符 */
+    content: text("content").notNull(),
+    /**
+     * 横幅文字（导航栏下方可关闭横幅的内容）。
+     * 与 `content`（详情页正文）独立；为空则此公告不出横幅。
+     */
+    banner_text: text("banner_text"),
+    /** 是否置顶（公开列表优先展示） */
+    is_pinned: boolean("is_pinned").notNull().default(false),
+    /** 是否发布中（false = 已下架，公开列表不可见） */
+    is_active: boolean("is_active").notNull().default(true),
+    /** 创建者用户 id */
+    created_by: text("created_by").notNull().references(() => users.id),
+    /** ISO 8601，创建时间 */
+    created_at: text("created_at").notNull(),
+    /** ISO 8601，最后更新时间 */
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    publicIdUnique: unique("announcements_public_id_unique").on(
+      table.public_id,
+    ),
+    /** 公开列表查询：仅 active + 置顶优先 + 最新在前 */
+    activePinnedCreatedIdx: index("idx_announcements_active_pinned_created").on(
+      table.domain_id,
+      table.is_active,
+      table.is_pinned,
+      table.created_at,
+    ),
+  }),
 );
 
 /**
@@ -152,22 +151,22 @@ export const announcements = pgTable(
  * service 层通过 logAudit() 同步写入；后台任务定期清理过期记录。
  */
 export const auditLogs = pgTable(
-    "audit_logs",
-    {
-        id: text("id").primaryKey(),
-        // PR-2：admin_id 可空——auth.* 事件可能没有 actor（登录失败、撞邮箱等）
-        admin_id: text("admin_id").references(() => users.id),
-        action: text("action").notNull(),
-        target_type: text("target_type"),
-        target_id: text("target_id"),
-        detail: jsonb("detail").notNull().default({}),
-        ip_address: text("ip_address").notNull(),
-        created_at: text("created_at").notNull(),
-    },
-    (table) => ({
-        actionCheck: check(
-            "audit_logs_action_check",
-            sql`${table.action} IN (
+  "audit_logs",
+  {
+    id: text("id").primaryKey(),
+    // PR-2：admin_id 可空——auth.* 事件可能没有 actor（登录失败、撞邮箱等）
+    admin_id: text("admin_id").references(() => users.id),
+    action: text("action").notNull(),
+    target_type: text("target_type"),
+    target_id: text("target_id"),
+    detail: jsonb("detail").notNull().default({}),
+    ip_address: text("ip_address").notNull(),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    actionCheck: check(
+      "audit_logs_action_check",
+      sql`${table.action} IN (
         'users.role_change',
         'users.create',
         'users.import',
@@ -250,11 +249,11 @@ export const auditLogs = pgTable(
         'knowledge.mapping.update',
         'knowledge.difficulty.pass_ratio'
       ) OR ${table.action} IN (${sql.raw(WORKSPACE_AUDIT_ACTION_SQL)})`,
-        ),
-        adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
-        createdAtIdx: index("audit_logs_created_at_idx").on(table.created_at),
-        actionIdx: index("audit_logs_action_idx").on(table.action),
-    }),
+    ),
+    adminIdx: index("audit_logs_admin_id_idx").on(table.admin_id),
+    createdAtIdx: index("audit_logs_created_at_idx").on(table.created_at),
+    actionIdx: index("audit_logs_action_idx").on(table.action),
+  }),
 );
 
 /**
@@ -264,22 +263,22 @@ export const auditLogs = pgTable(
  * expires_at 为 ISO 8601 字符串；NULL = 永久。
  */
 export const ipBans = pgTable(
-    "ip_bans",
-    {
-        id: text("id").primaryKey(),
-        ip_or_cidr: text("ip_or_cidr").notNull(),
-        reason: text("reason").notNull().default(""),
-        expires_at: text("expires_at"),
-        created_at: text("created_at").notNull(),
-        updated_at: text("updated_at").notNull(),
-        created_by: text("created_by").references(() => users.id, {
-            onDelete: "set null",
-        }),
-    },
-    (table) => ({
-        ipCidrIdx: index("idx_ip_bans_ip_or_cidr").on(table.ip_or_cidr),
-        expiresIdx: index("idx_ip_bans_expires_at").on(table.expires_at),
+  "ip_bans",
+  {
+    id: text("id").primaryKey(),
+    ip_or_cidr: text("ip_or_cidr").notNull(),
+    reason: text("reason").notNull().default(""),
+    expires_at: text("expires_at"),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+    created_by: text("created_by").references(() => users.id, {
+      onDelete: "set null",
     }),
+  },
+  (table) => ({
+    ipCidrIdx: index("idx_ip_bans_ip_or_cidr").on(table.ip_or_cidr),
+    expiresIdx: index("idx_ip_bans_expires_at").on(table.expires_at),
+  }),
 );
 
 /**
@@ -301,51 +300,49 @@ export const ipBans = pgTable(
  * - 上传成功并完成引用绑定后删除 reservation（同一事务）。
  */
 export const storageObjectReservations = pgTable(
-    "storage_object_reservations",
-    {
-        reservation_id: text("reservation_id").primaryKey(),
-        /** 目标对象 URL；可能早于 `storage_objects` 登记行存在，故不设外键。 */
-        storage_url: text("storage_url").notNull(),
-        reserved_at: text("reserved_at").notNull(),
-        /** 过期时间：crash 遗留的 reservation 不会永久阻塞删除。 */
-        expires_at: text("expires_at").notNull(),
-    },
-    (table) => ({
-        urlIdx: index("idx_storage_object_reservations_url").on(
-            table.storage_url,
-        ),
-        expiresIdx: index("idx_storage_object_reservations_expires").on(
-            table.expires_at,
-        ),
-    }),
+  "storage_object_reservations",
+  {
+    reservation_id: text("reservation_id").primaryKey(),
+    /** 目标对象 URL；可能早于 `storage_objects` 登记行存在，故不设外键。 */
+    storage_url: text("storage_url").notNull(),
+    reserved_at: text("reserved_at").notNull(),
+    /** 过期时间：crash 遗留的 reservation 不会永久阻塞删除。 */
+    expires_at: text("expires_at").notNull(),
+  },
+  (table) => ({
+    urlIdx: index("idx_storage_object_reservations_url").on(table.storage_url),
+    expiresIdx: index("idx_storage_object_reservations_expires").on(
+      table.expires_at,
+    ),
+  }),
 );
 
 export const storageObjects = pgTable(
-    "storage_objects",
-    {
-        /** `noj-storage://` 形式的稳定存储 URL，作为主键。 */
-        storage_url: text("storage_url").primaryKey(),
-        /** 内容哈希；存量登记允许为空，首次预检/使用时核实回填。 */
-        sha256: text("sha256"),
-        /** 字节数；存量登记允许为空。 */
-        byte_size: bigint("byte_size", { mode: "number" }),
-        /**
-         * 状态机：新对象登记为 `ready`；存量对象登记为 `unknown`（首次预检核实）；
-         * 删除流程依次经过 `deleting` → `deleted`。
-         */
-        state: text("state").$type<StorageObjectState>().notNull().default(
-            "unknown",
-        ),
-        created_at: text("created_at").notNull(),
-    },
-    (table) => ({
-        stateCheck: check(
-            "storage_objects_state_check",
-            sql`${table.state} IN ('unknown', 'ready', 'missing', 'deleting', 'deleted')`,
-        ),
-        stateIdx: index("idx_storage_objects_state").on(table.state),
-        sha256Idx: index("idx_storage_objects_sha256").on(table.sha256),
-    }),
+  "storage_objects",
+  {
+    /** `noj-storage://` 形式的稳定存储 URL，作为主键。 */
+    storage_url: text("storage_url").primaryKey(),
+    /** 内容哈希；存量登记允许为空，首次预检/使用时核实回填。 */
+    sha256: text("sha256"),
+    /** 字节数；存量登记允许为空。 */
+    byte_size: bigint("byte_size", { mode: "number" }),
+    /**
+     * 状态机：新对象登记为 `ready`；存量对象登记为 `unknown`（首次预检核实）；
+     * 删除流程依次经过 `deleting` → `deleted`。
+     */
+    state: text("state").$type<StorageObjectState>().notNull().default(
+      "unknown",
+    ),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    stateCheck: check(
+      "storage_objects_state_check",
+      sql`${table.state} IN ('unknown', 'ready', 'missing', 'deleting', 'deleted')`,
+    ),
+    stateIdx: index("idx_storage_objects_state").on(table.state),
+    sha256Idx: index("idx_storage_objects_sha256").on(table.sha256),
+  }),
 );
 
 /**
@@ -355,23 +352,23 @@ export const storageObjects = pgTable(
  * 恒等于系统设置 `llm_default_provider_id` + `llm_default_model`。
  */
 export const llmModelAliases = pgTable("llm_model_aliases", {
-    domain_id: text("domain_id").notNull().references(() => domains.id),
-    alias: text("alias").notNull(),
-    revision: integer("revision").notNull().default(0),
-    /** gateway 内部 Provider UUID */
-    provider_id: text("provider_id").notNull(),
-    /** 上游真实模型名 */
-    model: text("model").notNull(),
-    /** 出题人下拉展示用的简短说明 */
-    description: text("description").notNull().default(""),
-    updated_at: text("updated_at").notNull(),
-    updated_by: text("updated_by").references(() => users.id, {
-        onDelete: "set null",
-    }),
+  domain_id: text("domain_id").notNull().references(() => domains.id),
+  alias: text("alias").notNull(),
+  revision: integer("revision").notNull().default(0),
+  /** gateway 内部 Provider UUID */
+  provider_id: text("provider_id").notNull(),
+  /** 上游真实模型名 */
+  model: text("model").notNull(),
+  /** 出题人下拉展示用的简短说明 */
+  description: text("description").notNull().default(""),
+  updated_at: text("updated_at").notNull(),
+  updated_by: text("updated_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
 }, (table) => ({
-    pk: primaryKey({ columns: [table.domain_id, table.alias] }),
-    revisionCheck: check(
-        "llm_model_aliases_revision_check",
-        sql`${table.revision} >= 0`,
-    ),
+  pk: primaryKey({ columns: [table.domain_id, table.alias] }),
+  revisionCheck: check(
+    "llm_model_aliases_revision_check",
+    sql`${table.revision} >= 0`,
+  ),
 }));

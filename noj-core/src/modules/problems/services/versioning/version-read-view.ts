@@ -19,16 +19,16 @@
 import { getJudgeBackend } from "../../types/runtime-config.ts";
 import { getSubmissionLanguages } from "../../types/problems.ts";
 import type {
-    AiProblemContent,
-    OiProblemContent,
-    ProblemContentV1,
+  AiProblemContent,
+  OiProblemContent,
+  ProblemContentV1,
 } from "../../types/problem-content.ts";
 
 /** `problems.judge_type` 的对外取值（存量缺省推断为 dual）。 */
 export function persistedJudgeType(
-    value: string | null | undefined,
+  value: string | null | undefined,
 ): "dual" | "oi" {
-    return value === "oi" ? "oi" : "dual";
+  return value === "oi" ? "oi" : "dual";
 }
 
 /**
@@ -51,86 +51,82 @@ export type VersionContentOverrides = Record<string, unknown>;
  *   template_content / 客观题答案）
  */
 export function projectProblemContent(
-    content: ProblemContentV1,
-    includePrivileged: boolean,
+  content: ProblemContentV1,
+  includePrivileged: boolean,
 ): VersionContentOverrides {
-    const overrides: VersionContentOverrides = {
-        title: content.title,
-        description: content.description,
-        samples: content.samples ?? [],
-    };
-    const runtime = content.kind === "oi"
-        ? content.runtime_config
-        : content.kind === "ai"
-        ? content.runtime_config?.evaluator
-        : null;
-    overrides.limits = runtime
-        ? {
-            time_limit_ms: runtime.time_limit_ms,
-            memory_limit_mb: runtime.memory_limit_mb,
-        }
-        : null;
-
-    if (content.kind === "ai") {
-        const ai = content as AiProblemContent;
-        overrides.judge_type = "dual";
-        overrides.judge_backend = getJudgeBackend(
-            "dual",
-            ai.runtime_config,
-            false,
-        );
-        overrides.is_objective = false;
-        overrides.submission_mode = ai.submission_mode;
-        overrides.artifact_max_size_mb = ai.artifact_max_size_mb;
-        overrides.supported_languages = getSubmissionLanguages(
-            "dual",
-            ai.runtime_config,
-        );
-        if (includePrivileged) {
-            overrides.runtime_config = ai.runtime_config;
-            overrides.llm_config = ai.llm_config;
-            overrides.template_content = ai.template_content;
-        }
-        return overrides;
+  const overrides: VersionContentOverrides = {
+    title: content.title,
+    description: content.description,
+    samples: content.samples ?? [],
+  };
+  const runtime = content.kind === "oi"
+    ? content.runtime_config
+    : content.kind === "ai"
+    ? content.runtime_config?.evaluator
+    : null;
+  overrides.limits = runtime
+    ? {
+      time_limit_ms: runtime.time_limit_ms,
+      memory_limit_mb: runtime.memory_limit_mb,
     }
+    : null;
 
-    if (content.kind === "oi") {
-        const oi = content as OiProblemContent;
-        overrides.judge_type = "oi";
-        overrides.judge_backend = getJudgeBackend(
-            "oi",
-            oi.runtime_config,
-            false,
-        );
-        overrides.is_objective = false;
-        overrides.submission_mode = "code";
-        overrides.artifact_max_size_mb = null;
-        overrides.supported_languages = getSubmissionLanguages(
-            "oi",
-            oi.runtime_config,
-        );
-        if (includePrivileged) overrides.runtime_config = oi.runtime_config;
-        return overrides;
-    }
-
-    // 客观题：无评测容器，运行配置恒为空；标准答案只给编辑者。
-    overrides.is_objective = true;
+  if (content.kind === "ai") {
+    const ai = content as AiProblemContent;
     overrides.judge_type = "dual";
-    overrides.judge_backend = getJudgeBackend("dual", null, true);
-    overrides.submission_mode = "code";
-    overrides.artifact_max_size_mb = null;
-    overrides.supported_languages = [];
-    overrides.runtime_config = null;
+    overrides.judge_backend = getJudgeBackend(
+      "dual",
+      ai.runtime_config,
+      false,
+    );
+    overrides.is_objective = false;
+    overrides.submission_mode = ai.submission_mode;
+    overrides.artifact_max_size_mb = ai.artifact_max_size_mb;
+    overrides.supported_languages = getSubmissionLanguages(
+      "dual",
+      ai.runtime_config,
+    );
     if (includePrivileged) {
-        overrides.questions = content.questions;
-    } else {
-        overrides.questions = content.questions.map((question) => ({
-            ...question,
-            answer: [],
-            explanation: "",
-        }));
+      overrides.runtime_config = ai.runtime_config;
+      overrides.llm_config = ai.llm_config;
+      overrides.template_content = ai.template_content;
     }
     return overrides;
+  }
+
+  if (content.kind === "oi") {
+    const oi = content as OiProblemContent;
+    overrides.judge_type = "oi";
+    overrides.judge_backend = getJudgeBackend("oi", oi.runtime_config, false);
+    overrides.is_objective = false;
+    overrides.submission_mode = "code";
+    overrides.artifact_max_size_mb = null;
+    overrides.supported_languages = getSubmissionLanguages(
+      "oi",
+      oi.runtime_config,
+    );
+    if (includePrivileged) overrides.runtime_config = oi.runtime_config;
+    return overrides;
+  }
+
+  // 客观题：无评测容器，运行配置恒为空；标准答案只给编辑者。
+  overrides.is_objective = true;
+  overrides.judge_type = "dual";
+  overrides.judge_backend = getJudgeBackend("dual", null, true);
+  overrides.submission_mode = "code";
+  overrides.artifact_max_size_mb = null;
+  overrides.supported_languages = [];
+  overrides.runtime_config = null;
+  if (includePrivileged) {
+    overrides.questions = content.questions;
+  } else {
+    overrides.questions = content.questions.map((question) => ({
+      ...question,
+      answer: [],
+      explanation: "",
+    }));
+  }
+  return overrides;
 }
 
 /**
@@ -141,55 +137,55 @@ export function projectProblemContent(
  * 编辑者原样返回。
  */
 export function trimProblemContentForViewer(
-    content: ProblemContentV1,
-    canEdit: boolean,
+  content: ProblemContentV1,
+  canEdit: boolean,
 ): ProblemContentV1 {
-    if (canEdit) return content;
-    if (content.kind === "objective") {
-        return {
-            ...content,
-            questions: content.questions.map((question) => ({
-                ...question,
-                answer: [],
-                explanation: "",
-            })),
-        };
-    }
-    if (content.kind === "ai") {
-        const trimmed = {
-            ...content,
-        } as unknown as Record<string, unknown>;
-        // 敏感字段整体**移除**（不是置空串/null）：置空会被读成"该版本没有配置/模板"，
-        // 而实际语义是"该字段不向此查看者下发"，与题目详情路径的按字段允许一致。
-        delete trimmed["runtime_config"];
-        delete trimmed["llm_config"];
-        delete trimmed["template_content"];
-        return trimmed as unknown as ProblemContentV1;
-    }
-    const trimmedOi = { ...content } as unknown as Record<string, unknown>;
-    delete trimmedOi["runtime_config"];
-    return trimmedOi as unknown as ProblemContentV1;
+  if (canEdit) return content;
+  if (content.kind === "objective") {
+    return {
+      ...content,
+      questions: content.questions.map((question) => ({
+        ...question,
+        answer: [],
+        explanation: "",
+      })),
+    };
+  }
+  if (content.kind === "ai") {
+    const trimmed = {
+      ...content,
+    } as unknown as Record<string, unknown>;
+    // 敏感字段整体**移除**（不是置空串/null）：置空会被读成"该版本没有配置/模板"，
+    // 而实际语义是"该字段不向此查看者下发"，与题目详情路径的按字段允许一致。
+    delete trimmed["runtime_config"];
+    delete trimmed["llm_config"];
+    delete trimmed["template_content"];
+    return trimmed as unknown as ProblemContentV1;
+  }
+  const trimmedOi = { ...content } as unknown as Record<string, unknown>;
+  delete trimmedOi["runtime_config"];
+  return trimmedOi as unknown as ProblemContentV1;
 }
 
 /** {@link buildProblemVersionRead} 的参数。 */
 export interface ProblemVersionReadInput {
-    /** 目标版本 ID（默认作答版本或客户端显式指定）。 */
-    version_id: string;
-    /** 数字版本号（展示用）。 */
-    version: number;
-    content: ProblemContentV1;
-    /** 该版本是否等于 `problems.latest_version_id`。 */
-    is_latest: boolean;
-    /** 查看者是否可编辑（owner/admin）——决定敏感字段是否下发。 */
-    can_edit: boolean;
-    /**
-     * 该版本是否有可交付的支持包。
-     *
-     * 由调用方按**该版本**的文件引用解析（不能用题目行的投影，那是"最新版"口径）。
-     */
-    has_support_package?: boolean;
-    /** 支持包存储位置；仅编辑者下发（`support_package_storage_url` 语义）。 */
-    support_package_storage_url?: string | null;
+  /** 目标版本 ID（默认作答版本或客户端显式指定）。 */
+  version_id: string;
+  /** 数字版本号（展示用）。 */
+  version: number;
+  content: ProblemContentV1;
+  /** 该版本是否等于 `problems.latest_version_id`。 */
+  is_latest: boolean;
+  /** 查看者是否可编辑（owner/admin）——决定敏感字段是否下发。 */
+  can_edit: boolean;
+  /**
+   * 该版本是否有可交付的支持包。
+   *
+   * 由调用方按**该版本**的文件引用解析（不能用题目行的投影，那是"最新版"口径）。
+   */
+  has_support_package?: boolean;
+  /** 支持包存储位置；仅编辑者下发（`support_package_storage_url` 语义）。 */
+  support_package_storage_url?: string | null;
 }
 
 /**
@@ -201,22 +197,21 @@ export interface ProblemVersionReadInput {
  * - 编辑者：全量。
  */
 export function buildProblemVersionRead(
-    input: ProblemVersionReadInput,
+  input: ProblemVersionReadInput,
 ): Record<string, unknown> {
-    const overrides = projectProblemContent(input.content, input.can_edit);
-    const payload: Record<string, unknown> = {
-        ...overrides,
-        version_id: input.version_id,
-        version: input.version,
-        is_latest: input.is_latest,
-    };
-    if (input.has_support_package !== undefined) {
-        payload.has_support_package = input.has_support_package;
-    }
-    if (input.can_edit) {
-        payload.support_package_storage_url =
-            input.support_package_storage_url ??
-                null;
-    }
-    return payload;
+  const overrides = projectProblemContent(input.content, input.can_edit);
+  const payload: Record<string, unknown> = {
+    ...overrides,
+    version_id: input.version_id,
+    version: input.version,
+    is_latest: input.is_latest,
+  };
+  if (input.has_support_package !== undefined) {
+    payload.has_support_package = input.has_support_package;
+  }
+  if (input.can_edit) {
+    payload.support_package_storage_url = input.support_package_storage_url ??
+      null;
+  }
+  return payload;
 }

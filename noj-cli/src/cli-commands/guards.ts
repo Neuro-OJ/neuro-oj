@@ -8,14 +8,14 @@ export { EXIT_FAILURE, EXIT_OK, EXIT_USAGE };
 
 /** 判断参数中是否请求帮助（`--help` 或 `-h`）。 */
 export function wantsHelp(args: string[]): boolean {
-    return args.includes("--help") || args.includes("-h");
+  return args.includes("--help") || args.includes("-h");
 }
 
 /** 是否开启调试栈输出（`--debug` 或环境变量）。 */
 export function isDebug(args: string[] = []): boolean {
-    if (args.includes("--debug")) return true;
-    const env = Deno.env.get("NOJ_CLI_DEBUG");
-    return env === "1" || env === "true";
+  if (args.includes("--debug")) return true;
+  const env = Deno.env.get("NOJ_CLI_DEBUG");
+  return env === "1" || env === "true";
 }
 
 /**
@@ -29,40 +29,40 @@ export function isDebug(args: string[] = []): boolean {
  * 参数解析，也不会透传到底层脚本或容器。
  */
 export function extractGlobalFlags(args: string[]): {
-    rest: string[];
-    debug: boolean;
+  rest: string[];
+  debug: boolean;
 } {
-    const rest: string[] = [];
-    let debug = false;
-    for (const arg of args) {
-        if (arg === "--debug") {
-            debug = true;
-            continue;
-        }
-        rest.push(arg);
+  const rest: string[] = [];
+  let debug = false;
+  for (const arg of args) {
+    if (arg === "--debug") {
+      debug = true;
+      continue;
     }
-    return { rest, debug };
+    rest.push(arg);
+  }
+  return { rest, debug };
 }
 
 /** 统一的错误输出与退出码映射（供 run 与测试复用）。 */
 export function handleError(
-    command: string,
-    error: unknown,
-    argv: string[] = [],
-    debugOverride?: boolean,
+  command: string,
+  error: unknown,
+  argv: string[] = [],
+  debugOverride?: boolean,
 ): number {
-    const debug = debugOverride ?? isDebug(argv);
-    if (error instanceof UsageError) {
-        console.error(`noj-cli ${command}: ${error.message}`);
-        return EXIT_USAGE;
-    }
-    // ProductionDirError 与未预期错误都是「运行失败」，但后者才需要栈帧提示
-    const classified = error instanceof ProductionDirError;
-    console.error(`noj-cli ${command}: ${(error as Error).message}`);
-    if (debug) {
-        console.error((error as Error).stack ?? "");
-    } else if (!classified) {
-        console.error("（加 --debug 查看完整栈）");
-    }
-    return EXIT_FAILURE;
+  const debug = debugOverride ?? isDebug(argv);
+  if (error instanceof UsageError) {
+    console.error(`noj-cli ${command}: ${error.message}`);
+    return EXIT_USAGE;
+  }
+  // ProductionDirError 与未预期错误都是「运行失败」，但后者才需要栈帧提示
+  const classified = error instanceof ProductionDirError;
+  console.error(`noj-cli ${command}: ${(error as Error).message}`);
+  if (debug) {
+    console.error((error as Error).stack ?? "");
+  } else if (!classified) {
+    console.error("（加 --debug 查看完整栈）");
+  }
+  return EXIT_FAILURE;
 }

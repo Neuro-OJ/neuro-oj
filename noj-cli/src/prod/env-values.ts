@@ -13,10 +13,10 @@
  * （同 shell 的 `${KEY:-default}`）。
  */
 export function valueOr(
-    env: Record<string, string>,
-    key: string,
-    fallback: string,
+  env: Record<string, string>,
+  key: string,
+  fallback: string,
 ): string {
-    const v = env[key];
-    return v === undefined || v === "" ? fallback : v;
+  const v = env[key];
+  return v === undefined || v === "" ? fallback : v;
 }

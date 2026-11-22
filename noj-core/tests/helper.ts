@@ -47,21 +47,21 @@ import type { Env, Hono, Schema } from "hono";
 
 /** `jsonRequest` 的可配置项。 */
 export interface JsonRequestOptions {
-    /** HTTP 方法，默认 `GET`。 */
-    method?: string;
-    /** 请求体，传 `undefined` 表示无 body；其他值会被 `JSON.stringify`。 */
-    body?: unknown;
-    /** 设置 `Authorization: Bearer <token>`，未设置则不携带。
-     *  如已在 `headers` 中显式提供 `Authorization`，此项被忽略。 */
-    token?: string;
-    /** 设置 `X-Forwarded-For`，用于触发或绕过基于 IP 的限流。
-     *  如已在 `headers` 中显式提供 `X-Forwarded-For`，此项被忽略。 */
-    ip?: string;
-    /** 任意附加 / 覆盖 headers。常用于中间件单元测试中发送非标准
-     *  `Authorization`（如空字符串、`Token` scheme、裸 `Bearer ` 等）。
-     *  传入的 headers 会与上面前缀字段合并；若两者指定同一 header，
-     *  `headers` 优先。`Content-Type` 默认总是 `application/json`，可被覆盖。 */
-    headers?: HeadersInit;
+  /** HTTP 方法，默认 `GET`。 */
+  method?: string;
+  /** 请求体，传 `undefined` 表示无 body；其他值会被 `JSON.stringify`。 */
+  body?: unknown;
+  /** 设置 `Authorization: Bearer <token>`，未设置则不携带。
+   *  如已在 `headers` 中显式提供 `Authorization`，此项被忽略。 */
+  token?: string;
+  /** 设置 `X-Forwarded-For`，用于触发或绕过基于 IP 的限流。
+   *  如已在 `headers` 中显式提供 `X-Forwarded-For`，此项被忽略。 */
+  ip?: string;
+  /** 任意附加 / 覆盖 headers。常用于中间件单元测试中发送非标准
+   *  `Authorization`（如空字符串、`Token` scheme、裸 `Bearer ` 等）。
+   *  传入的 headers 会与上面前缀字段合并；若两者指定同一 header，
+   *  `headers` 优先。`Content-Type` 默认总是 `application/json`，可被覆盖。 */
+  headers?: HeadersInit;
 }
 
 /**
@@ -92,44 +92,44 @@ export interface JsonRequestOptions {
  * ```
  */
 export async function jsonRequest<
-    // 接受任意 Hono 实例。三个泛型参数推断自调用方传入的具体 Hono 类型
-    // （Env 必带 Variables/Bindings 形态，Schema 默认 BlankSchema），
-    // 既兼容裸 Hono（生产 `createApp()`），也兼容 `new Hono<{Variables:
-    // V}>()` 的中间件/路由单元测试。无需 `any`，无需 lint 抑制。
-    E extends Env,
-    S extends Schema = Record<PropertyKey, never>,
+  // 接受任意 Hono 实例。三个泛型参数推断自调用方传入的具体 Hono 类型
+  // （Env 必带 Variables/Bindings 形态，Schema 默认 BlankSchema），
+  // 既兼容裸 Hono（生产 `createApp()`），也兼容 `new Hono<{Variables:
+  // V}>()` 的中间件/路由单元测试。无需 `any`，无需 lint 抑制。
+  E extends Env,
+  S extends Schema = Record<PropertyKey, never>,
 >(
-    app: Hono<E, S, "/">,
-    path: string,
-    options: JsonRequestOptions = {},
+  app: Hono<E, S, "/">,
+  path: string,
+  options: JsonRequestOptions = {},
 ): Promise<Response> {
-    const headers = new Headers({ "Content-Type": "application/json" });
+  const headers = new Headers({ "Content-Type": "application/json" });
 
-    // 调用方提供的任意 headers 先合并（让它有机会覆盖自动值）
-    if (options.headers) {
-        const extra = options.headers instanceof Headers
-            ? options.headers
-            : new Headers(options.headers);
-        extra.forEach((value, key) => headers.set(key, value));
-    }
+  // 调用方提供的任意 headers 先合并（让它有机会覆盖自动值）
+  if (options.headers) {
+    const extra = options.headers instanceof Headers
+      ? options.headers
+      : new Headers(options.headers);
+    extra.forEach((value, key) => headers.set(key, value));
+  }
 
-    // 自动便利字段：仅在调用方未通过 `headers` 显式覆盖时生效
-    if (options.token && !headers.has("Authorization")) {
-        headers.set("Authorization", `Bearer ${options.token}`);
-    }
-    if (options.ip && !headers.has("X-Forwarded-For")) {
-        headers.set("X-Forwarded-For", options.ip);
-    }
+  // 自动便利字段：仅在调用方未通过 `headers` 显式覆盖时生效
+  if (options.token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${options.token}`);
+  }
+  if (options.ip && !headers.has("X-Forwarded-For")) {
+    headers.set("X-Forwarded-For", options.ip);
+  }
 
-    return await app.fetch(
-        new Request(`http://localhost${path}`, {
-            method: options.method ?? "GET",
-            headers,
-            body: options.body !== undefined
-                ? JSON.stringify(options.body)
-                : undefined,
-        }),
-    );
+  return await app.fetch(
+    new Request(`http://localhost${path}`, {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body !== undefined
+        ? JSON.stringify(options.body)
+        : undefined,
+    }),
+  );
 }
 
 /**
@@ -160,26 +160,26 @@ export async function jsonRequest<
  * - 已在连接中：捕获 "already connecting/connected" 错误
  */
 export async function initRedisForTest(): Promise<void> {
-    if (!Deno.env.get("REDIS_URL")) return;
-    // PR-1 已被 main revert，但本测试套件仍调 isJtiRevoked。开启测试短路开关，
-    // 让 isJtiRevoked 在 NOJ_BYPASS_JWT_REVOKE=1 时直接返回 false，避免 Redis
-    // 跨测试状态污染导致 authMiddleware 抛 503。
-    Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
-    const mq = await import("../src/shared/mq/connection.ts");
-    // 仅当连接尚未就绪时才 reset + connect，避免并发测试反复 disconnect
-    // 已建立的连接（导致后续请求拿到未连接的 client 抛 503）
-    try {
-        const health = await mq.checkRedisHealth();
-        if (health.ok) return; // 已就绪，跳过 reset
-    } catch {
-        // health check 自身失败 → 继续走 reset + connect
-    }
-    mq.resetRedisForTest();
-    try {
-        await mq.connectRedis();
-    } catch (e) {
-        if (!String(e).includes("already connecting/connected")) throw e;
-    }
+  if (!Deno.env.get("REDIS_URL")) return;
+  // PR-1 已被 main revert，但本测试套件仍调 isJtiRevoked。开启测试短路开关，
+  // 让 isJtiRevoked 在 NOJ_BYPASS_JWT_REVOKE=1 时直接返回 false，避免 Redis
+  // 跨测试状态污染导致 authMiddleware 抛 503。
+  Deno.env.set("NOJ_BYPASS_JWT_REVOKE", "1");
+  const mq = await import("../src/shared/mq/connection.ts");
+  // 仅当连接尚未就绪时才 reset + connect，避免并发测试反复 disconnect
+  // 已建立的连接（导致后续请求拿到未连接的 client 抛 503）
+  try {
+    const health = await mq.checkRedisHealth();
+    if (health.ok) return; // 已就绪，跳过 reset
+  } catch {
+    // health check 自身失败 → 继续走 reset + connect
+  }
+  mq.resetRedisForTest();
+  try {
+    await mq.connectRedis();
+  } catch (e) {
+    if (!String(e).includes("already connecting/connected")) throw e;
+  }
 }
 
 /**
@@ -192,33 +192,33 @@ export async function initRedisForTest(): Promise<void> {
  * 动态 import 避免本模块顶层引入 DB 依赖（helper 保持零副作用导入）。
  */
 export async function createUserToken(
-    role: "admin" | "user" = "user",
+  role: "admin" | "user" = "user",
 ): Promise<string> {
-    const { getDb } = await import(
-        "../src/shared/db/connection.ts"
-    );
-    const { users } = await import("../src/shared/db/schema.ts");
-    const { signToken } = await import(
-        "../src/modules/access/identity/services/security/jwt.ts"
-    );
-    const db = getDb();
-    const id = crypto.randomUUID();
-    const now = new Date().toISOString();
-    const username = `test_${role}_${Date.now()}_${
-        crypto.randomUUID().slice(0, 8)
-    }`;
-    await db.insert(users).values({
-        id,
-        username,
-        email: `${id}@test.local`,
-        password_hash: "x",
-        must_change_password: false,
-        // 平台角色单值写入用户行；不再有关联表或 FK 重试。
-        role,
-        created_at: now,
-        updated_at: now,
-    });
-    return await signToken({ sub: id, role });
+  const { getDb } = await import(
+    "../src/shared/db/connection.ts"
+  );
+  const { users } = await import("../src/shared/db/schema.ts");
+  const { signToken } = await import(
+    "../src/modules/access/identity/services/security/jwt.ts"
+  );
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const username = `test_${role}_${Date.now()}_${
+    crypto.randomUUID().slice(0, 8)
+  }`;
+  await db.insert(users).values({
+    id,
+    username,
+    email: `${id}@test.local`,
+    password_hash: "x",
+    must_change_password: false,
+    // 平台角色单值写入用户行；不再有关联表或 FK 重试。
+    role,
+    created_at: now,
+    updated_at: now,
+  });
+  return await signToken({ sub: id, role });
 }
 
 /**
@@ -235,131 +235,122 @@ export async function createUserToken(
  */
 /** 显式发布夹具同时建立所属域题库；已有独立策略不被初始化覆盖。 */
 export async function bindPublishedProblemForTest(
-    problemId: string,
+  problemId: string,
 ): Promise<string> {
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { problems, domainProblemBindings } = await import(
-        "../src/shared/db/schema.ts"
-    );
-    const { and, eq } = await import("drizzle-orm");
-    const db = getDb();
-    const [problem] = await db.select().from(problems).where(
-        eq(problems.id, problemId),
-    );
-    if (!problem) throw new Error(`题目不存在：${problemId}`);
-    await db.insert(domainProblemBindings).values({
-        id: `owned-binding-${problem.id}`,
-        domain_id: problem.domain_id,
-        problem_id: problem.id,
-        visibility: problem.visibility === "public" ? "public" : "members",
-        revision: problem.effective_policy_revision,
-        created_by: problem.owner_id ?? "0",
-        created_at: problem.created_at,
-        updated_at: problem.updated_at,
-    }).onConflictDoNothing();
-    const [binding] = await db.select().from(domainProblemBindings).where(and(
-        eq(domainProblemBindings.domain_id, problem.domain_id),
-        eq(domainProblemBindings.problem_id, problem.id),
-    ));
-    return binding.id;
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem) throw new Error(`题目不存在：${problemId}`);
+  await db.insert(domainProblemBindings).values({
+    id: `owned-binding-${problem.id}`,
+    domain_id: problem.domain_id,
+    problem_id: problem.id,
+    visibility: problem.visibility === "public" ? "public" : "members",
+    revision: problem.effective_policy_revision,
+    created_by: problem.owner_id ?? "0",
+    created_at: problem.created_at,
+    updated_at: problem.updated_at,
+  }).onConflictDoNothing();
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, problem.domain_id),
+    eq(domainProblemBindings.problem_id, problem.id),
+  ));
+  return binding.id;
 }
 
 /** 源题执行夹具显式携带所属域与真实绑定；共享执行须由用例指定使用域。 */
 export async function problemExecutionForTest(problemId: string) {
-    const bindingId = await bindPublishedProblemForTest(problemId);
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { domainProblemBindings } = await import(
-        "../src/shared/db/schema.ts"
-    );
-    const { eq } = await import("drizzle-orm");
-    const [binding] = await getDb().select({
-        domain_id: domainProblemBindings.domain_id,
-        domain_problem_binding_id: domainProblemBindings.id,
-    }).from(domainProblemBindings).where(
-        eq(domainProblemBindings.id, bindingId),
-    );
-    return binding;
+  const bindingId = await bindPublishedProblemForTest(problemId);
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { domainProblemBindings } = await import("../src/shared/db/schema.ts");
+  const { eq } = await import("drizzle-orm");
+  const [binding] = await getDb().select({
+    domain_id: domainProblemBindings.domain_id,
+    domain_problem_binding_id: domainProblemBindings.id,
+  }).from(domainProblemBindings).where(eq(domainProblemBindings.id, bindingId));
+  return binding;
 }
 
 /** 仅测试清理：调用方先释放提交/比赛，再显式删除题库绑定和源题。 */
 export async function deleteProblemFixtures(
-    where: import("drizzle-orm").SQL,
+  where: import("drizzle-orm").SQL,
 ): Promise<void> {
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { problems, domainProblemBindings } = await import(
-        "../src/shared/db/schema.ts"
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, domainProblemBindings } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { inArray } = await import("drizzle-orm");
+  const db = getDb();
+  const rows = await db.select({ id: problems.id }).from(problems).where(where);
+  if (rows.length) {
+    await db.delete(domainProblemBindings).where(
+      inArray(domainProblemBindings.problem_id, rows.map((row) => row.id)),
     );
-    const { inArray } = await import("drizzle-orm");
-    const db = getDb();
-    const rows = await db.select({ id: problems.id }).from(problems).where(
-        where,
-    );
-    if (rows.length) {
-        await db.delete(domainProblemBindings).where(
-            inArray(
-                domainProblemBindings.problem_id,
-                rows.map((row) => row.id),
-            ),
-        );
-    }
-    await db.delete(problems).where(where);
+  }
+  await db.delete(problems).where(where);
 }
 
 export async function publishBaselineVersionForTest(
-    problemId: string,
-    content?: Record<string, unknown>,
+  problemId: string,
+  content?: Record<string, unknown>,
 ): Promise<string> {
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { problems, problemVersions } = await import(
-        "../src/shared/db/schema.ts"
-    );
-    const { deriveDraftContentFromProblem } = await import(
-        "../src/modules/problems/services/versioning/draft.ts"
-    );
-    const { eq } = await import("drizzle-orm");
-    const db = getDb();
-    const [row] = await db.select().from(problems).where(
-        eq(problems.id, problemId),
-    ).limit(1);
-    if (!row) throw new Error(`题目不存在：${problemId}`);
-    await bindPublishedProblemForTest(problemId);
-    // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
-    // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
-    if (row.latest_version_id) return row.latest_version_id;
-    const versionId = `baseline-${problemId}`;
-    const now = new Date().toISOString();
-    // 内容按题目 kind 派生（客观题必须带 questions，否则判卷会拒绝该版本）
-    const derived = await deriveDraftContentFromProblem(row);
-    await db.insert(problemVersions).values({
-        id: versionId,
-        problem_id: problemId,
-        version: 1,
-        origin: "migration_baseline",
-        content: content ?? {
-            ...derived,
-            runtime_config: (derived as { runtime_config?: unknown })
-                .runtime_config ??
-                {
-                    evaluator: {
-                        image: "noj-evaluator-python",
-                        command: "python3 /workspace/evaluate.py",
-                        time_limit_ms: 5000,
-                        memory_limit_mb: 512,
-                    },
-                    solution: {
-                        image: "noj-solution-python",
-                        call_timeout_ms: 2000,
-                        memory_limit_mb: 512,
-                    },
-                },
-            samples: derived.samples ?? [],
-        } as unknown as Record<string, unknown>,
-        published_at: now,
-    }).onConflictDoNothing();
-    await db.update(problems).set({ latest_version_id: versionId }).where(
-        eq(problems.id, problemId),
-    );
-    return versionId;
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems, problemVersions } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { deriveDraftContentFromProblem } = await import(
+    "../src/modules/problems/services/versioning/draft.ts"
+  );
+  const { eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [row] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  ).limit(1);
+  if (!row) throw new Error(`题目不存在：${problemId}`);
+  await bindPublishedProblemForTest(problemId);
+  // 已有最新已发布版本：直接复用（幂等）。避免在已有 version=1 的题目上插入
+  // 冲突版本被 `onConflictDoNothing` 跳过后，把指针写成不存在的版本 id（外键失败）。
+  if (row.latest_version_id) return row.latest_version_id;
+  const versionId = `baseline-${problemId}`;
+  const now = new Date().toISOString();
+  // 内容按题目 kind 派生（客观题必须带 questions，否则判卷会拒绝该版本）
+  const derived = await deriveDraftContentFromProblem(row);
+  await db.insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version: 1,
+    origin: "migration_baseline",
+    content: content ?? {
+      ...derived,
+      runtime_config: (derived as { runtime_config?: unknown })
+        .runtime_config ??
+        {
+          evaluator: {
+            image: "noj-evaluator-python",
+            command: "python3 /workspace/evaluate.py",
+            time_limit_ms: 5000,
+            memory_limit_mb: 512,
+          },
+          solution: {
+            image: "noj-solution-python",
+            call_timeout_ms: 2000,
+            memory_limit_mb: 512,
+          },
+        },
+      samples: derived.samples ?? [],
+    } as unknown as Record<string, unknown>,
+    published_at: now,
+  }).onConflictDoNothing();
+  await db.update(problems).set({ latest_version_id: versionId }).where(
+    eq(problems.id, problemId),
+  );
+  return versionId;
 }
 
 /**
@@ -370,12 +361,12 @@ export async function publishBaselineVersionForTest(
  * 幂等：已发布题目重复调用不产生新版本行（`onConflictDoNothing` + 指针回写）。
  */
 export async function publishAllProblemsForTest(): Promise<void> {
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { problems } = await import("../src/shared/db/schema.ts");
-    const rows = await getDb().select({ id: problems.id }).from(problems);
-    for (const row of rows) {
-        await publishBaselineVersionForTest(row.id);
-    }
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { problems } = await import("../src/shared/db/schema.ts");
+  const rows = await getDb().select({ id: problems.id }).from(problems);
+  for (const row of rows) {
+    await publishBaselineVersionForTest(row.id);
+  }
 }
 
 /**
@@ -384,52 +375,52 @@ export async function publishAllProblemsForTest(): Promise<void> {
  * 与 `contest_problems` 插入形状一致（未列出的列均有默认值）。
  */
 export interface ContestProblemFixtureRow {
-    contest_id: string;
-    problem_id: string;
-    label: string;
-    score: number;
-    sort_order?: number;
-    pinned_version_id?: string | null;
-    effective_version_mode?: string;
-    required_version_id?: string | null;
-    effective_policy_revision?: number;
+  contest_id: string;
+  problem_id: string;
+  label: string;
+  score: number;
+  sort_order?: number;
+  pinned_version_id?: string | null;
+  effective_version_mode?: string;
+  required_version_id?: string | null;
+  effective_policy_revision?: number;
 }
 
 /** 按父比赛的真实使用域取得赛题绑定；跨域题必须先建立目标域引用。 */
 export async function contestProblemExecutionForTest(
-    contestId: string,
-    problemId: string,
+  contestId: string,
+  problemId: string,
 ) {
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { contests, domainProblemBindings, problems } = await import(
-        "../src/shared/db/schema.ts"
-    );
-    const { and, eq } = await import("drizzle-orm");
-    const db = getDb();
-    const [contest] = await db.select().from(contests).where(
-        eq(contests.id, contestId),
-    );
-    if (!contest) throw new Error("比赛夹具的父比赛不存在");
-    const [binding] = await db.select().from(domainProblemBindings).where(and(
-        eq(domainProblemBindings.domain_id, contest.domain_id),
-        eq(domainProblemBindings.problem_id, problemId),
-    ));
-    if (binding) {
-        return {
-            domain_id: contest.domain_id,
-            domain_problem_binding_id: binding.id,
-        };
-    }
-    const [problem] = await db.select().from(problems).where(
-        eq(problems.id, problemId),
-    );
-    if (!problem || problem.domain_id !== contest.domain_id) {
-        throw new Error("共享赛题夹具缺少比赛使用域的题库绑定");
-    }
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { contests, domainProblemBindings, problems } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const { and, eq } = await import("drizzle-orm");
+  const db = getDb();
+  const [contest] = await db.select().from(contests).where(
+    eq(contests.id, contestId),
+  );
+  if (!contest) throw new Error("比赛夹具的父比赛不存在");
+  const [binding] = await db.select().from(domainProblemBindings).where(and(
+    eq(domainProblemBindings.domain_id, contest.domain_id),
+    eq(domainProblemBindings.problem_id, problemId),
+  ));
+  if (binding) {
     return {
-        domain_id: contest.domain_id,
-        domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
+      domain_id: contest.domain_id,
+      domain_problem_binding_id: binding.id,
     };
+  }
+  const [problem] = await db.select().from(problems).where(
+    eq(problems.id, problemId),
+  );
+  if (!problem || problem.domain_id !== contest.domain_id) {
+    throw new Error("共享赛题夹具缺少比赛使用域的题库绑定");
+  }
+  return {
+    domain_id: contest.domain_id,
+    domain_problem_binding_id: await bindPublishedProblemForTest(problemId),
+  };
 }
 
 /**
@@ -443,27 +434,24 @@ export async function contestProblemExecutionForTest(
  * @param input 关联行（单行或数组；可省略 `pinned_version_id`）
  */
 export async function insertContestProblems(
-    input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
+  input: ContestProblemFixtureRow | readonly ContestProblemFixtureRow[],
 ): Promise<void> {
-    const { getDb } = await import("../src/shared/db/connection.ts");
-    const { contestProblems } = await import(
-        "../src/shared/db/schema.ts"
-    );
-    const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
-        ? input
-        : [input as ContestProblemFixtureRow];
-    const resolved = [];
-    for (const row of rows) {
-        const versionId = row.pinned_version_id ??
-            await publishBaselineVersionForTest(row.problem_id);
-        resolved.push({
-            ...row,
-            ...await contestProblemExecutionForTest(
-                row.contest_id,
-                row.problem_id,
-            ),
-            pinned_version_id: versionId,
-        });
-    }
-    await getDb().insert(contestProblems).values(resolved);
+  const { getDb } = await import("../src/shared/db/connection.ts");
+  const { contestProblems } = await import(
+    "../src/shared/db/schema.ts"
+  );
+  const rows: readonly ContestProblemFixtureRow[] = Array.isArray(input)
+    ? input
+    : [input as ContestProblemFixtureRow];
+  const resolved = [];
+  for (const row of rows) {
+    const versionId = row.pinned_version_id ??
+      await publishBaselineVersionForTest(row.problem_id);
+    resolved.push({
+      ...row,
+      ...await contestProblemExecutionForTest(row.contest_id, row.problem_id),
+      pinned_version_id: versionId,
+    });
+  }
+  await getDb().insert(contestProblems).values(resolved);
 }

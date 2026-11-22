@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import CommunityNotificationDetail from '~/components/community/CommunityNotificationDetail.vue';
+import CommunityNotificationDetail from '~/components/feature/community/CommunityNotificationDetail.vue';
 definePageMeta({ middleware: 'auth' });
 </script>
-<template>
-    <CommunityNotificationDetail account />
-</template>
+<template><CommunityNotificationDetail account /></template>

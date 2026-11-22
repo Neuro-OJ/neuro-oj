@@ -14,22 +14,22 @@ import { queryProjectionRevisions } from "../../../shared/db/schema.ts";
 
 /** 全局作用域键：提交总数等聚合口径。 */
 export function globalProjectionScopeKey(): string {
-    return "global";
+  return "global";
 }
 
 /** 题目作用域键。 */
 export function problemProjectionScopeKey(problemId: string): string {
-    return `problem:${problemId}`;
+  return `problem:${problemId}`;
 }
 
 /** 竞赛作用域键。 */
 export function contestProjectionScopeKey(contestId: string): string {
-    return `contest:${contestId}`;
+  return `contest:${contestId}`;
 }
 
 /** 使用域作用域键。 */
 export function domainProjectionScopeKey(domainId: string): string {
-    return `domain:${domainId}`;
+  return `domain:${domainId}`;
 }
 
 /**
@@ -39,33 +39,33 @@ export function domainProjectionScopeKey(domainId: string): string {
  * 不允许依赖 TTL 或异步刷新。`materialized_revision` 保持不变，由刷新方推进。
  */
 export async function bumpQueryProjectionRevisionTx(
-    tx: DbTx,
-    scopeKey: string,
+  tx: DbTx,
+  scopeKey: string,
 ): Promise<number> {
-    if (typeof scopeKey !== "string" || scopeKey.trim() === "") {
-        throw new TypeError("投影作用域键不能为空");
-    }
-    const rows = await tx.insert(queryProjectionRevisions).values({
-        scope_key: scopeKey,
-        data_revision: 1,
-        materialized_revision: 0,
-    }).onConflictDoUpdate({
-        target: queryProjectionRevisions.scope_key,
-        set: {
-            data_revision: sql`${queryProjectionRevisions.data_revision} + 1`,
-        },
-    }).returning({ data_revision: queryProjectionRevisions.data_revision });
-    return rows[0]?.data_revision ?? 1;
+  if (typeof scopeKey !== "string" || scopeKey.trim() === "") {
+    throw new TypeError("投影作用域键不能为空");
+  }
+  const rows = await tx.insert(queryProjectionRevisions).values({
+    scope_key: scopeKey,
+    data_revision: 1,
+    materialized_revision: 0,
+  }).onConflictDoUpdate({
+    target: queryProjectionRevisions.scope_key,
+    set: {
+      data_revision: sql`${queryProjectionRevisions.data_revision} + 1`,
+    },
+  }).returning({ data_revision: queryProjectionRevisions.data_revision });
+  return rows[0]?.data_revision ?? 1;
 }
 
 /** 一次递增多个作用域；按调用方给出的顺序串行推进，避免自增竞争。 */
 export async function bumpQueryProjectionRevisionsTx(
-    tx: DbTx,
-    scopeKeys: readonly string[],
+  tx: DbTx,
+  scopeKeys: readonly string[],
 ): Promise<void> {
-    for (const scopeKey of scopeKeys) {
-        await bumpQueryProjectionRevisionTx(tx, scopeKey);
-    }
+  for (const scopeKey of scopeKeys) {
+    await bumpQueryProjectionRevisionTx(tx, scopeKey);
+  }
 }
 
 /**
@@ -74,36 +74,36 @@ export async function bumpQueryProjectionRevisionsTx(
  * 只读，供 application/read-models 组合层判断是否需要重新物化。
  */
 export async function readQueryProjectionRevisionTx(
-    tx: DbTx,
-    scopeKey: string,
+  tx: DbTx,
+  scopeKey: string,
 ): Promise<number> {
-    const [row] = await tx.select({
-        data_revision: queryProjectionRevisions.data_revision,
-    }).from(queryProjectionRevisions).where(
-        eq(queryProjectionRevisions.scope_key, scopeKey),
-    ).limit(1);
-    return row?.data_revision ?? 0;
+  const [row] = await tx.select({
+    data_revision: queryProjectionRevisions.data_revision,
+  }).from(queryProjectionRevisions).where(
+    eq(queryProjectionRevisions.scope_key, scopeKey),
+  ).limit(1);
+  return row?.data_revision ?? 0;
 }
 
 /** 批量读取多个作用域的当前数据版本；缺失的作用域不出现在结果中。 */
 export async function readQueryProjectionRevisionsTx(
-    tx: DbTx,
-    scopeKeys: readonly string[],
+  tx: DbTx,
+  scopeKeys: readonly string[],
 ): Promise<Map<string, number>> {
-    const keys = [...new Set(scopeKeys)];
-    const out = new Map<string, number>();
-    const BATCH = 5_000;
-    for (let offset = 0; offset < keys.length; offset += BATCH) {
-        const rows = await tx.select({
-            scope_key: queryProjectionRevisions.scope_key,
-            data_revision: queryProjectionRevisions.data_revision,
-        }).from(queryProjectionRevisions).where(
-            inArray(
-                queryProjectionRevisions.scope_key,
-                keys.slice(offset, offset + BATCH),
-            ),
-        );
-        for (const row of rows) out.set(row.scope_key, row.data_revision);
-    }
-    return out;
+  const keys = [...new Set(scopeKeys)];
+  const out = new Map<string, number>();
+  const BATCH = 5_000;
+  for (let offset = 0; offset < keys.length; offset += BATCH) {
+    const rows = await tx.select({
+      scope_key: queryProjectionRevisions.scope_key,
+      data_revision: queryProjectionRevisions.data_revision,
+    }).from(queryProjectionRevisions).where(
+      inArray(
+        queryProjectionRevisions.scope_key,
+        keys.slice(offset, offset + BATCH),
+      ),
+    );
+    for (const row of rows) out.set(row.scope_key, row.data_revision);
+  }
+  return out;
 }

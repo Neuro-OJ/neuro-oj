@@ -80,22 +80,22 @@ const CRON_FIELD_COUNT = 5;
  * 抛 {@link UsageError}（退出码 2 = 用法错误）。
  */
 export function assertSchedule(expr: string): void {
-    const fields = expr.trim().split(/\s+/);
-    // **顺序重要**：先查元字符，再查段数。反过来的话
-    // `15 2 * * *; touch /tmp/unsafe` 会因为分号后多出一个词而报"段数不对"，
-    // 把"这是注入尝试"这一关键信息掩盖成"格式没写对"——运维会看错方向。
-    for (const field of fields) {
-        if (!CRON_FIELD_RE.test(field)) {
-            throw new UsageError(
-                `--schedule 不能包含 shell 元字符，收到 "${field}"（完整表达式：${expr}）`,
-            );
-        }
+  const fields = expr.trim().split(/\s+/);
+  // **顺序重要**：先查元字符，再查段数。反过来的话
+  // `15 2 * * *; touch /tmp/unsafe` 会因为分号后多出一个词而报"段数不对"，
+  // 把"这是注入尝试"这一关键信息掩盖成"格式没写对"——运维会看错方向。
+  for (const field of fields) {
+    if (!CRON_FIELD_RE.test(field)) {
+      throw new UsageError(
+        `--schedule 不能包含 shell 元字符，收到 "${field}"（完整表达式：${expr}）`,
+      );
     }
-    if (fields.length !== CRON_FIELD_COUNT) {
-        throw new UsageError(
-            `--schedule 必须是五段 cron 表达式（分 时 日 月 周），收到 "${expr}"`,
-        );
-    }
+  }
+  if (fields.length !== CRON_FIELD_COUNT) {
+    throw new UsageError(
+      `--schedule 必须是五段 cron 表达式（分 时 日 月 周），收到 "${expr}"`,
+    );
+  }
 }
 
 /**
@@ -108,10 +108,10 @@ export function assertSchedule(expr: string): void {
  * 单引号包裹是唯一"没有例外"的形态，因此更不容易写错。
  */
 export function quoteForCron(value: string): string {
-    if (value === "") return "''";
-    // 仅含安全字符时不必加引号（可读性；也让既有测试里的路径断言更直观）
-    if (/^[A-Za-z0-9@%_+=:,./-]+$/.test(value)) return value;
-    return "'" + value.replace(/'/g, "'\\''") + "'";
+  if (value === "") return "''";
+  // 仅含安全字符时不必加引号（可读性；也让既有测试里的路径断言更直观）
+  if (/^[A-Za-z0-9@%_+=:,./-]+$/.test(value)) return value;
+  return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
 /**
@@ -127,23 +127,23 @@ export function quoteForCron(value: string): string {
  * 标记，下次 install 就再也认不出它，从而产生无法清理的重复任务。
  */
 export function removeManagedBlock(crontab: string): string {
-    const out: string[] = [];
-    let skipping = false;
-    for (const line of splitLines(crontab)) {
-        if (line === MARKER_BEGIN) {
-            skipping = true;
-            continue;
-        }
-        if (line === MARKER_END) {
-            skipping = false;
-            continue;
-        }
-        if (!skipping) out.push(line);
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of splitLines(crontab)) {
+    if (line === MARKER_BEGIN) {
+      skipping = true;
+      continue;
     }
-    // **保留末尾换行**：crontab 是文本文件，"区块外的字节不变"包含末尾换行这一
-    // 字节。丢掉它虽然不影响 cron 的解析，但会让"逐字节不变"的断言（与运维的
-    // diff 习惯）失效——本模块的核心承诺就是不动别人的东西。
-    return out.length === 0 ? "" : out.join("\n") + "\n";
+    if (line === MARKER_END) {
+      skipping = false;
+      continue;
+    }
+    if (!skipping) out.push(line);
+  }
+  // **保留末尾换行**：crontab 是文本文件，"区块外的字节不变"包含末尾换行这一
+  // 字节。丢掉它虽然不影响 cron 的解析，但会让"逐字节不变"的断言（与运维的
+  // diff 习惯）失效——本模块的核心承诺就是不动别人的东西。
+  return out.length === 0 ? "" : out.join("\n") + "\n";
 }
 
 /**
@@ -152,20 +152,20 @@ export function removeManagedBlock(crontab: string): string {
  * 返回 `null` 表示未安装。含**两端标记**（便于用户直接肉眼确认区块边界）。
  */
 export function extractManagedBlock(crontab: string): string | null {
-    const lines: string[] = [];
-    let found = false;
-    for (const line of splitLines(crontab)) {
-        if (line === MARKER_BEGIN) {
-            found = true;
-            lines.push(line);
-            continue;
-        }
-        if (found) {
-            lines.push(line);
-            if (line === MARKER_END) break;
-        }
+  const lines: string[] = [];
+  let found = false;
+  for (const line of splitLines(crontab)) {
+    if (line === MARKER_BEGIN) {
+      found = true;
+      lines.push(line);
+      continue;
     }
-    return found ? lines.join("\n") : null;
+    if (found) {
+      lines.push(line);
+      if (line === MARKER_END) break;
+    }
+  }
+  return found ? lines.join("\n") : null;
 }
 
 /**
@@ -177,27 +177,27 @@ export function extractManagedBlock(crontab: string): string | null {
  * 新区块追加在末尾，因此区块外的行保持原有相对顺序——测试对"他人任务逐字节不变"有断言。
  */
 export function upsertManagedBlock(crontab: string, entry: string): string {
-    const without = removeManagedBlock(crontab).replace(/\n+$/, "");
-    const block = [MARKER_BEGIN, entry, MARKER_END].join("\n");
-    return without === "" ? block + "\n" : without + "\n" + block + "\n";
+  const without = removeManagedBlock(crontab).replace(/\n+$/, "");
+  const block = [MARKER_BEGIN, entry, MARKER_END].join("\n");
+  return without === "" ? block + "\n" : without + "\n" + block + "\n";
 }
 
 /** 按 LF 切分并去掉末尾的空元素（`text.split("\n")` 在末尾换行时会多一个 ""）。 */
 function splitLines(text: string): string[] {
-    const lines = text.split("\n");
-    if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-    return lines;
+  const lines = text.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  return lines;
 }
 
 /** 构造 crontab 里的那一行命令。 */
 export interface ScheduleEntryOptions {
-    schedule: string;
-    /** 备份脚本的绝对路径（调用方给；本函数只负责引用）。 */
-    backupScript: string;
-    envFile: string;
-    composeFile: string;
-    backupDir: string;
-    passphraseFile: string;
+  schedule: string;
+  /** 备份脚本的绝对路径（调用方给；本函数只负责引用）。 */
+  backupScript: string;
+  envFile: string;
+  composeFile: string;
+  backupDir: string;
+  passphraseFile: string;
 }
 
 /**
@@ -207,70 +207,70 @@ export interface ScheduleEntryOptions {
  * 的写法与顺序），因为运维会按这个形状读 crontab。
  */
 export function renderScheduleEntry(opts: ScheduleEntryOptions): string {
-    const logFile = join(opts.backupDir, CRON_LOG_NAME);
-    return [
-        opts.schedule,
-        quoteForCron(opts.backupScript),
-        // 入口是 noj-cli 自身，故子命令是 `backup create`。
-        "backup",
-        "create",
-        "--env-file",
-        quoteForCron(opts.envFile),
-        "--compose-file",
-        quoteForCron(opts.composeFile),
-        "--backup-dir",
-        quoteForCron(opts.backupDir),
-        "--passphrase-file",
-        quoteForCron(opts.passphraseFile),
-        ">>",
-        quoteForCron(logFile),
-        "2>&1",
-    ].join(" ");
+  const logFile = join(opts.backupDir, CRON_LOG_NAME);
+  return [
+    opts.schedule,
+    quoteForCron(opts.backupScript),
+    // 入口是 noj-cli 自身，故子命令是 `backup create`。
+    "backup",
+    "create",
+    "--env-file",
+    quoteForCron(opts.envFile),
+    "--compose-file",
+    quoteForCron(opts.composeFile),
+    "--backup-dir",
+    quoteForCron(opts.backupDir),
+    "--passphrase-file",
+    quoteForCron(opts.passphraseFile),
+    ">>",
+    quoteForCron(logFile),
+    "2>&1",
+  ].join(" ");
 }
 
 /** {@link installSchedule} 的注入点与参数。 */
 export interface InstallScheduleOptions {
-    /** 命令注入点（crontab）。 */
-    runner: CommandRunner;
-    /** crontab 可执行名（`NOJ_BACKUP_CRONTAB_BIN`，缺省 `crontab`）。 */
-    crontabBin?: string;
-    /** 安装目录（一切路径由它派生，保证是绝对路径）。 */
-    installDir: string;
-    /** 备份脚本路径；缺省 `<installDir>/bin/noj-cli`。 */
-    backupScript?: string;
-    /** 生产环境文件；缺省 `<dir>/.env.prod`。 */
-    envFile?: string;
-    /** 生产 compose 文件；缺省 `<dir>/docker-compose.prod.yml`。 */
-    composeFile?: string;
-    /** 备份目录；缺省 `<dir>/backups`。 */
-    backupDir?: string;
-    /** 口令文件（必填）。 */
-    passphraseFile?: string;
-    /** 五段 cron 表达式；缺省 {@link DEFAULT_SCHEDULE}。 */
-    schedule?: string;
-    /** 人类日志汇聚点。 */
-    log?: (line: string) => void;
+  /** 命令注入点（crontab）。 */
+  runner: CommandRunner;
+  /** crontab 可执行名（`NOJ_BACKUP_CRONTAB_BIN`，缺省 `crontab`）。 */
+  crontabBin?: string;
+  /** 安装目录（一切路径由它派生，保证是绝对路径）。 */
+  installDir: string;
+  /** 备份脚本路径；缺省 `<installDir>/bin/noj-cli`。 */
+  backupScript?: string;
+  /** 生产环境文件；缺省 `<dir>/.env.prod`。 */
+  envFile?: string;
+  /** 生产 compose 文件；缺省 `<dir>/docker-compose.prod.yml`。 */
+  composeFile?: string;
+  /** 备份目录；缺省 `<dir>/backups`。 */
+  backupDir?: string;
+  /** 口令文件（必填）。 */
+  passphraseFile?: string;
+  /** 五段 cron 表达式；缺省 {@link DEFAULT_SCHEDULE}。 */
+  schedule?: string;
+  /** 人类日志汇聚点。 */
+  log?: (line: string) => void;
 }
 
 /** 调度命令的结果。 */
 export interface ScheduleResult {
-    /** 0 成功 / 1 运行失败 / 2 用法或前置错误。 */
-    exitCode: number;
-    /** 面向用户的一句话结论。 */
-    message: string;
-    /** 参与本次操作的路径（便于 `--json` 与测试断言）。 */
-    paths: {
-        backupScript: string;
-        envFile: string;
-        composeFile: string;
-        backupDir: string;
-        logFile: string;
-        passphraseFile: string;
-    };
-    /** 本次写入的 crontab 条目（`install` 时非 null）。 */
-    entry: string | null;
-    /** `status` 的输出（区块原文；未安装时 null）。 */
-    block: string | null;
+  /** 0 成功 / 1 运行失败 / 2 用法或前置错误。 */
+  exitCode: number;
+  /** 面向用户的一句话结论。 */
+  message: string;
+  /** 参与本次操作的路径（便于 `--json` 与测试断言）。 */
+  paths: {
+    backupScript: string;
+    envFile: string;
+    composeFile: string;
+    backupDir: string;
+    logFile: string;
+    passphraseFile: string;
+  };
+  /** 本次写入的 crontab 条目（`install` 时非 null）。 */
+  entry: string | null;
+  /** `status` 的输出（区块原文；未安装时 null）。 */
+  block: string | null;
 }
 
 /**
@@ -280,33 +280,33 @@ export interface ScheduleResult {
  * 这一情形），故不视为错误，返回空串。
  */
 export async function readCrontab(
-    runner: CommandRunner,
-    crontabBin: string,
+  runner: CommandRunner,
+  crontabBin: string,
 ): Promise<string> {
-    try {
-        const res = await runner.run(crontabBin, ["-l"]);
-        return res.code === 0 ? res.stdout : "";
-    } catch {
-        // 二进制缺失（Deno.Command 抛 NotFound）同样按"无 crontab"处理，
-        // 由调用方的 written 检查给出可操作报错。
-        return "";
-    }
+  try {
+    const res = await runner.run(crontabBin, ["-l"]);
+    return res.code === 0 ? res.stdout : "";
+  } catch {
+    // 二进制缺失（Deno.Command 抛 NotFound）同样按"无 crontab"处理，
+    // 由调用方的 written 检查给出可操作报错。
+    return "";
+  }
 }
 
 /** 写 crontab；失败抛错。 */
 export async function writeCrontab(
-    runner: CommandRunner,
-    crontabBin: string,
-    content: string,
+  runner: CommandRunner,
+  crontabBin: string,
+  content: string,
 ): Promise<void> {
-    const res = await runner.run(crontabBin, ["-"], { stdin: content });
-    if (res.code !== 0) {
-        throw new Error(
-            `写入 crontab 失败（${crontabBin} 退出码 ${res.code}）${
-                res.stderr.trim() === "" ? "" : "：" + res.stderr.trim()
-            }`,
-        );
-    }
+  const res = await runner.run(crontabBin, ["-"], { stdin: content });
+  if (res.code !== 0) {
+    throw new Error(
+      `写入 crontab 失败（${crontabBin} 退出码 ${res.code}）${
+        res.stderr.trim() === "" ? "" : "：" + res.stderr.trim()
+      }`,
+    );
+  }
 }
 
 /**
@@ -317,40 +317,40 @@ export async function writeCrontab(
  * 而二进制其实是存在的。
  */
 async function crontabAvailable(
-    runner: CommandRunner,
-    crontabBin: string,
+  runner: CommandRunner,
+  crontabBin: string,
 ): Promise<boolean> {
-    try {
-        await runner.run(crontabBin, ["-l"]);
-        return true;
-    } catch {
-        return false;
-    }
+  try {
+    await runner.run(crontabBin, ["-l"]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** 组装并校验路径（绝对路径是硬要求：cron 不继承用户 PATH）。 */
 function resolvePaths(opts: InstallScheduleOptions): ScheduleResult["paths"] {
-    if (!isAbsolute(opts.installDir)) {
-        throw new UsageError(`安装目录必须是绝对路径：${opts.installDir}`);
+  if (!isAbsolute(opts.installDir)) {
+    throw new UsageError(`安装目录必须是绝对路径：${opts.installDir}`);
+  }
+  const dir = opts.installDir.replace(/\/+$/, "");
+  const backupDir = opts.backupDir ?? join(dir, "backups");
+  const paths = {
+    // cron 任务指向本工具自身：`<dir>/bin/noj-cli backup create`。
+    backupScript: opts.backupScript ?? join(dir, "bin/noj-cli"),
+    envFile: opts.envFile ?? join(dir, ".env.prod"),
+    composeFile: opts.composeFile ?? join(dir, "docker-compose.prod.yml"),
+    backupDir,
+    logFile: join(backupDir, CRON_LOG_NAME),
+    passphraseFile: opts.passphraseFile ?? "",
+  };
+  for (const [label, value] of Object.entries(paths)) {
+    if (value === "") continue;
+    if (!isAbsolute(value)) {
+      throw new UsageError(`${label} 必须是绝对路径：${value}`);
     }
-    const dir = opts.installDir.replace(/\/+$/, "");
-    const backupDir = opts.backupDir ?? join(dir, "backups");
-    const paths = {
-        // cron 任务指向本工具自身：`<dir>/bin/noj-cli backup create`。
-        backupScript: opts.backupScript ?? join(dir, "bin/noj-cli"),
-        envFile: opts.envFile ?? join(dir, ".env.prod"),
-        composeFile: opts.composeFile ?? join(dir, "docker-compose.prod.yml"),
-        backupDir,
-        logFile: join(backupDir, CRON_LOG_NAME),
-        passphraseFile: opts.passphraseFile ?? "",
-    };
-    for (const [label, value] of Object.entries(paths)) {
-        if (value === "") continue;
-        if (!isAbsolute(value)) {
-            throw new UsageError(`${label} 必须是绝对路径：${value}`);
-        }
-    }
-    return paths;
+  }
+  return paths;
 }
 
 /**
@@ -361,137 +361,132 @@ function resolvePaths(opts: InstallScheduleOptions): ScheduleResult["paths"] {
  * 因此"前置失败 ⇒ 零 crontab 写入"是可断言的性质。
  */
 export async function installSchedule(
-    opts: InstallScheduleOptions,
+  opts: InstallScheduleOptions,
 ): Promise<ScheduleResult> {
-    const log = opts.log ?? (() => {});
-    const crontabBin = opts.crontabBin ?? "crontab";
-    const schedule = opts.schedule ?? DEFAULT_SCHEDULE;
-    let paths: ScheduleResult["paths"];
-    try {
-        paths = resolvePaths(opts);
-        assertSchedule(schedule);
-        if (paths.passphraseFile === "") {
-            throw new UsageError(
-                "install 必须提供 --passphrase-file 或 NOJ_BACKUP_PASSPHRASE_FILE",
-            );
-        }
-        await checkPassphraseFile(paths.passphraseFile);
-        if (!(await isFile(paths.envFile))) {
-            throw new UsageError(`生产环境文件不存在：${paths.envFile}`);
-        }
-        if (!(await isFile(paths.composeFile))) {
-            throw new UsageError(
-                `生产 Compose 文件不存在：${paths.composeFile}`,
-            );
-        }
-        // 备份脚本必须是**可执行普通文件**。它是 cron 直接调用的
-        // 目标；不校验会让 cron 静默失败（输出只进日志）。
-        if (!(await isExecutable(paths.backupScript))) {
-            throw new UsageError(
-                `备份脚本不存在或不可执行：${paths.backupScript}`,
-            );
-        }
-        if (!(await crontabAvailable(opts.runner, crontabBin))) {
-            throw new UsageError(`找不到 crontab：${crontabBin}`);
-        }
-    } catch (err) {
-        return {
-            // 前置校验失败（口令权限、缺文件、表达式非法）都是**用法错误 = 2**。
-            // 注意 `checkPassphraseFile` 复用自 drill/plan.ts，它抛的是
-            // DrillPreflightError 而非 UsageError——只认 UsageError 会把
-            // "口令权限过宽"这类明确的前置问题误报成"运行失败 1"。
-            exitCode: isPreflightError(err) ? 2 : 1,
-            message: (err as Error).message,
-            paths: emptyPaths(),
-            entry: null,
-            block: null,
-        };
+  const log = opts.log ?? (() => {});
+  const crontabBin = opts.crontabBin ?? "crontab";
+  const schedule = opts.schedule ?? DEFAULT_SCHEDULE;
+  let paths: ScheduleResult["paths"];
+  try {
+    paths = resolvePaths(opts);
+    assertSchedule(schedule);
+    if (paths.passphraseFile === "") {
+      throw new UsageError(
+        "install 必须提供 --passphrase-file 或 NOJ_BACKUP_PASSPHRASE_FILE",
+      );
     }
-
-    // 备份目录（700）与日志（600）——日志可能含内部路径，不应全局可读。
-    await Deno.mkdir(paths.backupDir, {
-        recursive: true,
-        mode: BACKUP_DIR_MODE,
-    });
-    await Deno.chmod(paths.backupDir, BACKUP_DIR_MODE);
-    const logFile = await Deno.open(paths.logFile, {
-        create: true,
-        append: true,
-        write: true,
-        mode: CRON_LOG_MODE,
-    });
-    logFile.close();
-    await Deno.chmod(paths.logFile, CRON_LOG_MODE);
-
-    const entry = renderScheduleEntry({
-        schedule,
-        backupScript: paths.backupScript,
-        envFile: paths.envFile,
-        composeFile: paths.composeFile,
-        backupDir: paths.backupDir,
-        passphraseFile: paths.passphraseFile,
-    });
-
-    try {
-        const current = await readCrontab(opts.runner, crontabBin);
-        await writeCrontab(
-            opts.runner,
-            crontabBin,
-            upsertManagedBlock(current, entry),
-        );
-    } catch (err) {
-        return {
-            exitCode: 1,
-            message: (err as Error).message,
-            paths,
-            entry: null,
-            block: null,
-        };
+    await checkPassphraseFile(paths.passphraseFile);
+    if (!(await isFile(paths.envFile))) {
+      throw new UsageError(`生产环境文件不存在：${paths.envFile}`);
     }
-
-    log(`✓ 已安装每日备份任务：${schedule}`);
-    log(`✓ 备份日志：${paths.logFile}`);
+    if (!(await isFile(paths.composeFile))) {
+      throw new UsageError(`生产 Compose 文件不存在：${paths.composeFile}`);
+    }
+    // 备份脚本必须是**可执行普通文件**。它是 cron 直接调用的
+    // 目标；不校验会让 cron 静默失败（输出只进日志）。
+    if (!(await isExecutable(paths.backupScript))) {
+      throw new UsageError(
+        `备份脚本不存在或不可执行：${paths.backupScript}`,
+      );
+    }
+    if (!(await crontabAvailable(opts.runner, crontabBin))) {
+      throw new UsageError(`找不到 crontab：${crontabBin}`);
+    }
+  } catch (err) {
     return {
-        exitCode: 0,
-        message: `已安装每日备份任务：${schedule}`,
-        paths,
-        entry,
-        block: null,
+      // 前置校验失败（口令权限、缺文件、表达式非法）都是**用法错误 = 2**。
+      // 注意 `checkPassphraseFile` 复用自 drill/plan.ts，它抛的是
+      // DrillPreflightError 而非 UsageError——只认 UsageError 会把
+      // "口令权限过宽"这类明确的前置问题误报成"运行失败 1"。
+      exitCode: isPreflightError(err) ? 2 : 1,
+      message: (err as Error).message,
+      paths: emptyPaths(),
+      entry: null,
+      block: null,
     };
+  }
+
+  // 备份目录（700）与日志（600）——日志可能含内部路径，不应全局可读。
+  await Deno.mkdir(paths.backupDir, { recursive: true, mode: BACKUP_DIR_MODE });
+  await Deno.chmod(paths.backupDir, BACKUP_DIR_MODE);
+  const logFile = await Deno.open(paths.logFile, {
+    create: true,
+    append: true,
+    write: true,
+    mode: CRON_LOG_MODE,
+  });
+  logFile.close();
+  await Deno.chmod(paths.logFile, CRON_LOG_MODE);
+
+  const entry = renderScheduleEntry({
+    schedule,
+    backupScript: paths.backupScript,
+    envFile: paths.envFile,
+    composeFile: paths.composeFile,
+    backupDir: paths.backupDir,
+    passphraseFile: paths.passphraseFile,
+  });
+
+  try {
+    const current = await readCrontab(opts.runner, crontabBin);
+    await writeCrontab(
+      opts.runner,
+      crontabBin,
+      upsertManagedBlock(current, entry),
+    );
+  } catch (err) {
+    return {
+      exitCode: 1,
+      message: (err as Error).message,
+      paths,
+      entry: null,
+      block: null,
+    };
+  }
+
+  log(`✓ 已安装每日备份任务：${schedule}`);
+  log(`✓ 备份日志：${paths.logFile}`);
+  return {
+    exitCode: 0,
+    message: `已安装每日备份任务：${schedule}`,
+    paths,
+    entry,
+    block: null,
+  };
 }
 
 /** `status`：未安装时退出码 1。 */
 export async function statusSchedule(
-    opts: {
-        runner: CommandRunner;
-        crontabBin?: string;
-        installDir: string;
-        log?: (line: string) => void;
-    },
+  opts: {
+    runner: CommandRunner;
+    crontabBin?: string;
+    installDir: string;
+    log?: (line: string) => void;
+  },
 ): Promise<ScheduleResult> {
-    const log = opts.log ?? (() => {});
-    const crontabBin = opts.crontabBin ?? "crontab";
-    let paths: ScheduleResult["paths"];
-    try {
-        paths = resolvePaths({ ...opts, runner: opts.runner });
-    } catch (err) {
-        return {
-            exitCode: 2,
-            message: (err as Error).message,
-            paths: emptyPaths(),
-            entry: null,
-            block: null,
-        };
-    }
-    const current = await readCrontab(opts.runner, crontabBin);
-    const block = extractManagedBlock(current);
-    if (block === null) {
-        const message = "未安装 Neuro OJ 备份调度";
-        log(message);
-        return { exitCode: 1, message, paths, entry: null, block: null };
-    }
-    log(block);
-    return { exitCode: 0, message: block, paths, entry: null, block };
+  const log = opts.log ?? (() => {});
+  const crontabBin = opts.crontabBin ?? "crontab";
+  let paths: ScheduleResult["paths"];
+  try {
+    paths = resolvePaths({ ...opts, runner: opts.runner });
+  } catch (err) {
+    return {
+      exitCode: 2,
+      message: (err as Error).message,
+      paths: emptyPaths(),
+      entry: null,
+      block: null,
+    };
+  }
+  const current = await readCrontab(opts.runner, crontabBin);
+  const block = extractManagedBlock(current);
+  if (block === null) {
+    const message = "未安装 Neuro OJ 备份调度";
+    log(message);
+    return { exitCode: 1, message, paths, entry: null, block: null };
+  }
+  log(block);
+  return { exitCode: 0, message: block, paths, entry: null, block };
 }
 
 /**
@@ -501,56 +496,56 @@ export async function statusSchedule(
  * 改写文件、触发审计）。这条"没有变化就不写"是有意的。
  */
 export async function removeSchedule(
-    opts: {
-        runner: CommandRunner;
-        crontabBin?: string;
-        installDir: string;
-        passphraseFile?: string;
-        envFile?: string;
-        composeFile?: string;
-        backupDir?: string;
-        log?: (line: string) => void;
-    },
+  opts: {
+    runner: CommandRunner;
+    crontabBin?: string;
+    installDir: string;
+    passphraseFile?: string;
+    envFile?: string;
+    composeFile?: string;
+    backupDir?: string;
+    log?: (line: string) => void;
+  },
 ): Promise<ScheduleResult> {
-    const log = opts.log ?? (() => {});
-    const crontabBin = opts.crontabBin ?? "crontab";
-    let paths: ScheduleResult["paths"];
-    try {
-        paths = resolvePaths({ ...opts, runner: opts.runner });
-        if (!(await crontabAvailable(opts.runner, crontabBin))) {
-            throw new UsageError(`找不到 crontab：${crontabBin}`);
-        }
-    } catch (err) {
-        return {
-            exitCode: isPreflightError(err) ? 2 : 1,
-            message: (err as Error).message,
-            paths: emptyPaths(),
-            entry: null,
-            block: null,
-        };
+  const log = opts.log ?? (() => {});
+  const crontabBin = opts.crontabBin ?? "crontab";
+  let paths: ScheduleResult["paths"];
+  try {
+    paths = resolvePaths({ ...opts, runner: opts.runner });
+    if (!(await crontabAvailable(opts.runner, crontabBin))) {
+      throw new UsageError(`找不到 crontab：${crontabBin}`);
     }
+  } catch (err) {
+    return {
+      exitCode: isPreflightError(err) ? 2 : 1,
+      message: (err as Error).message,
+      paths: emptyPaths(),
+      entry: null,
+      block: null,
+    };
+  }
 
-    const current = await readCrontab(opts.runner, crontabBin);
-    const updated = removeManagedBlock(current);
-    if (current === updated) {
-        const message = "未找到 Neuro OJ 备份调度";
-        log(message);
-        return { exitCode: 0, message, paths, entry: null, block: null };
-    }
-    try {
-        await writeCrontab(opts.runner, crontabBin, updated);
-    } catch (err) {
-        return {
-            exitCode: 1,
-            message: (err as Error).message,
-            paths,
-            entry: null,
-            block: null,
-        };
-    }
-    const message = "已删除 Neuro OJ 备份调度";
+  const current = await readCrontab(opts.runner, crontabBin);
+  const updated = removeManagedBlock(current);
+  if (current === updated) {
+    const message = "未找到 Neuro OJ 备份调度";
     log(message);
     return { exitCode: 0, message, paths, entry: null, block: null };
+  }
+  try {
+    await writeCrontab(opts.runner, crontabBin, updated);
+  } catch (err) {
+    return {
+      exitCode: 1,
+      message: (err as Error).message,
+      paths,
+      entry: null,
+      block: null,
+    };
+  }
+  const message = "已删除 Neuro OJ 备份调度";
+  log(message);
+  return { exitCode: 0, message, paths, entry: null, block: null };
 }
 
 /**
@@ -561,27 +556,27 @@ export async function removeSchedule(
  * 落到"运行失败 1"，与 help 承诺的退出码语义不符。
  */
 function isPreflightError(err: unknown): boolean {
-    return err instanceof UsageError || err instanceof DrillPreflightError;
+  return err instanceof UsageError || err instanceof DrillPreflightError;
 }
 
 /** 空路径集合（前置失败时无有效路径可报）。 */
 function emptyPaths(): ScheduleResult["paths"] {
-    return {
-        backupScript: "",
-        envFile: "",
-        composeFile: "",
-        backupDir: "",
-        logFile: "",
-        passphraseFile: "",
-    };
+  return {
+    backupScript: "",
+    envFile: "",
+    composeFile: "",
+    backupDir: "",
+    logFile: "",
+    passphraseFile: "",
+  };
 }
 
 /** `-x` 语义：可执行的普通文件。 */
 async function isExecutable(path: string): Promise<boolean> {
-    try {
-        const st = await Deno.stat(path);
-        return st.isFile && ((st.mode ?? 0) & 0o111) !== 0;
-    } catch {
-        return false;
-    }
+  try {
+    const st = await Deno.stat(path);
+    return st.isFile && ((st.mode ?? 0) & 0o111) !== 0;
+  } catch {
+    return false;
+  }
 }

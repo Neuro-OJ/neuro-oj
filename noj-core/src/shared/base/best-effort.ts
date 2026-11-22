@@ -12,17 +12,17 @@ import { logger } from "./logging.ts";
 
 /** 执行提交后副作用；失败只记日志，不向调用方抛出。 */
 export async function runBestEffort(
-    action: string,
-    run: () => unknown | Promise<unknown>,
-    fields: Record<string, unknown> = {},
+  action: string,
+  run: () => unknown | Promise<unknown>,
+  fields: Record<string, unknown> = {},
 ): Promise<void> {
-    try {
-        await run();
-    } catch (error) {
-        logger.error("提交后副作用失败（主流程已提交，忽略该错误）", {
-            action,
-            ...fields,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
+  try {
+    await run();
+  } catch (error) {
+    logger.error("提交后副作用失败（主流程已提交，忽略该错误）", {
+      action,
+      ...fields,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }

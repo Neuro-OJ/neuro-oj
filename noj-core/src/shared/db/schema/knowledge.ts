@@ -10,29 +10,29 @@
  */
 import { sql } from "drizzle-orm";
 import {
-    boolean,
-    check,
-    index,
-    integer,
-    jsonb,
-    pgTable,
-    primaryKey,
-    text,
-    uniqueIndex,
+  boolean,
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { problems, problemVersions } from "./catalog.ts";
 import { users } from "./identity.ts";
 
 /** 内容包（如 `official`）；`extends` 记录扩展关系 `official@<version>`。 */
 export const knowledgePacks = pgTable("knowledge_packs", {
-    id: text("id").primaryKey(),
-    name: text("name").notNull(),
-    version: text("version").notNull(),
-    license: text("license").notNull(),
-    extends: text("extends"),
-    /** 实例当前生效的包：全表至多一行 true。 */
-    active: boolean("active").notNull().default(false),
-    imported_at: text("imported_at").notNull(),
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  version: text("version").notNull(),
+  license: text("license").notNull(),
+  extends: text("extends"),
+  /** 实例当前生效的包：全表至多一行 true。 */
+  active: boolean("active").notNull().default(false),
+  imported_at: text("imported_at").notNull(),
 });
 
 /**
@@ -41,67 +41,65 @@ export const knowledgePacks = pgTable("knowledge_packs", {
  * 扩展包与被扩展包的领域共用同一张表，`pack_id` 记录首次定义它的包。
  */
 export const knowledgeAreas = pgTable(
-    "knowledge_areas",
-    {
-        id: text("id").primaryKey(),
-        pack_id: text("pack_id").notNull().references(() => knowledgePacks.id, {
-            onDelete: "cascade",
-        }),
-        name: text("name").notNull(),
-        sort: integer("sort").notNull().default(0),
-    },
-    (table) => ({
-        packIndex: index("knowledge_areas_pack_idx").on(table.pack_id),
+  "knowledge_areas",
+  {
+    id: text("id").primaryKey(),
+    pack_id: text("pack_id").notNull().references(() => knowledgePacks.id, {
+      onDelete: "cascade",
     }),
+    name: text("name").notNull(),
+    sort: integer("sort").notNull().default(0),
+  },
+  (table) => ({
+    packIndex: index("knowledge_areas_pack_idx").on(table.pack_id),
+  }),
 );
 
 /** 知识点。`status` 三态之一见 CHECK；废弃节点保留挂载，不删除。 */
 export const knowledgeNodes = pgTable(
-    "knowledge_nodes",
-    {
-        id: text("id").primaryKey(),
-        area_id: text("area_id").notNull().references(() => knowledgeAreas.id, {
-            onDelete: "cascade",
-        }),
-        pack_id: text("pack_id").notNull().references(() => knowledgePacks.id, {
-            onDelete: "cascade",
-        }),
-        name: text("name").notNull(),
-        summary: text("summary").notNull(),
-        /** 对应考纲键（`pack.yaml` 的 `syllabi` 键），字符串数组。 */
-        syllabus: jsonb("syllabus").notNull().$type<string[]>().default(
-            sql`'[]'`,
-        ),
-        /** 讲解文档相对路径（预留，可空）。 */
-        doc_path: text("doc_path"),
-        status: text("status").notNull().default("active"),
-        replaced_by: text("replaced_by"),
-        sort: integer("sort").notNull().default(0),
-        updated_at: text("updated_at").notNull(),
-    },
-    (table) => ({
-        statusCheck: check(
-            "knowledge_nodes_status_check",
-            sql`${table.status} IN ('active', 'deprecated')`,
-        ),
-        areaIndex: index("knowledge_nodes_area_idx").on(table.area_id),
+  "knowledge_nodes",
+  {
+    id: text("id").primaryKey(),
+    area_id: text("area_id").notNull().references(() => knowledgeAreas.id, {
+      onDelete: "cascade",
     }),
+    pack_id: text("pack_id").notNull().references(() => knowledgePacks.id, {
+      onDelete: "cascade",
+    }),
+    name: text("name").notNull(),
+    summary: text("summary").notNull(),
+    /** 对应考纲键（`pack.yaml` 的 `syllabi` 键），字符串数组。 */
+    syllabus: jsonb("syllabus").notNull().$type<string[]>().default(sql`'[]'`),
+    /** 讲解文档相对路径（预留，可空）。 */
+    doc_path: text("doc_path"),
+    status: text("status").notNull().default("active"),
+    replaced_by: text("replaced_by"),
+    sort: integer("sort").notNull().default(0),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    statusCheck: check(
+      "knowledge_nodes_status_check",
+      sql`${table.status} IN ('active', 'deprecated')`,
+    ),
+    areaIndex: index("knowledge_nodes_area_idx").on(table.area_id),
+  }),
 );
 
 /** 前置边：`to_id` 依赖 `from_id`（from 是 to 的直接前置）。 */
 export const knowledgeEdges = pgTable(
-    "knowledge_edges",
-    {
-        from_id: text("from_id").notNull().references(() => knowledgeNodes.id, {
-            onDelete: "cascade",
-        }),
-        to_id: text("to_id").notNull().references(() => knowledgeNodes.id, {
-            onDelete: "cascade",
-        }),
-    },
-    (table) => ({
-        pk: primaryKey({ columns: [table.from_id, table.to_id] }),
+  "knowledge_edges",
+  {
+    from_id: text("from_id").notNull().references(() => knowledgeNodes.id, {
+      onDelete: "cascade",
     }),
+    to_id: text("to_id").notNull().references(() => knowledgeNodes.id, {
+      onDelete: "cascade",
+    }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.from_id, table.to_id] }),
+  }),
 );
 
 /**
@@ -113,55 +111,55 @@ export const knowledgeEdges = pgTable(
  * `version_id` 记录打标依据的题目版本，题目或版本删除时随挂载一并清理。
  */
 export const problemKnowledge = pgTable(
-    "problem_knowledge",
-    {
-        problem_id: text("problem_id").notNull().references(() => problems.id, {
-            onDelete: "cascade",
-        }),
-        node_id: text("node_id").notNull().references(() => knowledgeNodes.id, {
-            onDelete: "cascade",
-        }),
-        role: text("role").notNull(),
-        source: text("source").notNull(),
-        /** 0–100；人工挂载为空。 */
-        confidence: integer("confidence"),
-        version_id: text("version_id").references(() => problemVersions.id, {
-            onDelete: "cascade",
-        }),
-        review_status: text("review_status").notNull(),
-        /** 最近一次修改该挂载的用户；AI 写入与系统回填为空。 */
-        updated_by: text("updated_by").references(() => users.id),
-        updated_at: text("updated_at").notNull(),
-    },
-    (table) => ({
-        pk: primaryKey({ columns: [table.problem_id, table.node_id] }),
-        roleCheck: check(
-            "problem_knowledge_role_check",
-            sql`${table.role} IN ('primary', 'secondary')`,
-        ),
-        sourceCheck: check(
-            "problem_knowledge_source_check",
-            sql`${table.source} IN ('ai', 'human')`,
-        ),
-        reviewStatusCheck: check(
-            "problem_knowledge_review_status_check",
-            sql`${table.review_status} IN ('auto', 'pending', 'confirmed', 'rejected')`,
-        ),
-        confidenceCheck: check(
-            "problem_knowledge_confidence_check",
-            sql`${table.confidence} IS NULL OR (${table.confidence} >= 0 AND ${table.confidence} <= 100)`,
-        ),
-        /** 每题至多一个有效主知识点；rejected 不占位。 */
-        primaryUnique: uniqueIndex("problem_knowledge_primary_uidx")
-            .on(table.problem_id)
-            .where(
-                sql`${table.role} = 'primary' AND ${table.review_status} <> 'rejected'`,
-            ),
-        nodeIndex: index("problem_knowledge_node_idx").on(table.node_id),
-        reviewStatusIndex: index("problem_knowledge_review_status_idx").on(
-            table.review_status,
-        ),
+  "problem_knowledge",
+  {
+    problem_id: text("problem_id").notNull().references(() => problems.id, {
+      onDelete: "cascade",
     }),
+    node_id: text("node_id").notNull().references(() => knowledgeNodes.id, {
+      onDelete: "cascade",
+    }),
+    role: text("role").notNull(),
+    source: text("source").notNull(),
+    /** 0–100；人工挂载为空。 */
+    confidence: integer("confidence"),
+    version_id: text("version_id").references(() => problemVersions.id, {
+      onDelete: "cascade",
+    }),
+    review_status: text("review_status").notNull(),
+    /** 最近一次修改该挂载的用户；AI 写入与系统回填为空。 */
+    updated_by: text("updated_by").references(() => users.id),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.problem_id, table.node_id] }),
+    roleCheck: check(
+      "problem_knowledge_role_check",
+      sql`${table.role} IN ('primary', 'secondary')`,
+    ),
+    sourceCheck: check(
+      "problem_knowledge_source_check",
+      sql`${table.source} IN ('ai', 'human')`,
+    ),
+    reviewStatusCheck: check(
+      "problem_knowledge_review_status_check",
+      sql`${table.review_status} IN ('auto', 'pending', 'confirmed', 'rejected')`,
+    ),
+    confidenceCheck: check(
+      "problem_knowledge_confidence_check",
+      sql`${table.confidence} IS NULL OR (${table.confidence} >= 0 AND ${table.confidence} <= 100)`,
+    ),
+    /** 每题至多一个有效主知识点；rejected 不占位。 */
+    primaryUnique: uniqueIndex("problem_knowledge_primary_uidx")
+      .on(table.problem_id)
+      .where(
+        sql`${table.role} = 'primary' AND ${table.review_status} <> 'rejected'`,
+      ),
+    nodeIndex: index("problem_knowledge_node_idx").on(table.node_id),
+    reviewStatusIndex: index("problem_knowledge_review_status_idx").on(
+      table.review_status,
+    ),
+  }),
 );
 
 /**
@@ -171,35 +169,35 @@ export const problemKnowledge = pgTable(
  * 预算类错误记 `budget_paused`。`raw_output` 保留模型原始输出便于复现。
  */
 export const knowledgeTagRuns = pgTable(
-    "knowledge_tag_runs",
-    {
-        id: text("id").primaryKey(),
-        problem_id: text("problem_id").notNull().references(() => problems.id, {
-            onDelete: "cascade",
-        }),
-        version_id: text("version_id").references(() => problemVersions.id, {
-            onDelete: "set null",
-        }),
-        content_hash: text("content_hash").notNull(),
-        model: text("model").notNull(),
-        prompt_version: text("prompt_version").notNull(),
-        input_tokens: integer("input_tokens").notNull().default(0),
-        output_tokens: integer("output_tokens").notNull().default(0),
-        status: text("status").notNull(),
-        error: text("error"),
-        raw_output: jsonb("raw_output"),
-        created_at: text("created_at").notNull(),
-    },
-    (table) => ({
-        statusCheck: check(
-            "knowledge_tag_runs_status_check",
-            sql`${table.status} IN ('succeeded', 'failed', 'skipped', 'budget_paused')`,
-        ),
-        problemCreatedIndex: index("knowledge_tag_runs_problem_created_idx").on(
-            table.problem_id,
-            table.created_at,
-        ),
+  "knowledge_tag_runs",
+  {
+    id: text("id").primaryKey(),
+    problem_id: text("problem_id").notNull().references(() => problems.id, {
+      onDelete: "cascade",
     }),
+    version_id: text("version_id").references(() => problemVersions.id, {
+      onDelete: "set null",
+    }),
+    content_hash: text("content_hash").notNull(),
+    model: text("model").notNull(),
+    prompt_version: text("prompt_version").notNull(),
+    input_tokens: integer("input_tokens").notNull().default(0),
+    output_tokens: integer("output_tokens").notNull().default(0),
+    status: text("status").notNull(),
+    error: text("error"),
+    raw_output: jsonb("raw_output"),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    statusCheck: check(
+      "knowledge_tag_runs_status_check",
+      sql`${table.status} IN ('succeeded', 'failed', 'skipped', 'budget_paused')`,
+    ),
+    problemCreatedIndex: index("knowledge_tag_runs_problem_created_idx").on(
+      table.problem_id,
+      table.created_at,
+    ),
+  }),
 );
 
 /**
@@ -211,33 +209,30 @@ export const knowledgeTagRuns = pgTable(
  * 是出题人按题覆盖的及格线百分数（0–100，空 = 用实例默认）。
  */
 export const problemDifficulty = pgTable(
-    "problem_difficulty",
-    {
-        problem_id: text("problem_id").primaryKey().references(
-            () => problems.id,
-            {
-                onDelete: "cascade",
-            },
-        ),
-        prior: integer("prior").notNull(),
-        calibrated: integer("calibrated").notNull(),
-        sample_size: integer("sample_size").notNull().default(0),
-        pass_ratio_override: integer("pass_ratio_override"),
-        updated_at: text("updated_at").notNull(),
-    },
-    (table) => ({
-        rangeCheck: check(
-            "problem_difficulty_range_check",
-            sql`${table.prior} >= 0 AND ${table.prior} <= 100
+  "problem_difficulty",
+  {
+    problem_id: text("problem_id").primaryKey().references(() => problems.id, {
+      onDelete: "cascade",
+    }),
+    prior: integer("prior").notNull(),
+    calibrated: integer("calibrated").notNull(),
+    sample_size: integer("sample_size").notNull().default(0),
+    pass_ratio_override: integer("pass_ratio_override"),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    rangeCheck: check(
+      "problem_difficulty_range_check",
+      sql`${table.prior} >= 0 AND ${table.prior} <= 100
         AND ${table.calibrated} >= 0 AND ${table.calibrated} <= 100
         AND ${table.sample_size} >= 0`,
-        ),
-        passRatioCheck: check(
-            "problem_difficulty_pass_ratio_check",
-            sql`${table.pass_ratio_override} IS NULL
+    ),
+    passRatioCheck: check(
+      "problem_difficulty_pass_ratio_check",
+      sql`${table.pass_ratio_override} IS NULL
         OR (${table.pass_ratio_override} >= 0 AND ${table.pass_ratio_override} <= 100)`,
-        ),
-    }),
+    ),
+  }),
 );
 
 /**
@@ -250,41 +245,41 @@ export const problemDifficulty = pgTable(
  * 由 `knowledge.mastery` 任务按用户整体重算（`features/knowledge/mastery.ts`）。
  */
 export const userKnowledgeMastery = pgTable(
-    "user_knowledge_mastery",
-    {
-        user_id: text("user_id").notNull().references(() => users.id, {
-            onDelete: "cascade",
-        }),
-        node_id: text("node_id").notNull().references(() => knowledgeNodes.id, {
-            onDelete: "cascade",
-        }),
-        state: text("state").notNull().default("none"),
-        solved_count: integer("solved_count").notNull().default(0),
-        attempted_count: integer("attempted_count").notNull().default(0),
-        failed_attempts: integer("failed_attempts").notNull().default(0),
-        max_passed_difficulty: integer("max_passed_difficulty"),
-        updated_at: text("updated_at").notNull(),
-    },
-    (table) => ({
-        pk: primaryKey({ columns: [table.user_id, table.node_id] }),
-        stateCheck: check(
-            "user_knowledge_mastery_state_check",
-            sql`${table.state} IN ('none', 'learning', 'mastered')`,
-        ),
-        countsCheck: check(
-            "user_knowledge_mastery_counts_check",
-            sql`${table.solved_count} >= 0 AND ${table.attempted_count} >= 0
+  "user_knowledge_mastery",
+  {
+    user_id: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    node_id: text("node_id").notNull().references(() => knowledgeNodes.id, {
+      onDelete: "cascade",
+    }),
+    state: text("state").notNull().default("none"),
+    solved_count: integer("solved_count").notNull().default(0),
+    attempted_count: integer("attempted_count").notNull().default(0),
+    failed_attempts: integer("failed_attempts").notNull().default(0),
+    max_passed_difficulty: integer("max_passed_difficulty"),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.user_id, table.node_id] }),
+    stateCheck: check(
+      "user_knowledge_mastery_state_check",
+      sql`${table.state} IN ('none', 'learning', 'mastered')`,
+    ),
+    countsCheck: check(
+      "user_knowledge_mastery_counts_check",
+      sql`${table.solved_count} >= 0 AND ${table.attempted_count} >= 0
         AND ${table.failed_attempts} >= 0`,
-        ),
-        maxDifficultyCheck: check(
-            "user_knowledge_mastery_max_difficulty_check",
-            sql`${table.max_passed_difficulty} IS NULL
+    ),
+    maxDifficultyCheck: check(
+      "user_knowledge_mastery_max_difficulty_check",
+      sql`${table.max_passed_difficulty} IS NULL
         OR (${table.max_passed_difficulty} >= 0
           AND ${table.max_passed_difficulty} <= 100)`,
-        ),
-        nodeStateIndex: index("user_knowledge_mastery_node_state_idx").on(
-            table.node_id,
-            table.state,
-        ),
-    }),
+    ),
+    nodeStateIndex: index("user_knowledge_mastery_node_state_idx").on(
+      table.node_id,
+      table.state,
+    ),
+  }),
 );

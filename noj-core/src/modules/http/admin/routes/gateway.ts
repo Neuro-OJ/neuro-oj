@@ -4,32 +4,32 @@ import { parseJsonBody } from "../../../../shared/http/request.ts";
 import { adminAudit } from "../services/admin-audit.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import {
-    AppError,
-    BadRequestError,
-    ConflictError,
-    NotFoundError,
-    ServiceUnavailableError,
+  AppError,
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
 } from "../../../../shared/base/errors.ts";
 import {
-    createLlmProvider,
-    deleteLlmGatewayModelAlias,
-    listInstanceLlmQuotas,
-    listLlmGatewayModelAliases,
-    listLlmProviders,
-    listLlmQuotas,
-    LlmGatewayError,
-    type LlmProviderInput,
-    type LlmQuotaInput,
-    type LlmUsageQuery,
-    parseLlmRevision,
-    queryLlmUsage,
-    testLlmProvider,
-    updateLlmProvider,
-    upsertLlmQuota,
+  createLlmProvider,
+  deleteLlmGatewayModelAlias,
+  listInstanceLlmQuotas,
+  listLlmGatewayModelAliases,
+  listLlmProviders,
+  listLlmQuotas,
+  LlmGatewayError,
+  type LlmProviderInput,
+  type LlmQuotaInput,
+  type LlmUsageQuery,
+  parseLlmRevision,
+  queryLlmUsage,
+  testLlmProvider,
+  updateLlmProvider,
+  upsertLlmQuota,
 } from "../../../platform/gateway/services/llm.ts";
 import {
-    listProblemsUsingAlias,
-    type LlmModelAliasInput,
+  listProblemsUsingAlias,
+  type LlmModelAliasInput,
 } from "../../../platform/gateway/services/llm-model-aliases.ts";
 import { upsertLlmGatewayModelAlias } from "../../../platform/gateway/services/llm.ts";
 
@@ -61,8 +61,8 @@ router.onError((error) => mapLlmError(error));
  * 响应：`{ data: LlmProviderView[] }`，Key 已由 gateway 脱敏。
  */
 router.get("/llm/providers", async (c) => {
-    const data = await listLlmProviders();
-    return c.json({ data });
+  const data = await listLlmProviders();
+  return c.json({ data });
 });
 
 /**
@@ -74,21 +74,21 @@ router.get("/llm/providers", async (c) => {
  * 响应：201 `{ data: LlmProviderView }`；缺少必填字段返回 400 `{ error }`。
  */
 router.post("/llm/providers", async (c) => {
-    const body = await parseJsonBody<LlmProviderInput>(c);
-    if (!body.name || !body.base_url || !body.api_key) {
-        return c.json({ error: "缺少必填字段" }, 400);
-    }
-    const data = await createLlmProvider(
-        body,
-        undefined,
-        parseLlmRevision(c.req.header("If-Match")),
-    );
-    await adminAudit(
-        "llm_provider.create",
-        { action: "llm_provider.create", name: body.name },
-        { type: "llm_provider", id: data.id },
-    );
-    return c.json({ data }, 201);
+  const body = await parseJsonBody<LlmProviderInput>(c);
+  if (!body.name || !body.base_url || !body.api_key) {
+    return c.json({ error: "缺少必填字段" }, 400);
+  }
+  const data = await createLlmProvider(
+    body,
+    undefined,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
+  await adminAudit(
+    "llm_provider.create",
+    { action: "llm_provider.create", name: body.name },
+    { type: "llm_provider", id: data.id },
+  );
+  return c.json({ data }, 201);
 });
 
 /**
@@ -101,23 +101,23 @@ router.post("/llm/providers", async (c) => {
  * 响应：`{ data: LlmProviderView }`。
  */
 router.put(
-    "/llm/providers/:id",
-    async (c) => {
-        const id = c.req.param("id") as string;
-        const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
-        const data = await updateLlmProvider(
-            id,
-            body,
-            undefined,
-            parseLlmRevision(c.req.header("If-Match")),
-        );
-        await adminAudit(
-            "llm_provider.update",
-            { action: "llm_provider.update", id, name: body.name },
-            { type: "llm_provider", id },
-        );
-        return c.json({ data });
-    },
+  "/llm/providers/:id",
+  async (c) => {
+    const id = c.req.param("id") as string;
+    const body = await parseJsonBody<Partial<LlmProviderInput>>(c);
+    const data = await updateLlmProvider(
+      id,
+      body,
+      undefined,
+      parseLlmRevision(c.req.header("If-Match")),
+    );
+    await adminAudit(
+      "llm_provider.update",
+      { action: "llm_provider.update", id, name: body.name },
+      { type: "llm_provider", id },
+    );
+    return c.json({ data });
+  },
 );
 
 /**
@@ -127,23 +127,23 @@ router.put(
  * 返回，前端直接展示原因；Provider 不存在、gateway 不可用等仍走 mapLlmError。
  */
 const PROVIDER_TEST_FAILURES: Record<string, string> = {
-    provider_auth_failed: "上游鉴权失败：API Key 无效，或该 Key 无权访问此模型",
-    provider_rate_limited: "上游限流（429）：请稍后重试，或检查账户额度",
-    provider_unavailable: "无法连接上游：网络不通或 10 秒内无响应",
-    provider_error: "上游返回错误：请检查 Base URL 与模型名称是否正确",
-    provider_base_url_blocked:
-        "Base URL 不被允许：仅支持 https 公网地址；内网自建模型请在网关 NOJ_LLM_UPSTREAM_ALLOWED_HOSTS 中放行该主机",
+  provider_auth_failed: "上游鉴权失败：API Key 无效，或该 Key 无权访问此模型",
+  provider_rate_limited: "上游限流（429）：请稍后重试，或检查账户额度",
+  provider_unavailable: "无法连接上游：网络不通或 10 秒内无响应",
+  provider_error: "上游返回错误：请检查 Base URL 与模型名称是否正确",
+  provider_base_url_blocked:
+    "Base URL 不被允许：仅支持 https 公网地址；内网自建模型请在网关 NOJ_LLM_UPSTREAM_ALLOWED_HOSTS 中放行该主机",
 };
 
 /**
  * 将连接测试抛出的错误转换为测试结果；非上游类错误返回 null，由调用方重新抛出。
  */
 export function describeProviderTestFailure(
-    error: unknown,
+  error: unknown,
 ): { code: string; message: string } | null {
-    if (!(error instanceof LlmGatewayError)) return null;
-    const message = PROVIDER_TEST_FAILURES[error.code];
-    return message ? { code: error.code, message } : null;
+  if (!(error instanceof LlmGatewayError)) return null;
+  const message = PROVIDER_TEST_FAILURES[error.code];
+  return message ? { code: error.code, message } : null;
 }
 
 /**
@@ -158,34 +158,34 @@ export function describeProviderTestFailure(
  * 缺少模型返回 400，Provider 不存在返回 404，gateway 不可用返回 503。
  */
 router.post("/llm/providers/:id/test", async (c) => {
-    const id = c.req.param("id") as string;
-    const body = await parseJsonBody<{ model?: unknown }>(c);
-    const model = typeof body?.model === "string" ? body.model.trim() : "";
-    if (!model) {
-        throw new BadRequestError("请填写要测试的模型名称", "model_required");
-    }
-    const startedAt = performance.now();
-    try {
-        await testLlmProvider(id, model);
-    } catch (error) {
-        const failure = describeProviderTestFailure(error);
-        if (!failure) throw error;
-        return c.json({
-            data: {
-                status: "failed",
-                model,
-                latency_ms: Math.round(performance.now() - startedAt),
-                ...failure,
-            },
-        });
-    }
+  const id = c.req.param("id") as string;
+  const body = await parseJsonBody<{ model?: unknown }>(c);
+  const model = typeof body?.model === "string" ? body.model.trim() : "";
+  if (!model) {
+    throw new BadRequestError("请填写要测试的模型名称", "model_required");
+  }
+  const startedAt = performance.now();
+  try {
+    await testLlmProvider(id, model);
+  } catch (error) {
+    const failure = describeProviderTestFailure(error);
+    if (!failure) throw error;
     return c.json({
-        data: {
-            status: "ok",
-            model,
-            latency_ms: Math.round(performance.now() - startedAt),
-        },
+      data: {
+        status: "failed",
+        model,
+        latency_ms: Math.round(performance.now() - startedAt),
+        ...failure,
+      },
     });
+  }
+  return c.json({
+    data: {
+      status: "ok",
+      model,
+      latency_ms: Math.round(performance.now() - startedAt),
+    },
+  });
 });
 
 /**
@@ -196,14 +196,14 @@ router.post("/llm/providers/:id/test", async (c) => {
  * 响应：`{ data: (LlmModelAlias & { problem_count: number })[] }`。
  */
 router.get("/llm/model-aliases", async (c) => {
-    const rows = await listLlmGatewayModelAliases(DEFAULT_DOMAIN_ID);
-    const data = await Promise.all(
-        rows.map(async (r) => ({
-            ...r,
-            problem_count: (await listProblemsUsingAlias(r.alias)).length,
-        })),
-    );
-    return c.json({ data });
+  const rows = await listLlmGatewayModelAliases(DEFAULT_DOMAIN_ID);
+  const data = await Promise.all(
+    rows.map(async (r) => ({
+      ...r,
+      problem_count: (await listProblemsUsingAlias(r.alias)).length,
+    })),
+  );
+  return c.json({ data });
 });
 
 /**
@@ -214,21 +214,21 @@ router.get("/llm/model-aliases", async (c) => {
  * 说明：改映射只影响此后新建的评测尝试，已冻结的尝试与重测不受影响。
  */
 router.put("/llm/model-aliases/:alias", async (c) => {
-    const alias = c.req.param("alias") as string;
-    const body = await parseJsonBody<LlmModelAliasInput>(c);
-    const data = await upsertLlmGatewayModelAlias(
-        alias,
-        body,
-        DEFAULT_DOMAIN_ID,
-        parseLlmRevision(c.req.header("If-Match")),
-        c.get("userId"),
-    );
-    await adminAudit(
-        "llm_model_alias.upsert",
-        { action: "llm_model_alias.upsert", alias },
-        { type: "llm_model_alias", id: alias },
-    );
-    return c.json({ data });
+  const alias = c.req.param("alias") as string;
+  const body = await parseJsonBody<LlmModelAliasInput>(c);
+  const data = await upsertLlmGatewayModelAlias(
+    alias,
+    body,
+    DEFAULT_DOMAIN_ID,
+    parseLlmRevision(c.req.header("If-Match")),
+    c.get("userId"),
+  );
+  await adminAudit(
+    "llm_model_alias.upsert",
+    { action: "llm_model_alias.upsert", alias },
+    { type: "llm_model_alias", id: alias },
+  );
+  return c.json({ data });
 });
 
 /**
@@ -239,30 +239,30 @@ router.put("/llm/model-aliases/:alias", async (c) => {
  * （这些题的后续提交会返回 400，已冻结的重测不受影响）。
  */
 router.delete("/llm/model-aliases/:alias", async (c) => {
-    const alias = c.req.param("alias") as string;
-    const used = await listProblemsUsingAlias(alias);
-    if (used.length > 0 && c.req.query("force") !== "true") {
-        return c.json({
-            error: `该别名被 ${used.length} 道题引用，删除后这些题的提交将失败`,
-            code: "ALIAS_IN_USE",
-            problem_ids: used,
-        }, 409);
-    }
-    if (
-        !(await deleteLlmGatewayModelAlias(
-            alias,
-            DEFAULT_DOMAIN_ID,
-            parseLlmRevision(c.req.header("If-Match")),
-        ))
-    ) {
-        throw new NotFoundError("模型别名不存在");
-    }
-    await adminAudit(
-        "llm_model_alias.delete",
-        { action: "llm_model_alias.delete", alias },
-        { type: "llm_model_alias", id: alias },
-    );
-    return c.body(null, 204);
+  const alias = c.req.param("alias") as string;
+  const used = await listProblemsUsingAlias(alias);
+  if (used.length > 0 && c.req.query("force") !== "true") {
+    return c.json({
+      error: `该别名被 ${used.length} 道题引用，删除后这些题的提交将失败`,
+      code: "ALIAS_IN_USE",
+      problem_ids: used,
+    }, 409);
+  }
+  if (
+    !(await deleteLlmGatewayModelAlias(
+      alias,
+      DEFAULT_DOMAIN_ID,
+      parseLlmRevision(c.req.header("If-Match")),
+    ))
+  ) {
+    throw new NotFoundError("模型别名不存在");
+  }
+  await adminAudit(
+    "llm_model_alias.delete",
+    { action: "llm_model_alias.delete", alias },
+    { type: "llm_model_alias", id: alias },
+  );
+  return c.body(null, 204);
 });
 
 /**
@@ -275,19 +275,19 @@ router.delete("/llm/model-aliases/:alias", async (c) => {
  * 响应：`{ data: unknown[] }`（用量记录列表）。
  */
 router.get("/llm/usage", async (c) => {
-    const query: LlmUsageQuery = {
-        submission_id: c.req.query("submission_id") || undefined,
-        user_id: c.req.query("user_id") || undefined,
-        problem_id: c.req.query("problem_id") || undefined,
-        provider_id: c.req.query("provider_id") || undefined,
-        status: c.req.query("status") || undefined,
-        start_time: c.req.query("start_time") || undefined,
-        end_time: c.req.query("end_time") || undefined,
-        limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
-        page: c.req.query("page") ? Number(c.req.query("page")) : undefined,
-    };
-    const data = await queryLlmUsage(query);
-    return c.json({ data });
+  const query: LlmUsageQuery = {
+    submission_id: c.req.query("submission_id") || undefined,
+    user_id: c.req.query("user_id") || undefined,
+    problem_id: c.req.query("problem_id") || undefined,
+    provider_id: c.req.query("provider_id") || undefined,
+    status: c.req.query("status") || undefined,
+    start_time: c.req.query("start_time") || undefined,
+    end_time: c.req.query("end_time") || undefined,
+    limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined,
+    page: c.req.query("page") ? Number(c.req.query("page")) : undefined,
+  };
+  const data = await queryLlmUsage(query);
+  return c.json({ data });
 });
 
 /**
@@ -300,12 +300,12 @@ router.get("/llm/usage", async (c) => {
  * 响应：`{ data: unknown[] }`（gateway `llm_quotas` 行原样透传）。
  */
 router.get("/llm/quotas", async (c) => {
-    const [instanceQuotas, domainQuotas] = await Promise.all([
-        listInstanceLlmQuotas(),
-        listLlmQuotas(),
-    ]);
-    const data = [...instanceQuotas, ...domainQuotas];
-    return c.json({ data });
+  const [instanceQuotas, domainQuotas] = await Promise.all([
+    listInstanceLlmQuotas(),
+    listLlmQuotas(),
+  ]);
+  const data = [...instanceQuotas, ...domainQuotas];
+  return c.json({ data });
 });
 
 /**
@@ -317,18 +317,18 @@ router.get("/llm/quotas", async (c) => {
  * 响应：201 `{ data: { id: string, revision: number } }`。
  */
 router.post("/llm/quotas", async (c) => {
-    const body = await parseJsonBody<LlmQuotaInput>(c);
-    const data = await upsertLlmQuota(
-        body,
-        undefined,
-        parseLlmRevision(c.req.header("If-Match")),
-    );
-    await adminAudit(
-        "llm_quota.upsert",
-        { action: "llm_quota.upsert", id: data?.id ?? null },
-        data?.id ? { type: "llm_quota", id: data.id } : undefined,
-    );
-    return c.json({ data }, 201);
+  const body = await parseJsonBody<LlmQuotaInput>(c);
+  const data = await upsertLlmQuota(
+    body,
+    undefined,
+    parseLlmRevision(c.req.header("If-Match")),
+  );
+  await adminAudit(
+    "llm_quota.upsert",
+    { action: "llm_quota.upsert", id: data?.id ?? null },
+    data?.id ? { type: "llm_quota", id: data.id } : undefined,
+  );
+  return c.json({ data }, 201);
 });
 
 /**
@@ -338,40 +338,31 @@ router.post("/llm/quotas", async (c) => {
  * 若不在路由层捕获会落入全局 onError 变成 500 INTERNAL_ERROR。
  */
 export function mapLlmError(error: unknown): never {
-    if (error instanceof LlmGatewayError) {
-        if (error.status === 409) {
-            throw new ConflictError(
-                "模型配置已修改，请重新读取",
-                "REVISION_CONFLICT",
-            );
-        }
-        if (error.status === 428) {
-            throw new AppError(
-                "需要 LLM 资源 revision",
-                428,
-                "REVISION_REQUIRED",
-            );
-        }
-        if (error.status === 404) throw new NotFoundError("模型配置不存在");
-        if (error.status >= 500) {
-            throw new ServiceUnavailableError("模型服务暂时不可用");
-        }
-        // 出站校验拦截（G-03）：给管理员可操作的提示，而非原始错误码
-        if (error.code === "provider_base_url_blocked") {
-            throw new BadRequestError(
-                "Base URL 不被允许：仅支持 https 公网地址；内网自建模型请在网关 NOJ_LLM_UPSTREAM_ALLOWED_HOSTS 中放行该主机",
-                error.code,
-            );
-        }
-        if (error.status === 400) {
-            throw new BadRequestError(error.code, error.code);
-        }
-        throw new BadRequestError(
-            "模型服务暂时不可用",
-            "LLM_GATEWAY_UNAVAILABLE",
-        );
+  if (error instanceof LlmGatewayError) {
+    if (error.status === 409) {
+      throw new ConflictError(
+        "模型配置已修改，请重新读取",
+        "REVISION_CONFLICT",
+      );
     }
-    throw error;
+    if (error.status === 428) {
+      throw new AppError("需要 LLM 资源 revision", 428, "REVISION_REQUIRED");
+    }
+    if (error.status === 404) throw new NotFoundError("模型配置不存在");
+    if (error.status >= 500) {
+      throw new ServiceUnavailableError("模型服务暂时不可用");
+    }
+    // 出站校验拦截（G-03）：给管理员可操作的提示，而非原始错误码
+    if (error.code === "provider_base_url_blocked") {
+      throw new BadRequestError(
+        "Base URL 不被允许：仅支持 https 公网地址；内网自建模型请在网关 NOJ_LLM_UPSTREAM_ALLOWED_HOSTS 中放行该主机",
+        error.code,
+      );
+    }
+    if (error.status === 400) throw new BadRequestError(error.code, error.code);
+    throw new BadRequestError("模型服务暂时不可用", "LLM_GATEWAY_UNAVAILABLE");
+  }
+  throw error;
 }
 
 export default router;

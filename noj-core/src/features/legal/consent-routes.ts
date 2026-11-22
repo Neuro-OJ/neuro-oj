@@ -30,31 +30,31 @@ const CONSENT_LIMIT = { windowSec: 30, max: 10 };
  * body: { kind: "privacy" | "terms" }
  */
 router.post("/legal/consent", authMiddleware, async (c) => {
-    const userId = c.get("userId") as string;
-    const actor = requireUserActor(c.get("actor"));
-    await enforceRateLimit(`legal-consent:user:${userId}`, CONSENT_LIMIT);
+  const userId = c.get("userId") as string;
+  const actor = requireUserActor(c.get("actor"));
+  await enforceRateLimit(`legal-consent:user:${userId}`, CONSENT_LIMIT);
 
-    const body = await parseJsonBody<{ kind?: string }>(c);
-    const kind = body.kind ?? "";
-    if (!isLegalKind(kind)) {
-        throw new ValidationError(`未知的法律文档类型：${kind}`);
-    }
+  const body = await parseJsonBody<{ kind?: string }>(c);
+  const kind = body.kind ?? "";
+  if (!isLegalKind(kind)) {
+    throw new ValidationError(`未知的法律文档类型：${kind}`);
+  }
 
-    const doc = await getCurrentDocument(kind as LegalKind);
-    if (!doc) {
-        throw new ValidationError("该文档尚未发布，无法记录同意");
-    }
+  const doc = await getCurrentDocument(kind as LegalKind);
+  if (!doc) {
+    throw new ValidationError("该文档尚未发布，无法记录同意");
+  }
 
-    await recordConsent(
-        actor,
-        kind as LegalKind,
-        doc.version,
-        doc.content_hash,
-        getClientIp(c),
-        c.req.header("user-agent") ?? null,
-    );
+  await recordConsent(
+    actor,
+    kind as LegalKind,
+    doc.version,
+    doc.content_hash,
+    getClientIp(c),
+    c.req.header("user-agent") ?? null,
+  );
 
-    return c.json({ data: { kind, version: doc.version, agreed: true } }, 201);
+  return c.json({ data: { kind, version: doc.version, agreed: true } }, 201);
 });
 
 export default router;

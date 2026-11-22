@@ -27,41 +27,41 @@ const FIELD_NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 /** Python 关键字（作为变量名赋值会语法错误，这类字段只保留在 `PARAMS` 中）。 */
 const PYTHON_KEYWORDS = new Set([
-    "False",
-    "None",
-    "True",
-    "and",
-    "as",
-    "assert",
-    "async",
-    "await",
-    "break",
-    "class",
-    "continue",
-    "def",
-    "del",
-    "elif",
-    "else",
-    "except",
-    "finally",
-    "for",
-    "from",
-    "global",
-    "if",
-    "import",
-    "in",
-    "is",
-    "lambda",
-    "nonlocal",
-    "not",
-    "or",
-    "pass",
-    "raise",
-    "return",
-    "try",
-    "while",
-    "with",
-    "yield",
+  "False",
+  "None",
+  "True",
+  "and",
+  "as",
+  "assert",
+  "async",
+  "await",
+  "break",
+  "class",
+  "continue",
+  "def",
+  "del",
+  "elif",
+  "else",
+  "except",
+  "finally",
+  "for",
+  "from",
+  "global",
+  "if",
+  "import",
+  "in",
+  "is",
+  "lambda",
+  "nonlocal",
+  "not",
+  "or",
+  "pass",
+  "raise",
+  "return",
+  "try",
+  "while",
+  "with",
+  "yield",
 ]);
 
 /** 参数字段数量上限（防止构造超大对象）。 */
@@ -77,29 +77,29 @@ export const MAX_UI_FIELDS = 100;
  * @throws {BadRequestError} 不是合法 JSON 对象或字段名非法
  */
 export function parseUiValues(code: string): Record<string, unknown> {
-    let parsed: unknown;
-    try {
-        parsed = JSON.parse(code);
-    } catch {
-        throw new BadRequestError("界面参数必须是合法的 JSON");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(code);
+  } catch {
+    throw new BadRequestError("界面参数必须是合法的 JSON");
+  }
+  if (
+    typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
+  ) {
+    throw new BadRequestError("界面参数必须是 JSON 对象");
+  }
+  const keys = Object.keys(parsed);
+  if (keys.length > MAX_UI_FIELDS) {
+    throw new BadRequestError(`界面参数字段不能超过 ${MAX_UI_FIELDS} 个`);
+  }
+  for (const key of keys) {
+    if (!FIELD_NAME_RE.test(key)) {
+      throw new BadRequestError(
+        `界面参数字段名非法：${key}（仅允许字母开头的字母、数字、下划线）`,
+      );
     }
-    if (
-        typeof parsed !== "object" || parsed === null || Array.isArray(parsed)
-    ) {
-        throw new BadRequestError("界面参数必须是 JSON 对象");
-    }
-    const keys = Object.keys(parsed);
-    if (keys.length > MAX_UI_FIELDS) {
-        throw new BadRequestError(`界面参数字段不能超过 ${MAX_UI_FIELDS} 个`);
-    }
-    for (const key of keys) {
-        if (!FIELD_NAME_RE.test(key)) {
-            throw new BadRequestError(
-                `界面参数字段名非法：${key}（仅允许字母开头的字母、数字、下划线）`,
-            );
-        }
-    }
-    return parsed as Record<string, unknown>;
+  }
+  return parsed as Record<string, unknown>;
 }
 
 /**
@@ -111,25 +111,25 @@ export function parseUiValues(code: string): Record<string, unknown> {
  * @param scriptTemplate 出题人的脚本模板（题包 `template.py`）
  */
 export function buildUiSolutionScript(
-    values: Record<string, unknown>,
-    scriptTemplate: string,
+  values: Record<string, unknown>,
+  scriptTemplate: string,
 ): string {
-    const encoded = encodeBase64(
-        new TextEncoder().encode(JSON.stringify(values)),
-    );
-    const lines = [
-        '"""NOJ 界面题脚本：参数由平台根据选手在界面中的填写注入，之后是出题人的脚本模板。"""',
-        "",
-        "import base64 as _noj_b64",
-        "import json as _noj_json",
-        "",
-        `PARAMS = _noj_json.loads(_noj_b64.b64decode("${encoded}").decode("utf-8"))`,
-    ];
-    for (const key of Object.keys(values)) {
-        if (!PYTHON_KEYWORDS.has(key)) lines.push(`${key} = PARAMS["${key}"]`);
-    }
-    lines.push("", "# ── 以下为题目脚本模板 ──", scriptTemplate);
-    return lines.join("\n");
+  const encoded = encodeBase64(
+    new TextEncoder().encode(JSON.stringify(values)),
+  );
+  const lines = [
+    '"""NOJ 界面题脚本：参数由平台根据选手在界面中的填写注入，之后是出题人的脚本模板。"""',
+    "",
+    "import base64 as _noj_b64",
+    "import json as _noj_json",
+    "",
+    `PARAMS = _noj_json.loads(_noj_b64.b64decode("${encoded}").decode("utf-8"))`,
+  ];
+  for (const key of Object.keys(values)) {
+    if (!PYTHON_KEYWORDS.has(key)) lines.push(`${key} = PARAMS["${key}"]`);
+  }
+  lines.push("", "# ── 以下为题目脚本模板 ──", scriptTemplate);
+  return lines.join("\n");
 }
 
 /** 生成的脚本注入 judge 时使用的语言与文件名（judge 只认识 Python 源码）。 */
@@ -145,21 +145,19 @@ export const UI_WRAPPED_FILE_NAME = "main.py";
  * @throws {BadRequestError} 语言与提交模式不匹配或不受支持
  */
 export function assertSubmissionLanguage(
-    submissionMode: string,
-    language: string,
-    supportedLanguages: readonly string[],
+  submissionMode: string,
+  language: string,
+  supportedLanguages: readonly string[],
 ): void {
-    if (submissionMode === "ui") {
-        if (language !== UI_LANGUAGE) {
-            throw new BadRequestError(
-                "该题目要求通过界面提交参数（language=ui）",
-            );
-        }
-        return;
+  if (submissionMode === "ui") {
+    if (language !== UI_LANGUAGE) {
+      throw new BadRequestError("该题目要求通过界面提交参数（language=ui）");
     }
-    if (!supportedLanguages.includes(language)) {
-        throw new BadRequestError(`不支持的语言: ${language}`);
-    }
+    return;
+  }
+  if (!supportedLanguages.includes(language)) {
+    throw new BadRequestError(`不支持的语言: ${language}`);
+  }
 }
 
 /**
@@ -168,5 +166,5 @@ export function assertSubmissionLanguage(
  * `language = "ui"` → `ui`，其余 → `code`；artifact 提交走独立入口，不经此函数。
  */
 export function submissionModeForLanguage(language: string): "code" | "ui" {
-    return language === UI_LANGUAGE ? "ui" : "code";
+  return language === UI_LANGUAGE ? "ui" : "code";
 }

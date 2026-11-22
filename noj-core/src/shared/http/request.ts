@@ -4,7 +4,7 @@ import { AppError, BadRequestError, ValidationError } from "../base/errors.ts";
  * 判断值是否为普通对象（非 null、非数组）。
  */
 export function isObject(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 /**
@@ -13,11 +13,11 @@ export function isObject(value: unknown): value is Record<string, unknown> {
  * @throws {BadRequestError} 请求体不是 JSON 对象
  */
 export function assertObjectBody(
-    body: unknown,
+  body: unknown,
 ): asserts body is Record<string, unknown> {
-    if (!isObject(body)) {
-        throw new BadRequestError("请求体必须为 JSON 对象");
-    }
+  if (!isObject(body)) {
+    throw new BadRequestError("请求体必须为 JSON 对象");
+  }
 }
 
 /**
@@ -29,13 +29,13 @@ export function assertObjectBody(
  * @throws {ValidationError} JSON 格式错误时抛出
  */
 export async function parseJsonBody<T>(
-    c: { req: { json: <U>() => Promise<U> } },
+  c: { req: { json: <U>() => Promise<U> } },
 ): Promise<T> {
-    try {
-        return await c.req.json<T>();
-    } catch {
-        throw new ValidationError("请求体格式错误：需要有效的 JSON");
-    }
+  try {
+    return await c.req.json<T>();
+  } catch {
+    throw new ValidationError("请求体格式错误：需要有效的 JSON");
+  }
 }
 
 /**
@@ -52,19 +52,19 @@ export async function parseJsonBody<T>(
  * @throws {AppError} 413 `UPLOAD_TOO_LARGE`
  */
 export function assertDeclaredBodyWithin(
-    c: { req: { header(name: string): string | undefined } },
-    maxBytes: number,
-    label: string,
+  c: { req: { header(name: string): string | undefined } },
+  maxBytes: number,
+  label: string,
 ): void {
-    const raw = c.req.header("content-length");
-    if (raw === undefined) return;
-    const declared = Number(raw);
-    if (!Number.isFinite(declared) || declared < 0) return;
-    // multipart 边界与字段开销留 1 KiB 余量，避免恰好等于上限的合法请求被误拒
-    if (declared <= maxBytes + 1024) return;
-    throw new AppError(
-        `${label}超过上限（${Math.floor(maxBytes / 1024 / 1024)} MiB）`,
-        413,
-        "UPLOAD_TOO_LARGE",
-    );
+  const raw = c.req.header("content-length");
+  if (raw === undefined) return;
+  const declared = Number(raw);
+  if (!Number.isFinite(declared) || declared < 0) return;
+  // multipart 边界与字段开销留 1 KiB 余量，避免恰好等于上限的合法请求被误拒
+  if (declared <= maxBytes + 1024) return;
+  throw new AppError(
+    `${label}超过上限（${Math.floor(maxBytes / 1024 / 1024)} MiB）`,
+    413,
+    "UPLOAD_TOO_LARGE",
+  );
 }

@@ -16,5 +16,5 @@ import { registerServerSanitizer } from '../../utils/sanitize';
  * 政策本身在 `utils/sanitize-policy.ts`，与客户端 DOMPurify 共用。
  */
 export default defineNitroPlugin(() => {
-    registerServerSanitizer((html, options) => sanitizeHtml(html, options));
+  registerServerSanitizer((html, options) => sanitizeHtml(html, options));
 });

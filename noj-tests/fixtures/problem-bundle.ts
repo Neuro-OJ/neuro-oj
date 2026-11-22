@@ -17,32 +17,30 @@ export type ProblemBundleFiles = Record<string, string | Uint8Array>;
  *   产生难以归因的 400，应在夹具构造阶段暴露）
  */
 export function buildProblemBundle(files: ProblemBundleFiles): Uint8Array {
-    const entries: Record<string, Uint8Array> = {};
-    const paths = Object.keys(files);
-    if (paths.length === 0) {
-        throw new Error("题包至少需要一个文件");
+  const entries: Record<string, Uint8Array> = {};
+  const paths = Object.keys(files);
+  if (paths.length === 0) {
+    throw new Error("题包至少需要一个文件");
+  }
+  for (const [path, content] of Object.entries(files)) {
+    if (path.trim() === "" || path.startsWith("/")) {
+      throw new Error(`题包路径必须是相对路径：${JSON.stringify(path)}`);
     }
-    for (const [path, content] of Object.entries(files)) {
-        if (path.trim() === "" || path.startsWith("/")) {
-            throw new Error(`题包路径必须是相对路径：${JSON.stringify(path)}`);
-        }
-        entries[path] = typeof content === "string"
-            ? strToU8(content)
-            : content;
-    }
-    return zipSync(entries);
+    entries[path] = typeof content === "string" ? strToU8(content) : content;
+  }
+  return zipSync(entries);
 }
 
 /** 把题包封装成 multipart 上传体（导入题包端点使用字段名 file）。 */
 export function problemBundleForm(
-    archive: Uint8Array,
-    filename = "fixture.zip",
+  archive: Uint8Array,
+  filename = "fixture.zip",
 ): FormData {
-    const body = new FormData();
-    body.set(
-        "file",
-        new Blob([archive.buffer as ArrayBuffer], { type: "application/zip" }),
-        filename,
-    );
-    return body;
+  const body = new FormData();
+  body.set(
+    "file",
+    new Blob([archive.buffer as ArrayBuffer], { type: "application/zip" }),
+    filename,
+  );
+  return body;
 }

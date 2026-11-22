@@ -11,17 +11,17 @@ import { getLogger } from "@logtape/logtape";
 const logger = getLogger(["noj", "system"]);
 
 export const sendPasswordResetEmail: SendPasswordResetEmail = () => {
-    logger.warn("邮件服务未配置，跳过密码找回邮件", {
-        module: "email-disabled",
-        event: "password_reset_skipped",
-    });
-    return Promise.resolve();
+  logger.warn("邮件服务未配置，跳过密码找回邮件", {
+    module: "email-disabled",
+    event: "password_reset_skipped",
+  });
+  return Promise.resolve();
 };
 
 export const sendEmail: SendEmail = () => {
-    logger.warn("邮件服务未配置，跳过发送邮件", {
-        module: "email-disabled",
-        event: "email_skipped",
-    });
-    return Promise.resolve(false);
+  logger.warn("邮件服务未配置，跳过发送邮件", {
+    module: "email-disabled",
+    event: "email_skipped",
+  });
+  return Promise.resolve(false);
 };

@@ -18,89 +18,89 @@ import { getSetting } from "../../services/system-settings.ts";
 
 /** 排空阻塞原因（稳定取值，供 CLI / 运维脚本与 noj-cli 判断）。 */
 export type DrainBlocker =
-    | "maintenance_off"
-    | "redis_unavailable"
-    | "judge_queue_pending"
-    | "judge_queue_processing"
-    | "result_queue_pending"
-    | "result_queue_processing"
-    | "attempts_in_flight"
-    | "judge_workers_missing"
-    | "judge_tasks_active";
+  | "maintenance_off"
+  | "redis_unavailable"
+  | "judge_queue_pending"
+  | "judge_queue_processing"
+  | "result_queue_pending"
+  | "result_queue_processing"
+  | "attempts_in_flight"
+  | "judge_workers_missing"
+  | "judge_tasks_active";
 
 /** 单个 Judge Worker 心跳报告（结构性兼容观测域 readJudgeNodeReports 的返回）。 */
 export interface DrainJudgeNode {
-    /** 实例标识（Redis 心跳 key 后缀）。 */
-    instance_id: string;
-    /** Judge Worker 版本号；旧版本心跳无该字段。 */
-    judge_version?: string;
-    /** 调度协议版本。 */
-    scheduling_version?: number;
-    /** 共享硬件资源组名。 */
-    resource_group?: string;
-    /** 当前活跃任务数。 */
-    active_tasks: number;
-    /** 最大并发任务数。 */
-    max_concurrent_tasks: number;
-    /** 心跳写入时间（毫秒时间戳）。 */
-    updated_at_ms?: number;
+  /** 实例标识（Redis 心跳 key 后缀）。 */
+  instance_id: string;
+  /** Judge Worker 版本号；旧版本心跳无该字段。 */
+  judge_version?: string;
+  /** 调度协议版本。 */
+  scheduling_version?: number;
+  /** 共享硬件资源组名。 */
+  resource_group?: string;
+  /** 当前活跃任务数。 */
+  active_tasks: number;
+  /** 最大并发任务数。 */
+  max_concurrent_tasks: number;
+  /** 心跳写入时间（毫秒时间戳）。 */
+  updated_at_ms?: number;
 }
 
 /** computeDrainState 的纯函数输入。 */
 export interface DrainStateInput {
-    maintenance: boolean;
-    queues: QueueHealthResponse;
-    inFlightAttempts: number;
-    judgeRequired: boolean;
-    judgeNodes: DrainJudgeNode[];
+  maintenance: boolean;
+  queues: QueueHealthResponse;
+  inFlightAttempts: number;
+  judgeRequired: boolean;
+  judgeNodes: DrainJudgeNode[];
 }
 
 /** computeDrainState 的纯函数输出。 */
 export interface DrainState {
-    maintenance: boolean;
-    /** blockers 为空即已排空。 */
-    drained: boolean;
-    blockers: DrainBlocker[];
+  maintenance: boolean;
+  /** blockers 为空即已排空。 */
+  drained: boolean;
+  blockers: DrainBlocker[];
 }
 
 /** 排空状态接口的 `data` 结构。 */
 export interface DrainStatusData {
-    maintenance: boolean;
-    drained: boolean;
-    blockers: DrainBlocker[];
-    /** 状态计算时间（ISO 8601）。 */
-    checked_at: string;
-    /** Redis 是否可用（与队列健康快照同口径）。 */
-    redis_ok: boolean;
-    /** 队列健康原样透传（getQueueHealth() 的返回，含 redis_ok）。 */
-    queues: QueueHealthResponse;
-    attempts: {
-        /** state ∈ queued/judging 的评测尝试数。 */
-        in_flight: number;
-    };
-    judge: {
-        /** 与 emptyJudgeSnapshot 同口径：production 且 JUDGE_ENABLED != false。 */
-        required: boolean;
-        /** 上报心跳的 Judge Worker 数。 */
-        reporting: number;
-        nodes: DrainJudgeNode[];
-    };
+  maintenance: boolean;
+  drained: boolean;
+  blockers: DrainBlocker[];
+  /** 状态计算时间（ISO 8601）。 */
+  checked_at: string;
+  /** Redis 是否可用（与队列健康快照同口径）。 */
+  redis_ok: boolean;
+  /** 队列健康原样透传（getQueueHealth() 的返回，含 redis_ok）。 */
+  queues: QueueHealthResponse;
+  attempts: {
+    /** state ∈ queued/judging 的评测尝试数。 */
+    in_flight: number;
+  };
+  judge: {
+    /** 与 emptyJudgeSnapshot 同口径：production 且 JUDGE_ENABLED != false。 */
+    required: boolean;
+    /** 上报心跳的 Judge Worker 数。 */
+    reporting: number;
+    nodes: DrainJudgeNode[];
+  };
 }
 
 /** readDrainStatus 的可注入依赖集合（生产实现由 app.ts 组合根注入）。 */
 export interface DrainStatusDeps {
-    /** 读取维护模式开关（实时，不缓存）。 */
-    getMaintenance(): boolean;
-    /** 读取评测任务/结果队列健康（submission 域注入）。 */
-    getQueueHealth(): Promise<QueueHealthResponse>;
-    /** 统计 state ∈ queued/judging 的评测尝试数。 */
-    countInFlightAttempts(): Promise<number>;
-    /** 逐节点读取 Judge Worker 心跳（observability 域注入）。 */
-    readJudgeNodeReports(): Promise<DrainJudgeNode[]>;
-    /** judge 是否必需（观测域 emptyJudgeSnapshot 同口径）。 */
-    judgeRequired(): boolean;
-    /** 当前时间（ISO 8601）。 */
-    now(): string;
+  /** 读取维护模式开关（实时，不缓存）。 */
+  getMaintenance(): boolean;
+  /** 读取评测任务/结果队列健康（submission 域注入）。 */
+  getQueueHealth(): Promise<QueueHealthResponse>;
+  /** 统计 state ∈ queued/judging 的评测尝试数。 */
+  countInFlightAttempts(): Promise<number>;
+  /** 逐节点读取 Judge Worker 心跳（observability 域注入）。 */
+  readJudgeNodeReports(): Promise<DrainJudgeNode[]>;
+  /** judge 是否必需（观测域 emptyJudgeSnapshot 同口径）。 */
+  judgeRequired(): boolean;
+  /** 当前时间（ISO 8601）。 */
+  now(): string;
 }
 
 /**
@@ -120,63 +120,61 @@ export interface DrainStatusDeps {
  * @returns 维护模式、是否已排空与阻塞原因
  */
 export function computeDrainState(input: DrainStateInput): DrainState {
-    const blockers: DrainBlocker[] = [];
-    if (!input.maintenance) blockers.push("maintenance_off");
-    if (!input.queues.redis_ok) blockers.push("redis_unavailable");
-    if (input.queues.judge.queue_length > 0) {
-        blockers.push("judge_queue_pending");
-    }
-    if (input.queues.judge.processing_length > 0) {
-        blockers.push("judge_queue_processing");
-    }
-    if (input.queues.result.queue_length > 0) {
-        blockers.push("result_queue_pending");
-    }
-    if (input.queues.result.processing_length > 0) {
-        blockers.push("result_queue_processing");
-    }
-    if (input.inFlightAttempts > 0) blockers.push("attempts_in_flight");
-    if (input.judgeRequired && input.judgeNodes.length === 0) {
-        blockers.push("judge_workers_missing");
-    }
-    if (input.judgeNodes.some((node) => node.active_tasks > 0)) {
-        blockers.push("judge_tasks_active");
-    }
-    return {
-        maintenance: input.maintenance,
-        drained: blockers.length === 0,
-        blockers,
-    };
+  const blockers: DrainBlocker[] = [];
+  if (!input.maintenance) blockers.push("maintenance_off");
+  if (!input.queues.redis_ok) blockers.push("redis_unavailable");
+  if (input.queues.judge.queue_length > 0) blockers.push("judge_queue_pending");
+  if (input.queues.judge.processing_length > 0) {
+    blockers.push("judge_queue_processing");
+  }
+  if (input.queues.result.queue_length > 0) {
+    blockers.push("result_queue_pending");
+  }
+  if (input.queues.result.processing_length > 0) {
+    blockers.push("result_queue_processing");
+  }
+  if (input.inFlightAttempts > 0) blockers.push("attempts_in_flight");
+  if (input.judgeRequired && input.judgeNodes.length === 0) {
+    blockers.push("judge_workers_missing");
+  }
+  if (input.judgeNodes.some((node) => node.active_tasks > 0)) {
+    blockers.push("judge_tasks_active");
+  }
+  return {
+    maintenance: input.maintenance,
+    drained: blockers.length === 0,
+    blockers,
+  };
 }
 
 /** 缺省依赖：保守降级值，保证「未注入真实实现时永不误报已排空」。 */
 const FALLBACK_DRAIN_STATUS_DEPS: DrainStatusDeps = {
-    getMaintenance: () => getSetting("maintenance_mode")?.value === true,
-    getQueueHealth: () => {
-        const unavailable = {
-            queue_length: -1,
-            processing_length: -1,
-            dead_length: -1,
-        };
-        return Promise.resolve({
-            judge: unavailable,
-            result: unavailable,
-            redis_ok: false,
-        });
-    },
-    countInFlightAttempts: async () => {
-        const [row] = await getDb()
-            .select({ count: sql<number>`count(*)::int` })
-            .from(evaluationAttempts)
-            .where(inArray(evaluationAttempts.state, ["queued", "judging"]));
-        return Number(row?.count ?? 0);
-    },
-    readJudgeNodeReports: () => Promise.resolve([]),
-    // 与 emptyJudgeSnapshot 同口径；生产必须由组合根注入观测域实现。
-    judgeRequired: () =>
-        Deno.env.get("NOJ_ENV") === "production" &&
-        Deno.env.get("JUDGE_ENABLED") !== "false",
-    now: () => new Date().toISOString(),
+  getMaintenance: () => getSetting("maintenance_mode")?.value === true,
+  getQueueHealth: () => {
+    const unavailable = {
+      queue_length: -1,
+      processing_length: -1,
+      dead_length: -1,
+    };
+    return Promise.resolve({
+      judge: unavailable,
+      result: unavailable,
+      redis_ok: false,
+    });
+  },
+  countInFlightAttempts: async () => {
+    const [row] = await getDb()
+      .select({ count: sql<number>`count(*)::int` })
+      .from(evaluationAttempts)
+      .where(inArray(evaluationAttempts.state, ["queued", "judging"]));
+    return Number(row?.count ?? 0);
+  },
+  readJudgeNodeReports: () => Promise.resolve([]),
+  // 与 emptyJudgeSnapshot 同口径；生产必须由组合根注入观测域实现。
+  judgeRequired: () =>
+    Deno.env.get("NOJ_ENV") === "production" &&
+    Deno.env.get("JUDGE_ENABLED") !== "false",
+  now: () => new Date().toISOString(),
 };
 
 /**
@@ -186,36 +184,33 @@ const FALLBACK_DRAIN_STATUS_DEPS: DrainStatusDeps = {
  * @returns 排空状态接口 data
  */
 export async function readDrainStatus(
-    deps: Partial<DrainStatusDeps> = {},
+  deps: Partial<DrainStatusDeps> = {},
 ): Promise<DrainStatusData> {
-    const resolved: DrainStatusDeps = {
-        ...FALLBACK_DRAIN_STATUS_DEPS,
-        ...deps,
-    };
-    const maintenance = resolved.getMaintenance();
-    const judgeRequired = resolved.judgeRequired();
-    const [queues, inFlightAttempts, nodes] = await Promise.all([
-        resolved.getQueueHealth(),
-        resolved.countInFlightAttempts(),
-        resolved.readJudgeNodeReports(),
-    ]);
-    const state = computeDrainState({
-        maintenance,
-        queues,
-        inFlightAttempts,
-        judgeRequired,
-        judgeNodes: nodes,
-    });
-    return {
-        ...state,
-        checked_at: resolved.now(),
-        redis_ok: queues.redis_ok,
-        queues,
-        attempts: { in_flight: inFlightAttempts },
-        judge: {
-            required: judgeRequired,
-            reporting: nodes.length,
-            nodes,
-        },
-    };
+  const resolved: DrainStatusDeps = { ...FALLBACK_DRAIN_STATUS_DEPS, ...deps };
+  const maintenance = resolved.getMaintenance();
+  const judgeRequired = resolved.judgeRequired();
+  const [queues, inFlightAttempts, nodes] = await Promise.all([
+    resolved.getQueueHealth(),
+    resolved.countInFlightAttempts(),
+    resolved.readJudgeNodeReports(),
+  ]);
+  const state = computeDrainState({
+    maintenance,
+    queues,
+    inFlightAttempts,
+    judgeRequired,
+    judgeNodes: nodes,
+  });
+  return {
+    ...state,
+    checked_at: resolved.now(),
+    redis_ok: queues.redis_ok,
+    queues,
+    attempts: { in_flight: inFlightAttempts },
+    judge: {
+      required: judgeRequired,
+      reporting: nodes.length,
+      nodes,
+    },
+  };
 }

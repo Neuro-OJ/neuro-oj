@@ -26,17 +26,17 @@ import type { CommandRunner } from "../../runtime/command.ts";
 import { prodComposeArgs } from "./driver.ts";
 import { restoreDataServices } from "./data_restore.ts";
 import {
-    listBackups,
-    type ListResult,
-    pruneBackups,
-    type PruneResult,
+  listBackups,
+  type ListResult,
+  pruneBackups,
+  type PruneResult,
 } from "./list.ts";
 import type { PruneOptions } from "./index.ts";
 import {
-    CONTAINER_FILES,
-    type ContainerPayloadOps,
-    verifyContainer,
-    type VerifyContainerResult,
+  CONTAINER_FILES,
+  type ContainerPayloadOps,
+  verifyContainer,
+  type VerifyContainerResult,
 } from "./container.ts";
 import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
@@ -50,17 +50,17 @@ export type BackupListResult = ListResult;
  * （首次使用是正常状态，不是错误）。
  */
 export async function listBackupCommand(
-    backupDir: string,
+  backupDir: string,
 ): Promise<BackupListResult> {
-    return await listBackups(backupDir);
+  return await listBackups(backupDir);
 }
 
 /** {@link pruneCommand} 的结果（在 `PruneResult` 上补充模式信息）。 */
 export interface BackupPruneResult extends PruneResult {
-    /** 是否真的执行了删除（`--confirm`）。false 即 dry-run。 */
-    applied: boolean;
-    /** 备份目录。 */
-    dir: string;
+  /** 是否真的执行了删除（`--confirm`）。false 即 dry-run。 */
+  applied: boolean;
+  /** 备份目录。 */
+  dir: string;
 }
 
 /**
@@ -71,34 +71,34 @@ export interface BackupPruneResult extends PruneResult {
  * 什么都不删"与"legacy 默认保留"这两条安全默认。
  */
 export async function pruneCommand(
-    backupDir: string,
-    options: PruneOptions & { confirm?: boolean },
+  backupDir: string,
+  options: PruneOptions & { confirm?: boolean },
 ): Promise<BackupPruneResult> {
-    const result = await pruneBackups(backupDir, options);
-    return { ...result, applied: options.confirm === true, dir: backupDir };
+  const result = await pruneBackups(backupDir, options);
+  return { ...result, applied: options.confirm === true, dir: backupDir };
 }
 
 /** {@link verifyCommand} 的结果（在容器校验结果上补充路径信息）。 */
 export interface BackupVerifyResult extends VerifyContainerResult {
-    /** 被校验的容器路径。 */
-    path: string;
-    /** 汇总文案（人类通道用）。 */
-    summary: string;
+  /** 被校验的容器路径。 */
+  path: string;
+  /** 汇总文案（人类通道用）。 */
+  summary: string;
 }
 
 /** {@link verifyCommand} 的注入点。 */
 export interface VerifyCommandOptions {
-    /** 容器路径（必须是 `.nojbackup` 单文件）。 */
-    path: string;
-    /** 解包临时目录（调用方负责创建/清理之外的收尾；本函数不删它）。 */
-    workDir: string;
-    passphraseFile?: string;
-    /** 容器是否加密；缺省 true（`create` 的默认产物）。 */
-    encrypted?: boolean;
-    deep?: boolean;
-    payloadSha?: boolean;
-    /** 解包/解密操作集。 */
-    ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
+  /** 容器路径（必须是 `.nojbackup` 单文件）。 */
+  path: string;
+  /** 解包临时目录（调用方负责创建/清理之外的收尾；本函数不删它）。 */
+  workDir: string;
+  passphraseFile?: string;
+  /** 容器是否加密；缺省 true（`create` 的默认产物）。 */
+  encrypted?: boolean;
+  deep?: boolean;
+  payloadSha?: boolean;
+  /** 解包/解密操作集。 */
+  ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
 }
 
 /**
@@ -107,14 +107,14 @@ export interface VerifyCommandOptions {
  * 形态**唯一**（单文件容器），故守卫校验后缀，并**明确拒绝** legacy 目录（否则会走到解包失败，报出难以理解的错）。
  */
 export function assertContainerPath(path: string): void {
-    if (!path.endsWith(".nojbackup")) {
-        throw new Error(
-            `只支持 .nojbackup 单文件快照：${path}（目录形态的旧快照已不受支持）`,
-        );
-    }
-    if (path.split("/").includes("..")) {
-        throw new Error(`非法的快照路径：${path}`);
-    }
+  if (!path.endsWith(".nojbackup")) {
+    throw new Error(
+      `只支持 .nojbackup 单文件快照：${path}（目录形态的旧快照已不受支持）`,
+    );
+  }
+  if (path.split("/").includes("..")) {
+    throw new Error(`非法的快照路径：${path}`);
+  }
 }
 
 /**
@@ -125,79 +125,77 @@ export function assertContainerPath(path: string): void {
  * `skippedDecrypt` 如实转成可操作提示。
  */
 export async function verifyCommand(
-    opts: VerifyCommandOptions,
+  opts: VerifyCommandOptions,
 ): Promise<BackupVerifyResult> {
-    assertContainerPath(opts.path);
-    const result = await verifyContainer({
-        path: opts.path,
-        destDir: opts.workDir,
-        passphraseFile: opts.passphraseFile,
-        encrypted: opts.encrypted ?? true,
-        ops: opts.ops,
-        deep: opts.deep,
-        payloadSha: opts.payloadSha,
-    });
+  assertContainerPath(opts.path);
+  const result = await verifyContainer({
+    path: opts.path,
+    destDir: opts.workDir,
+    passphraseFile: opts.passphraseFile,
+    encrypted: opts.encrypted ?? true,
+    ops: opts.ops,
+    deep: opts.deep,
+    payloadSha: opts.payloadSha,
+  });
 
-    const summary = result.pass
-        ? `快照校验通过：${opts.path}` +
-            (opts.deep === true ? "（含 --deep 结构校验）" : "") +
-            (opts.payloadSha === true ? "（含 --payload-sha 摘要校验）" : "") +
-            (result.skippedDecrypt ? "；未提供口令，已跳过环境文件解密" : "")
-        : `快照校验失败：${opts.path}\n` +
-            result.issues.map((i) => `  - [${i.level}] ${i.message}`).join(
-                "\n",
-            );
+  const summary = result.pass
+    ? `快照校验通过：${opts.path}` +
+      (opts.deep === true ? "（含 --deep 结构校验）" : "") +
+      (opts.payloadSha === true ? "（含 --payload-sha 摘要校验）" : "") +
+      (result.skippedDecrypt ? "；未提供口令，已跳过环境文件解密" : "")
+    : `快照校验失败：${opts.path}\n` +
+      result.issues.map((i) => `  - [${i.level}] ${i.message}`).join("\n");
 
-    return { ...result, path: opts.path, summary };
+  return { ...result, path: opts.path, summary };
 }
 
 // ---------------- restore --dry-run ----------------
 
 /** 恢复计划的一步（dry-run 输出，供人工审阅与自动化断言）。 */
 export interface RestoreStep {
-    /** 步骤名（英文标识符，便于机器消费）。 */
-    name:
-        | "verify"
-        | "stop-check"
-        | "start-infra"
-        | "restore-globals"
-        | "restore-postgres"
-        | "restore-redis"
-        | "restore-minio"
-        | "stop-infra"
-        | "restore-env";
-    /** 面向用户的中文说明。 */
-    detail: string;
-    /** 该步是否**变更**状态（dry-run 下全部不执行）。 */
-    mutates: boolean;
+  /** 步骤名（英文标识符，便于机器消费）。 */
+  name:
+    | "verify"
+    | "stop-check"
+    | "start-infra"
+    | "restore-globals"
+    | "restore-postgres"
+    | "restore-redis"
+    | "restore-minio"
+    | "stop-infra"
+    | "restore-env";
+  /** 面向用户的中文说明。 */
+  detail: string;
+  /** 该步是否**变更**状态（dry-run 下全部不执行）。 */
+  mutates: boolean;
 }
 
 /** {@link restorePlan} 的结果。 */
 export interface BackupRestorePlanResult {
-    path: string;
-    /** 是否 dry-run（本任务恒为 true，真实恢复未实现）。 */
-    dryRun: boolean;
-    steps: RestoreStep[];
-    /** 校验是否通过（不通过则没有后续步骤）。 */
-    verified: boolean;
-    manifest: VerifyContainerResult["manifest"];
-    issues: VerifyContainerResult["issues"];
-    summary: string;
+  path: string;
+  /** 是否 dry-run（本任务恒为 true，真实恢复未实现）。 */
+  dryRun: boolean;
+  steps: RestoreStep[];
+  /** 校验是否通过（不通过则没有后续步骤）。 */
+  verified: boolean;
+  manifest: VerifyContainerResult["manifest"];
+  issues: VerifyContainerResult["issues"];
+  summary: string;
 }
 
 /** {@link restorePlan} 的注入点。 */
 export interface RestorePlanOptions {
-    path: string;
-    workDir: string;
-    passphraseFile?: string;
-    encrypted?: boolean;
-    /** 是否把加密的 `.env.prod` 恢复到目标文件（`--restore-env FILE`）。 */
-    restoreEnv?: string;
-    ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
-    /** judge 是否启用（决定是否含 judge 相关步骤的说明）。 */
-    judge?: boolean;
-    /** 目标数据卷是否保留（仅用于文案）。 */
-    bucket?: string;
+  path: string;
+  workDir: string;
+  passphraseFile?: string;
+  encrypted?: boolean;
+  /** 是否把加密的 `.env.prod` 恢复到目标文件（`--restore-env FILE`）。 */
+  restoreEnv?: string;
+  ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
+  /** judge 是否启用（决定是否含 judge 相关步骤的说明）。 */
+  judge?: boolean;
+  /** 目标数据卷是否保留（仅用于文案）。 */
+  bucket?: string;
 }
 
 /**
@@ -213,132 +211,129 @@ export interface RestorePlanOptions {
  * 真实恢复（写目标数据）是另一条路径，见 `backup restore --confirm`。
  */
 export async function restorePlan(
-    opts: RestorePlanOptions,
+  opts: RestorePlanOptions,
 ): Promise<BackupRestorePlanResult> {
-    assertContainerPath(opts.path);
-    const verified = await verifyContainer({
-        path: opts.path,
-        destDir: opts.workDir,
-        passphraseFile: opts.passphraseFile,
-        encrypted: opts.encrypted ?? true,
-        ops: opts.ops,
-        deep: true,
+  assertContainerPath(opts.path);
+  const verified = await verifyContainer({
+    path: opts.path,
+    destDir: opts.workDir,
+    passphraseFile: opts.passphraseFile,
+    encrypted: opts.encrypted ?? true,
+    ops: opts.ops,
+    deep: true,
+  });
+
+  const steps: RestoreStep[] = [{
+    name: "verify",
+    detail: "解包并校验快照（文件完整性 + 结构可解析）",
+    mutates: false,
+  }];
+  if (verified.pass) {
+    steps.push({
+      name: "stop-check",
+      detail: "确认 Compose 服务已停止（恢复前必须停机）",
+      mutates: false,
     });
-
-    const steps: RestoreStep[] = [{
-        name: "verify",
-        detail: "解包并校验快照（文件完整性 + 结构可解析）",
-        mutates: false,
-    }];
-    if (verified.pass) {
-        steps.push({
-            name: "stop-check",
-            detail: "确认 Compose 服务已停止（恢复前必须停机）",
-            mutates: false,
-        });
-        steps.push({
-            name: "start-infra",
-            detail: "启动 postgres / redis / minio 并等待健康",
-            mutates: true,
-        });
-        steps.push({
-            name: "restore-globals",
-            detail:
-                `恢复 PostgreSQL 全局对象（${CONTAINER_FILES.postgresGlobals}，已幂等化）`,
-            mutates: true,
-        });
-        steps.push({
-            name: "restore-postgres",
-            detail:
-                `pg_restore --clean --if-exists --no-owner --exit-on-error < ${CONTAINER_FILES.postgresDump}`,
-            mutates: true,
-        });
-        steps.push({
-            name: "restore-redis",
-            detail: `停止 redis → 写入 ${CONTAINER_FILES.redisRdb} → 重新启动`,
-            mutates: true,
-        });
-        steps.push({
-            name: "restore-minio",
-            detail: `mc mirror --overwrite --remove 到桶 ${
-                opts.bucket ?? "noj-support-packages"
-            }`,
-            mutates: true,
-        });
-        steps.push({
-            name: "stop-infra",
-            detail:
-                "停止 postgres / redis / minio，等待人工检查后再启动业务服务",
-            mutates: true,
-        });
-        if (opts.restoreEnv !== undefined && opts.restoreEnv !== "") {
-            steps.push({
-                name: "restore-env",
-                detail: `把加密环境文件恢复到 ${opts.restoreEnv}`,
-                mutates: true,
-            });
-        }
+    steps.push({
+      name: "start-infra",
+      detail: "启动 postgres / redis / minio 并等待健康",
+      mutates: true,
+    });
+    steps.push({
+      name: "restore-globals",
+      detail:
+        `恢复 PostgreSQL 全局对象（${CONTAINER_FILES.postgresGlobals}，已幂等化）`,
+      mutates: true,
+    });
+    steps.push({
+      name: "restore-postgres",
+      detail:
+        `pg_restore --clean --if-exists --no-owner --exit-on-error < ${CONTAINER_FILES.postgresDump}`,
+      mutates: true,
+    });
+    steps.push({
+      name: "restore-redis",
+      detail: `停止 redis → 写入 ${CONTAINER_FILES.redisRdb} → 重新启动`,
+      mutates: true,
+    });
+    steps.push({
+      name: "restore-minio",
+      detail: `mc mirror --overwrite --remove 到桶 ${
+        opts.bucket ?? "noj-support-packages"
+      }`,
+      mutates: true,
+    });
+    steps.push({
+      name: "stop-infra",
+      detail: "停止 postgres / redis / minio，等待人工检查后再启动业务服务",
+      mutates: true,
+    });
+    if (opts.restoreEnv !== undefined && opts.restoreEnv !== "") {
+      steps.push({
+        name: "restore-env",
+        detail: `把加密环境文件恢复到 ${opts.restoreEnv}`,
+        mutates: true,
+      });
     }
+  }
 
-    const summary = verified.pass
-        ? `[dry-run] 将按 ${steps.length} 步恢复：${opts.path}（未执行任何变更）`
-        : `[dry-run] 快照校验未通过，恢复不可行：${opts.path}\n` +
-            verified.issues.map((i) => `  - [${i.level}] ${i.message}`).join(
-                "\n",
-            );
+  const summary = verified.pass
+    ? `[dry-run] 将按 ${steps.length} 步恢复：${opts.path}（未执行任何变更）`
+    : `[dry-run] 快照校验未通过，恢复不可行：${opts.path}\n` +
+      verified.issues.map((i) => `  - [${i.level}] ${i.message}`).join("\n");
 
-    return {
-        path: opts.path,
-        dryRun: true,
-        steps,
-        verified: verified.pass,
-        manifest: verified.manifest,
-        issues: verified.issues,
-        summary,
-    };
+  return {
+    path: opts.path,
+    dryRun: true,
+    steps,
+    verified: verified.pass,
+    manifest: verified.manifest,
+    issues: verified.issues,
+    summary,
+  };
 }
 
 /** {@link restoreConfirmed} 的注入点。 */
 export interface RestoreConfirmedOptions {
-    /** `.nojbackup` 快照路径。 */
-    path: string;
-    /** 生产安装目录。 */
-    dir: string;
-    composeFile: string;
-    envFile: string;
-    runner: CommandRunner;
-    /** 必须为 true——由 CLI 从 `--confirm` 传入。 */
-    confirm: boolean;
-    /** 解包工作目录（调用方创建/清理）。 */
-    workDir: string;
-    passphraseFile?: string;
-    encrypted?: boolean;
-    /**
-     * docker 可执行名（缺省 `docker`；生产取自 `NOJ_DEPLOY_DOCKER_BIN`）。
-     *
-     * 回归：恢复路径曾把 `docker` 写死，只有 install/update/create 装配
-     * 尊重该变量——非默认 docker 路径的宿主机上 `restore --confirm` 会失败。
-     */
-    dockerBin?: string;
-    /** `--restore-env FILE`：把加密环境文件恢复到该路径。 */
-    restoreEnv?: string;
-    judge?: boolean;
-    /** `--wait` 超时（秒）；测试可注入小值。 */
-    waitTimeout?: number;
-    /** 解包能力（校验 + `--restore-env` 解密都经它）。 */
-    ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
-    log?: (line: string) => void;
+  /** `.nojbackup` 快照路径。 */
+  path: string;
+  /** 生产安装目录。 */
+  dir: string;
+  composeFile: string;
+  envFile: string;
+  runner: CommandRunner;
+  /** 必须为 true——由 CLI 从 `--confirm` 传入。 */
+  confirm: boolean;
+  /** 解包工作目录（调用方创建/清理）。 */
+  workDir: string;
+  passphraseFile?: string;
+  encrypted?: boolean;
+  /**
+   * docker 可执行名（缺省 `docker`；生产取自 `NOJ_DEPLOY_DOCKER_BIN`）。
+   *
+   * 回归：恢复路径曾把 `docker` 写死，只有 install/update/create 装配
+   * 尊重该变量——非默认 docker 路径的宿主机上 `restore --confirm` 会失败。
+   */
+  dockerBin?: string;
+  /** `--restore-env FILE`：把加密环境文件恢复到该路径。 */
+  restoreEnv?: string;
+  judge?: boolean;
+  /** `--wait` 超时（秒）；测试可注入小值。 */
+  waitTimeout?: number;
+  /** 解包能力（校验 + `--restore-env` 解密都经它）。 */
+  ops: Pick<ContainerPayloadOps, "gpgDecrypt" | "untarZst">;
+  log?: (line: string) => void;
 }
 
 /** {@link restoreConfirmed} 的结果。 */
 export interface RestoreConfirmedResult {
-    path: string;
-    /** 恒为 false（真实恢复）。保留字段以便与 dry-run 结果同形。 */
-    dryRun: boolean;
-    manifest: VerifyContainerResult["manifest"];
-    /** 已恢复的组件名（`postgres` / `redis` / `minio`）。 */
-    restored: string[];
-    summary: string;
+  path: string;
+  /** 恒为 false（真实恢复）。保留字段以便与 dry-run 结果同形。 */
+  dryRun: boolean;
+  manifest: VerifyContainerResult["manifest"];
+  /** 已恢复的组件名（`postgres` / `redis` / `minio`）。 */
+  restored: string[];
+  summary: string;
 }
 
 /**
@@ -366,109 +361,107 @@ export interface RestoreConfirmedResult {
  * 具名错误，避免把根因埋在后续步骤里。
  */
 export async function restoreConfirmed(
-    opts: RestoreConfirmedOptions,
+  opts: RestoreConfirmedOptions,
 ): Promise<RestoreConfirmedResult> {
-    assertContainerPath(opts.path);
-    const log = opts.log ?? (() => {});
+  assertContainerPath(opts.path);
+  const log = opts.log ?? (() => {});
 
-    // ---- 1. 确认 ----
-    if (opts.confirm !== true) {
-        throw new Error("restore 会覆盖目标数据，必须显式提供 --confirm");
-    }
+  // ---- 1. 确认 ----
+  if (opts.confirm !== true) {
+    throw new Error("restore 会覆盖目标数据，必须显式提供 --confirm");
+  }
 
-    // ---- 2. 校验快照（复用 verify 三档 + --deep）----
-    const verified = await verifyContainer({
-        path: opts.path,
-        destDir: opts.workDir,
-        passphraseFile: opts.passphraseFile,
-        encrypted: opts.encrypted ?? true,
-        ops: opts.ops,
-        deep: true,
-    });
-    if (!verified.pass) {
-        const detail = verified.issues.map((i) =>
-            `  - [${i.level}] ${i.message}`
-        )
-            .join("\n");
-        throw new Error(`快照校验未通过，拒绝恢复：\n${detail}`);
-    }
+  // ---- 2. 校验快照（复用 verify 三档 + --deep）----
+  const verified = await verifyContainer({
+    path: opts.path,
+    destDir: opts.workDir,
+    passphraseFile: opts.passphraseFile,
+    encrypted: opts.encrypted ?? true,
+    ops: opts.ops,
+    deep: true,
+  });
+  if (!verified.pass) {
+    const detail = verified.issues.map((i) => `  - [${i.level}] ${i.message}`)
+      .join("\n");
+    throw new Error(`快照校验未通过，拒绝恢复：\n${detail}`);
+  }
 
-    const env = await readEnvValuesOrEmpty(opts.envFile);
-    const dockerBin = opts.dockerBin ?? "docker";
-    const composeArgs = (command: string[]): string[] =>
-        prodComposeArgs({
-            composeFile: opts.composeFile,
-            envFile: opts.envFile,
-            dockerBin,
-            judge: opts.judge === true,
-        }, command);
+  const env = await readEnvValuesOrEmpty(opts.envFile);
+  const dockerBin = opts.dockerBin ?? "docker";
+  const composeArgs = (command: string[]): string[] =>
+    prodComposeArgs({
+      composeFile: opts.composeFile,
+      envFile: opts.envFile,
+      dockerBin,
+      judge: opts.judge === true,
+    }, command);
 
-    // ---- 3. 必须已停机 ----
-    const running = await opts.runner.run(
-        dockerBin,
-        composeArgs(["ps", "--status", "running", "-q"]),
+  // ---- 3. 必须已停机 ----
+  const running = await opts.runner.run(
+    dockerBin,
+    composeArgs(["ps", "--status", "running", "-q"]),
+  );
+  if (running.stdout.trim() !== "") {
+    throw new Error(
+      "恢复前必须停止 Compose 服务；请先执行 noj-cli stop（在运行中的数据库上" +
+        "恢复会与业务写入互相破坏）",
     );
-    if (running.stdout.trim() !== "") {
-        throw new Error(
-            "恢复前必须停止 Compose 服务；请先执行 noj-cli stop（在运行中的数据库上" +
-                "恢复会与业务写入互相破坏）",
-        );
+  }
+
+  // ---- 4. 恢复环境文件（目标已存在即拒绝，不覆盖用户文件）----
+  if (opts.restoreEnv !== undefined && opts.restoreEnv !== "") {
+    let exists = false;
+    try {
+      await Deno.stat(opts.restoreEnv);
+      exists = true;
+    } catch {
+      exists = false;
     }
-
-    // ---- 4. 恢复环境文件（目标已存在即拒绝，不覆盖用户文件）----
-    if (opts.restoreEnv !== undefined && opts.restoreEnv !== "") {
-        let exists = false;
-        try {
-            await Deno.stat(opts.restoreEnv);
-            exists = true;
-        } catch {
-            exists = false;
-        }
-        if (exists) {
-            throw new Error(
-                `恢复环境文件目标已存在，为避免覆盖请先移走：${opts.restoreEnv}`,
-            );
-        }
-        await opts.ops.gpgDecrypt(
-            `${verified.staging}/${CONTAINER_FILES.envProdGpg}`,
-            opts.restoreEnv,
-            opts.passphraseFile ?? "",
-        );
-        await Deno.chmod(opts.restoreEnv, 0o600);
-        log(`✓ 加密环境文件已恢复：${opts.restoreEnv}`);
+    if (exists) {
+      throw new Error(
+        `恢复环境文件目标已存在，为避免覆盖请先移走：${opts.restoreEnv}`,
+      );
     }
+    await opts.ops.gpgDecrypt(
+      `${verified.staging}/${CONTAINER_FILES.envProdGpg}`,
+      opts.restoreEnv,
+      opts.passphraseFile ?? "",
+    );
+    await Deno.chmod(opts.restoreEnv, 0o600);
+    log(`✓ 加密环境文件已恢复：${opts.restoreEnv}`);
+  }
 
-    // ---- 5. 数据恢复序列（与 drill 共享同一实现）----
-    await restoreDataServices({
-        // **必须用 verify 解包出的 staging**（`<workDir>/payload`），
-        // 不是 workDir 本身——容器根的条目落在子目录里（见 unpackContainer）。
-        // 我第一版传了 workDir，导致幂等化 globals 时读不到文件而报"生成脚本失败"。
-        staging: verified.staging,
-        tempDir: opts.workDir,
-        env,
-        runner: opts.runner,
-        dockerBin,
-        composeArgs,
-        waitTimeout: opts.waitTimeout ?? 180,
-        log,
-        // 生产语义：恢复后停服务，等人工检查再起业务。
-        stopAfterRestore: true,
-    });
+  // ---- 5. 数据恢复序列（与 drill 共享同一实现）----
+  await restoreDataServices({
+    // **必须用 verify 解包出的 staging**（`<workDir>/payload`），
+    // 不是 workDir 本身——容器根的条目落在子目录里（见 unpackContainer）。
+    // 我第一版传了 workDir，导致幂等化 globals 时读不到文件而报"生成脚本失败"。
+    staging: verified.staging,
+    tempDir: opts.workDir,
+    env,
+    runner: opts.runner,
+    dockerBin,
+    composeArgs,
+    waitTimeout: opts.waitTimeout ?? 180,
+    log,
+    // 生产语义：恢复后停服务，等人工检查再起业务。
+    stopAfterRestore: true,
+  });
 
-    return {
-        path: opts.path,
-        dryRun: false,
-        manifest: verified.manifest,
-        restored: ["postgres", "redis", "minio"],
-        summary:
-            "快照恢复完成；数据服务已停止，请人工检查后再启动业务服务（noj-cli start）",
-    };
+  return {
+    path: opts.path,
+    dryRun: false,
+    manifest: verified.manifest,
+    restored: ["postgres", "redis", "minio"],
+    summary:
+      "快照恢复完成；数据服务已停止，请人工检查后再启动业务服务（noj-cli start）",
+  };
 }
 
 /** 备份目录内快照数量的便捷读取（供 `--json` 载荷）。 */
 export async function backupCount(backupDir: string): Promise<number> {
-    const { entries } = await listBackups(backupDir);
-    return entries.length;
+  const { entries } = await listBackups(backupDir);
+  return entries.length;
 }
 
 /**
@@ -477,5 +470,5 @@ export async function backupCount(backupDir: string): Promise<number> {
  * 落点与 `install` 的 `record-metadata` 一致（`<dir>/backups`）。
  */
 export function prodBackupDir(installDir: string): string {
-    return join(installDir, "backups");
+  return join(installDir, "backups");
 }

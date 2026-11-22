@@ -42,76 +42,76 @@ export const DRILL_TYPE = "isolated-restore-with-business-verification";
 
 /** 凭据提示。 */
 export const CREDENTIAL_NOTE =
-    "备份快照与 GPG 口令文件应异地独立保存；口令丢失即无法恢复。";
+  "备份快照与 GPG 口令文件应异地独立保存；口令丢失即无法恢复。";
 
 /** {@link renderReport} 的输入。 */
 export interface ReportInput {
-    /** `passed` 或 `passed_with_warnings`（RPO/RTO 超限时后者）。 */
-    result: "passed" | "passed_with_warnings";
-    snapshot: string;
-    /** 快照 manifest 的 `created_at`（缺失时空串）。 */
-    snapshotCreatedAt: string;
-    drillStartedAt: string;
-    drillFinishedAt: string;
-    restoreDurationSeconds: number;
-    totalDurationSeconds: number;
-    /** 距快照创建的小时数（两位小数）。 */
-    rpoHours: string;
-    rpoTargetHours: number;
-    rpoMet: boolean;
-    rtoMinutes: number;
-    rtoTargetMinutes: number;
-    rtoMet: boolean;
-    composeProject: string;
-    networkSubnet: string;
-    /** 数据核对明细（`restore_data_check=passed` 等，来自 {@link renderChecks}）。 */
-    checks: string;
-    /** 业务验收日志（原始行，含 JSON 与人类文字）。 */
-    verifyLog: string;
-    /** `kept-for-review` 或 `done`。 */
-    cleanup: "kept-for-review" | "done";
+  /** `passed` 或 `passed_with_warnings`（RPO/RTO 超限时后者）。 */
+  result: "passed" | "passed_with_warnings";
+  snapshot: string;
+  /** 快照 manifest 的 `created_at`（缺失时空串）。 */
+  snapshotCreatedAt: string;
+  drillStartedAt: string;
+  drillFinishedAt: string;
+  restoreDurationSeconds: number;
+  totalDurationSeconds: number;
+  /** 距快照创建的小时数（两位小数）。 */
+  rpoHours: string;
+  rpoTargetHours: number;
+  rpoMet: boolean;
+  rtoMinutes: number;
+  rtoTargetMinutes: number;
+  rtoMet: boolean;
+  composeProject: string;
+  networkSubnet: string;
+  /** 数据核对明细（`restore_data_check=passed` 等，来自 {@link renderChecks}）。 */
+  checks: string;
+  /** 业务验收日志（原始行，含 JSON 与人类文字）。 */
+  verifyLog: string;
+  /** `kept-for-review` 或 `done`。 */
+  cleanup: "kept-for-review" | "done";
 }
 
 /** 渲染成功报告。 */
 export function renderReport(input: ReportInput): string {
-    const lines = [
-        `result=${input.result}`,
-        `drill_type=${DRILL_TYPE}`,
-        `snapshot=${input.snapshot}`,
-        `snapshot_created_at=${input.snapshotCreatedAt}`,
-        `drill_started_at=${input.drillStartedAt}`,
-        `drill_finished_at=${input.drillFinishedAt}`,
-        `restore_duration_seconds=${input.restoreDurationSeconds}`,
-        `total_duration_seconds=${input.totalDurationSeconds}`,
-        `rpo_hours=${input.rpoHours}`,
-        `rpo_target_hours=${input.rpoTargetHours}`,
-        `rpo_met=${input.rpoMet}`,
-        `rto_minutes=${input.rtoMinutes}`,
-        `rto_target_minutes=${input.rtoTargetMinutes}`,
-        `rto_met=${input.rtoMet}`,
-        `compose_project=${input.composeProject}`,
-        `network_subnet=${input.networkSubnet}`,
-    ];
-    if (input.checks !== "") lines.push(input.checks.replace(/\n+$/, ""));
-    if (input.verifyLog !== "") {
-        lines.push("# ---- 业务验收明细 ----");
-        lines.push(input.verifyLog.replace(/\n+$/, ""));
-    }
-    lines.push(`cleanup=${input.cleanup}`);
-    lines.push(`credential_note=${CREDENTIAL_NOTE}`);
-    return lines.join("\n") + "\n";
+  const lines = [
+    `result=${input.result}`,
+    `drill_type=${DRILL_TYPE}`,
+    `snapshot=${input.snapshot}`,
+    `snapshot_created_at=${input.snapshotCreatedAt}`,
+    `drill_started_at=${input.drillStartedAt}`,
+    `drill_finished_at=${input.drillFinishedAt}`,
+    `restore_duration_seconds=${input.restoreDurationSeconds}`,
+    `total_duration_seconds=${input.totalDurationSeconds}`,
+    `rpo_hours=${input.rpoHours}`,
+    `rpo_target_hours=${input.rpoTargetHours}`,
+    `rpo_met=${input.rpoMet}`,
+    `rto_minutes=${input.rtoMinutes}`,
+    `rto_target_minutes=${input.rtoTargetMinutes}`,
+    `rto_met=${input.rtoMet}`,
+    `compose_project=${input.composeProject}`,
+    `network_subnet=${input.networkSubnet}`,
+  ];
+  if (input.checks !== "") lines.push(input.checks.replace(/\n+$/, ""));
+  if (input.verifyLog !== "") {
+    lines.push("# ---- 业务验收明细 ----");
+    lines.push(input.verifyLog.replace(/\n+$/, ""));
+  }
+  lines.push(`cleanup=${input.cleanup}`);
+  lines.push(`credential_note=${CREDENTIAL_NOTE}`);
+  return lines.join("\n") + "\n";
 }
 
 /** {@link renderFailureReport} 的输入。 */
 export interface FailureReportInput {
-    snapshot: string;
-    /** 失败的阶段名（`preflight`/`restore-data`/`business-verify`…）。 */
-    failedStage: string;
-    drillStartedAt: string;
-    composeProject: string;
-    /** 失败现场：验收日志尾部（最后 50 行）。 */
-    verifyLogTail: string;
-    cleanup: "kept-for-review" | "done";
+  snapshot: string;
+  /** 失败的阶段名（`preflight`/`restore-data`/`business-verify`…）。 */
+  failedStage: string;
+  drillStartedAt: string;
+  composeProject: string;
+  /** 失败现场：验收日志尾部（最后 50 行）。 */
+  verifyLogTail: string;
+  cleanup: "kept-for-review" | "done";
 }
 
 /**
@@ -122,40 +122,40 @@ export interface FailureReportInput {
  * `preflight` 阶段不写报告——那时报告路径可能都还没定。
  */
 export function renderFailureReport(input: FailureReportInput): string {
-    const lines = [
-        "result=failed",
-        `drill_type=${DRILL_TYPE}`,
-        `snapshot=${input.snapshot}`,
-        `failed_stage=${input.failedStage}`,
-        `drill_started_at=${input.drillStartedAt || "unknown"}`,
-        `compose_project=${input.composeProject}`,
-    ];
-    if (input.verifyLogTail !== "") {
-        lines.push("# ---- 业务验收输出（失败现场） ----");
-        lines.push(input.verifyLogTail.replace(/\n+$/, ""));
-    }
-    lines.push(`cleanup=${input.cleanup}`);
-    lines.push(`credential_note=${CREDENTIAL_NOTE}`);
-    return lines.join("\n") + "\n";
+  const lines = [
+    "result=failed",
+    `drill_type=${DRILL_TYPE}`,
+    `snapshot=${input.snapshot}`,
+    `failed_stage=${input.failedStage}`,
+    `drill_started_at=${input.drillStartedAt || "unknown"}`,
+    `compose_project=${input.composeProject}`,
+  ];
+  if (input.verifyLogTail !== "") {
+    lines.push("# ---- 业务验收输出（失败现场） ----");
+    lines.push(input.verifyLogTail.replace(/\n+$/, ""));
+  }
+  lines.push(`cleanup=${input.cleanup}`);
+  lines.push(`credential_note=${CREDENTIAL_NOTE}`);
+  return lines.join("\n") + "\n";
 }
 
 /** 数据核对明细的输入。 */
 export interface ChecksInput {
-    restoredUserCount: number;
-    restoredRedisKeys: number;
-    snapshotObjectCount: number;
-    restoredObjectCount: number;
+  restoredUserCount: number;
+  restoredRedisKeys: number;
+  snapshotObjectCount: number;
+  restoredObjectCount: number;
 }
 
 /** 渲染 `checks.env` 段。 */
 export function renderChecks(input: ChecksInput): string {
-    return [
-        "restore_data_check=passed",
-        `restored_user_count=${input.restoredUserCount}`,
-        `restored_redis_keys=${input.restoredRedisKeys}`,
-        `snapshot_object_count=${input.snapshotObjectCount}`,
-        `restored_object_count=${input.restoredObjectCount}`,
-    ].join("\n");
+  return [
+    "restore_data_check=passed",
+    `restored_user_count=${input.restoredUserCount}`,
+    `restored_redis_keys=${input.restoredRedisKeys}`,
+    `snapshot_object_count=${input.snapshotObjectCount}`,
+    `restored_object_count=${input.restoredObjectCount}`,
+  ].join("\n");
 }
 
 /**
@@ -165,20 +165,20 @@ export function renderChecks(input: ChecksInput): string {
  * 失败也写会让"演练一直没成功"这件事被掩盖——那正是该告警要抓的。
  */
 export function renderDrillMetrics(unixSeconds: number): string {
-    return [
-        `# HELP ${METRIC_LAST_SUCCESS} 最近一次隔离恢复演练成功的 Unix 时间戳。`,
-        `# TYPE ${METRIC_LAST_SUCCESS} gauge`,
-        `${METRIC_LAST_SUCCESS} ${unixSeconds}`,
-    ].join("\n") + "\n";
+  return [
+    `# HELP ${METRIC_LAST_SUCCESS} 最近一次隔离恢复演练成功的 Unix 时间戳。`,
+    `# TYPE ${METRIC_LAST_SUCCESS} gauge`,
+    `${METRIC_LAST_SUCCESS} ${unixSeconds}`,
+  ].join("\n") + "\n";
 }
 
 /** 指标目录：`NOJ_BACKUP_METRICS_DIR` 或快照同级的 `metrics/`。 */
 export function metricsDirOf(
-    snapshotPath: string,
-    explicit: string | undefined,
+  snapshotPath: string,
+  explicit: string | undefined,
 ): string {
-    if (explicit !== undefined && explicit !== "") return explicit;
-    return join(dirname(snapshotPath.replace(/\/+$/, "")), "metrics");
+  if (explicit !== undefined && explicit !== "") return explicit;
+  return join(dirname(snapshotPath.replace(/\/+$/, "")), "metrics");
 }
 
 /**
@@ -188,12 +188,12 @@ export function metricsDirOf(
  * RPO 计算会据此判为不达标，见 {@link hoursSinceSnapshot}。
  */
 export function snapshotCreatedAt(manifestText: string): string {
-    try {
-        const parsed = JSON.parse(manifestText) as { created_at?: unknown };
-        return typeof parsed?.created_at === "string" ? parsed.created_at : "";
-    } catch {
-        return "";
-    }
+  try {
+    const parsed = JSON.parse(manifestText) as { created_at?: unknown };
+    return typeof parsed?.created_at === "string" ? parsed.created_at : "";
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -204,12 +204,12 @@ export function snapshotCreatedAt(manifestText: string): string {
  * 损坏的备份不应因为解析失败而"通过"新鲜度检查。
  */
 export function hoursSinceSnapshot(
-    createdAt: string,
-    now: Date,
+  createdAt: string,
+  now: Date,
 ): number {
-    const parsed = Date.parse(createdAt);
-    if (Number.isNaN(parsed)) return Number.POSITIVE_INFINITY;
-    return (now.getTime() - parsed) / 3_600_000;
+  const parsed = Date.parse(createdAt);
+  if (Number.isNaN(parsed)) return Number.POSITIVE_INFINITY;
+  return (now.getTime() - parsed) / 3_600_000;
 }
 
 /**
@@ -219,5 +219,5 @@ export function hoursSinceSnapshot(
  * "时间戳不可用"，比伪装成一个具体小时数更诚实。
  */
 export function formatHours(hours: number): string {
-    return Number.isFinite(hours) ? hours.toFixed(2) : "inf";
+  return Number.isFinite(hours) ? hours.toFixed(2) : "inf";
 }

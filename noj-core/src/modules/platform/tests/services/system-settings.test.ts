@@ -11,740 +11,716 @@
  */
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {
-    assert,
-    assertEquals,
-    assertFalse,
-    assertRejects,
+  assert,
+  assertEquals,
+  assertFalse,
+  assertRejects,
 } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import { systemSettings } from "../../../../shared/db/schema.ts";
 import {
-    _resetSystemSettingsForTest,
-    cleanupBootstrapRow,
-    getSetting,
-    initSystemSettings,
-    listOrphanedBootstrapRows,
-    listRuntimeEnvConflicts,
-    listSettings,
-    maskSecret,
-    resetSetting,
-    SECRET_MASK,
-    updateSetting,
+  _resetSystemSettingsForTest,
+  cleanupBootstrapRow,
+  getSetting,
+  initSystemSettings,
+  listOrphanedBootstrapRows,
+  listRuntimeEnvConflicts,
+  listSettings,
+  maskSecret,
+  resetSetting,
+  SECRET_MASK,
+  updateSetting,
 } from "../../system/index.ts";
 import { ValidationError } from "../../../../shared/base/errors.ts";
 import {
-    findDefinition,
-    validateRegistry,
+  findDefinition,
+  validateRegistry,
 } from "../../../../shared/config/settings-registry.ts";
 
 const ts = Date.now();
 
 async function withEnvironment(
-    name: string,
-    value: string | undefined,
-    run: () => Promise<void>,
+  name: string,
+  value: string | undefined,
+  run: () => Promise<void>,
 ): Promise<void> {
-    const previous = Deno.env.get(name);
-    if (value === undefined) {
-        Deno.env.delete(name);
-    } else {
-        Deno.env.set(name, value);
-    }
+  const previous = Deno.env.get(name);
+  if (value === undefined) {
+    Deno.env.delete(name);
+  } else {
+    Deno.env.set(name, value);
+  }
 
-    try {
-        await run();
-    } finally {
-        if (previous === undefined) {
-            Deno.env.delete(name);
-        } else {
-            Deno.env.set(name, previous);
-        }
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) {
+      Deno.env.delete(name);
+    } else {
+      Deno.env.set(name, previous);
     }
+  }
 }
 
 async function freshSetup() {
-    await resetDbForTest();
-    _resetSystemSettingsForTest();
-    await initSystemSettings();
+  await resetDbForTest();
+  _resetSystemSettingsForTest();
+  await initSystemSettings();
 }
 
 Deno.test({
-    name: "system-settings service: initSystemSettings 从 DB 全量加载到 Map",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        const db = getDb();
-        const now = new Date().toISOString();
-        await db.insert(systemSettings).values({
-            key: `test_init_${ts}`,
-            value: JSON.stringify(true),
-            description: "测试",
-            is_secret: false,
-            updated_at: now,
-            updated_by: "0",
-        });
-        _resetSystemSettingsForTest();
-        await initSystemSettings();
-        const got = getSetting(`test_init_${ts}`);
-        assertEquals(got?.source, "db");
-        assertEquals(got?.value, true);
-    },
+  name: "system-settings service: initSystemSettings 从 DB 全量加载到 Map",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    const now = new Date().toISOString();
+    await db.insert(systemSettings).values({
+      key: `test_init_${ts}`,
+      value: JSON.stringify(true),
+      description: "测试",
+      is_secret: false,
+      updated_at: now,
+      updated_by: "0",
+    });
+    _resetSystemSettingsForTest();
+    await initSystemSettings();
+    const got = getSetting(`test_init_${ts}`);
+    assertEquals(got?.source, "db");
+    assertEquals(got?.value, true);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: getSetting 未设置时回退 registry default",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // allow_register 未在 DB、未在 .env，应回退 default=true
-        const got = getSetting("allow_register");
-        assertEquals(got?.source, "default");
-        assertEquals(got?.value, true);
-    },
+  name: "system-settings service: getSetting 未设置时回退 registry default",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // allow_register 未在 DB、未在 .env，应回退 default=true
+    const got = getSetting("allow_register");
+    assertEquals(got?.source, "default");
+    assertEquals(got?.value, true);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: getSetting DB 命中后 source='db'",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await updateSetting(
-            "allow_register",
-            false,
-            userActorFromAuthenticatedId("0"),
-        );
-        const got = getSetting("allow_register");
-        assertEquals(got?.source, "db");
-        assertEquals(got?.value, false);
-    },
+  name: "system-settings service: getSetting DB 命中后 source='db'",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await updateSetting(
+      "allow_register",
+      false,
+      userActorFromAuthenticatedId("0"),
+    );
+    const got = getSetting("allow_register");
+    assertEquals(got?.source, "db");
+    assertEquals(got?.value, false);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting 非法 boolean 类型拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "allow_register",
-                    "yes" as unknown as boolean,
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "必须是 boolean",
-        );
-    },
+  name: "system-settings service: updateSetting 非法 boolean 类型拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () =>
+        updateSetting(
+          "allow_register",
+          "yes" as unknown as boolean,
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "必须是 boolean",
+    );
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting bootstrap 键拒绝写入",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // email/storage/audit 划归 bootstrap 后不可经后台写
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "storage_provider",
-                    "s3",
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "环境变量管理",
-        );
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "audit_log_retention_days",
-                    30,
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "环境变量管理",
-        );
-    },
+  name: "system-settings service: updateSetting bootstrap 键拒绝写入",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // email/storage/audit 划归 bootstrap 后不可经后台写
+    await assertRejects(
+      () =>
+        updateSetting(
+          "storage_provider",
+          "s3",
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "环境变量管理",
+    );
+    await assertRejects(
+      () =>
+        updateSetting(
+          "audit_log_retention_days",
+          30,
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "环境变量管理",
+    );
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting integer 合法值接受",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await updateSetting(
-            "rate_limit_login_ip_max",
-            20,
-            userActorFromAuthenticatedId("0"),
-        );
-        const got = getSetting("rate_limit_login_ip_max");
-        assertEquals(got?.source, "db");
-        assertEquals(got?.value, 20);
-    },
+  name: "system-settings service: updateSetting integer 合法值接受",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await updateSetting(
+      "rate_limit_login_ip_max",
+      20,
+      userActorFromAuthenticatedId("0"),
+    );
+    const got = getSetting("rate_limit_login_ip_max");
+    assertEquals(got?.source, "db");
+    assertEquals(got?.value, 20);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting integer 浮点数拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "rate_limit_login_ip_max",
-                    10.5,
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "必须是整数",
-        );
-    },
+  name: "system-settings service: updateSetting integer 浮点数拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () =>
+        updateSetting(
+          "rate_limit_login_ip_max",
+          10.5,
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "必须是整数",
+    );
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting integer 非数字拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "rate_limit_login_ip_max",
-                    "twenty" as unknown as number,
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "必须是整数",
-        );
-    },
+  name: "system-settings service: updateSetting integer 非数字拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () =>
+        updateSetting(
+          "rate_limit_login_ip_max",
+          "twenty" as unknown as number,
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "必须是整数",
+    );
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting integer 低于 min 拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // rate_limit_login_ip_max 定义 min:1
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "rate_limit_login_ip_max",
-                    0,
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "不能小于 1",
-        );
-    },
+  name: "system-settings service: updateSetting integer 低于 min 拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // rate_limit_login_ip_max 定义 min:1
+    await assertRejects(
+      () =>
+        updateSetting(
+          "rate_limit_login_ip_max",
+          0,
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "不能小于 1",
+    );
+  },
 });
 
 Deno.test({
-    name: "system-settings service: updateSetting integer 高于 max 拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // rate_limit_login_acc_max 定义 max:100（runtime 项）
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "rate_limit_login_acc_max",
-                    999,
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "不能大于 100",
-        );
-    },
+  name: "system-settings service: updateSetting integer 高于 max 拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // rate_limit_login_acc_max 定义 max:100（runtime 项）
+    await assertRejects(
+      () =>
+        updateSetting(
+          "rate_limit_login_acc_max",
+          999,
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+      "不能大于 100",
+    );
+  },
 });
 
 Deno.test({
-    name:
-        "system-settings service: getSetting integer 未设置回退 registry default",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // rate_limit_login_ip_max 注册表 default=10
-        const got = getSetting("rate_limit_login_ip_max");
-        assertEquals(got?.source, "default");
-        assertEquals(got?.value, 10);
-    },
+  name:
+    "system-settings service: getSetting integer 未设置回退 registry default",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // rate_limit_login_ip_max 注册表 default=10
+    const got = getSetting("rate_limit_login_ip_max");
+    assertEquals(got?.source, "default");
+    assertEquals(got?.value, 10);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: validateRegistry 不抛错（注册表完整）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: () => {
-        // 当前注册表包含 22+ 个合法定义，不应抛错
-        validateRegistry();
-    },
+  name: "system-settings service: validateRegistry 不抛错（注册表完整）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: () => {
+    // 当前注册表包含 22+ 个合法定义，不应抛错
+    validateRegistry();
+  },
 });
 
 Deno.test({
-    name:
-        "system-settings service: 注册表 scope 声明完整（runtime/bootstrap 不重叠）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        validateRegistry(); // 不应抛错
-        // 划归项 scope=bootstrap
-        for (
-            const k of [
-                "storage_provider",
-                "s3_endpoint",
-                "s3_secret_key",
-                "email_provider",
-                "alibaba_access_key_secret",
-                "audit_log_retention_days",
-            ]
-        ) {
-            assertEquals(findDefinition(k)?.scope, "bootstrap");
+  name:
+    "system-settings service: 注册表 scope 声明完整（runtime/bootstrap 不重叠）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    validateRegistry(); // 不应抛错
+    // 划归项 scope=bootstrap
+    for (
+      const k of [
+        "storage_provider",
+        "s3_endpoint",
+        "s3_secret_key",
+        "email_provider",
+        "alibaba_access_key_secret",
+        "audit_log_retention_days",
+      ]
+    ) {
+      assertEquals(findDefinition(k)?.scope, "bootstrap");
+    }
+    // 保留 runtime 项 scope=runtime
+    for (
+      const k of [
+        "allow_register",
+        "rate_limit_login_ip_max",
+        "maintenance_mode",
+      ]
+    ) {
+      assertEquals(findDefinition(k)?.scope, "runtime");
+    }
+  },
+});
+
+Deno.test({
+  name: "system-settings service: 未注册 key 拒绝",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () =>
+        updateSetting("hacker_key", "value", userActorFromAuthenticatedId("0")),
+      ValidationError,
+      "未注册",
+    );
+  },
+});
+
+Deno.test({
+  name: "system-settings service: resetSetting 删除 DB 行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await updateSetting(
+      "maintenance_mode",
+      true,
+      userActorFromAuthenticatedId("0"),
+    );
+    assertEquals(getSetting("maintenance_mode")?.source, "db");
+
+    await resetSetting("maintenance_mode", userActorFromAuthenticatedId("0"));
+    // reset 后 source 不再是 db（应是 env 或 default）
+    const got = getSetting("maintenance_mode");
+    assertEquals(got?.source !== "db", true);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: resetSetting 幂等（DB 不存在也 OK）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // 第一次重置（DB 中无此行）
+    await resetSetting("maintenance_mode", userActorFromAuthenticatedId("0"));
+    // 第二次重置
+    await resetSetting("maintenance_mode", userActorFromAuthenticatedId("0"));
+    assertEquals(true, true);
+  },
+});
+
+Deno.test({
+  name: "system-settings service: resetSetting 未注册 key 抛 ValidationError",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // 安全约束：未注册 key（如内部标记 rbac_sensitive_field_permissions_seeded）
+    // 不可经 reset 删除——否则收紧的敏感字段授权会在重启后被 seed 恢复
+    await assertRejects(
+      () =>
+        resetSetting(
+          "totally_unregistered_key_xyz",
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+    );
+  },
+});
+
+Deno.test({
+  name: "system-settings service: maskSecret 未配置 / 空值返回空串",
+  fn: () => {
+    assertEquals(maskSecret(""), "");
+    assertEquals(maskSecret(null), "");
+    assertEquals(maskSecret(undefined), "");
+  },
+});
+
+Deno.test({
+  name: "system-settings service: maskSecret 已配置返回固定掩码，不回显首尾",
+  fn: () => {
+    // 短值和长值一律固定掩码
+    assertEquals(maskSecret("abc"), SECRET_MASK);
+    assertEquals(maskSecret("abcdef"), SECRET_MASK);
+    assertEquals(maskSecret("abcdefg"), SECRET_MASK);
+    assertEquals(maskSecret("my-super-secret-key-12345"), SECRET_MASK);
+    // 非字符串值先 JSON.stringify 再判断
+    assertEquals(maskSecret({ token: "x" }), SECRET_MASK);
+    assertEquals(maskSecret(""), "");
+  },
+});
+
+Deno.test({
+  name: "system-settings service: maskSecret 返回值不包含原文任何前缀/后缀",
+  fn: () => {
+    const samples = [
+      "LTAI5tAbCdEfGhIj",
+      "https://user:pass@example.com/path",
+      "s3cr3tAccessKey",
+      "a".repeat(64),
+      "xy",
+    ];
+    for (const secret of samples) {
+      const masked = maskSecret(secret);
+      assertEquals(masked, SECRET_MASK);
+      // 原文任意长度 ≥ 1 的子串都不得出现在掩码中
+      for (let len = 1; len <= secret.length; len++) {
+        for (let i = 0; i + len <= secret.length; i++) {
+          const piece = secret.slice(i, i + len);
+          assertFalse(
+            masked.includes(piece),
+            `掩码泄露了原文片段 ${JSON.stringify(piece)}`,
+          );
         }
-        // 保留 runtime 项 scope=runtime
-        for (
-            const k of [
-                "allow_register",
-                "rate_limit_login_ip_max",
-                "maintenance_mode",
-            ]
-        ) {
-            assertEquals(findDefinition(k)?.scope, "runtime");
-        }
-    },
+      }
+    }
+  },
 });
 
 Deno.test({
-    name: "system-settings service: 未注册 key 拒绝",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await assertRejects(
-            () =>
-                updateSetting(
-                    "hacker_key",
-                    "value",
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-            "未注册",
-        );
-    },
+  name: "system-settings service: listSettings 包含所有 DB-backed 项",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const items = await listSettings();
+    // 包含原始项中仍保留的部分（smtp_from / rate_limit_login_enabled /
+    // homepage_banner 已按 issue #495/#496 删除）
+    for (
+      const k of [
+        "allow_register",
+        "maintenance_mode",
+      ]
+    ) {
+      assertEquals(items.some((i) => i.key === k), true);
+    }
+    // 包含新增项（抽样）
+    assertEquals(items.some((i) => i.key === "jwt_expires_in"), true);
+    assertEquals(items.some((i) => i.key === "rate_limit_enabled"), true);
+    assertEquals(items.some((i) => i.key === "email_provider"), true);
+    assertEquals(items.some((i) => i.key === "storage_provider"), true);
+    assertEquals(items.some((i) => i.key === "audit_log_retention_days"), true);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: resetSetting 删除 DB 行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await updateSetting(
-            "maintenance_mode",
-            true,
-            userActorFromAuthenticatedId("0"),
-        );
-        assertEquals(getSetting("maintenance_mode")?.source, "db");
-
-        await resetSetting(
-            "maintenance_mode",
-            userActorFromAuthenticatedId("0"),
-        );
-        // reset 后 source 不再是 db（应是 env 或 default）
-        const got = getSetting("maintenance_mode");
-        assertEquals(got?.source !== "db", true);
-    },
+  name: "system-settings service: listSettings 敏感字段掩码生效",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    // 写一个 is_secret=true 的非注册表 key（直接走 DB，绕过注册表 type 校验）
+    // 这里改用 mock：通过 service 间接验证（注册表中 5 项均 is_secret=false）
+    // 所以改用更新后 listSettings 检查 raw_value 未被掩码
+    await updateSetting(
+      "allow_register",
+      false,
+      userActorFromAuthenticatedId("0"),
+    );
+    const items = await listSettings();
+    const allowReg = items.find((i) => i.key === "allow_register");
+    assertEquals(allowReg?.source, "db");
+    // 5 个注册表项 is_secret=false，effective_value 不会被掩码
+    assertEquals(allowReg?.effective_value, false);
+    assertEquals(allowReg?.is_secret, false);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: resetSetting 幂等（DB 不存在也 OK）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // 第一次重置（DB 中无此行）
-        await resetSetting(
-            "maintenance_mode",
-            userActorFromAuthenticatedId("0"),
-        );
-        // 第二次重置
-        await resetSetting(
-            "maintenance_mode",
-            userActorFromAuthenticatedId("0"),
-        );
-        assertEquals(true, true);
-    },
-});
+  name:
+    "system-settings service: listSettings env-only raw_value 是 JSON 编码字符串",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    const redisUrl = Deno.env.get("REDIS_URL");
+    if (!redisUrl) {
+      throw new Error(
+        "REDIS_URL 未设置：env-only system-settings 回归必须使用测试启动器提供的专用 Redis",
+      );
+    }
 
-Deno.test({
-    name: "system-settings service: resetSetting 未注册 key 抛 ValidationError",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // 安全约束：未注册 key（如内部标记 rbac_sensitive_field_permissions_seeded）
-        // 不可经 reset 删除——否则收紧的敏感字段授权会在重启后被 seed 恢复
-        await assertRejects(
-            () =>
-                resetSetting(
-                    "totally_unregistered_key_xyz",
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-        );
-    },
-});
+    await withEnvironment("REDIS_URL", redisUrl, async () => {
+      // 模拟运行时 .env 中有该 key：先 setenv 再重置设置缓存。
+      // 使用启动器提供的本 run Redis，禁止回退到开发 Redis。
+      await resetDbForTest();
+      _resetSystemSettingsForTest();
+      await initSystemSettings();
 
-Deno.test({
-    name: "system-settings service: maskSecret 未配置 / 空值返回空串",
-    fn: () => {
-        assertEquals(maskSecret(""), "");
-        assertEquals(maskSecret(null), "");
-        assertEquals(maskSecret(undefined), "");
-    },
-});
-
-Deno.test({
-    name: "system-settings service: maskSecret 已配置返回固定掩码，不回显首尾",
-    fn: () => {
-        // 短值和长值一律固定掩码
-        assertEquals(maskSecret("abc"), SECRET_MASK);
-        assertEquals(maskSecret("abcdef"), SECRET_MASK);
-        assertEquals(maskSecret("abcdefg"), SECRET_MASK);
-        assertEquals(maskSecret("my-super-secret-key-12345"), SECRET_MASK);
-        // 非字符串值先 JSON.stringify 再判断
-        assertEquals(maskSecret({ token: "x" }), SECRET_MASK);
-        assertEquals(maskSecret(""), "");
-    },
-});
-
-Deno.test({
-    name: "system-settings service: maskSecret 返回值不包含原文任何前缀/后缀",
-    fn: () => {
-        const samples = [
-            "LTAI5tAbCdEfGhIj",
-            "https://user:pass@example.com/path",
-            "s3cr3tAccessKey",
-            "a".repeat(64),
-            "xy",
-        ];
-        for (const secret of samples) {
-            const masked = maskSecret(secret);
-            assertEquals(masked, SECRET_MASK);
-            // 原文任意长度 ≥ 1 的子串都不得出现在掩码中
-            for (let len = 1; len <= secret.length; len++) {
-                for (let i = 0; i + len <= secret.length; i++) {
-                    const piece = secret.slice(i, i + len);
-                    assertFalse(
-                        masked.includes(piece),
-                        `掩码泄露了原文片段 ${JSON.stringify(piece)}`,
-                    );
-                }
-            }
-        }
-    },
-});
-
-Deno.test({
-    name: "system-settings service: listSettings 包含所有 DB-backed 项",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        const items = await listSettings();
-        // 包含原始项中仍保留的部分（smtp_from / rate_limit_login_enabled /
-        // homepage_banner 已按 issue #495/#496 删除）
-        for (
-            const k of [
-                "allow_register",
-                "maintenance_mode",
-            ]
-        ) {
-            assertEquals(items.some((i) => i.key === k), true);
-        }
-        // 包含新增项（抽样）
-        assertEquals(items.some((i) => i.key === "jwt_expires_in"), true);
-        assertEquals(items.some((i) => i.key === "rate_limit_enabled"), true);
-        assertEquals(items.some((i) => i.key === "email_provider"), true);
-        assertEquals(items.some((i) => i.key === "storage_provider"), true);
-        assertEquals(
-            items.some((i) => i.key === "audit_log_retention_days"),
-            true,
-        );
-    },
-});
-
-Deno.test({
-    name: "system-settings service: listSettings 敏感字段掩码生效",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        // 写一个 is_secret=true 的非注册表 key（直接走 DB，绕过注册表 type 校验）
-        // 这里改用 mock：通过 service 间接验证（注册表中 5 项均 is_secret=false）
-        // 所以改用更新后 listSettings 检查 raw_value 未被掩码
-        await updateSetting(
-            "allow_register",
-            false,
-            userActorFromAuthenticatedId("0"),
-        );
-        const items = await listSettings();
-        const allowReg = items.find((i) => i.key === "allow_register");
-        assertEquals(allowReg?.source, "db");
-        // 5 个注册表项 is_secret=false，effective_value 不会被掩码
-        assertEquals(allowReg?.effective_value, false);
-        assertEquals(allowReg?.is_secret, false);
-    },
-});
-
-Deno.test({
-    name:
-        "system-settings service: listSettings env-only raw_value 是 JSON 编码字符串",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        const redisUrl = Deno.env.get("REDIS_URL");
-        if (!redisUrl) {
-            throw new Error(
-                "REDIS_URL 未设置：env-only system-settings 回归必须使用测试启动器提供的专用 Redis",
-            );
-        }
-
-        await withEnvironment("REDIS_URL", redisUrl, async () => {
-            // 模拟运行时 .env 中有该 key：先 setenv 再重置设置缓存。
-            // 使用启动器提供的本 run Redis，禁止回退到开发 Redis。
-            await resetDbForTest();
-            _resetSystemSettingsForTest();
-            await initSystemSettings();
-
-            const items = await listSettings();
-            const redis = items.find((i) => i.key === "REDIS_URL");
-            assertEquals(redis !== undefined, true);
-            // spec 要求 raw_value 是 "原始 JSON 编码"
-            assertEquals(redis?.raw_value, JSON.stringify(redisUrl));
-            // raw_value 可被 JSON.parse 反序列化
-            assertEquals(JSON.parse(redis!.raw_value), redisUrl);
-        });
-    },
+      const items = await listSettings();
+      const redis = items.find((i) => i.key === "REDIS_URL");
+      assertEquals(redis !== undefined, true);
+      // spec 要求 raw_value 是 "原始 JSON 编码"
+      assertEquals(redis?.raw_value, JSON.stringify(redisUrl));
+      // raw_value 可被 JSON.parse 反序列化
+      assertEquals(JSON.parse(redis!.raw_value), redisUrl);
+    });
+  },
 });
 
 // ─── runtime env/DB 共存冲突 ────────────────────────────────
 
 Deno.test({
-    name: "system-settings service: listRuntimeEnvConflicts 检测 DB+env 共存",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await withEnvironment("ALLOW_REGISTER", "false", async () => {
-            await freshSetup();
-            await updateSetting(
-                "allow_register",
-                false,
-                userActorFromAuthenticatedId("0"),
-            );
+  name: "system-settings service: listRuntimeEnvConflicts 检测 DB+env 共存",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await withEnvironment("ALLOW_REGISTER", "false", async () => {
+      await freshSetup();
+      await updateSetting(
+        "allow_register",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
 
-            const conflicts = listRuntimeEnvConflicts();
-            assertEquals(
-                conflicts.some((c) =>
-                    c.key === "allow_register" && c.envKey === "ALLOW_REGISTER"
-                ),
-                true,
-            );
+      const conflicts = listRuntimeEnvConflicts();
+      assertEquals(
+        conflicts.some((c) =>
+          c.key === "allow_register" && c.envKey === "ALLOW_REGISTER"
+        ),
+        true,
+      );
 
-            const items = await listSettings();
-            const item = items.find((i) => i.key === "allow_register");
-            assertEquals(item?.db_present, true);
-            assertEquals(item?.env_present, true);
-            assertEquals(item?.conflict, true);
-            assertEquals(item?.env_key, "ALLOW_REGISTER");
-        });
-    },
+      const items = await listSettings();
+      const item = items.find((i) => i.key === "allow_register");
+      assertEquals(item?.db_present, true);
+      assertEquals(item?.env_present, true);
+      assertEquals(item?.conflict, true);
+      assertEquals(item?.env_key, "ALLOW_REGISTER");
+    });
+  },
 });
 
 Deno.test({
-    name: "system-settings service: 仅 DB 无 env 不标记冲突",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await withEnvironment("ALLOW_REGISTER", undefined, async () => {
-            await freshSetup();
-            await updateSetting(
-                "allow_register",
-                false,
-                userActorFromAuthenticatedId("0"),
-            );
+  name: "system-settings service: 仅 DB 无 env 不标记冲突",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await withEnvironment("ALLOW_REGISTER", undefined, async () => {
+      await freshSetup();
+      await updateSetting(
+        "allow_register",
+        false,
+        userActorFromAuthenticatedId("0"),
+      );
 
-            assertEquals(
-                listRuntimeEnvConflicts().some((c) =>
-                    c.key === "allow_register"
-                ),
-                false,
-            );
+      assertEquals(
+        listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
+        false,
+      );
 
-            const item = (await listSettings()).find((i) =>
-                i.key === "allow_register"
-            );
-            assertEquals(item?.db_present, true);
-            assertEquals(item?.env_present, false);
-            assertEquals(item?.conflict, false);
-        });
-    },
+      const item = (await listSettings()).find((i) =>
+        i.key === "allow_register"
+      );
+      assertEquals(item?.db_present, true);
+      assertEquals(item?.env_present, false);
+      assertEquals(item?.conflict, false);
+    });
+  },
 });
 
 Deno.test({
-    name: "system-settings service: 仅 env 无 DB 不标记冲突",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await withEnvironment("ALLOW_REGISTER", "false", async () => {
-            await freshSetup();
+  name: "system-settings service: 仅 env 无 DB 不标记冲突",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await withEnvironment("ALLOW_REGISTER", "false", async () => {
+      await freshSetup();
 
-            assertEquals(
-                listRuntimeEnvConflicts().some((c) =>
-                    c.key === "allow_register"
-                ),
-                false,
-            );
+      assertEquals(
+        listRuntimeEnvConflicts().some((c) => c.key === "allow_register"),
+        false,
+      );
 
-            const item = (await listSettings()).find((i) =>
-                i.key === "allow_register"
-            );
-            assertEquals(item?.source, "env");
-            assertEquals(item?.db_present, false);
-            assertEquals(item?.env_present, true);
-            assertEquals(item?.conflict, false);
-        });
-    },
+      const item = (await listSettings()).find((i) =>
+        i.key === "allow_register"
+      );
+      assertEquals(item?.source, "env");
+      assertEquals(item?.db_present, false);
+      assertEquals(item?.env_present, true);
+      assertEquals(item?.conflict, false);
+    });
+  },
 });
 
 // ─── bootstrap 残留行 ───────────────────────────────────────
 
 Deno.test({
-    name: "system-settings service: listOrphanedBootstrapRows 检测残留",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        const db = getDb();
-        await db.insert(systemSettings).values({
-            key: "storage_provider",
-            value: JSON.stringify("local"),
-            description: "测试残留",
-            is_secret: false,
-            updated_at: new Date().toISOString(),
-            updated_by: "0",
-        });
-        const orphans = await listOrphanedBootstrapRows();
-        assertEquals(
-            orphans.some((r) => r.key === "storage_provider"),
-            true,
-        );
-        // runtime 键不应被列为孤儿
-        assertEquals(orphans.some((r) => r.key === "allow_register"), false);
-    },
+  name: "system-settings service: listOrphanedBootstrapRows 检测残留",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "storage_provider",
+      value: JSON.stringify("local"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    const orphans = await listOrphanedBootstrapRows();
+    assertEquals(
+      orphans.some((r) => r.key === "storage_provider"),
+      true,
+    );
+    // runtime 键不应被列为孤儿
+    assertEquals(orphans.some((r) => r.key === "allow_register"), false);
+  },
 });
 
 Deno.test({
-    name:
-        "system-settings service: listSettings bootstrap 残留标记 db_orphaned",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        const db = getDb();
-        await db.insert(systemSettings).values({
-            key: "email_provider",
-            value: JSON.stringify("mock"),
-            description: "测试残留",
-            is_secret: false,
-            updated_at: new Date().toISOString(),
-            updated_by: "0",
-        });
-        const items = await listSettings();
-        const emailProvider = items.find((i) => i.key === "email_provider");
-        assertEquals(emailProvider?.db_orphaned, true);
-        const allowRegister = items.find((i) => i.key === "allow_register");
-        assertEquals(allowRegister?.db_orphaned, undefined);
-    },
+  name: "system-settings service: listSettings bootstrap 残留标记 db_orphaned",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "email_provider",
+      value: JSON.stringify("mock"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    const items = await listSettings();
+    const emailProvider = items.find((i) => i.key === "email_provider");
+    assertEquals(emailProvider?.db_orphaned, true);
+    const allowRegister = items.find((i) => i.key === "allow_register");
+    assertEquals(allowRegister?.db_orphaned, undefined);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: cleanupBootstrapRow 清理残留行",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        const db = getDb();
-        await db.insert(systemSettings).values({
-            key: "s3_bucket",
-            value: JSON.stringify("old-bucket"),
-            description: "测试残留",
-            is_secret: false,
-            updated_at: new Date().toISOString(),
-            updated_by: "0",
-        });
-        await cleanupBootstrapRow(
-            "s3_bucket",
-            userActorFromAuthenticatedId("0"),
-        );
-        const rows = await db.select().from(systemSettings).where(
-            eq(systemSettings.key, "s3_bucket"),
-        );
-        assertEquals(rows.length, 0);
-    },
+  name: "system-settings service: cleanupBootstrapRow 清理残留行",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    const db = getDb();
+    await db.insert(systemSettings).values({
+      key: "s3_bucket",
+      value: JSON.stringify("old-bucket"),
+      description: "测试残留",
+      is_secret: false,
+      updated_at: new Date().toISOString(),
+      updated_by: "0",
+    });
+    await cleanupBootstrapRow("s3_bucket", userActorFromAuthenticatedId("0"));
+    const rows = await db.select().from(systemSettings).where(
+      eq(systemSettings.key, "s3_bucket"),
+    );
+    assertEquals(rows.length, 0);
+  },
 });
 
 Deno.test({
-    name: "system-settings service: cleanupBootstrapRow 拒绝 runtime 键",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await freshSetup();
-        await assertRejects(
-            () =>
-                cleanupBootstrapRow(
-                    "allow_register",
-                    userActorFromAuthenticatedId("0"),
-                ),
-            ValidationError,
-        );
-    },
+  name: "system-settings service: cleanupBootstrapRow 拒绝 runtime 键",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await freshSetup();
+    await assertRejects(
+      () =>
+        cleanupBootstrapRow(
+          "allow_register",
+          userActorFromAuthenticatedId("0"),
+        ),
+      ValidationError,
+    );
+  },
 });
 
 Deno.test("system-settings: llm 平台默认项已注册且默认为空串", () => {
-    const provider = getSetting("llm_default_provider_id");
-    const model = getSetting("llm_default_model");
-    assert(provider !== null, "llm_default_provider_id 应已注册");
-    assert(model !== null, "llm_default_model 应已注册");
-    assertEquals(provider.value, "");
-    assertEquals(model.value, "");
+  const provider = getSetting("llm_default_provider_id");
+  const model = getSetting("llm_default_model");
+  assert(provider !== null, "llm_default_provider_id 应已注册");
+  assert(model !== null, "llm_default_model 应已注册");
+  assertEquals(provider.value, "");
+  assertEquals(model.value, "");
 });
 
 // 清理
 Deno.test({
-    name: "system-settings service: cleanup",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        try {
-            const db = getDb();
-            await db.delete(systemSettings).where(
-                eq(systemSettings.key, `test_init_${ts}`),
-            );
-        } catch {
-            // ignore
-        }
-    },
+  name: "system-settings service: cleanup",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    try {
+      const db = getDb();
+      await db.delete(systemSettings).where(
+        eq(systemSettings.key, `test_init_${ts}`),
+      );
+    } catch {
+      // ignore
+    }
+  },
 });

@@ -58,26 +58,26 @@ export const MAX_SAFE_PAGE = MAX_PAGE;
 
 /** parsePagination 配置项 */
 export interface ParsePaginationOptions {
-    /** 默认页码（默认 1） */
-    defaultPage?: number;
-    /** 默认每页条数（默认 20） */
-    defaultPerPage?: number;
-    /** 每页条数上限（默认 100） */
-    maxPerPage?: number;
-    /** query 中 page 字段名（默认 "page"） */
-    pageField?: string;
-    /** query 中 per_page 字段名（默认 "per_page"） */
-    perPageField?: string;
+  /** 默认页码（默认 1） */
+  defaultPage?: number;
+  /** 默认每页条数（默认 20） */
+  defaultPerPage?: number;
+  /** 每页条数上限（默认 100） */
+  maxPerPage?: number;
+  /** query 中 page 字段名（默认 "page"） */
+  pageField?: string;
+  /** query 中 per_page 字段名（默认 "per_page"） */
+  perPageField?: string;
 }
 
 /** parsePagination 返回值 */
 export interface Pagination {
-    /** 1-based 页码 */
-    page: number;
-    /** 每页条数（已 clamp 到 [1, maxPerPage]） */
-    perPage: number;
-    /** 跳过的记录数（用于 OFFSET） */
-    offset: number;
+  /** 1-based 页码 */
+  page: number;
+  /** 每页条数（已 clamp 到 [1, maxPerPage]） */
+  perPage: number;
+  /** 跳过的记录数（用于 OFFSET） */
+  offset: number;
 }
 
 /**
@@ -91,64 +91,64 @@ export interface Pagination {
  * @throws {ValidationError} page 非正整数 / perPage 非正整数
  */
 export function parsePagination(
-    c: Context,
-    options: ParsePaginationOptions = {},
+  c: Context,
+  options: ParsePaginationOptions = {},
 ): Pagination {
-    const {
-        defaultPage = DEFAULT_PAGE,
-        defaultPerPage = DEFAULT_PER_PAGE,
-        maxPerPage = DEFAULT_MAX_PER_PAGE,
-        pageField = "page",
-        perPageField = "per_page",
-    } = options;
+  const {
+    defaultPage = DEFAULT_PAGE,
+    defaultPerPage = DEFAULT_PER_PAGE,
+    maxPerPage = DEFAULT_MAX_PER_PAGE,
+    pageField = "page",
+    perPageField = "per_page",
+  } = options;
 
-    const pageRaw = c.req.query(pageField);
-    const page = pageRaw === undefined || pageRaw === ""
-        ? defaultPage
-        : parseInt(pageRaw, 10);
+  const pageRaw = c.req.query(pageField);
+  const page = pageRaw === undefined || pageRaw === ""
+    ? defaultPage
+    : parseInt(pageRaw, 10);
 
-    if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) {
-        throw new ValidationError(`${pageField} 必须为正整数`);
-    }
+  if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) {
+    throw new ValidationError(`${pageField} 必须为正整数`);
+  }
 
-    const perPageRaw = c.req.query(perPageField);
-    // PR-6 评审修订：原 perPageRaw2 命名异味——perPageRaw 才是真正的 raw string。
-    // 此处 parsedPerPage 是已 parseInt 后的数字，与下方 perPage 的 clamp 结果区分。
-    const parsedPerPage = perPageRaw === undefined || perPageRaw === ""
-        ? defaultPerPage
-        : parseInt(perPageRaw, 10);
+  const perPageRaw = c.req.query(perPageField);
+  // PR-6 评审修订：原 perPageRaw2 命名异味——perPageRaw 才是真正的 raw string。
+  // 此处 parsedPerPage 是已 parseInt 后的数字，与下方 perPage 的 clamp 结果区分。
+  const parsedPerPage = perPageRaw === undefined || perPageRaw === ""
+    ? defaultPerPage
+    : parseInt(perPageRaw, 10);
 
-    if (!Number.isInteger(parsedPerPage) || parsedPerPage < 1) {
-        throw new ValidationError(`${perPageField} 必须为正整数`);
-    }
+  if (!Number.isInteger(parsedPerPage) || parsedPerPage < 1) {
+    throw new ValidationError(`${perPageField} 必须为正整数`);
+  }
 
-    const perPage = Math.min(parsedPerPage, maxPerPage);
+  const perPage = Math.min(parsedPerPage, maxPerPage);
 
-    return {
-        page,
-        perPage,
-        offset: (page - 1) * perPage,
-    };
+  return {
+    page,
+    perPage,
+    offset: (page - 1) * perPage,
+  };
 }
 
 /** 统一分页响应结构 */
 export interface PaginationMeta {
-    page: number;
-    per_page: number;
-    total: number;
-    total_pages: number;
+  page: number;
+  per_page: number;
+  total: number;
+  total_pages: number;
 }
 
 /** 由 page/perPage/total 计算 total_pages + 构造 PaginationMeta */
 export function buildPaginationMeta(
-    page: number,
-    perPage: number,
-    total: number,
+  page: number,
+  perPage: number,
+  total: number,
 ): PaginationMeta {
-    return {
-        page,
-        per_page: perPage,
-        total,
-        total_pages: total === 0 ? 0 : Math.ceil(total / perPage),
-    };
+  return {
+    page,
+    per_page: perPage,
+    total,
+    total_pages: total === 0 ? 0 : Math.ceil(total / perPage),
+  };
 }

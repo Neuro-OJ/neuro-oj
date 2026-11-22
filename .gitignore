@@ -120,9 +120,6 @@ dev-docs/review-snapshots/
 # --- 安全扫描本地产物（security.yml 与 CONTRIBUTING.md 的本地复现命令） ---
 .security/
 
-# --- 本机引导凭据（seed 写入的一次性管理员密码，禁止提交） ---
-.data/
-
 # 蜂群模式任务批次（本地开发辅助）
 .swarm/
 

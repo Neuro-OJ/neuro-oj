@@ -3,16 +3,16 @@ import { and, eq } from "drizzle-orm";
 import { unzipSync } from "fflate";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-    problemDraftObjects,
-    problemDrafts,
-    problems,
-    problemVersionObjects,
-    problemVersions,
+  problemDraftObjects,
+  problemDrafts,
+  problems,
+  problemVersionObjects,
+  problemVersions,
 } from "../../../shared/db/schema.ts";
 import { NotFoundError } from "../../../shared/base/errors.ts";
 import {
-    deleteStorageObject,
-    registerReadyStorageObject,
+  deleteStorageObject,
+  registerReadyStorageObject,
 } from "../../assets/contracts/cross-module/services_registry.ts";
 import { getStorageProvider } from "../../assets/storage/mod.ts";
 import { parseStorageUrl } from "../../assets/storage/types.ts";
@@ -20,67 +20,67 @@ import { getLogger } from "@logtape/logtape";
 
 const logger = getLogger(["noj", "catalog"]);
 import {
-    assertProblemEditPermission,
-    assertProblemEditPermissionForActor,
+  assertProblemEditPermission,
+  assertProblemEditPermissionForActor,
 } from "./problems/problems-crud.ts";
 import {
-    DEFAULT_TEMPLATE_FILE,
-    isValidTemplateFileName,
-    MAX_TEMPLATE_BYTES,
-    MAX_UI_HTML_BYTES,
-    UI_FILE,
+  DEFAULT_TEMPLATE_FILE,
+  isValidTemplateFileName,
+  MAX_TEMPLATE_BYTES,
+  MAX_UI_HTML_BYTES,
+  UI_FILE,
 } from "../types/problem-bundle.ts";
 import type { Context } from "hono";
 import type { UserActor } from "../../access/contracts/actor.ts";
 import type { DbTx } from "../../../shared/db/executor.ts";
 import {
-    getProblemDraft,
-    listDraftObjects,
-    loadProblemIdentity,
-    saveProblemDraftWithObjects,
+  getProblemDraft,
+  listDraftObjects,
+  loadProblemIdentity,
+  saveProblemDraftWithObjects,
 } from "./versioning/draft.ts";
 import { SUPPORT_PACKAGE_PATH } from "./versioning/publish.ts";
 import type { AiProblemContent } from "../types/problem-content.ts";
 
 /** 支持包引用解析结果（含来源，便于排障与测试断言）。 */
 export interface ResolvedSupportPackage {
-    storage_url: string;
-    source: "version" | "draft" | "projection";
-    version_id: string | null;
+  storage_url: string;
+  source: "version" | "draft" | "projection";
+  version_id: string | null;
 }
 
 /**
  * 读取某版本的支持包引用。
  */
 export async function getVersionSupportPackageUrl(
-    versionId: string,
+  versionId: string,
 ): Promise<string | null> {
-    const [row] = await getDb().select({
-        storage_url: problemVersionObjects.storage_url,
-    }).from(problemVersionObjects).where(
-        and(
-            eq(problemVersionObjects.version_id, versionId),
-            eq(problemVersionObjects.role, "support_package"),
-            eq(problemVersionObjects.path, SUPPORT_PACKAGE_PATH),
-        ),
-    ).limit(1);
-    return row?.storage_url ?? null;
+  const [row] = await getDb().select({
+    storage_url: problemVersionObjects.storage_url,
+  }).from(problemVersionObjects).where(
+    and(
+      eq(problemVersionObjects.version_id, versionId),
+      eq(problemVersionObjects.role, "support_package"),
+      eq(problemVersionObjects.path, SUPPORT_PACKAGE_PATH),
+    ),
+  ).limit(1);
+  return row?.storage_url ?? null;
 }
 
 /** 读取草稿的支持包引用。 */
 export async function getDraftSupportPackageUrl(
-    problemId: string,
+  problemId: string,
 ): Promise<string | null> {
-    const [row] = await getDb().select({
-        storage_url: problemDraftObjects.storage_url,
-    }).from(problemDraftObjects).where(
-        and(
-            eq(problemDraftObjects.problem_id, problemId),
-            eq(problemDraftObjects.role, "support_package"),
-            eq(problemDraftObjects.path, SUPPORT_PACKAGE_PATH),
-        ),
-    ).limit(1);
-    return row?.storage_url ?? null;
+  const [row] = await getDb().select({
+    storage_url: problemDraftObjects.storage_url,
+  }).from(problemDraftObjects).where(
+    and(
+      eq(problemDraftObjects.problem_id, problemId),
+      eq(problemDraftObjects.role, "support_package"),
+      eq(problemDraftObjects.path, SUPPORT_PACKAGE_PATH),
+    ),
+  ).limit(1);
+  return row?.storage_url ?? null;
 }
 
 /**
@@ -94,55 +94,51 @@ export async function getDraftSupportPackageUrl(
  *    存量题目尚未生成迁移基线 V1 时内容事实源仍在投影上（批次 7 后失效）。
  */
 export async function resolveSupportPackageRef(
-    problemId: string,
-    options: { versionId?: string; latestVersionId?: string | null } = {},
+  problemId: string,
+  options: { versionId?: string; latestVersionId?: string | null } = {},
 ): Promise<ResolvedSupportPackage | null> {
-    const db = getDb();
+  const db = getDb();
 
-    if (options.versionId) {
-        const url = await getVersionSupportPackageUrl(options.versionId);
-        return url
-            ? {
-                storage_url: url,
-                source: "version",
-                version_id: options.versionId,
-            }
-            : null;
-    }
+  if (options.versionId) {
+    const url = await getVersionSupportPackageUrl(options.versionId);
+    return url
+      ? { storage_url: url, source: "version", version_id: options.versionId }
+      : null;
+  }
 
-    let latestVersionId = options.latestVersionId ?? null;
-    if (latestVersionId === undefined || latestVersionId === null) {
-        const [row] = await db.select({ latest: problems.latest_version_id })
-            .from(problems).where(eq(problems.id, problemId)).limit(1);
-        latestVersionId = row?.latest ?? null;
+  let latestVersionId = options.latestVersionId ?? null;
+  if (latestVersionId === undefined || latestVersionId === null) {
+    const [row] = await db.select({ latest: problems.latest_version_id })
+      .from(problems).where(eq(problems.id, problemId)).limit(1);
+    latestVersionId = row?.latest ?? null;
+  }
+  if (latestVersionId) {
+    const url = await getVersionSupportPackageUrl(latestVersionId);
+    if (url) {
+      return {
+        storage_url: url,
+        source: "version",
+        version_id: latestVersionId,
+      };
     }
-    if (latestVersionId) {
-        const url = await getVersionSupportPackageUrl(latestVersionId);
-        if (url) {
-            return {
-                storage_url: url,
-                source: "version",
-                version_id: latestVersionId,
-            };
-        }
-    }
+  }
 
-    const draftUrl = await getDraftSupportPackageUrl(problemId);
-    if (draftUrl) {
-        return { storage_url: draftUrl, source: "draft", version_id: null };
-    }
+  const draftUrl = await getDraftSupportPackageUrl(problemId);
+  if (draftUrl) {
+    return { storage_url: draftUrl, source: "draft", version_id: null };
+  }
 
-    const [projection] = await db.select({
-        url: problems.support_package_storage_url,
-    }).from(problems).where(eq(problems.id, problemId)).limit(1);
-    if (projection?.url) {
-        return {
-            storage_url: projection.url,
-            source: "projection",
-            version_id: null,
-        };
-    }
-    return null;
+  const [projection] = await db.select({
+    url: problems.support_package_storage_url,
+  }).from(problems).where(eq(problems.id, problemId)).limit(1);
+  if (projection?.url) {
+    return {
+      storage_url: projection.url,
+      source: "projection",
+      version_id: null,
+    };
+  }
+  return null;
 }
 
 /**
@@ -152,66 +148,64 @@ export async function resolveSupportPackageRef(
  * 发布时才复制到版本引用。未发布题目的下载路径由草稿引用兜底，不需要写投影。
  */
 export async function setSupportPackage(
-    problemId: string,
-    input: {
-        storageUrl: string;
-        sha256?: string | null;
-        byteSize?: number | null;
-        expectedRevision?: number;
-        /**
-         * 上传前 `reserveStorageObjectUpload*()` 返回的预约 id。
-         *
-         * Handbook §2.5：调用方**必须先写预约再物理上传**，本函数在登记 ready 时
-         * 消费它；没有自己未过期预约时，`deleted` / `deleting` 对象不会被恢复成
-         * ready（避免 ready + 物理缺失）。
-         */
-        reservationId?: string;
-    },
+  problemId: string,
+  input: {
+    storageUrl: string;
+    sha256?: string | null;
+    byteSize?: number | null;
+    expectedRevision?: number;
+    /**
+     * 上传前 `reserveStorageObjectUpload*()` 返回的预约 id。
+     *
+     * Handbook §2.5：调用方**必须先写预约再物理上传**，本函数在登记 ready 时
+     * 消费它；没有自己未过期预约时，`deleted` / `deleting` 对象不会被恢复成
+     * ready（避免 ready + 物理缺失）。
+     */
+    reservationId?: string;
+  },
 ): Promise<void> {
-    // 哈希与大小由**服务端**产生：优先取调用方在上传时算出的值，其次读存储 URL
-    // 内嵌的 checksum，最后向后端核实大小。客户端不能注入这些元数据。
-    let sha256 = input.sha256 ?? null;
-    if (!sha256) {
-        try {
-            sha256 = parseStorageUrl(input.storageUrl).checksumSha256 ?? null;
-        } catch {
-            sha256 = null;
-        }
+  // 哈希与大小由**服务端**产生：优先取调用方在上传时算出的值，其次读存储 URL
+  // 内嵌的 checksum，最后向后端核实大小。客户端不能注入这些元数据。
+  let sha256 = input.sha256 ?? null;
+  if (!sha256) {
+    try {
+      sha256 = parseStorageUrl(input.storageUrl).checksumSha256 ?? null;
+    } catch {
+      sha256 = null;
     }
-    let byteSize = input.byteSize ?? null;
-    if (byteSize == null) {
-        try {
-            const stat = await (await getStorageProvider()).stat(
-                input.storageUrl,
-            );
-            byteSize = stat.sizeBytes;
-        } catch {
-            byteSize = null;
-        }
+  }
+  let byteSize = input.byteSize ?? null;
+  if (byteSize == null) {
+    try {
+      const stat = await (await getStorageProvider()).stat(input.storageUrl);
+      byteSize = stat.sizeBytes;
+    } catch {
+      byteSize = null;
     }
+  }
 
-    await registerReadyStorageObject({
-        storageUrl: input.storageUrl,
-        sha256,
-        byteSize,
-        reservationId: input.reservationId,
-    });
-    const draft = await getProblemDraft(
-        problemId,
-        await loadProblemIdentity(problemId),
-    );
-    const objects = (await listDraftObjects(problemId)).filter((ref) =>
-        ref.role !== "support_package"
-    );
-    await saveProblemDraftWithObjects(problemId, {
-        content: draft.content,
-        expectedRevision: input.expectedRevision ?? draft.revision,
-        objects: [...objects, {
-            role: "support_package",
-            path: SUPPORT_PACKAGE_PATH,
-            storage_url: input.storageUrl,
-        }],
-    });
+  await registerReadyStorageObject({
+    storageUrl: input.storageUrl,
+    sha256,
+    byteSize,
+    reservationId: input.reservationId,
+  });
+  const draft = await getProblemDraft(
+    problemId,
+    await loadProblemIdentity(problemId),
+  );
+  const objects = (await listDraftObjects(problemId)).filter((ref) =>
+    ref.role !== "support_package"
+  );
+  await saveProblemDraftWithObjects(problemId, {
+    content: draft.content,
+    expectedRevision: input.expectedRevision ?? draft.revision,
+    objects: [...objects, {
+      role: "support_package",
+      path: SUPPORT_PACKAGE_PATH,
+      storage_url: input.storageUrl,
+    }],
+  });
 }
 
 /**
@@ -231,19 +225,19 @@ export const MAX_SUPPORT_PACKAGE_SIZE = 128 * 1024 * 1024; // 128MB
  * @throws {ForbiddenError} 无权操作
  */
 async function checkSupportPackagePermission(
-    problemId: string,
-    userId?: string,
-    userRole?: string,
-    problem?: { id?: string; domain_id?: string | null; owner_id: string },
+  problemId: string,
+  userId?: string,
+  userRole?: string,
+  problem?: { id?: string; domain_id?: string | null; owner_id: string },
 ): Promise<void> {
-    const identity = problem;
-    if (!identity) throw new NotFoundError("题目不存在");
-    await assertProblemEditPermission(
-        undefined,
-        { ...identity, id: problemId },
-        userId,
-        userRole,
-    );
+  const identity = problem;
+  if (!identity) throw new NotFoundError("题目不存在");
+  await assertProblemEditPermission(
+    undefined,
+    { ...identity, id: problemId },
+    userId,
+    userRole,
+  );
 }
 
 /**
@@ -251,14 +245,14 @@ async function checkSupportPackagePermission(
  * `expectedRevision` 必填，避免删除覆盖其他编辑者刚写入的草稿引用。
  */
 export async function deleteSupportPackageForActor(
-    problemId: string,
-    actor: UserActor,
-    expectedRevision: number,
+  problemId: string,
+  actor: UserActor,
+  expectedRevision: number,
 ): Promise<void> {
-    const removed = await getDb().transaction((tx) =>
-        deleteSupportPackageForActorTx(problemId, actor, expectedRevision, tx)
-    );
-    await finalizeDeletedSupportPackage(problemId, removed);
+  const removed = await getDb().transaction((tx) =>
+    deleteSupportPackageForActorTx(problemId, actor, expectedRevision, tx)
+  );
+  await finalizeDeletedSupportPackage(problemId, removed);
 }
 
 /**
@@ -268,54 +262,54 @@ export async function deleteSupportPackageForActor(
  * 由调用方在提交成功后执行，避免数据库回滚后留下不可恢复的引用缺口。
  */
 export async function deleteSupportPackageForActorTx(
-    problemId: string,
-    actor: UserActor,
-    expectedRevision: number,
-    tx: DbTx,
+  problemId: string,
+  actor: UserActor,
+  expectedRevision: number,
+  tx: DbTx,
 ): Promise<readonly string[]> {
-    const identity = await loadProblemIdentity(problemId, tx);
-    await assertProblemEditPermissionForActor(identity, actor);
-    const draft = await getProblemDraft(problemId, identity, tx);
-    const objects = await listDraftObjects(problemId, tx);
-    const removed = objects.filter((ref) => ref.role === "support_package");
-    await saveProblemDraftWithObjects(problemId, {
-        content: draft.content,
-        expectedRevision,
-        actorId: actor.userId,
-        objects: objects.filter((ref) => ref.role !== "support_package"),
-    }, tx);
+  const identity = await loadProblemIdentity(problemId, tx);
+  await assertProblemEditPermissionForActor(identity, actor);
+  const draft = await getProblemDraft(problemId, identity, tx);
+  const objects = await listDraftObjects(problemId, tx);
+  const removed = objects.filter((ref) => ref.role === "support_package");
+  await saveProblemDraftWithObjects(problemId, {
+    content: draft.content,
+    expectedRevision,
+    actorId: actor.userId,
+    objects: objects.filter((ref) => ref.role !== "support_package"),
+  }, tx);
 
-    // 尚未发布时，投影仍是下载端的迁移期兜底来源，必须同步清空。
-    if (!identity.latest_version_id) {
-        await tx.update(problems).set({
-            support_package_storage_url: null,
-            updated_at: new Date().toISOString(),
-        }).where(eq(problems.id, problemId));
-    }
+  // 尚未发布时，投影仍是下载端的迁移期兜底来源，必须同步清空。
+  if (!identity.latest_version_id) {
+    await tx.update(problems).set({
+      support_package_storage_url: null,
+      updated_at: new Date().toISOString(),
+    }).where(eq(problems.id, problemId));
+  }
 
-    return removed.map(({ storage_url: url }) => url).filter(Boolean);
+  return removed.map(({ storage_url: url }) => url).filter(Boolean);
 }
 
 /** 提交成功后回收没有其他版本引用的物理支持包对象。 */
 export async function finalizeDeletedSupportPackage(
-    problemId: string,
-    removed: readonly string[],
+  problemId: string,
+  removed: readonly string[],
 ): Promise<void> {
-    for (const url of removed) {
-        if (!url) continue;
-        try {
-            const outcome = await deleteStorageObject(url);
-            if (outcome.outcome === "referenced") {
-                logger.info("支持包仍被历史版本引用，保留对象", {
-                    problem_id: problemId,
-                    storage_url: url,
-                    references: outcome.references.total,
-                });
-            }
-        } catch (err) {
-            logger.error("删除支持包失败", { storage_url: url, err });
-        }
+  for (const url of removed) {
+    if (!url) continue;
+    try {
+      const outcome = await deleteStorageObject(url);
+      if (outcome.outcome === "referenced") {
+        logger.info("支持包仍被历史版本引用，保留对象", {
+          problem_id: problemId,
+          storage_url: url,
+          references: outcome.references.total,
+        });
+      }
+    } catch (err) {
+      logger.error("删除支持包失败", { storage_url: url, err });
     }
+  }
 }
 
 /**
@@ -327,39 +321,39 @@ export async function finalizeDeletedSupportPackage(
  * @returns 支持包 zip 字节，无支持包时返回 null
  */
 export async function getSupportPackageBytes(
-    problemId: string,
-    userId?: string,
-    userRole?: string,
-    _c?: Context,
-    options: { versionId?: string } = {},
+  problemId: string,
+  userId?: string,
+  userRole?: string,
+  _c?: Context,
+  options: { versionId?: string } = {},
 ): Promise<Uint8Array | null> {
-    const db = getDb();
+  const db = getDb();
 
-    const [problem] = await db
-        .select({
-            id: problems.id,
-            domain_id: problems.domain_id,
-            owner_id: problems.owner_id,
-            latestVersionId: problems.latest_version_id,
-        })
-        .from(problems)
-        .where(eq(problems.id, problemId))
-        .limit(1);
+  const [problem] = await db
+    .select({
+      id: problems.id,
+      domain_id: problems.domain_id,
+      owner_id: problems.owner_id,
+      latestVersionId: problems.latest_version_id,
+    })
+    .from(problems)
+    .where(eq(problems.id, problemId))
+    .limit(1);
 
-    if (!problem) {
-        throw new NotFoundError("题目不存在");
-    }
+  if (!problem) {
+    throw new NotFoundError("题目不存在");
+  }
 
-    await checkSupportPackagePermission(problemId, userId, userRole, problem);
+  await checkSupportPackagePermission(problemId, userId, userRole, problem);
 
-    const ref = await resolveSupportPackageRef(problemId, {
-        versionId: options.versionId,
-        latestVersionId: problem.latestVersionId,
-    });
-    if (!ref) return null;
+  const ref = await resolveSupportPackageRef(problemId, {
+    versionId: options.versionId,
+    latestVersionId: problem.latestVersionId,
+  });
+  if (!ref) return null;
 
-    const storage = await getStorageProvider();
-    return storage.get(ref.storage_url);
+  const storage = await getStorageProvider();
+  return storage.get(ref.storage_url);
 }
 
 /**
@@ -382,68 +376,67 @@ export async function getSupportPackageBytes(
  * @returns 模板内容，文件不存在返回 null
  */
 export async function getProblemTemplate(
-    problem: { number: number; title: string },
-    srcRoot: string = resolve(Deno.cwd(), "data", "problems-src"),
+  problem: { number: number; title: string },
+  srcRoot: string = resolve(Deno.cwd(), "data", "problems-src"),
 ): Promise<{ content: string; language: string } | null> {
-    const srcDirs: string[] = [];
+  const srcDirs: string[] = [];
 
-    try {
-        for await (const entry of Deno.readDir(srcRoot)) {
-            if (!entry.isDirectory) continue;
+  try {
+    for await (const entry of Deno.readDir(srcRoot)) {
+      if (!entry.isDirectory) continue;
 
-            const srcDir = resolve(srcRoot, entry.name);
-            try {
-                const manifest = JSON.parse(
-                    await Deno.readTextFile(resolve(srcDir, "problem.json")),
-                ) as { number?: unknown; title?: unknown };
-                if (manifest.title !== problem.title) continue;
-                // number 仅在 manifest 显式声明时参与比对（缺省 → 按标题唯一匹配）
-                if (
-                    manifest.number !== undefined &&
-                    manifest.number !== problem.number
-                ) {
-                    continue;
-                }
-                srcDirs.push(srcDir);
-            } catch {
-                // 忽略缺失或损坏 manifest 的目录：无法证明其属于当前题目。
-            }
-        }
-    } catch (err) {
-        if (err instanceof Deno.errors.NotFound) return null;
-        throw err;
-    }
-
-    // 自动分配题号时目录名不可靠；没有唯一归属时不得返回其他题目的模板。
-    if (srcDirs.length !== 1) return null;
-    const srcDir = srcDirs[0];
-
-    // 1. 读 manifest.template 字段（缺省 "template.py"；非法值同样回退默认名）
-    let templateFile = DEFAULT_TEMPLATE_FILE;
-    try {
+      const srcDir = resolve(srcRoot, entry.name);
+      try {
         const manifest = JSON.parse(
-            await Deno.readTextFile(resolve(srcDir, "problem.json")),
-        ) as { template?: unknown };
+          await Deno.readTextFile(resolve(srcDir, "problem.json")),
+        ) as { number?: unknown; title?: unknown };
+        if (manifest.title !== problem.title) continue;
+        // number 仅在 manifest 显式声明时参与比对（缺省 → 按标题唯一匹配）
         if (
-            typeof manifest.template === "string" &&
-            isValidTemplateFileName(manifest.template)
+          manifest.number !== undefined && manifest.number !== problem.number
         ) {
-            templateFile = manifest.template;
+          continue;
         }
-    } catch {
-        // manifest 缺失或损坏：回退默认 template.py
+        srcDirs.push(srcDir);
+      } catch {
+        // 忽略缺失或损坏 manifest 的目录：无法证明其属于当前题目。
+      }
     }
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) return null;
+    throw err;
+  }
 
-    // 2. 读取模板文件
-    try {
-        const content = await Deno.readTextFile(resolve(srcDir, templateFile));
-        // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-        return { content, language: "python3" };
-    } catch (err) {
-        // 仅文件不存在视为"无模板"（404），其余错误（权限/IO）上抛便于排障
-        if (err instanceof Deno.errors.NotFound) return null;
-        throw err;
+  // 自动分配题号时目录名不可靠；没有唯一归属时不得返回其他题目的模板。
+  if (srcDirs.length !== 1) return null;
+  const srcDir = srcDirs[0];
+
+  // 1. 读 manifest.template 字段（缺省 "template.py"；非法值同样回退默认名）
+  let templateFile = DEFAULT_TEMPLATE_FILE;
+  try {
+    const manifest = JSON.parse(
+      await Deno.readTextFile(resolve(srcDir, "problem.json")),
+    ) as { template?: unknown };
+    if (
+      typeof manifest.template === "string" &&
+      isValidTemplateFileName(manifest.template)
+    ) {
+      templateFile = manifest.template;
     }
+  } catch {
+    // manifest 缺失或损坏：回退默认 template.py
+  }
+
+  // 2. 读取模板文件
+  try {
+    const content = await Deno.readTextFile(resolve(srcDir, templateFile));
+    // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+    return { content, language: "python3" };
+  } catch (err) {
+    // 仅文件不存在视为"无模板"（404），其余错误（权限/IO）上抛便于排障
+    if (err instanceof Deno.errors.NotFound) return null;
+    throw err;
+  }
 }
 
 /**
@@ -458,38 +451,36 @@ export async function getProblemTemplate(
  * @returns 模板内容；包内无该条目或包损坏时返回 null（尽力而为的回退，不抛错）
  */
 export function extractTemplateFromPackage(
-    zipBytes: Uint8Array,
+  zipBytes: Uint8Array,
 ): string | null {
-    const candidates = [
-        DEFAULT_TEMPLATE_FILE,
-        `./${DEFAULT_TEMPLATE_FILE}`,
-    ];
-    const wanted = new Set(candidates);
+  const candidates = [
+    DEFAULT_TEMPLATE_FILE,
+    `./${DEFAULT_TEMPLATE_FILE}`,
+  ];
+  const wanted = new Set(candidates);
 
-    let entries: Record<string, Uint8Array>;
-    try {
-        entries = unzipSync(zipBytes, {
-            filter: (file) => wanted.has(file.name),
-        });
-    } catch (err) {
-        logger.warn("支持包解析失败，无法回退读取模板", { err });
-        return null;
-    }
-
-    for (const name of candidates) {
-        const raw = entries[name];
-        if (!raw) continue;
-        if (raw.byteLength > MAX_TEMPLATE_BYTES) {
-            logger.warn("支持包内模板文件超过大小上限，已忽略", {
-                template: name,
-                size: raw.byteLength,
-                limit: MAX_TEMPLATE_BYTES,
-            });
-            return null;
-        }
-        return new TextDecoder().decode(raw);
-    }
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(zipBytes, { filter: (file) => wanted.has(file.name) });
+  } catch (err) {
+    logger.warn("支持包解析失败，无法回退读取模板", { err });
     return null;
+  }
+
+  for (const name of candidates) {
+    const raw = entries[name];
+    if (!raw) continue;
+    if (raw.byteLength > MAX_TEMPLATE_BYTES) {
+      logger.warn("支持包内模板文件超过大小上限，已忽略", {
+        template: name,
+        size: raw.byteLength,
+        limit: MAX_TEMPLATE_BYTES,
+      });
+      return null;
+    }
+    return new TextDecoder().decode(raw);
+  }
+  return null;
 }
 
 /**
@@ -516,135 +507,125 @@ export function extractTemplateFromPackage(
  * @returns 模板内容；无任何可用来源时返回 null（路由据此返回 404）
  */
 export async function resolveProblemTemplate(
-    problem: { id: string; number: number; title: string },
-    options: {
-        packageBytes?: Uint8Array | null;
-        srcRoot?: string;
-        /** 目标版本（Handbook §4.1「历史下载绑定版本」）。 */
-        versionId?: string | null;
-    } = {},
+  problem: { id: string; number: number; title: string },
+  options: {
+    packageBytes?: Uint8Array | null;
+    srcRoot?: string;
+    /** 目标版本（Handbook §4.1「历史下载绑定版本」）。 */
+    versionId?: string | null;
+  } = {},
 ): Promise<{ content: string; language: string } | null> {
-    const db = getDb();
+  const db = getDb();
 
-    // 0. 显式目标版本：模板是该版本内容的一部分，空模板即"该版本没有模板"。
-    if (options.versionId) {
-        const [version] = await db.select({ content: problemVersions.content })
-            .from(problemVersions).where(
-                eq(problemVersions.id, options.versionId),
-            )
-            .limit(1);
-        if (!version) return null;
-        const content = version.content as AiProblemContent | undefined;
-        if (
-            content?.kind === "ai" &&
-            typeof content.template_content === "string" &&
-            content.template_content !== ""
-        ) {
-            // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-            return { content: content.template_content, language: "python3" };
-        }
-        return null;
+  // 0. 显式目标版本：模板是该版本内容的一部分，空模板即"该版本没有模板"。
+  if (options.versionId) {
+    const [version] = await db.select({ content: problemVersions.content })
+      .from(problemVersions).where(eq(problemVersions.id, options.versionId))
+      .limit(1);
+    if (!version) return null;
+    const content = version.content as AiProblemContent | undefined;
+    if (
+      content?.kind === "ai" && typeof content.template_content === "string" &&
+      content.template_content !== ""
+    ) {
+      // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+      return { content: content.template_content, language: "python3" };
     }
+    return null;
+  }
 
-    const [row] = await db
-        .select({
-            templateContent: problems.template_content,
-            latestVersionId: problems.latest_version_id,
-        })
-        .from(problems)
-        .where(eq(problems.id, problem.id))
-        .limit(1);
+  const [row] = await db
+    .select({
+      templateContent: problems.template_content,
+      latestVersionId: problems.latest_version_id,
+    })
+    .from(problems)
+    .where(eq(problems.id, problem.id))
+    .limit(1);
 
-    // 0. 最新已发布版本的内容快照（版本化后模板的事实源）
-    if (row?.latestVersionId) {
-        const [version] = await db.select({ content: problemVersions.content })
-            .from(problemVersions).where(
-                eq(problemVersions.id, row.latestVersionId),
-            ).limit(1);
-        const content = version?.content as AiProblemContent | undefined;
-        if (
-            content?.kind === "ai" &&
-            typeof content.template_content === "string"
-        ) {
-            if (content.template_content !== "") {
-                // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-                return {
-                    content: content.template_content,
-                    language: "python3",
-                };
-            }
-            // 版本快照已核对"包内无模板"：该版本的模板就是"没有模板"，
-            // 不能从当前源码目录补内容（那不属于这个版本快照，tracking #4）。
-            return null;
-        }
+  // 0. 最新已发布版本的内容快照（版本化后模板的事实源）
+  if (row?.latestVersionId) {
+    const [version] = await db.select({ content: problemVersions.content })
+      .from(problemVersions).where(
+        eq(problemVersions.id, row.latestVersionId),
+      ).limit(1);
+    const content = version?.content as AiProblemContent | undefined;
+    if (
+      content?.kind === "ai" && typeof content.template_content === "string"
+    ) {
+      if (content.template_content !== "") {
+        // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+        return { content: content.template_content, language: "python3" };
+      }
+      // 版本快照已核对"包内无模板"：该版本的模板就是"没有模板"，
+      // 不能从当前源码目录补内容（那不属于这个版本快照，tracking #4）。
+      return null;
     }
+  }
 
-    // 0.5 未发布题目：模板的事实源是**共享草稿**（内容字段只写草稿，题目投影只由发布
-    //     服务更新）。空串表示"编辑器已核对无模板"，按该语义返回 null，不回退支持包/
-    //     本地源码——否则删掉模板的包会重新从旧包里读出不存在的模板。
-    if (!row?.latestVersionId) {
-        const [draftRow] = await db.select({ content: problemDrafts.content })
-            .from(problemDrafts).where(eq(problemDrafts.problem_id, problem.id))
-            .limit(1);
-        const draftContent = draftRow?.content as AiProblemContent | undefined;
-        if (
-            draftContent?.kind === "ai" &&
-            typeof draftContent.template_content === "string"
-        ) {
-            if (draftContent.template_content !== "") {
-                // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-                return {
-                    content: draftContent.template_content,
-                    language: "python3",
-                };
-            }
-            return null;
-        }
+  // 0.5 未发布题目：模板的事实源是**共享草稿**（内容字段只写草稿，题目投影只由发布
+  //     服务更新）。空串表示"编辑器已核对无模板"，按该语义返回 null，不回退支持包/
+  //     本地源码——否则删掉模板的包会重新从旧包里读出不存在的模板。
+  if (!row?.latestVersionId) {
+    const [draftRow] = await db.select({ content: problemDrafts.content })
+      .from(problemDrafts).where(eq(problemDrafts.problem_id, problem.id))
+      .limit(1);
+    const draftContent = draftRow?.content as AiProblemContent | undefined;
+    if (
+      draftContent?.kind === "ai" &&
+      typeof draftContent.template_content === "string"
+    ) {
+      if (draftContent.template_content !== "") {
+        // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+        return { content: draftContent.template_content, language: "python3" };
+      }
+      return null;
     }
+  }
 
-    // 1. 迁移期投影（版本化前的存量导入内容）
-    if (row && row.templateContent !== null) {
-        if (row.templateContent !== "") {
-            // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
-            return { content: row.templateContent, language: "python3" };
-        }
-        // 空串 = 导入时已核对"包内无模板"：不再为读模板下载整个支持包，
-        // 直接走本地源码目录回退（开发环境/样例题）。
-        return await getProblemTemplate(
-            { number: problem.number, title: problem.title },
-            options.srcRoot,
-        );
+  // 1. 迁移期投影（版本化前的存量导入内容）
+  if (row && row.templateContent !== null) {
+    if (row.templateContent !== "") {
+      // TODO: 多语言时根据 problem.default_language 返回，目前固定 python3
+      return { content: row.templateContent, language: "python3" };
     }
-
-    // 2. 存量行（本列引入前导入，来源未知）：支持包内仍带模板时按默认名探测
-    let packageBytes = options.packageBytes ?? null;
-    const fallbackRef = packageBytes
-        ? null
-        : await resolveSupportPackageRef(problem.id, {
-            latestVersionId: row?.latestVersionId ?? null,
-        });
-    if (!packageBytes && fallbackRef) {
-        try {
-            const storage = await getStorageProvider();
-            packageBytes = await storage.get(fallbackRef.storage_url);
-        } catch (err) {
-            // 存储不可用不应让编辑器整页失败：记录后继续走本地源码回退。
-            logger.warn("读取支持包以解析模板失败", {
-                problem_id: problem.id,
-                err,
-            });
-        }
-    }
-    if (packageBytes) {
-        const content = extractTemplateFromPackage(packageBytes);
-        if (content !== null) return { content, language: "python3" };
-    }
-
-    // 3. 本地源码目录（开发环境/样例题）
+    // 空串 = 导入时已核对"包内无模板"：不再为读模板下载整个支持包，
+    // 直接走本地源码目录回退（开发环境/样例题）。
     return await getProblemTemplate(
-        { number: problem.number, title: problem.title },
-        options.srcRoot,
+      { number: problem.number, title: problem.title },
+      options.srcRoot,
     );
+  }
+
+  // 2. 存量行（本列引入前导入，来源未知）：支持包内仍带模板时按默认名探测
+  let packageBytes = options.packageBytes ?? null;
+  const fallbackRef = packageBytes
+    ? null
+    : await resolveSupportPackageRef(problem.id, {
+      latestVersionId: row?.latestVersionId ?? null,
+    });
+  if (!packageBytes && fallbackRef) {
+    try {
+      const storage = await getStorageProvider();
+      packageBytes = await storage.get(fallbackRef.storage_url);
+    } catch (err) {
+      // 存储不可用不应让编辑器整页失败：记录后继续走本地源码回退。
+      logger.warn("读取支持包以解析模板失败", {
+        problem_id: problem.id,
+        err,
+      });
+    }
+  }
+  if (packageBytes) {
+    const content = extractTemplateFromPackage(packageBytes);
+    if (content !== null) return { content, language: "python3" };
+  }
+
+  // 3. 本地源码目录（开发环境/样例题）
+  return await getProblemTemplate(
+    { number: problem.number, title: problem.title },
+    options.srcRoot,
+  );
 }
 
 /**
@@ -654,28 +635,26 @@ export async function resolveProblemTemplate(
  * 超过 {@link MAX_UI_HTML_BYTES} 或包损坏时返回 null。
  */
 export function extractUiHtmlFromPackage(
-    zipBytes: Uint8Array,
+  zipBytes: Uint8Array,
 ): string | null {
-    const wanted = new Set([UI_FILE, `./${UI_FILE}`]);
-    let entries: Record<string, Uint8Array>;
-    try {
-        entries = unzipSync(zipBytes, {
-            filter: (file) => wanted.has(file.name),
-        });
-    } catch (err) {
-        logger.warn("支持包解析失败，无法读取界面文件", { err });
-        return null;
-    }
-    const raw = entries[UI_FILE] ?? entries[`./${UI_FILE}`];
-    if (!raw) return null;
-    if (raw.byteLength > MAX_UI_HTML_BYTES) {
-        logger.warn("支持包内界面文件超过大小上限，已忽略", {
-            size: raw.byteLength,
-            limit: MAX_UI_HTML_BYTES,
-        });
-        return null;
-    }
-    return new TextDecoder().decode(raw);
+  const wanted = new Set([UI_FILE, `./${UI_FILE}`]);
+  let entries: Record<string, Uint8Array>;
+  try {
+    entries = unzipSync(zipBytes, { filter: (file) => wanted.has(file.name) });
+  } catch (err) {
+    logger.warn("支持包解析失败，无法读取界面文件", { err });
+    return null;
+  }
+  const raw = entries[UI_FILE] ?? entries[`./${UI_FILE}`];
+  if (!raw) return null;
+  if (raw.byteLength > MAX_UI_HTML_BYTES) {
+    logger.warn("支持包内界面文件超过大小上限，已忽略", {
+      size: raw.byteLength,
+      limit: MAX_UI_HTML_BYTES,
+    });
+    return null;
+  }
+  return new TextDecoder().decode(raw);
 }
 
 /**
@@ -688,16 +667,15 @@ export function extractUiHtmlFromPackage(
  * @returns 界面 HTML；题目没有支持包或包内没有 `ui.html` 时返回 null
  */
 export async function resolveProblemUiHtml(
-    problemId: string,
-    options: { versionId?: string | null; latestVersionId?: string | null } =
-        {},
+  problemId: string,
+  options: { versionId?: string | null; latestVersionId?: string | null } = {},
 ): Promise<string | null> {
-    const ref = await resolveSupportPackageRef(problemId, {
-        versionId: options.versionId ?? undefined,
-        latestVersionId: options.latestVersionId,
-    });
-    if (!ref) return null;
-    const storage = await getStorageProvider();
-    const bytes = await storage.get(ref.storage_url);
-    return bytes ? extractUiHtmlFromPackage(bytes) : null;
+  const ref = await resolveSupportPackageRef(problemId, {
+    versionId: options.versionId ?? undefined,
+    latestVersionId: options.latestVersionId,
+  });
+  if (!ref) return null;
+  const storage = await getStorageProvider();
+  const bytes = await storage.get(ref.storage_url);
+  return bytes ? extractUiHtmlFromPackage(bytes) : null;
 }

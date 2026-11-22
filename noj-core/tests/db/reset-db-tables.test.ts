@@ -16,41 +16,41 @@ import { getDb } from "../../src/shared/db/connection.ts";
 import { resetDbForTest } from "../helpers/db.ts";
 import { sseEvents } from "../../src/shared/db/schema.ts";
 Deno.test({
-    name: "resetDbForTest: sse_events 会被清空（2026-09-24 评审回归）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    async fn() {
-        await resetDbForTest();
-        const db = getDb();
-        await db.insert(sseEvents).values({
-            channel: "probe-channel",
-            payload: { probe: true },
-            created_at: new Date().toISOString(),
-        });
-        assertEquals((await db.select().from(sseEvents)).length, 1);
+  name: "resetDbForTest: sse_events 会被清空（2026-09-24 评审回归）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    await resetDbForTest();
+    const db = getDb();
+    await db.insert(sseEvents).values({
+      channel: "probe-channel",
+      payload: { probe: true },
+      created_at: new Date().toISOString(),
+    });
+    assertEquals((await db.select().from(sseEvents)).length, 1);
 
-        await resetDbForTest();
+    await resetDbForTest();
 
-        assertEquals((await db.select().from(sseEvents)).length, 0);
-    },
+    assertEquals((await db.select().from(sseEvents)).length, 0);
+  },
 });
 
 Deno.test({
-    name: "resetDbForTest: TRUNCATE 语句整体有效（无不存在表名/无静默失败）",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    async fn() {
-        // 若 ALL_TABLES 含 DDL 不存在的表名，TRUNCATE 会整体失败并被 catch
-        // 静默吞掉——表现为「reset 实际什么也没清」。上面两条用真实插入 →
-        // 清空的断言把这种静默失败变成红灯。
-        await resetDbForTest();
-        const db = getDb();
-        await db.insert(sseEvents).values({
-            channel: "probe-truncate",
-            payload: { probe: true },
-            created_at: new Date().toISOString(),
-        });
-        await resetDbForTest();
-        assertEquals((await db.select().from(sseEvents)).length, 0);
-    },
+  name: "resetDbForTest: TRUNCATE 语句整体有效（无不存在表名/无静默失败）",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    // 若 ALL_TABLES 含 DDL 不存在的表名，TRUNCATE 会整体失败并被 catch
+    // 静默吞掉——表现为「reset 实际什么也没清」。上面两条用真实插入 →
+    // 清空的断言把这种静默失败变成红灯。
+    await resetDbForTest();
+    const db = getDb();
+    await db.insert(sseEvents).values({
+      channel: "probe-truncate",
+      payload: { probe: true },
+      created_at: new Date().toISOString(),
+    });
+    await resetDbForTest();
+    assertEquals((await db.select().from(sseEvents)).length, 0);
+  },
 });
