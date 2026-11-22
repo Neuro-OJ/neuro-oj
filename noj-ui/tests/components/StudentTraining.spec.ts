@@ -19,7 +19,7 @@ const stubs = {
     props: ['slug', 'classroomId', 'submissionId', 'kind'],
     template: '<p :data-kind="kind" :data-submission="submissionId">正式评测沿革</p>',
   },
-  ArtifactDownload: {
+  SubmissionArtifactDownload: {
     props: ['endpoint', 'fileName'],
     template: '<button :data-endpoint="endpoint" :data-filename="fileName">下载原提交产物</button>',
   },

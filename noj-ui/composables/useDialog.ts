@@ -1,5 +1,5 @@
 import { useOverlay } from '@nuxt/ui/composables';
-import DialogModal from '~/components/ui/DialogModal.vue';
+import DialogModal from '~/components/base/DialogModal.vue';
 
 interface DialogOptions {
   dataPolicyLink?: boolean;

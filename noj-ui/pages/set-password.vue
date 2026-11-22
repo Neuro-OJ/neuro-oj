@@ -10,7 +10,7 @@
       @submit="handleSubmit"
       @clear-error="clearError"
     >
-      <PasswordField
+      <AuthPasswordField
         id="password"
         v-model="form.password"
         label="新密码"
@@ -21,7 +21,7 @@
         @blur="validatePasswordField"
         @focus="fieldErrors.password = ''"
       />
-      <PasswordField
+      <AuthPasswordField
         id="confirm-password"
         v-model="form.confirmPassword"
         label="确认密码"

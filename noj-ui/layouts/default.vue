@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import BanBanner from "~/components/BanBanner.vue"
+import BanBanner from "~/components/layout/BanBanner.vue"
 import BreadcrumbNav from "~/components/layout/BreadcrumbNav.vue"
 import LegalConsentModal from "~/components/legal/LegalConsentModal.vue";
 import { useBanStatus } from "~/composables/useBanStatus"

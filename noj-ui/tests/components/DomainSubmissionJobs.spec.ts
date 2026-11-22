@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, ref, watch } from 'vue';
-import DomainUpgradeAction from '~/components/submission/DomainUpgradeAction.vue';
-import DomainRejudgeAction from '~/components/submission/DomainRejudgeAction.vue';
+import DomainUpgradeAction from '~/components/submission/SubmissionUpgradeAction.vue';
+import DomainRejudgeAction from '~/components/submission/SubmissionRejudgeAction.vue';
 import { useDomainSubmissionJobs } from '~/composables/useDomainSubmissionJobs';
 const api = { create: vi.fn() }, transport = { post: vi.fn(), get: vi.fn() }, navigate = vi.fn();
 let permissions: string[] = [], current = true;

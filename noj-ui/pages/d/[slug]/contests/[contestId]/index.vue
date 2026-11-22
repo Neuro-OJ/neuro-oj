@@ -482,7 +482,7 @@ useSeoMeta({ title: () => contest.value?.title ?? '比赛' });
           <!-- ── 竞赛答疑 ──────────────────────────────────────── -->
           <section id="clarifications" ref="clarificationsSection"
             class="scroll-mt-24 rounded-lg border border-border bg-bg-panel px-5 py-5 shadow-card sm:px-6">
-            <ClarificationsPanel :slug="slug!" :contest="contest" :problems="problems.data.value?.data ?? []" />
+            <ContestClarificationsPanel :slug="slug!" :contest="contest" :problems="problems.data.value?.data ?? []" />
           </section>
         </div>
 

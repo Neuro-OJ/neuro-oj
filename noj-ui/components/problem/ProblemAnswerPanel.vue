@@ -5,7 +5,7 @@ import { PREDICTION_FILE_ACCEPT, predictionHint } from '~/utils/problemView';
 import { extractApiError } from '~/utils/apiError';
 import { languageLabels } from '~/utils/submissionFormat';
 import { parseValues, stableStringify, type UiFrameResult } from '~/utils/uiFrame';
-import UiFrame from '~/components/uiproblem/UiFrame.vue';
+import UiProblemFrame from '~/components/problem/ui/UiProblemFrame.vue';
 
 /**
  * 统一的作答面板（题库与比赛共用）。
@@ -380,7 +380,7 @@ defineExpose({
 
     <template v-else-if="isUi">
       <UAlert v-if="uiError" color="error" :title="uiError" />
-      <UiFrame v-if="uiHtml" :html="uiHtml" :values="uiValues"
+      <UiProblemFrame v-if="uiHtml" :html="uiHtml" :values="uiValues"
         :result="uiResult" :title="`V${versionNumber}`" :disabled="!canWrite || submitting" class="h-[560px] w-full"
         @update:values="setUiValues" @submit="submit" @self-test="emit('ui-self-test')" />
       <slot name="ui-extras" :code="code" />

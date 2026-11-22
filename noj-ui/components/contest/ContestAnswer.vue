@@ -125,7 +125,7 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
   >
     <template #ui-extras="{ code: currentCode }">
       <ClientOnly>
-        <DomainUiRuns :slug="slug" :problem-id="problem.problem_id"
+        <UiProblemRuns :slug="slug" :problem-id="problem.problem_id"
           :reference="problem.reference?.display_ref ?? problem.display_id" :contest-id="contestId"
           :submission-id="submissionId" :self-test="null" :code="currentCode"
           :writable="active && !!user" @restore="panel?.setCode($event)" @result="uiResult = $event" />

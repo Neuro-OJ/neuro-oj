@@ -49,10 +49,10 @@ useSeoMeta({ title: () => data.value ? `${data.value.content.title} · 做题` :
           <h1 class="text-xl font-semibold">{{ data.content.title }}</h1>
           <UButton :to="backUrl" color="neutral" variant="outline">返回题目</UButton>
         </div>
-        <DomainProblemAnswer :key="`${key}`" :slug="slug!" :problem="data" :assignment-origin="origin"
+        <ProblemAnswer :key="`${key}`" :slug="slug!" :problem="data" :assignment-origin="origin"
           @refresh="refresh()" />
       </div>
-      <DomainCodeWorkspace v-else :key="`${key}`" :slug="slug!" :problem="data" :back-url="backUrl"
+      <EditorCodeWorkspace v-else :key="`${key}`" :slug="slug!" :problem="data" :back-url="backUrl"
         :assignment-origin="origin" @refresh="refresh()" />
     </template>
   </AsyncContent>

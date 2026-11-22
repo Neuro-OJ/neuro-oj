@@ -379,7 +379,7 @@ function formatDate(iso: string): string {
                 {{ problem.title }}
               </NuxtLink>
               <!-- 公开赛收编标识（VULN-07）：接口未下发该字段时不渲染 -->
-              <ContestHiddenMark v-if="problem.is_contest_hidden" />
+              <ProblemContestHiddenMark v-if="problem.is_contest_hidden" />
             </div>
             <div class="flex items-center gap-3">
               <span
@@ -409,7 +409,7 @@ function formatDate(iso: string): string {
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <div class="flex items-center gap-3">
-              <ProblemId :display-id="problem.display_id" />
+              <ProblemIdBadge :display-id="problem.display_id" />
               <NuxtLink
                 :to="workspaceProblemUrl(problem.display_id)"
                 class="text-sm text-primary no-underline hover:underline"

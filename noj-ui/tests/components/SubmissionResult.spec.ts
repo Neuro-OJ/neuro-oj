@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
-import SubmissionResult from '~/components/ui/SubmissionResult.vue';
+import SubmissionResult from '~/components/submission/SubmissionStatusBadge.vue';
 
 describe('SubmissionResult', () => {
   it('渲染已评测状态', () => {

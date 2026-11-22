@@ -242,7 +242,7 @@ useSeoMeta({ title: '提交' });
             <span v-else class="text-xs text-text-muted">—</span>
           </template>
           <template #result-cell="{ row }">
-            <DomainSubmissionStatus :submission="row.original" />
+            <SubmissionStatus :submission="row.original" />
           </template>
           <template #version-cell="{ row }">
             <span class="whitespace-nowrap text-xs tabular-nums text-text-muted">{{ row.original.submitted_version == null ? '—' : `V${row.original.submitted_version}` }}</span>

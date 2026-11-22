@@ -16,7 +16,7 @@ import AccessPage from '~/pages/admin/instance/access.vue';
 
 const stubs = {
   AdminPageHeader: { template: '<div><slot name="actions" /></div>' },
-  InstanceNav: { template: '<nav />' },
+  AdminInstanceNav: { template: '<nav />' },
   UIcon: { props: ['name'], template: '<i />' },
   AsyncContent: {
     props: ['status', 'error'],

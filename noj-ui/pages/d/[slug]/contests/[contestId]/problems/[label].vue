@@ -206,12 +206,12 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
           <!-- 赛后复盘：官方题解入口。赛中不给（会提前泄露判定思路）。 -->
           <div v-if="phase === 'ended' && contestProblem?.problem_id"
             class="rounded border border-border bg-bg-panel px-4 py-3">
-            <OfficialSolutionEntry :slug="slug!" :problem-id="contestProblem.problem_id"
+            <ProblemOfficialSolutionEntry :slug="slug!" :problem-id="contestProblem.problem_id"
               :enabled="domain?.configuration.features.community !== false" />
           </div>
 
           <div v-if="inlineAnswer" id="answer" class="scroll-mt-24">
-            <DomainContestAnswer v-if="contestProblem?.version_id" :key="`${key}:${contestProblem.version_id}`"
+            <ContestAnswer v-if="contestProblem?.version_id" :key="`${key}:${contestProblem.version_id}`"
               :slug="slug!" :contest-id="id" :problem="{ ...contestProblem, version_id: contestProblem.version_id }"
               :active="active" @refresh="refreshAfterSubmit()" />
             <UAlert v-else color="warning" title="本场题目尚未固定作答版本，请联系组织者" />
@@ -294,7 +294,7 @@ useSeoMeta({ title: () => contestProblem.value ? `${contestProblem.value.label} 
             </div>
           </section>
 
-          <DomainProblemSubmissions ref="submissionsPanel" :key="`${key}:submissions`" :slug="slug!"
+          <ProblemSubmissions ref="submissionsPanel" :key="`${key}:submissions`" :slug="slug!"
             :problem-id="contestProblem?.problem_id ?? ''" :contest-id="id" title="本场我的提交" />
         </aside>
       </div>

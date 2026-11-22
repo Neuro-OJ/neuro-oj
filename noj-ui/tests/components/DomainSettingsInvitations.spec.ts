@@ -13,14 +13,14 @@ vi.mock('~/composables/useDialog', () => ({ useDialog: () => ({ dialog: mockDial
 import InvitationsPage from '~/pages/d/[slug]/settings/invitations.vue';
 
 const stubs = {
-  DomainSettingsShell: {
+  WorkspaceSettingsShell: {
     template: '<div data-testid="domain-settings-shell"><slot /></div>',
   },
   AdminPageHeader: {
     props: ['title', 'description', 'icon'],
     template: '<div><h1>{{ title }}</h1><p>{{ description }}</p></div>',
   },
-  InvitationManager: {
+  WorkspaceInvitationManager: {
     props: ['domainSlug', 'classroomId', 'writable'],
     template:
       '<div data-testid="invitation-manager" :data-slug="domainSlug" :data-classroom="classroomId" :data-writable="String(writable)" />',

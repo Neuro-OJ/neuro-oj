@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, onUnmounted, reactive, ref, Suspense, watch } from 'vue';
 import ProblemList from '~/pages/d/[slug]/problems/index.vue';
-import ProblemFilterBar from '~/components/feature/ProblemFilterBar.vue';
+import ProblemFilterBar from '~/components/problem/ProblemFilterBar.vue';
 import { useProblemFilters } from '~/composables/useProblemFilters';
 const list = vi.fn();
 let route: { query: Record<string, string> };
@@ -57,7 +57,7 @@ async function view() {
       components: { ProblemFilterBar },
       stubs: {
         LibraryPageHeader: { template: '<header><slot name="actions" /></header>' },
-        ProblemId: { props: ['displayId'], template: '<span>{{ displayId }}</span>' },
+        ProblemIdBadge: { props: ['displayId'], template: '<span>{{ displayId }}</span>' },
         UCard: { template: '<div><slot /></div>' },
         UFormField: { template: '<label><slot /></label>' },
         UTable: {
@@ -75,7 +75,7 @@ async function view() {
         UInput: input,
         UButton: { template: '<button><slot /></button>' },
         UBadge: { template: '<span><slot /></span>' },
-        DifficultyBadge: { props: ['difficulty'], template: '<span>{{ difficulty }}</span>' },
+        ProblemDifficultyBadge: { props: ['difficulty'], template: '<span>{{ difficulty }}</span>' },
         USelect: {
           props: ['modelValue', 'items'],
           emits: ['update:modelValue'],

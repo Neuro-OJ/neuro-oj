@@ -42,7 +42,7 @@ const to = computed(() => (next.value ? ladderItemPath(next.value) : null));
           <span v-if="next.number !== null">#{{ next.number }} · </span>难度 {{ next.difficulty }}
         </span>
       </span>
-      <DifficultyBadge :difficulty="next.tier" />
+      <ProblemDifficultyBadge :difficulty="next.tier" />
     </NuxtLink>
   </section>
 </template>

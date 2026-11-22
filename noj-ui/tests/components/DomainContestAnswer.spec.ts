@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, nextTick, ref, Suspense } from 'vue';
-import DomainContestAnswer from '~/components/feature/DomainContestAnswer.vue';
+import DomainContestAnswer from '~/components/contest/ContestAnswer.vue';
 import type { ContestProblem } from '~/utils/contest-types';
 import { domainAnswerKey } from '~/utils/domain-problems';
 const api = { questions: vi.fn(), code: vi.fn(), artifact: vi.fn(), objective: vi.fn(), template: vi.fn() };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
-import CheckInCard from '~/components/feature/CheckInCard.vue';
+import CheckInCard from '~/components/ranking/CheckinCard.vue';
 
 const baseProps = {
   isLoggedIn: true,

@@ -59,11 +59,11 @@ const mountHome = () =>
         UCard: { template: '<div><slot /></div>' },
         UButton: { template: '<button><slot /></button>' },
         UTextarea: true,
-        DomainHomeContent: true,
+        WorkspaceHomeContent: true,
         WorkspaceHero: { props: ['title'], template: '<section data-testid="workspace-hero">{{ title }}</section>' },
-        HomepageCheckIn: true,
+        HomeCheckinPanel: true,
         AnnouncementSection: true,
-        LatestSubmissions: true,
+        HomeLatestSubmissions: true,
       },
     },
   });
@@ -74,7 +74,7 @@ describe('明确的域首页不跳走', () => {
     await flushPromises();
     expect(navigate).not.toHaveBeenCalled();
     expect(view.find('[data-testid="workspace-hero"]').text()).toBe('学校');
-    expect(view.find('domain-home-content-stub').exists()).toBe(true);
+    expect(view.find('workspace-home-content-stub').exists()).toBe(true);
     view.unmount();
   });
   it('迟到的当前域上下文或加入后可引导，其他资源页导航不会被旧概览抢走', async () => {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, ref, Suspense, watch } from 'vue';
-import DomainUiRuns from '~/components/feature/DomainUiRuns.vue';
+import DomainUiRuns from '~/components/problem/ui/UiProblemRuns.vue';
 const submissions = { list: vi.fn(), detail: vi.fn() }, selfTests = { list: vi.fn(), detail: vi.fn() };
 const scope = ref('school');
 const formal = {

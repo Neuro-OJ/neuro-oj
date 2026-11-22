@@ -31,7 +31,7 @@ useSeoMeta({ title: 'LLM 用量统计 - 域设置' });
 </script>
 
 <template>
-  <DomainSettingsShell>
+  <WorkspaceSettingsShell>
     <div v-if="can('llm:manage')" class="space-y-6">
       <AdminPageHeader title="LLM 用量统计" description="查看本域大模型调用历史记录、Token 消耗与费用结算。" icon="i-lucide-bar-chart-3">
         <template #actions>
@@ -120,5 +120,5 @@ useSeoMeta({ title: 'LLM 用量统计 - 域设置' });
       </UCard>
     </div>
     <UAlert v-else color="warning" title="没有当前域 LLM 管理权限" />
-  </DomainSettingsShell>
+  </WorkspaceSettingsShell>
 </template>

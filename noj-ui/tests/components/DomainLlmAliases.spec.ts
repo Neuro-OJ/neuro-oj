@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, reactive, ref, Suspense } from 'vue';
-import DomainLlmAliases from '~/components/feature/DomainLlmAliases.vue';
+import DomainLlmAliases from '~/components/admin/AdminLlmAliases.vue';
 const api = { aliases: vi.fn(), saveAlias: vi.fn(), deleteAlias: vi.fn() }, confirm = vi.fn();
 const slug = ref('school');
 const row = {

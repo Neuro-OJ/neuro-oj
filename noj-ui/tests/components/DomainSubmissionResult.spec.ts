@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import DomainSubmissionResult from '~/components/submission/DomainSubmissionResult.vue';
+import DomainSubmissionResult from '~/components/submission/SubmissionResult.vue';
 import type { DomainSubmission } from '~/composables/useDomainSubmissions';
 
 const submission = {

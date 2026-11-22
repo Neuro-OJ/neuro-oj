@@ -20,7 +20,7 @@ const stubs = {
   NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
   UBadge: { template: '<span class="badge"><slot /></span>' },
   UIcon: true,
-  DifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
+  ProblemDifficultyBadge: { props: ['difficulty'], template: '<span class="tier">{{ difficulty }}</span>' },
   UserIdentity: true,
 };
 

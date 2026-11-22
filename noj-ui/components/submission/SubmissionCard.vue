@@ -19,7 +19,7 @@
           text-class="text-[14px] leading-[15px] text-text group-hover:text-primary transition-colors duration-150"
         />
         <!-- 右上：评测结果 -->
-        <SubmissionResult
+        <SubmissionStatusBadge
           class="self-start"
           :status="submission.status"
           :result="submission.result"

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, defineComponent, h, onMounted, ref, Suspense, watch } from 'vue';
-import DomainSelfTestPanel from '~/components/feature/DomainSelfTestPanel.vue';
+import DomainSelfTestPanel from '~/components/problem/ProblemSelfTestPanel.vue';
 import type { DomainProblemDetail } from '~/utils/domain-problems';
 const api = { create: vi.fn(), detail: vi.fn(), cancel: vi.fn() };
 const refresh = vi.fn();
@@ -12,7 +12,7 @@ const problem = {
 const stubs = {
   UButton: { props: ['disabled'], template: '<button :disabled="disabled"><slot /></button>' },
   UCheckbox: { template: '<input type="checkbox" />' },
-  DomainSelfTestResult: { template: '<p>self test result</p>' },
+  SubmissionSelfTestResult: { template: '<p>self test result</p>' },
   UAlert: { props: ['title'], template: '<p>{{ title }}<slot name="actions" /></p>' },
 };
 beforeEach(() => {

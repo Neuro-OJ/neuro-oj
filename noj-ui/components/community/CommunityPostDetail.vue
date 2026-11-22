@@ -319,7 +319,7 @@ watch(initialData, (value) => {
       <div v-if="rootComments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">还没有评论，来抢沙发吧。</div>
       <div class="space-y-3">
         <article v-for="item in rootComments" :key="item.comment.id" class="rounded border border-border bg-white p-4">
-          <CommentCard
+          <CommunityCommentCard
             :row="item"
             :can-comment="canComment"
             :can-edit="canEditComment(item)"
@@ -337,9 +337,9 @@ watch(initialData, (value) => {
                 <UButton color="primary" class="text-sm" type="submit" :disabled="submittingReply || !replyContent.trim()"><UIcon name="i-lucide-send" class="size-3.5" />{{ submittingReply ? '发送中…' : '回复' }}</UButton>
               </form>
             </template>
-          </CommentCard>
+          </CommunityCommentCard>
           <div v-for="reply in repliesOf(item.comment.id)" :key="reply.comment.id" class="ml-6 mt-3 border-l-2 border-border pl-4">
-            <CommentCard
+            <CommunityCommentCard
               :row="reply"
               :can-comment="false"
               :can-edit="canEditComment(reply)"

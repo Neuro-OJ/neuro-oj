@@ -73,10 +73,10 @@ async function view(page: typeof ObjectivePage) {
           template: '<section><slot name="toolbar" /><slot name="after-content" /></section>',
         },
         ProblemSamples: true,
-        DomainProblemSubmissions: true,
-        DomainContestAnswer: { props: ['active'], template: '<p>可提交：{{ active }}</p>' },
-        DomainCodeWorkspace: { props: ['contest'], template: '<p>可提交：{{ contest.active }}</p>' },
-        OwnSubmissionRecord: {
+        ProblemSubmissions: true,
+        ContestAnswer: { props: ['active'], template: '<p>可提交：{{ active }}</p>' },
+        EditorCodeWorkspace: { props: ['contest'], template: '<p>可提交：{{ contest.active }}</p>' },
+        SubmissionOwnRecord: {
           props: ['entry'],
           template: '<p>{{ entry.result_visibility }} {{ entry.result?.score }}</p>',
         },

@@ -5,7 +5,7 @@ const copyToast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: copyToast }) }));
 import { useDomainSubmissions } from '~/composables/useDomainSubmissions';
 import { type QueueData, type QueueScope, useDomainQueue } from '~/composables/useDomainQueue';
-import QueueRow from '~/components/feature/QueueRow.vue';
+import QueueRow from '~/components/submission/SubmissionQueueRow.vue';
 import SubmissionsPage from '~/pages/d/[slug]/submissions/index.vue';
 import QueuePage from '~/pages/d/[slug]/queue.vue';
 import LegacyObjectiveSubmissionsPage from '~/pages/d/[slug]/objective-submissions/index.vue';
@@ -86,14 +86,14 @@ const stubs = {
     template:
       '<div><p v-if="error">{{ error }}</p><p v-else-if="status===\'empty\'">{{ emptyText }}</p><slot v-else /></div>',
   },
-  DomainSubmissionStatus: {
-    name: 'DomainSubmissionStatus',
+  SubmissionStatus: {
+    name: 'SubmissionStatus',
     props: ['submission'],
     template:
       '<span data-testid="status">{{ submission.result_visibility === "hidden" ? "已受理" : (submission.result?.verdict || "已完成") }} {{ submission.result?.score != null ? submission.result.score / 100 + "分" : "" }}</span>',
   },
-  QueueRow: {
-    name: 'QueueRow',
+  SubmissionQueueRow: {
+    name: 'SubmissionQueueRow',
     props: ['item', 'now', 'showElapsed', 'showScore'],
     template: '<div><span>{{ item.id }}</span><span>{{ item.problem_title }}</span></div>',
   },

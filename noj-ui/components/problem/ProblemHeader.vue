@@ -72,7 +72,7 @@ const suppressed = computed(
           而竞赛做题页不挂载该卡片，导致**竞赛页难度彻底消失**（相对重构前是回归）。
           放入头部后两种来源都可见，难度色仍只走 DifficultyBadge 一处。
         -->
-        <DifficultyBadge
+        <ProblemDifficultyBadge
           v-if="calibratedTier || problem.difficulty"
           :difficulty="calibratedTier ?? problem.difficulty"
           :title="calibratedTier ? '校准难度（依据本站作答数据）' : undefined"

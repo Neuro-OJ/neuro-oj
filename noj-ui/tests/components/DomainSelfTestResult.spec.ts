@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed } from 'vue';
-import DomainSelfTestResult from '~/components/submission/DomainSelfTestResult.vue';
+import DomainSelfTestResult from '~/components/submission/SubmissionSelfTestResult.vue';
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
 import SubmissionCaseResults from '~/components/submission/SubmissionCaseResults.vue';
 vi.mock('~/composables/useToast', () => ({ useToast: () => ({ toast: { success: vi.fn(), error: vi.fn() } }) }));

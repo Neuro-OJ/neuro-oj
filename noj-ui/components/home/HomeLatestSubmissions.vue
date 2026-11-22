@@ -49,7 +49,7 @@ const events = useEventSource({
       <h2 class="text-sm font-semibold text-text">最新评测</h2>
       <span class="size-1.5 rounded-full" :class="events.state.value === 'connected' ? 'bg-signal' : 'bg-text-muted'"
         :title="events.state.value === 'connected' ? '实时更新' : '定时刷新'" />
-      <StatsToggle :today-stats="activity?.data.today ?? null" :total-stats="activity?.data.total ?? null" />
+      <HomeStatsToggle :today-stats="activity?.data.today ?? null" :total-stats="activity?.data.total ?? null" />
     </div>
     <div class="flex-1 p-3">
       <AsyncContent

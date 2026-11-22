@@ -108,10 +108,10 @@ async function view(component: Component = LlmProviderPage) {
   const result = mount(wrapper, {
     global: {
       stubs: {
-        DomainSettingsShell: { template: '<div><slot /></div>' },
+        WorkspaceSettingsShell: { template: '<div><slot /></div>' },
         AdminPageHeader: { props: ['title'], template: '<header><h2>{{ title }}</h2><slot name="actions" /></header>' },
         UCard: { template: '<section><slot /></section>' },
-        DomainLlmAliases: true,
+        AdminLlmAliases: true,
         UAlert: { props: ['title', 'description'], template: '<p>{{ title }} {{ description }}</p>' },
         UButton: { template: '<button><slot /></button>' },
         UInput: input,

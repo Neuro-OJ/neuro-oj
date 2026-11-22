@@ -120,7 +120,7 @@ onUnmounted(() => {
         <span class="tabular-nums font-mono text-text-secondary text-[11px]">· {{ todayTimeStr }}</span>
       </ClientOnly>
     </div>
-    <CheckInCard
+    <CheckinCard
       :is-logged-in="isLoggedIn"
       :username="user?.username ?? ''"
       :checked-in="checkedIn"
