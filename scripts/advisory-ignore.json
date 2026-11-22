@@ -1,0 +1,138 @@
+{
+  "_comment": "依赖公告忽略清单（scripts/check-dependency-audit.ts 消费）。每条必须写可达性结论、范围（runtime/build）与复核期限；过期条目自动失效并重新阻断。原则见 2026-11-02 rc/v0.11 审计 F7：包级告警不等于可利用漏洞，但必须有书面判断。",
+  "advisories": [
+    {
+      "advisory": "GHSA-cg2g-xh64-v4q7",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "SAFE_FOR_TEMPLATES 与 DOM 返回模式（RETURN_DOM/IN_PLACE）下的 shadow root 内容才成立；本项目只用 string 输出、未启用 SAFE_FOR_TEMPLATES。上游 3.4.17 为当前最新版，暂无修复版本；客户端净化的真实验收在 noj-ui/scripts/verify-bff-ssr.mjs 的 Chromium 用例。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "GHSA-p98j-92pf-mc4p",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "SAFE_FOR_TEMPLATES + DOM 返回模式 + attached shadow root 才成立；本项目只用 string 输出（DOMPurify.sanitize(raw, config) 返回字符串），未启用 SAFE_FOR_TEMPLATES，也没有 shadow root 内容。上游 3.4.17 为当前最新版，无修复版本可升。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "GHSA-mrv2-3pqr-j5jr",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "IN_PLACE 模式（RETURN_DOM/IN_PLACE）下移除父/兄弟节点的钩子残留；本项目一律 string 模式且不使用 IN_PLACE。上游当前无修复版本。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "GHSA-p98j-92pf-mc4p",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "同 GHSA-p98j-92pf-mc4p 家族的低危条目（IN_PLACE 移除节点后事件处理器残留）；string 模式下不适用。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "GHSA-c6gr-qvv4-5v3f",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "PARSER_MEDIA_TYPE=application/xhtml+xml 才影响 SMIL attributeName=href 防护；本项目使用默认 HTML 解析模式。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "GHSA-gcqx-w48m-w2h4",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "IN_PLACE 返回 force-removed rawtext 根的后续重解析场景；本项目 string 模式输出后不再二次解析。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "GHSA-6688-9rhm-gjv2",
+      "package": "dompurify",
+      "scope": "runtime",
+      "reason": "IN_PLACE + hook 删除父/兄弟节点的残留；本项目 hook 只改写 img 属性/替换节点，且为 string 模式。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "vitest",
+      "scope": "build",
+      "reason": "测试运行器只在本机/CI 执行，不进入 UI 分发产物（dist/noj-ui 与容器镜像只含编译后的 Nitro 输出）。升级到 vitest 4/5 会连带替换 vite 5→8 与 happy-dom，属于独立的工具链升级，已登记为后续工作。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "happy-dom",
+      "scope": "build",
+      "reason": "仅组件测试的 DOM 模拟环境，不进入分发产物。注意 happy-dom 对 DOMPurify 的解析行为与真实浏览器不同，客户端净化验收已改在真实 Chromium（noj-ui/scripts/verify-bff-ssr.mjs）执行。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "vite",
+      "scope": "build",
+      "reason": "构建期打包器（由 vitest/nuxt 引入），不随产物分发；升级需与 vitest 大版本一起做。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "tinypool",
+      "scope": "build",
+      "reason": "vitest 的 worker 池实现，仅在测试进程内使用。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "@vitest/mocker",
+      "scope": "build",
+      "reason": "vitest 的模块 mock 实现，仅测试期使用。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "esbuild",
+      "scope": "build",
+      "reason": "构建期打包/压缩工具；开发服务器相关的告警不影响构建产物运行。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "glob",
+      "scope": "build",
+      "reason": "构建/测试期文件匹配依赖，不接受外部输入。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "minimatch",
+      "scope": "build",
+      "reason": "构建/测试期 glob 匹配依赖，不接受外部输入。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "postcss-selector-parser",
+      "scope": "build",
+      "reason": "构建期 CSS 处理依赖；样式来源是仓库内源码，不接受用户输入。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "deepmerge",
+      "scope": "build",
+      "reason": "构建期配置合并依赖，不进入运行时。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "shell-quote",
+      "scope": "build",
+      "reason": "构建期 shell 参数拼接（打包工具链内部使用），不接受用户输入。",
+      "review_by": "2027-02-01"
+    },
+    {
+      "advisory": "*",
+      "package": "brace-expansion",
+      "scope": "build",
+      "reason": "构建/测试期 glob 依赖的可选依赖，不接受用户输入。",
+      "review_by": "2027-02-01"
+    }
+  ]
+}

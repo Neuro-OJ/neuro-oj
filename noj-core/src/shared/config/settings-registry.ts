@@ -22,11 +22,12 @@
  * - cors: 跨域
  * - storage: 对象存储（bootstrap 启动期配置）
  * - judge: 评测资源限制
- * - review: 内容合规审核（issue #413）
+ * - knowledge: 知识图谱
  * - other: 其他
  */
 
 import { BOOTSTRAP_CONFIG_DEFINITIONS } from "./settings-registry-bootstrap.ts";
+import { WORKSPACE_CONFIG_DEFINITIONS } from "./settings-registry-workspace.ts";
 
 export type SettingType = "boolean" | "string" | "text" | "integer";
 
@@ -43,9 +44,9 @@ export type SettingCategory =
   | "cors"
   | "community"
   | "judge"
-  | "review"
   | "llm"
   | "legal"
+  | "knowledge"
   | "other";
 
 /** 配置项元数据（统一注册表条目） */
@@ -71,10 +72,19 @@ export interface SettingDefinition {
   needsRestart?: boolean;
   /** 是否在管理后台展示（false=仅参与校验/登记，如开发测试专用键） */
   visible?: boolean;
+  /** 字符串设置的合法选项；避免拼写错误导致访问政策失效。 */
+  choices?: readonly string[];
+  /** 结构化文本的格式约束，在写入设置时校验。 */
+  valueSchema?:
+    | "domain_limits"
+    | "domain_features"
+    | "domain_llm_quota_caps"
+    | "knowledge_offpeak_window";
 }
 
 /** 统一配置注册表：全部配置项（runtime + bootstrap）的元数据定义 */
 export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
+  ...WORKSPACE_CONFIG_DEFINITIONS,
   // 数据说明只公开以下专用字段，运营者补充真实部署信息。
   // ── runtime（DB-owned，运行时可热改）───────────────────────
   // bootstrap 半区见 ./settings-registry-bootstrap.ts（下方展开处拼接）。
@@ -191,37 +201,6 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envFallback: "DATA_POLICY_DEPLOYMENT",
     category: "legal",
     visible: false,
-  },
-  {
-    key: "tsa_provider",
-    type: "string",
-    default: "disabled",
-    description:
-      "政策版本时间戳 Provider：disabled | freetsa | digicert | custom（仅技术验证用免费 Provider）",
-    is_secret: false,
-    scope: "runtime",
-    envFallback: "TSA_PROVIDER",
-    category: "legal",
-  },
-  {
-    key: "tsa_url",
-    type: "string",
-    default: "",
-    description: "自定义 TSA 端点（tsa_provider=custom 时填写）",
-    is_secret: false,
-    scope: "runtime",
-    envFallback: "TSA_URL",
-    category: "legal",
-  },
-  {
-    key: "tsa_root_cert",
-    type: "text",
-    default: "",
-    description: "TSA 根证书（PEM，custom 时用于验证时间戳签发者链）",
-    is_secret: true,
-    scope: "runtime",
-    envFallback: "TSA_ROOT_CERT",
-    category: "legal",
   },
   // ── auth ──────────────────────────────────────────────────
   {
@@ -682,62 +661,12 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     scope: "runtime",
   },
   {
-    key: "community_moments_enabled",
-    type: "boolean",
-    default: true,
-    description: "是否启用用户短动态",
-    is_secret: false,
-    envFallback: "COMMUNITY_MOMENTS_ENABLED",
-    category: "community",
-    scope: "runtime",
-  },
-  {
     key: "community_comments_enabled",
     type: "boolean",
     default: true,
     description: "是否启用评论",
     is_secret: false,
     envFallback: "COMMUNITY_COMMENTS_ENABLED",
-    category: "community",
-    scope: "runtime",
-  },
-  {
-    key: "community_reactions_enabled",
-    type: "boolean",
-    default: true,
-    description: "是否启用点赞",
-    is_secret: false,
-    envFallback: "COMMUNITY_REACTIONS_ENABLED",
-    category: "community",
-    scope: "runtime",
-  },
-  {
-    key: "community_bookmarks_enabled",
-    type: "boolean",
-    default: true,
-    description: "是否启用收藏",
-    is_secret: false,
-    envFallback: "COMMUNITY_BOOKMARKS_ENABLED",
-    category: "community",
-    scope: "runtime",
-  },
-  {
-    key: "community_follows_enabled",
-    type: "boolean",
-    default: true,
-    description: "是否启用用户关注",
-    is_secret: false,
-    envFallback: "COMMUNITY_FOLLOWS_ENABLED",
-    category: "community",
-    scope: "runtime",
-  },
-  {
-    key: "private_messaging_enabled",
-    type: "boolean",
-    default: true,
-    description: "是否启用站内私信",
-    is_secret: false,
-    envFallback: "PRIVATE_MESSAGING_ENABLED",
     category: "community",
     scope: "runtime",
   },
@@ -783,18 +712,6 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     category: "community",
     min: 100,
     max: 100000,
-    scope: "runtime",
-  },
-  {
-    key: "community_moment_max_length",
-    type: "integer",
-    default: 1000,
-    description: "短动态最大字符数",
-    is_secret: false,
-    envFallback: "COMMUNITY_MOMENT_MAX_LENGTH",
-    category: "community",
-    min: 20,
-    max: 10000,
     scope: "runtime",
   },
   {
@@ -931,92 +848,111 @@ export const CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     scope: "runtime",
   },
 
-  // ── review（内容合规审核，issue #413）───────────────────────
+  // ── knowledge（知识图谱，2026-11-12）───────────────────────
+  // 只读图接口每次请求经 getSetting() 读取开关；配置变更由既有设置失效通道
+  // 广播各副本重载，无需额外适配。
   {
-    key: "content_review_enabled",
-    type: "boolean",
-    default: false,
-    description: "内容合规审核总开关（启用后 UGC 同步审核 + 私信异步送审）",
-    is_secret: false,
-    envFallback: "CONTENT_REVIEW_ENABLED",
-    category: "review",
-    scope: "runtime",
-  },
-  {
-    key: "content_review_provider",
-    type: "string",
-    default: "mock",
-    description: "审核 Provider（mock / aliyun / tencent / none）",
-    is_secret: false,
-    envFallback: "CONTENT_REVIEW_PROVIDER",
-    category: "review",
-    scope: "runtime",
-  },
-  {
-    key: "content_review_provider_key",
-    type: "string",
-    default: "",
-    description:
-      "审核 Provider AccessKey/SecretId（已脱敏：仅保留前 3 后 3 字符）",
-    is_secret: true,
-    envFallback: "CONTENT_REVIEW_PROVIDER_KEY",
-    category: "review",
-    scope: "runtime",
-  },
-  {
-    key: "content_review_provider_secret",
-    type: "string",
-    default: "",
-    description: "审核 Provider SecretKey（已脱敏：仅保留前 3 后 3 字符）",
-    is_secret: true,
-    envFallback: "CONTENT_REVIEW_PROVIDER_SECRET",
-    category: "review",
-    scope: "runtime",
-  },
-  {
-    key: "content_review_risk_threshold",
-    type: "integer",
-    default: 80,
-    description: "高置信违规拦截阈值（0-100，≥ 此值拒绝发布）",
-    is_secret: false,
-    envFallback: "CONTENT_REVIEW_RISK_THRESHOLD",
-    category: "review",
-    min: 0,
-    max: 100,
-    scope: "runtime",
-  },
-  {
-    key: "content_review_review_threshold",
-    type: "integer",
-    default: 50,
-    description: "低置信疑似阈值（0-100，≥ 此值转人工审查队列）",
-    is_secret: false,
-    envFallback: "CONTENT_REVIEW_REVIEW_THRESHOLD",
-    category: "review",
-    min: 0,
-    max: 100,
-    scope: "runtime",
-  },
-  {
-    key: "content_review_async_enabled",
+    key: "knowledge_enabled",
     type: "boolean",
     default: true,
-    description: "私信异步审核队列开关（关闭后私信不再送审）",
+    description:
+      "知识图谱总开关（关闭后 /api/v1/knowledge/* 只读接口返回 404 KNOWLEDGE_DISABLED）",
     is_secret: false,
-    envFallback: "CONTENT_REVIEW_ASYNC_ENABLED",
-    category: "review",
+    envFallback: "KNOWLEDGE_ENABLED",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  // AI 打标（P1，`features/knowledge/tagging.ts` 读取）；默认关闭，须实例管理员
+  // 显式开启并在网关配置别名 `platform.tagger`。以下三项只登记打标实际读取的键。
+  {
+    key: "knowledge_ai_tagging_enabled",
+    type: "boolean",
+    default: false,
+    description:
+      "知识图谱 AI 打标开关（关闭时不调用模型，题目只能人工挂载知识点）",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_TAGGING_ENABLED",
+    category: "knowledge",
     scope: "runtime",
   },
   {
-    key: "content_review_timeout_ms",
+    key: "knowledge_auto_accept_threshold",
     type: "integer",
-    default: 3000,
-    description: "审核调用超时（毫秒，超时按 fail-open 转人工）",
+    default: 75,
+    description:
+      "AI 打标置信度自动生效阈值（0–100）：不低于此值的挂载直接生效（auto），否则进入人工审核（pending）",
     is_secret: false,
-    envFallback: "CONTENT_REVIEW_TIMEOUT_MS",
-    category: "review",
-    min: 100,
-    max: 30000,
+    envFallback: "KNOWLEDGE_AUTO_ACCEPT_THRESHOLD",
+    category: "knowledge",
+    min: 0,
+    max: 100,
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_ai_monthly_token_budget",
+    type: "integer",
+    default: 2000000,
+    description:
+      "AI 打标每月 token 预算（输入+输出 token 合计，按自然月）：用量达到预算后打标任务暂停到下个自然月；0 表示暂停所有调用",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_MONTHLY_TOKEN_BUDGET",
+    category: "knowledge",
+    min: 0,
+    scope: "runtime",
+  },
+  // 低峰时段（任务 E）：AI 打标不要求实时完成，默认只在北京时间低峰时段调用
+  // 模型以降低成本（`features/knowledge/offpeak.ts` 读取）。
+  {
+    key: "knowledge_ai_offpeak_only",
+    type: "boolean",
+    default: true,
+    description:
+      "AI 打标仅在低峰时段调用模型（北京时间每日时段，见 knowledge_ai_offpeak_window）；关闭后任何时刻都可调用",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_OFFPEAK_ONLY",
+    category: "knowledge",
+    scope: "runtime",
+  },
+  {
+    key: "knowledge_ai_offpeak_window",
+    type: "string",
+    default: "00:30-08:30",
+    description:
+      "AI 打标低峰时段（北京时间 Asia/Shanghai，UTC+8），格式 HH:MM-HH:MM，允许跨零点（如 22:00-06:00）；开始时刻算在内、结束时刻不算在内",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_AI_OFFPEAK_WINDOW",
+    category: "knowledge",
+    valueSchema: "knowledge_offpeak_window",
+    scope: "runtime",
+  },
+  // 及格线、掌握题数等配置随使用它们的阶段（P2–P3）登记；只登记不消费的
+  // runtime 键会被 check-config-usage 判为死键。
+  // 达标判定（P2，`features/knowledge/difficulty.ts` 读取）：非客观题默认及格线。
+  {
+    key: "knowledge_pass_ratio",
+    type: "integer",
+    default: 60,
+    description:
+      "知识图谱「达标」默认及格线（百分数 0–100）：非客观题有效得分不低于满分的此比例即达标；客观题套卷恒为满分达标，出题人可按题覆盖",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_PASS_RATIO",
+    category: "knowledge",
+    min: 0,
+    max: 100,
+    scope: "runtime",
+  },
+  // 掌握度（P3，`features/knowledge/mastery.ts` 读取）：「已掌握」所需达标题数。
+  {
+    key: "knowledge_mastery_min_solved",
+    type: "integer",
+    default: 3,
+    description:
+      "知识点「已掌握」所需达标题数（节点题量少于该值时视为全部达标即掌握）；同时用于覆盖度面板的「题量不足」判定",
+    is_secret: false,
+    envFallback: "KNOWLEDGE_MASTERY_MIN_SOLVED",
+    category: "knowledge",
+    min: 1,
+    max: 20,
     scope: "runtime",
   },
 

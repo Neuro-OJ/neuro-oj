@@ -1,10 +1,15 @@
 import { assert } from "jsr:@std/assert@^1";
-import { reindexAll, searchFlat } from "../../src/domains/search/index.ts";
-import { getDb, resetDbForTest } from "./../../src/shared/db/connection.ts";
+import {
+  reindexAll,
+  searchFlat,
+} from "../../src/modules/read-models/search/index.ts";
+import { getDb } from "./../../src/shared/db/connection.ts";
+import { resetDbForTest } from "../helpers/db.ts";
 import { problems, users } from "./../../src/shared/db/schema.ts";
 import { sql } from "drizzle-orm";
 import { parsePagination } from "../../src/shared/http/pagination.ts";
 import type { Context } from "hono";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
 
 function makeCtx(
   query: Record<string, string | undefined>,
@@ -52,12 +57,13 @@ Deno.test({
     };
 
     try {
-      // Seed 100k problems（分批插入，避免 PGlite OOM）
+      // Seed 100k problems（分批插入，避免 测试数据库 OOM）
       const BATCH = 1000;
       const now = new Date().toISOString();
       for (let i = 0; i < 100; i++) {
         const batch = Array.from({ length: BATCH }, (_, j) => ({
           id: `perf-p-${i}-${j}`,
+          domain_id: DEFAULT_DOMAIN_ID,
           title: j === 0
             ? `题目 ${i * BATCH + j}：perfuniquekeyword`
             : `题目 ${i * BATCH + j}：常规数据`,
@@ -78,7 +84,7 @@ Deno.test({
             },
           },
           number: i * BATCH + j + 1,
-          type: "P" as const,
+          visibility: "public",
           created_at: now,
           updated_at: now,
         }));
@@ -105,6 +111,12 @@ Deno.test({
         SELECT 'v-' || id, id, 1, '{}'::jsonb, ${now} FROM problems
       `);
       await db.execute(sql`UPDATE problems SET latest_version_id = 'v-' || id`);
+      await db.execute(sql`
+        INSERT INTO domain_problem_bindings
+          (id, domain_id, problem_id, visibility, created_by, created_at, updated_at)
+        SELECT 'binding-' || id, domain_id, id, 'public', '0', ${now}, ${now}
+        FROM problems
+      `);
 
       // 将源数据同步到统一搜索索引表，确保基准测量的是 search_entries 新路径
       await reindexAll();

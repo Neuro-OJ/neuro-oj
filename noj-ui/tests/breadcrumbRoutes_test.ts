@@ -33,7 +33,11 @@ const EXCLUDED_PREFIXES = [
 const EXCLUDED_EXACT = ['index.vue'];
 
 /** 独立全屏布局（`layout: false`），不经过 default 布局，无面包屑。 */
-const LAYOUTLESS = ['editor/[id].vue'];
+const LAYOUTLESS: string[] = [
+  // 未匹配路径的兜底页：旧入口由全局中间件重定向，其余 404。
+  '[...legacy].vue',
+  'my/submissions/[kind]/[submissionId].vue',
+];
 
 async function collectPageRoutes(dir: URL, prefix = ''): Promise<string[]> {
   const routes: string[] = [];

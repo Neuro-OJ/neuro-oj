@@ -8,8 +8,8 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from "../../src/shared/base/errors.ts";
-import { LlmGatewayError } from "../../src/domains/gateway/services/llm.ts";
-import { mapLlmError } from "../../src/domains/admin/routes/gateway.ts";
+import { LlmGatewayError } from "../../src/modules/platform/gateway/services/llm.ts";
+import { mapLlmError } from "../../src/modules/http/admin/routes/gateway.ts";
 
 Deno.test("admin-llm: gateway 404 映射为 NotFoundError", () => {
   const error = assertThrows(() =>

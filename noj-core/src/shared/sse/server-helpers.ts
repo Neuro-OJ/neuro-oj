@@ -6,6 +6,17 @@
 import { onEvent } from "./event-bus.ts";
 import { replaySseEvents } from "./sse-events.ts";
 
+/**
+ * SSE 流上下文中的异步工作作用域。
+ *
+ * runtime 会把它实现到 {@link SseStreamContext} 上：关闭前已开始的工作会被
+ * 追踪并在流 done 前等待；关闭后不再开始新工作；失败会关闭流并被观察。
+ * 这里单独声明窄接口，避免路由依赖 runtime 的实现细节。
+ */
+export interface SseRunContext {
+  run(operation: () => Promise<void> | void): Promise<void>;
+}
+
 /** 从 Last-Event-ID 头或 afterSeq 查询参数解析游标。 */
 export function lastEventId(
   c: {
@@ -30,6 +41,7 @@ export function lastEventId(
  * @param closed 是否已关闭（返回 true 时停止转发）
  * @param close 关闭流函数
  * @param onMessage 可选的消息转换；返回 null 表示丢弃该消息
+ * @param run 可选的流级异步工作作用域；提供时整段转换与写入都在其内执行
  */
 export function subscribeToChannel(
   onUnsubscribe: (fn: () => void) => void,
@@ -40,16 +52,29 @@ export function subscribeToChannel(
   closed: () => boolean,
   close: () => void,
   onMessage?: (message: string) => string | null | Promise<string | null>,
+  run?: SseRunContext["run"],
 ): void {
   onUnsubscribe(
     onEvent(channel, (_channel, message) => {
       if (closed()) return;
-      const data = onMessage ? onMessage(message) : message;
-      if (data === null) return;
-      Promise.resolve(data).then((d) => {
-        if (d === null || closed()) return;
-        stream.writeSSE({ event, data: d }).catch(() => close());
-      });
+      const deliver = async (): Promise<void> => {
+        // onMessage 内的权限查询/DB 读取与 writeSSE 同属一次异步工作：
+        // 由 run 追踪，拒绝也会被 run（或旧路径的 catch）观察到并关闭流。
+        const data = onMessage ? await onMessage(message) : message;
+        if (data === null || closed()) return;
+        await stream.writeSSE({ event, data });
+      };
+      if (run) {
+        try {
+          // runtime 的 run 正常情况下会自行关流并观察失败；此 catch 只兜住
+          // run 自身意外拒绝，避免 unhandled rejection。
+          void run(deliver).catch(() => close());
+        } catch {
+          close();
+        }
+      } else {
+        void deliver().catch(() => close());
+      }
     }),
   );
 }

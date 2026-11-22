@@ -6,7 +6,7 @@ import { useToast } from '~/composables/useToast'
 import type { CommunityConfig, PostRow, ReportRow } from "~/composables/useCommunity"
 import { extractApiError } from '~/utils/apiError'
 
-definePageMeta({ layout: "admin", middleware: "community-moderation", ssr: false })
+definePageMeta({ layout: "admin", middleware: "community-moderation", })
 
 const { toast } = useToast()
 const { dialog } = useDialog()
@@ -29,12 +29,7 @@ const COMMUNITY_PRESETS: Record<CommunityPresetName, { label: string; values: Re
       community_read_only: false,
       community_solutions_enabled: true,
       community_discussions_enabled: true,
-      community_moments_enabled: true,
       community_comments_enabled: true,
-      community_reactions_enabled: true,
-      community_bookmarks_enabled: true,
-      community_follows_enabled: true,
-      private_messaging_enabled: true,
       community_external_images_enabled: true,
     },
   },
@@ -46,12 +41,7 @@ const COMMUNITY_PRESETS: Record<CommunityPresetName, { label: string; values: Re
       community_read_only: false,
       community_solutions_enabled: true,
       community_discussions_enabled: true,
-      community_moments_enabled: true,
       community_comments_enabled: true,
-      community_reactions_enabled: true,
-      community_bookmarks_enabled: true,
-      community_follows_enabled: true,
-      private_messaging_enabled: true,
       community_external_images_enabled: false,
     },
   },
@@ -63,12 +53,7 @@ const COMMUNITY_PRESETS: Record<CommunityPresetName, { label: string; values: Re
       community_read_only: true,
       community_solutions_enabled: true,
       community_discussions_enabled: true,
-      community_moments_enabled: false,
       community_comments_enabled: false,
-      community_reactions_enabled: false,
-      community_bookmarks_enabled: false,
-      community_follows_enabled: false,
-      private_messaging_enabled: false,
       community_external_images_enabled: false,
     },
   },
@@ -123,12 +108,7 @@ const BOOLEAN_SETTINGS: Array<{ configKey: string; settingKey: string; label: st
   { configKey: "read_only", settingKey: "community_read_only", label: "只读模式", hint: "开启后普通用户不可发布内容" },
   { configKey: "solutions_enabled", settingKey: "community_solutions_enabled", label: "题解模块" },
   { configKey: "discussions_enabled", settingKey: "community_discussions_enabled", label: "讨论模块" },
-  { configKey: "moments_enabled", settingKey: "community_moments_enabled", label: "动态模块" },
   { configKey: "comments_enabled", settingKey: "community_comments_enabled", label: "评论" },
-  { configKey: "reactions_enabled", settingKey: "community_reactions_enabled", label: "点赞" },
-  { configKey: "bookmarks_enabled", settingKey: "community_bookmarks_enabled", label: "收藏" },
-  { configKey: "follows_enabled", settingKey: "community_follows_enabled", label: "关注" },
-  { configKey: "private_messaging_enabled", settingKey: "private_messaging_enabled", label: "站内私信" },
   { configKey: "external_images_enabled", settingKey: "community_external_images_enabled", label: "外链图片" },
   { configKey: "solution_requires_accepted", settingKey: "community_solution_requires_accepted", label: "题解通过门槛", hint: "题解发布前必须已通过（finished 且 score>0）" },
 ]
@@ -136,7 +116,6 @@ const BOOLEAN_SETTINGS: Array<{ configKey: string; settingKey: string; label: st
 const NUMBER_SETTINGS: Array<{ configKey: string; settingKey: string; label: string; suffix: string }> = [
   { configKey: "new_user_review_hours", settingKey: "community_new_user_review_hours", label: "新用户预审窗口", suffix: "小时" },
   { configKey: "post_max_length", settingKey: "community_post_max_length", label: "帖子最大长度", suffix: "字符" },
-  { configKey: "moment_max_length", settingKey: "community_moment_max_length", label: "动态最大长度", suffix: "字符" },
   { configKey: "comment_max_length", settingKey: "community_comment_max_length", label: "评论最大长度", suffix: "字符" },
   { configKey: "post_interval_seconds", settingKey: "community_post_interval_seconds", label: "发布频率限制", suffix: "秒" },
 ]

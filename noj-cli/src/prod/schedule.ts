@@ -1,17 +1,12 @@
 /**
- * 备份定期调度的原生迁移（T20）：crontab 标记区块管理。
- *
- * 迁移 `scripts/deploy/backup-schedule.sh` 全 162 行（`validate_schedule()`:51-55、
- * `validate_install()`:57-72、`read_crontab()`:74-76、`remove_block()`:78-84、
- * `write_crontab()`:86-89、`install_schedule()`:91-108、`status_schedule()`:110-123、
- * `remove_schedule()`:125-136）。
+ * 备份定期调度：crontab 标记区块管理（install / status / remove）。
  *
  * ## 这个模块的**全部**价值：只动自己的行
  *
  * crontab 是**宿主机共享资源**——用户机器上通常已有其他任务（其他运维脚本、
  * 个人定时任务）。因此本模块的核心不是"写入一条 cron"，而是**绝不碰区块外的
- * 任何字节**：保留它们的顺序、内容、甚至行尾空白。原 bash `test-backup-schedule.sh` 的
- * 四条断言（保留 `# unrelated host task`、区块不重复、更新后旧调度消失、
+ * 任何字节**：保留它们的顺序、内容、甚至行尾空白。`schedule_test.ts` 的
+ * 核心断言（保留 `# unrelated host task`、区块不重复、更新后旧调度消失、
  * 删除不误删他人任务）都是这一点的不同侧面。
  *
  * 实现方式：解析与合并是**纯函数**（{@link removeManagedBlock} /
@@ -24,15 +19,13 @@
  * 写入的 crontab 行形如：
  *
  * ```text
- * 15 2 * * * /path/to/backup.sh create --env-file '...' >> '.../backup-cron.log' 2>&1
+ * 15 2 * * * /opt/noj/bin/noj-cli backup create --env-file '...' >> '.../backup-cron.log' 2>&1
  * ```
  *
  * 两个注入面：
- * 1. **cron 表达式**——它被拼进行首，故必须在**写入前**拒绝 shell 元字符
- *    （bash `:52-54` 的白名单正则）。`15 2 * * *; touch /tmp/unsafe` 是
- *    原 `test-backup-schedule.sh:88-95` 的既有用例（该脚本已随 T24 删除，
- *    对应断言现由本模块的 `schedule_test.ts` 继承）。
- * 2. **路径**——bash 用 `printf '%q'` 引用；TS 侧必须自建等价的**保守引用器**。
+ * 1. **cron 表达式**——它被拼进行首，故必须在**写入前**按白名单拒绝 shell 元字符
+ *    （如 `15 2 * * *; touch /tmp/unsafe`）。
+ * 2. **路径**——必须经**保守引用器**引用。
  *    这不是洁癖：安装目录含空格（`/opt/my noj`）时，未引用的一行会被 cron 拆成
  *    多个字段，静默变成另一条命令；而路径来自用户参数，属于可达的输入面。
  *
@@ -41,38 +34,35 @@
 
 import { isAbsolute, join } from "@std/path";
 import type { CommandRunner } from "../runtime/command.ts";
-import {
-  checkPassphraseFile,
-  DrillPreflightError,
-  isFile,
-} from "./drill/plan.ts";
+import { checkPassphraseFile, DrillPreflightError } from "./drill/plan.ts";
 import { UsageError } from "../util/args.ts";
+import { isFile } from "../util/fs.ts";
 
 /**
- * 区块起始标记（bash `:18` **逐字**，含 `(managed)`）。
+ * 区块起始标记（含 `(managed)`）。
  *
- * 逐字保持是必要的：宿主机上可能已有旧版 bash 脚本写入的区块，标记一旦不同，
+ * 不得改动：宿主机上可能已有旧版本写入的区块，标记一旦不同，
  * 本实现就认不出它，于是"更新"会变成"追加第二个区块"——正是要避免的重复。
  */
 export const MARKER_BEGIN = "# BEGIN NEURO-OJ BACKUP (managed)";
 
-/** 区块结束标记（bash `:19` 逐字）。 */
+/** 区块结束标记。 */
 export const MARKER_END = "# END NEURO-OJ BACKUP (managed)";
 
-/** 默认调度（bash `:14`：每日 02:15）。 */
+/** 默认调度：每日 02:15。 */
 export const DEFAULT_SCHEDULE = "15 2 * * *";
 
-/** 备份日志文件名（bash `:100`）。 */
+/** 备份日志文件名。 */
 export const CRON_LOG_NAME = "backup-cron.log";
 
-/** 备份目录权限（bash `:69` 的 `mkdir -m 700`）。 */
+/** 备份目录权限。 */
 export const BACKUP_DIR_MODE = 0o700;
 
-/** 备份日志权限（bash `:71`）。日志可能含内部路径，不应全局可读。 */
+/** 备份日志权限。日志可能含内部路径，不应全局可读。 */
 export const CRON_LOG_MODE = 0o600;
 
 /**
- * cron 表达式每段的字符白名单（bash `:53`：数字、`*`、`/`、`?`、`,`、`-`）。
+ * cron 表达式每段的字符白名单（数字、`*`、`/`、`?`、`,`、`-`）。
  *
  * 刻意**不含** `%`（cron 里表示换行）、空格、以及任何 shell 元字符
  * （`;` `|` `&` `$` `` ` `` `>` `<` `(` `)` `{` `}` `\\` `"` `'`）。
@@ -84,16 +74,16 @@ const CRON_FIELD_RE = /^[0-9*/?,-]+$/;
 const CRON_FIELD_COUNT = 5;
 
 /**
- * 校验五段 cron 表达式（bash `validate_schedule()`:51-55）。
+ * 校验五段 cron 表达式。
  *
  * 拒绝任何含 shell 元字符的输入——表达式会被拼进 crontab 行。
- * 抛 {@link UsageError}（退出码 2 = 用法错误，与 bash 的 `die` 一致）。
+ * 抛 {@link UsageError}（退出码 2 = 用法错误）。
  */
 export function assertSchedule(expr: string): void {
   const fields = expr.trim().split(/\s+/);
   // **顺序重要**：先查元字符，再查段数。反过来的话
   // `15 2 * * *; touch /tmp/unsafe` 会因为分号后多出一个词而报"段数不对"，
-  // 把"这是注入尝试"这一关键信息掩盖成"格式没写对"——评审与运维都会看错方向。
+  // 把"这是注入尝试"这一关键信息掩盖成"格式没写对"——运维会看错方向。
   for (const field of fields) {
     if (!CRON_FIELD_RE.test(field)) {
       throw new UsageError(
@@ -109,7 +99,7 @@ export function assertSchedule(expr: string): void {
 }
 
 /**
- * 保守的 shell 引用器（bash `printf '%q'` 的等价）。
+ * 保守的 shell 引用器。
  *
  * 安全字符集之外的路径一律用单引号包裹，内部单引号按 POSIX 惯用法写成 `'\''`。
  * 结果在 `sh` 下解析回来一定等于原串——含空格、`$`、`;`、引号、换行都成立。
@@ -125,15 +115,14 @@ export function quoteForCron(value: string): string {
 }
 
 /**
- * 移除本工具管理的区块（bash `remove_block()`:78-84 的等价）。
+ * 移除本工具管理的区块：
  *
- * 语义逐条对齐 bash 的 `awk`：
  * - 命中 `BEGIN` 行 → 进入跳过态，该行**本身也丢弃**；
  * - 命中 `END` 行 → 退出跳过态，该行**同样丢弃**；
  * - 其余行原样保留（含空行与空白）。
  *
- * **没有 END 的退化情形**（被人手工删了结束标记）：bash 的 `awk` 会一直跳到文件
- * 末尾，即"删除从 BEGIN 到结尾的一切"。本实现**保持同一行为**——因为另一种
+ * **没有 END 的退化情形**（被人手工删了结束标记）：一直跳到文件末尾，即
+ * "删除从 BEGIN 到结尾的一切"——因为另一种
  * 选择（只删 BEGIN 行、保留后续）会把本工具的命令行**留在 crontab 里**却少了
  * 标记，下次 install 就再也认不出它，从而产生无法清理的重复任务。
  */
@@ -158,10 +147,9 @@ export function removeManagedBlock(crontab: string): string {
 }
 
 /**
- * 抽取本工具管理的区块（bash `status_schedule()`:112-116 的等价）。
+ * 抽取本工具管理的区块。
  *
- * 返回 `null` 表示未安装。含**两端标记**（与 bash 的 `awk` 一样把标记一并打印，
- * 便于用户直接肉眼确认区块边界）。
+ * 返回 `null` 表示未安装。含**两端标记**（便于用户直接肉眼确认区块边界）。
  */
 export function extractManagedBlock(crontab: string): string | null {
   const lines: string[] = [];
@@ -181,13 +169,12 @@ export function extractManagedBlock(crontab: string): string | null {
 }
 
 /**
- * 用新区块替换旧区块（bash `install_schedule()`:94-105 的等价）。
+ * 用新区块替换旧区块。
  *
  * 幂等性来自"先删后加"：无论原 crontab 里有没有本工具的区块、有几个（异常情形），
  * 结果都恰好**一个**区块，且位于**末尾**。
  *
- * 末尾位置与 bash 一致（`updated="$current"; updated+=$'\n'"$entry"`），也因此
- * 区块外的行保持原有相对顺序——测试对"他人任务逐字节不变"有断言。
+ * 新区块追加在末尾，因此区块外的行保持原有相对顺序——测试对"他人任务逐字节不变"有断言。
  */
 export function upsertManagedBlock(crontab: string, entry: string): string {
   const without = removeManagedBlock(crontab).replace(/\n+$/, "");
@@ -202,7 +189,7 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-/** 构造 crontab 里的那一行命令（bash `:101` 的等价）。 */
+/** 构造 crontab 里的那一行命令。 */
 export interface ScheduleEntryOptions {
   schedule: string;
   /** 备份脚本的绝对路径（调用方给；本函数只负责引用）。 */
@@ -214,11 +201,9 @@ export interface ScheduleEntryOptions {
 }
 
 /**
- * 渲染 crontab 条目（bash `:95-101` 的等价）。
- *
- * bash 把 `printf '%q'` 的输出放进 `$entry`，形如
+ * 渲染 crontab 条目，形如
  * `<schedule> <script> create --env-file <q> --compose-file <q> --backup-dir <q>
- * --passphrase-file <q> >> <log> 2>&1`。本函数逐字保持该结构（含 `>>` 与 `2>&1`
+ * --passphrase-file <q> >> <log> 2>&1`。保持该结构（含 `>>` 与 `2>&1`
  * 的写法与顺序），因为运维会按这个形状读 crontab。
  */
 export function renderScheduleEntry(opts: ScheduleEntryOptions): string {
@@ -226,8 +211,7 @@ export function renderScheduleEntry(opts: ScheduleEntryOptions): string {
   return [
     opts.schedule,
     quoteForCron(opts.backupScript),
-    // 入口是 noj-cli 自身，故子命令是 `backup create`（而非旧的裸 `create`——
-    // 那是 backup.sh 的参数契约）。
+    // 入口是 noj-cli 自身，故子命令是 `backup create`。
     "backup",
     "create",
     "--env-file",
@@ -252,7 +236,7 @@ export interface InstallScheduleOptions {
   crontabBin?: string;
   /** 安装目录（一切路径由它派生，保证是绝对路径）。 */
   installDir: string;
-  /** 备份脚本路径；缺省由 `installDir` 派生（`scripts/deploy/backup.sh`）。 */
+  /** 备份脚本路径；缺省 `<installDir>/bin/noj-cli`。 */
   backupScript?: string;
   /** 生产环境文件；缺省 `<dir>/.env.prod`。 */
   envFile?: string;
@@ -290,7 +274,7 @@ export interface ScheduleResult {
 }
 
 /**
- * 读 crontab（bash `read_crontab()`:74-76）。
+ * 读 crontab。
  *
  * `crontab -l` 在"用户没有 crontab"时返回非 0——那是**常态**（首次安装必然是
  * 这一情形），故不视为错误，返回空串。
@@ -309,7 +293,7 @@ export async function readCrontab(
   }
 }
 
-/** 写 crontab（bash `write_crontab()`:86-89）；失败抛错。 */
+/** 写 crontab；失败抛错。 */
 export async function writeCrontab(
   runner: CommandRunner,
   crontabBin: string,
@@ -352,9 +336,7 @@ function resolvePaths(opts: InstallScheduleOptions): ScheduleResult["paths"] {
   const dir = opts.installDir.replace(/\/+$/, "");
   const backupDir = opts.backupDir ?? join(dir, "backups");
   const paths = {
-    // **T24 关键修正**：cron 任务此前指向 `scripts/deploy/backup.sh`——那个脚本
-    // 已随 T24 删除。若不改，定时备份会在**无人察觉**的情况下失败（cron 的失败
-    // 只落在日志里）。现在指向本工具自身：`<dir>/bin/noj-cli backup create`。
+    // cron 任务指向本工具自身：`<dir>/bin/noj-cli backup create`。
     backupScript: opts.backupScript ?? join(dir, "bin/noj-cli"),
     envFile: opts.envFile ?? join(dir, ".env.prod"),
     composeFile: opts.composeFile ?? join(dir, "docker-compose.prod.yml"),
@@ -372,9 +354,9 @@ function resolvePaths(opts: InstallScheduleOptions): ScheduleResult["paths"] {
 }
 
 /**
- * `install`（bash `install_schedule()`:91-108）：校验 → 建目录/日志 → 写入区块。
+ * `install`：校验 → 建目录/日志 → 写入区块。
  *
- * 顺序与 bash 一致：**先校验全部前置**（口令权限、env/compose 存在、表达式合法、
+ * **先校验全部前置**（口令权限、env/compose 存在、表达式合法、
  * crontab 可用），再创建备份目录与日志（700/600），最后才写 crontab。
  * 因此"前置失败 ⇒ 零 crontab 写入"是可断言的性质。
  */
@@ -400,7 +382,7 @@ export async function installSchedule(
     if (!(await isFile(paths.composeFile))) {
       throw new UsageError(`生产 Compose 文件不存在：${paths.composeFile}`);
     }
-    // 备份脚本必须是**可执行普通文件**（bash `[[ -x ]]`）。它是 cron 直接调用的
+    // 备份脚本必须是**可执行普通文件**。它是 cron 直接调用的
     // 目标；不校验会让 cron 静默失败（输出只进日志）。
     if (!(await isExecutable(paths.backupScript))) {
       throw new UsageError(
@@ -473,7 +455,7 @@ export async function installSchedule(
   };
 }
 
-/** `status`（bash `status_schedule()`:110-123）。未安装时退出码 1。 */
+/** `status`：未安装时退出码 1。 */
 export async function statusSchedule(
   opts: {
     runner: CommandRunner;
@@ -508,10 +490,9 @@ export async function statusSchedule(
 }
 
 /**
- * `remove`（bash `remove_schedule()`:125-136）。
+ * `remove`。
  *
- * **无区块时成功返回且不写 crontab**：bash 在新旧内容相同时直接 `ok` 返回，
- * 避免一次无意义的写入（crontab 写入会触发 cron 重载，且在某些发行版上会
+ * **无区块时成功返回且不写 crontab**：避免一次无意义的写入（crontab 写入会触发 cron 重载，且在某些发行版上会
  * 改写文件、触发审计）。这条"没有变化就不写"是有意的。
  */
 export async function removeSchedule(

@@ -15,7 +15,7 @@ import type { SettingDefinition } from "./settings-registry.ts";
 
 /** bootstrap（env-owned）配置项元数据；顺序即对外暴露顺序。 */
 export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
-  // ══ bootstrap env-only 基础设施项（原 env-snapshot 白名单）══════
+  // ══ bootstrap env-only 基础设施项（启动期从 env 读取）══════
   // scope: bootstrap，envKey 即 env 事实源；后台只读展示（已设置才展示）。
   // ── database ───────────────────────────────────────────────
   {
@@ -171,6 +171,16 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "NOJ_LLM_SERVICE_TOKEN",
     category: "other",
   },
+  {
+    key: "NOJ_INTERNAL_SERVICE_TOKEN",
+    type: "string",
+    description:
+      "内部维护/排空 API 服务凭据；未设置时 drain 端点返回 503 drain_unavailable",
+    is_secret: true,
+    scope: "bootstrap",
+    envKey: "NOJ_INTERNAL_SERVICE_TOKEN",
+    category: "other",
+  },
   // ── 应用 URL / 网络 ────────────────────────────────────────
   {
     key: "APP_URL",
@@ -276,15 +286,6 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     envKey: "RUNTIME_LLM_GATEWAY_URL",
     category: "other",
   },
-  {
-    key: "RUNTIME_JUDGE_MODE",
-    type: "string",
-    description: "Judge 观测模式（heartbeat/http）",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "RUNTIME_JUDGE_MODE",
-    category: "other",
-  },
   // ── 评测 / 存储 / 运行参数 ─────────────────────────────────
   {
     key: "RESULT_CONSUMER_CONCURRENCY",
@@ -382,7 +383,7 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     key: "OAUTH_GITHUB_SECRET",
     type: "string",
     description:
-      "【已废弃别名】GitHub OAuth Client Secret 的旧名，仅向后兼容；新部署请使用 OAUTH_GITHUB_CLIENT_SECRET",
+      "【已废弃别名，v0.12 移除】GitHub OAuth Client Secret 的旧名，仅向后兼容；新部署请使用 OAUTH_GITHUB_CLIENT_SECRET",
     is_secret: true,
     scope: "bootstrap",
     envKey: "OAUTH_GITHUB_SECRET",
@@ -466,16 +467,6 @@ export const BOOTSTRAP_CONFIG_DEFINITIONS: readonly SettingDefinition[] = [
     is_secret: false,
     scope: "bootstrap",
     envKey: "NOJ_RUN_E2E",
-    category: "other",
-    visible: false,
-  },
-  {
-    key: "TEST_SCHEMA",
-    type: "string",
-    description: "测试隔离 schema（search_path 分片）",
-    is_secret: false,
-    scope: "bootstrap",
-    envKey: "TEST_SCHEMA",
     category: "other",
     visible: false,
   },

@@ -6,7 +6,7 @@
  */
 
 import { resolve } from "node:path";
-import { PLATFORM_METRIC_NAMES } from "../noj-core/src/domains/observability/metrics/platform.ts";
+import { PLATFORM_METRIC_NAMES } from "../noj-core/src/modules/platform/observability/metrics/platform.ts";
 
 const DEFINE_RE = /registerBusinessMetric\(\s*\{[\s\S]*?name:\s*"([^"]+)"/g;
 // 锚定指标名前缀而非接收者变量名：接收者可能是 observability / metrics /

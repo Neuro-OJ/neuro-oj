@@ -1,16 +1,10 @@
 import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
 /**
- * `docker-compose.judge.yml` 的渲染与 socket 连接校验（T21）。
- *
- * 迁移 `judge-install.sh` 的 `write_compose()`（:582-637）、`check_socket()`
- * （:695-717）、`check_redis()`（:728-752）、`image_name()`/`local_image_arch()`/
- * `check_image_architecture()`（:753-789）。
+ * `docker-compose.judge.yml` 的渲染与 socket 连接校验。
  *
  * ## 为什么渲染是**纯函数**
  *
- * bash 的 `write_compose` 用 heredoc 生成 YAML，服务集合、环境变量默认值、卷、
- * 安全选项全部内联在文本里——要验证"渲染结果是否与 bash 一致"只能起容器或
- * 逐行 diff。本模块把它做成 `(env) => string`，于是：
+ * 渲染做成 `(env) => string`，于是：
  * - "socket 挂载必须是 `:ro`"、"不得映射多余端口"、"cap_drop ALL 必须在"这类
  *   **安全属性**可以用字符串断言直接锁住；
  * - 测试无需 docker。
@@ -40,10 +34,10 @@ import {
   type JudgePaths,
 } from "./config.ts";
 
-/** Compose 里 judge 服务的镜像（bash `:589` 的默认 registry）。 */
+/** Compose 里 judge 服务的镜像（默认 registry）。 */
 export const DEFAULT_JUDGE_IMAGE_REGISTRY = "ghcr.io/neuro-oj";
 
-/** 渲染环境变量的默认值（bash `:591-612` 的 `${VAR:-default}` 逐字）。 */
+/** 渲染环境变量的默认值。 */
 export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
   ...OI_ENV_DEFAULTS,
   ...SCHEDULING_ENV_DEFAULTS,
@@ -68,13 +62,12 @@ export const COMPOSE_ENV_DEFAULTS: Readonly<Record<string, string>> = {
 };
 
 /**
- * 渲染 `docker-compose.judge.yml`（bash `write_compose` :588-636 的等价）。
+ * 渲染 `docker-compose.judge.yml`。
  *
- * 输出**逐字对齐** bash 的 heredoc（含缩进与键序）：运维会按这个形状读文件，
+ * 输出形状（缩进与键序）固定：运维会按这个形状读文件，
  * 且 diff 友好性能让升级时的变更一目了然。缺省值取自
  * {@link COMPOSE_ENV_DEFAULTS}，必填项（`NOJ_VERSION`/`REDIS_URL`/
- * `JUDGE_DOCKER_SOCKET`/`JUDGE_DOCKER_SOCKET_GID`）缺失时**抛错**
- * （对应 bash 的 `${VAR:?…}`）。
+ * `JUDGE_DOCKER_SOCKET`/`JUDGE_DOCKER_SOCKET_GID`）缺失时**抛错**。
  *
  * **Socket 安全在渲染前再校验一次**：`writeJudgeEnv` 已校验过，但渲染可能被
  * 直接调用（例如升级时从既有配置渲染）——防线不依赖调用方的纪律。
@@ -198,7 +191,7 @@ volumes:
 `;
 }
 
-/** 构造 `docker compose … judge` 的**纯参数数组**（bash `run_compose` :810-820）。 */
+/** 构造 `docker compose … judge` 的**纯参数数组**。 */
 export function judgeComposeArgs(
   paths: JudgePaths,
   command: string[],
@@ -241,15 +234,13 @@ export interface JudgeSocketCheckResult {
 }
 
 /**
- * 校验**独立 Judge** 的专用 rootless Docker socket 可用
- * （bash `judge-install.sh:check_socket` :695-717 的等价）。
+ * 校验**独立 Judge** 的专用 rootless Docker socket 可用。
  *
  * 命名带 `Standalone` 前缀是**必须**的：`prod/config.ts` 已有同名的
  * `checkJudgeSocket`（那一个校验的是**生产 compose 里**的 judge socket 挂载），
- * 两者的配置来源与判定都不同。同名会让包入口的再导出撞名——而撞名正是
- * 双模态遗留问题的表征，不该靠"少导出一个"来掩盖。
+ * 两者的配置来源与判定都不同，不能同名。
  *
- * 检查顺序与 bash 一致，且**共享 socket 的拒绝在最前**：
+ * **共享 socket 的拒绝在最前**：
  * 1. 共享宿主 socket → 拒绝（{@link assertDedicatedSocket}，含 realpath 归一）；
  * 2. 绝对路径、不含 `:`（Unix socket 而非 TCP endpoint）；
  * 3. 是 Unix socket（`-S`）；
@@ -402,7 +393,7 @@ export interface JudgeRedisCheckResult {
 }
 
 /**
- * 校验 `REDIS_URL` 可连接（bash `check_redis` :728-752 的等价）。
+ * 校验 `REDIS_URL` 可连接。
  *
  * 两个实现要点：
  *
@@ -410,7 +401,7 @@ export interface JudgeRedisCheckResult {
  *    别处"或"填了 http 地址"这类误配。
  * 2. **优先用宿主 `redis-cli`**；缺失时回退 `redis:7-alpine` 容器，且口令经
  *    **`--env-file`** 传入而非命令行参数——命令行参数会出现在 `ps` 输出里，
- *    等于把 Redis 口令广播给同机所有用户（bash `:739-747` 正是这么做的）。
+ *    等于把 Redis 口令广播给同机所有用户。
  *
  * 错误信息里只出现**主机名**（{@link redisHostOf}），绝不回显口令。
  */
@@ -494,7 +485,7 @@ export async function checkJudgeRedis(
 }
 
 /**
- * 从 URL 提取主机名（bash `redis_host` :718-727 的等价）。
+ * 从 URL 提取主机名。
  *
  * 逐条剥掉协议、认证段、路径与端口——**只保留主机名**供错误信息使用。
  * 这个函数的存在就是为了让错误信息里永远不出现口令。
@@ -528,7 +519,7 @@ export interface ImageArchCheckResult {
 }
 
 /**
- * 校验本地 Judge 镜像架构与宿主机一致（bash `check_image_architecture` :761-789）。
+ * 校验本地 Judge 镜像架构与宿主机一致。
  *
  * 为什么要在**部署前**查：架构不符的镜像在 `docker run` 时才报
  * `exec format error`，而那时容器已经起来了、配置已经写好——用户看到的是

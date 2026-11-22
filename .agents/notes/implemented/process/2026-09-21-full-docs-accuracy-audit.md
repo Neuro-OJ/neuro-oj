@@ -12,7 +12,7 @@ Status: implemented
 1. **指向已删除能力的文档会误导读者执行失败命令**：
    - `README.md` 资源表把内存硬门槛写成 `noj-cli doctor`，而 `doctor` 已删除
      （`noj-cli/src/cli.ts` 的 `REMOVED_COMMANDS` 会以用法错误退出）。
-   - `CONTRIBUTING.md` 与 `dev-docs/engineering/development.md` 推荐
+   - `.github/CONTRIBUTING.md` 与 `dev-docs/engineering/development.md` 推荐
      `noj-cli deploy init --mode dev` 开发部署入口，该入口已随双模态移除。
    - `.env.prod.example` 头部把已废弃且需人工确认的
      `scripts/deploy/deploy.sh install` 标为"推荐路径"。
@@ -42,7 +42,7 @@ Status: implemented
      `ensure_image_local()`。
    - `noj-tests/E2E_TESTING.md` 的测试清单还是旧编号体系；`scripts/README.md`
      目录树缺门禁单一事实源 `gate-list.ts` 等；`AGENTS.md` 模块表缺 `noj-cli`。
-   - `SECURITY.md` 支持版本仍写 `v0.8.1`（当前 `v0.9.5`）。
+   - `.github/SECURITY.md` 支持版本仍写 `v0.8.1`（当前 `v0.9.5`）。
 
 这些是**纯文档缺陷**：`check-ci.ts` 全绿，`verify-md-links.ts` 只覆盖相对链接
 （479 个文件通过），VitePress 本地构建也通过——即现有门禁无法发现上述漂移。
@@ -51,7 +51,7 @@ Status: implemented
 
 1. **逐条以代码取证后修正**，覆盖 31 个 Markdown 文件（另有
    `.env.prod.example` 与源码文件 `noj-judge/src/logging.rs` 的测试去竞态）：根级 `README.md`、`AGENTS.md`、
-   `CONTRIBUTING.md`、`SECURITY.md`、`.env.prod.example`；`scripts/README.md`；
+   `.env.prod.example`；`.github/CONTRIBUTING.md`、`.github/SECURITY.md`；`scripts/README.md`；
    `deploy/README.md`（未改）与其 `deploy/monitoring/README.md`；
    `noj-cli/README.md`；`noj-core`、`noj-ui`、`noj-judge` 的模块文档；
    `noj-tests/E2E_TESTING.md`；`noj-docs/docs/**` 的 features / operators /

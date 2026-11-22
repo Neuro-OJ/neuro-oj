@@ -8,20 +8,21 @@
 
 ## 创建 / 编辑题目
 
-入口：管理后台 →「题目」→「新建题目」，或从题目列表进入编辑。
+入口：选择工作空间，在 `/d/:slug/problems/new`
+创建题目，或从本域题目列表进入编辑。实例管理后台的快捷入口明确指向默认域 main。
 
 编辑器包含以下区块：
 
 ### 基础信息
 
-| 字段     | 说明                                                                 |
-| -------- | -------------------------------------------------------------------- |
-| 标题     | 必填                                                                 |
-| 描述     | 题面，Markdown 格式，支持公式与代码块                                |
-| 难度     | `easy` / `medium` / `hard`                                           |
-| 题型     | U 型（用户题，创建者本人与 admin 可管理）或 P 型（主题题，仅 admin） |
-| 提交模式 | `code`（默认，单文件代码注入）或 `artifact`（zip 产物提交，见下文）  |
-| 标签     | 多选，来自[标签管理](../operators/admin-guide.md#problem-tags)       |
+| 字段     | 说明                                                           |
+| -------- | -------------------------------------------------------------- |
+| 标题     | 必填                                                           |
+| 描述     | 题面，Markdown 格式，支持公式与代码块                          |
+| 难度     | `easy` / `medium` / `hard`                                     |
+| 题型     | OI 编程题、AI 代码／LLM／产物题或客观题；管理权限属于使用域    |
+| 提交模式 | `code`、`artifact`、`prediction` 或 `ui`，由题型与题包配置决定 |
+| 标签     | 多选，来自[标签管理](../operators/admin-guide.md#problem-tags) |
 
 ### 运行时配置（runtime_config）
 
@@ -65,18 +66,20 @@ Solution
 - 仅支持 `.zip` 格式，且带合法 zip Content-Type；单个 zip 上限 **128
   MiB**（`MAX_SUPPORT_PACKAGE_SIZE`），压缩包还受 ZIP 安全检查约束（条目数 ≤
   1000、单文件 ≤ 64 MiB、总解压 ≤ 512 MiB）。
-- 上传走 `POST /api/v1/problems/import-bundle`（multipart 文件字段 `file`）。
-- 包结构、`problem.json`、导入语义（按 `(type, number)`
-  匹配更新/新建、管理员可指定题号等）见[题目包格式规范](../standards/problem-bundle.md)；用例目录约定见[测试数据与样例规范](../standards/test-data.md)。
+- 上传走 `POST /api/v1/domains/:slug/problems/import-bundle`（multipart 文件字段
+  `file`）。
+- 包结构、`problem.json`、导入语义（按 `(domain_id, number)`
+  匹配更新/新建；已有题目更新须携带当前草稿
+  revision）见[题目包格式规范](../standards/problem-bundle.md)；用例目录约定见[测试数据与样例规范](../standards/test-data.md)。
 - 上传后可通过编辑器内的状态确认包是否已生效；管理端也可以下载或删除当前支持包。
 
 ::: tip 先保存再上传
-支持包在题目**编辑页**上传：表单建题后会自动进入该题编辑页（未发布的新题也可以上传）。已有完整题目包时，可直接用「新建题目」→「从题目包导入」一步建题，无需先填表单。支持包需自行按[题目包格式规范](../standards/problem-bundle.md)组织，**没有**"支持包模板下载"接口；`GET /api/v1/problems/:id/template`
+支持包在题目**编辑页**上传：表单建题后会自动进入该题编辑页（未发布的新题也可以上传）。已有完整题目包时，可直接用「新建题目」→「从题目包导入」一步建题，无需先填表单。支持包需自行按[题目包格式规范](../standards/problem-bundle.md)组织，**没有**"支持包模板下载"接口；`GET /api/v1/domains/:slug/problems/:reference/template`
 返回的是**初始代码模板（starter code）**，不是支持包。 :::
 
 ### 发布前预检
 
-管理员可调用 `GET /api/v1/admin/catalog/problems/:id/preflight`
+管理员可调用 `GET /api/v1/domains/:slug/problems/:reference/publish-preflight`
 查看发布前检查。检查项如下：
 
 | 检查项                                                                           | 缺失时的等级 |
@@ -132,7 +135,7 @@ zip 大小上限（`artifact_max_size_mb`，留空使用平台默认上限）。
   3. 检查隐藏用例的可见性是否符合预期（由 evaluator 控制）。
   4. 如已确认要变更有效口径，用管理端「批量重测」按需重测；选手可用「批量升级」用最新版重做。
 
-::: tip 初始代码模板 `GET /api/v1/problems/:id/template`
+::: tip 初始代码模板 `GET /api/v1/domains/:slug/problems/:reference/template`
 返回题目的**初始代码模板（starter code）**（来源：题目包内 `problem.json` 的
 `template` 字段声明的文件，缺省
 `template.py`；导入时读取并落库），供编辑器在无本地草稿时填入代码框；**不是**支持包模板下载。支持包请按[题目包格式规范](../standards/problem-bundle.md)自行组织后上传——注意模板文件要留在包里，否则选手看不到初始代码。模板属于版本内容：**发布后才会对选手生效**。

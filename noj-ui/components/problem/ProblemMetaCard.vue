@@ -7,14 +7,17 @@ import type { PublicProblemStats } from '~/utils/problemStats'
 /**
  * 题目信息卡片（#511，右栏）：编号 / 难度 / 提供者 / 标签 / 通过率。
  *
- * 通过率复用 `useProblemStats().fetchPublic` 的公开统计；赛期后端抑制时
+ * 通过率使用父组件传入的公开统计（`PublicProblemStats`，来自域内题目详情接口）；赛期后端抑制时
  * `submit_count`/`accepted_count`/`acceptance_rate` 三者同为空，
  * 这里用占位文案表达，**不用仍返回的 `attempt_count` 顶替**（防算术还原）。
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   problem: ProblemView
   stats?: PublicProblemStats | null
-}>()
+  problemsTo?: string
+  /** 知识图谱校准难度档位（P2）；有值时优先于出题人自报难度。 */
+  calibratedTier?: 'easy' | 'medium' | 'hard' | null
+}>(), { problemsTo: '/problems' })
 
 const router = useRouter()
 
@@ -44,13 +47,16 @@ const acceptanceText = computed(() => {
       </div>
       <div class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">编号</dt>
-        <dd class="font-mono text-xs font-semibold text-text">{{ problem.display_id }}</dd>
+        <dd class="min-w-0 break-words text-right font-mono text-xs font-semibold text-text">{{ problem.display_id }}</dd>
       </div>
       <div class="flex items-center justify-between gap-3">
-        <dt class="text-text-secondary">难度</dt>
-        <dd><DifficultyBadge :difficulty="problem.difficulty" /></dd>
+        <dt class="text-text-secondary">难度<span v-if="calibratedTier" class="ml-1 text-xs text-text-muted">校准</span></dt>
+        <dd>
+          <DifficultyBadge v-if="calibratedTier || problem.difficulty" :difficulty="calibratedTier ?? problem.difficulty" />
+          <span v-else class="text-text-secondary">—</span>
+        </dd>
       </div>
-      <div class="flex items-center justify-between gap-3">
+      <div v-if="problem.owner_username" class="flex items-center justify-between gap-3">
         <dt class="text-text-secondary">提供者</dt>
         <dd class="min-w-0">
           <UserIdentity
@@ -76,7 +82,7 @@ const acceptanceText = computed(() => {
           :key="t.id"
           type="button"
           class="inline-flex cursor-pointer items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-          @click="router.push(`/problems?tag=${t.id}`)"
+          @click="router.push({ path: problemsTo, query: { tag: t.id } })"
         >
           {{ t.name }}
         </button>

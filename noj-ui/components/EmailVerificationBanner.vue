@@ -24,7 +24,7 @@ async function resend() {
     v-if="auth.user.value && !auth.user.value.email_verified"
     class="fixed top-(--header-h) inset-x-0 z-40 flex flex-wrap items-center justify-center gap-3 border-b border-warning-border bg-warning-bg px-4 py-2 text-sm text-warning-text"
   >
-    <span>请验证邮箱后再提交、参与社区或发送私信。</span>
+    <span>请验证邮箱后再提交或参与社区。</span>
     <UButton size="xs" color="warning" variant="outline" :loading="sending" @click="resend">
       重新发送验证邮件
     </UButton>

@@ -16,6 +16,13 @@
   列与设置页/编辑器入口一并移除。**升级到该版本前**请按
   [生产部署文档](../operators/production-deploy.md#升级前检查题目引用的-llm-provider-是否为用户自建)
   核查题目是否引用了用户自建 Provider。
+- **移除无域兼容路由**：`GET /api/v1/queue`、`GET /api/v1/queue/events`、
+  `GET /api/v1/submissions/:id/events`、`POST /api/v1/problems/:id/self-test`、
+  `GET /api/v1/problems/:id/self-tests`、`GET /api/v1/self-tests/:id` 与本人跨域
+  提交列表 `GET /api/v1/me/submissions` 已删除（返回 404）。请改用
+  `/api/v1/domains/:slug/...` 或 `/api/v1/instance/queue` 等价接口；本人提交详情与
+  产物下载 `/api/v1/me/submissions/:kind/:id`、`/me/submissions/submission/:id/artifact`
+  继续保留。
 
 ## 2026-08
 

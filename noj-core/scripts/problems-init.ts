@@ -2,7 +2,7 @@
 //
 // 设计目标：让出题人从「可评测的最小骨架」起步，而不是从空目录 + 记忆规范起步。
 // 生成的内容**严格对齐** noj-docs 的题目包与质量规范：
-//   - problem.json：format_version=1、必填字段齐备、无占位符（除 LLM 题的 provider 占位）
+//   - problem.json：format_version=3、kind=ai，显式写出时限/内存便于题面引用
 //   - evaluate.py：标准 details.cases 输出、隐藏用例不泄露输入/期望/实际、
 //     运行期异常上抛（不吞异常 → judge 收尾为 error）
 //   - template.py：入口保持 NotImplementedError（质量规范：模板 MUST NOT 含可满分实现）
@@ -13,7 +13,13 @@
 //     脚手架给不出来；README 会提示需要自行补齐用于自测。
 //   - 不生成「已通过全部测试」的代码——那正是质量规范禁止的。
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import {
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  renderProblemTemplate,
+} from "./problem-templates.ts";
 
 /** 脚手架选项。 */
 export interface ProblemInitOptions {
@@ -21,12 +27,15 @@ export interface ProblemInitOptions {
   slug: string;
   /** 题目标题；缺省用 slug。 */
   title?: string;
-  /** 题型：U（客观题）/ P（编程题）。缺省 P。 */
-  type?: "U" | "P";
   /** 难度。缺省 medium。 */
   difficulty?: "easy" | "medium" | "hard";
   /** 目标根目录（缺省 data/problems-src）。 */
   root?: string;
+  /**
+   * 可验题模板（P0-2 B）：生成带参考解答与断言的完整题目，可直接
+   * `noj-cli problem test`。模板内容与 noj-cli 共用 `problem-templates.ts`。
+   */
+  template?: ProblemTemplateName;
 }
 
 /** slug 合法性问题（供 CLI 报错）。 */
@@ -94,12 +103,12 @@ function defaultProblemSrcDir(): string {
 
 function problemJson(
   opts: Required<
-    Pick<ProblemInitOptions, "slug" | "title" | "type" | "difficulty">
+    Pick<ProblemInitOptions, "slug" | "title" | "difficulty">
   >,
 ): string {
   const manifest = {
-    format_version: 1,
-    type: opts.type,
+    format_version: 3,
+    kind: "ai",
     title: opts.title,
     difficulty: opts.difficulty,
     // 必须使用已种子化的题目标签（seed-system.ts 的 seedTags），否则首次导入会
@@ -503,13 +512,15 @@ export async function initProblem(
 ): Promise<ProblemInitResult> {
   validateSlug(opts.slug);
 
-  const type = opts.type ?? "P";
-  if (type !== "U" && type !== "P") {
-    throw new Error(`题型非法：${type}（仅允许 U / P）`);
-  }
   const difficulty = opts.difficulty ?? "medium";
   if (!["easy", "medium", "hard"].includes(difficulty)) {
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
+  }
+
+  if (opts.template !== undefined && !isProblemTemplateName(opts.template)) {
+    throw new Error(
+      `未知模板：${opts.template}（可选 ${PROBLEM_TEMPLATE_NAMES.join("/")}）`,
+    );
   }
 
   const root = opts.root ?? defaultProblemSrcDir();
@@ -560,21 +571,25 @@ export async function initProblem(
     createdDir = true;
   }
 
-  const files: Array<[string, string]> = [
-    ["problem.json", problemJson({ slug: opts.slug, title, type, difficulty })],
-    ["statement.md", statementMarkdown(title)],
-    ["template.py", templatePy()],
-    ["evaluate.py", evaluatePy()],
-    ["visible.jsonl", visibleJsonl()],
-    ["hidden.jsonl", hiddenJsonl()],
-    ["README.md", readmeMarkdown(title)],
-  ];
+  const files: Array<[string, string]> = opts.template !== undefined
+    ? renderProblemTemplate(opts.template, { title, difficulty })
+    : [
+      ["problem.json", problemJson({ slug: opts.slug, title, difficulty })],
+      ["statement.md", statementMarkdown(title)],
+      ["template.py", templatePy()],
+      ["evaluate.py", evaluatePy()],
+      ["visible.jsonl", visibleJsonl()],
+      ["hidden.jsonl", hiddenJsonl()],
+      ["README.md", readmeMarkdown(title)],
+    ];
 
   // 写入失败时回滚，避免留下「半成品目录」——它会因非空而拒绝后续重跑。
   const written: string[] = [];
   try {
     for (const [name, content] of files) {
       const target = join(dir, name);
+      // 模板含子目录（如 submissions/）；dir 已确认是本次可写的空目录。
+      await Deno.mkdir(dirname(target), { recursive: true });
       // createNew：并发/重入下不覆盖已存在的文件。
       await Deno.writeTextFile(target, content, { createNew: true });
       written.push(target);
@@ -583,7 +598,7 @@ export async function initProblem(
     for (const target of written) {
       await Deno.remove(target).catch(() => {});
     }
-    if (createdDir) await Deno.remove(dir).catch(() => {});
+    if (createdDir) await Deno.remove(dir, { recursive: true }).catch(() => {});
     throw err;
   }
 

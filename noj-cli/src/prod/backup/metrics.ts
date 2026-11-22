@@ -8,17 +8,15 @@
  * - `NojBackupVeryStale`（>49h，critical）
  * - `NojBackupMetricMissing`（`absent(...)`，warning）
  *
- * 它们原先由 `backup.sh:209-221` 写入。TS 重写后**没有任何写入方**——
- * 即"迁移不完整"：脚本一旦删除，三条告警同时失去数据源，其中
- * `absent(...)` 那条会**持续报警**（而它恰恰是"备份从未成功"的信号，
- * 长期误报会让人忽略真正的备份故障）。
+ * 缺少写入方时三条告警同时失去数据源，其中 `absent(...)` 那条会**持续报警**
+ * （而它恰恰是"备份从未成功"的信号，长期误报会让人忽略真正的备份故障）。
  *
- * ## 语义（与 drill 的 writer 一致，逐条对照 bash）
+ * ## 语义（与 drill 的 writer 一致）
  *
  * - **只在成功时写**：告警语义是"最近一次**成功**距今多久"。
  *   失败也写会让"备份一直没成功"被掩盖——那正是该告警要抓的。
  * - 文件名 `noj_backup.prom`；目录缺省 `<backupDir>/metrics`
- *   （`NOJ_BACKUP_METRICS_DIR` 可覆盖，bash :209）；
+ *   （`NOJ_BACKUP_METRICS_DIR` 可覆盖）；
  * - 文件 **644**、目录 **755**：node_exporter 以另一用户运行，必须可读；
  *   这两个权限是**代码设定的**，不依赖调用方 umask（否则同一命令在不同环境下
  *   产出不同可读性）。
@@ -28,19 +26,19 @@
 
 import { join } from "@std/path";
 
-/** 指标文件名（bash `metrics_file` 的 basename 逐字）。 */
+/** 指标文件名。 */
 export const BACKUP_METRICS_FILE = "noj_backup.prom";
 
 /** 成功备份时间戳（Unix 秒）。告警表达式按此名匹配，**不可改名**。 */
 export const METRIC_BACKUP_LAST_SUCCESS = "noj_backup_last_success_unix_time";
 
-/** 快照字节数。告警规则虽未直接用，但 bash 会写，保留以维持可观测面。 */
+/** 快照字节数。告警规则虽未直接用，保留以维持可观测面。 */
 export const METRIC_BACKUP_BYTES = "noj_backup_snapshot_bytes";
 
 /**
- * 渲染指标正文（bash :213-218 的等价）。
+ * 渲染指标正文。
  *
- * 保留 `# HELP` / `# TYPE` 注释：Prometheus 文本格式要求，且 bash 也写了。
+ * 保留 `# HELP` / `# TYPE` 注释：Prometheus 文本格式要求。
  */
 export function renderBackupMetrics(
   unixSeconds: number,
@@ -82,14 +80,14 @@ export async function writeBackupMetrics(
     ? opts.explicitDir
     : join(opts.backupDir, "metrics");
   await Deno.mkdir(dir, { recursive: true, mode: 0o755 });
-  // umask 会让 mkdir 的 mode 变窄，显式 chmod 保证 755（与 bash `mkdir -m 755` 同义）。
+  // umask 会让 mkdir 的 mode 变窄，显式 chmod 保证 755。
   await Deno.chmod(dir, 0o755).catch(() => {});
   const file = join(dir, BACKUP_METRICS_FILE);
   await Deno.writeTextFile(
     file,
     renderBackupMetrics(opts.unixSeconds, opts.snapshotBytes),
   );
-  // 同上：WriteTextFile 的权限受 umask 影响，显式设定（bash `chmod 644`）。
+  // 同上：WriteTextFile 的权限受 umask 影响，显式设定。
   await Deno.chmod(file, 0o644);
   return dir;
 }

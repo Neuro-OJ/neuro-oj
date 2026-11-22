@@ -8,15 +8,18 @@
 import {
   apiDelete,
   apiGet,
+  apiPatch,
   apiPost,
-  apiPut,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getOrCreateUser,
   getProblemIdByNumber,
   isE2E,
-  isJudgeAvailable,
   pollSubmission,
+  publishProblemVersion,
+  requireJudgeCanary,
+  setProblemState,
   submitCode,
   waitForServer,
 } from "../helper.ts";
@@ -119,16 +122,27 @@ e2eTest("[e2e/tags] 1.5 重复标签名冲突", async () => {
 
 e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
   if (!isE2E) return;
-  // 打标签：创建 U 型题目并带 tag_ids（admin 创建）
+  // 创建默认域题目并带 tag_ids。
   const title = "E2E 标签题目 " + Date.now().toString(36);
   const res = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title,
       description: "标签筛选测试",
       difficulty: "easy",
-      runtime_config: null,
-      is_objective: true,
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 5000,
+          memory_limit_mb: 512,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 2000,
+          memory_limit_mb: 512,
+        },
+      },
       tag_ids: [tagId],
     },
     adminToken,
@@ -139,14 +153,13 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
         JSON.stringify(res.body),
     );
   }
-  problemId = (res.body as { data: { id: string } }).data.id;
+  problemId = (res.body as { problem_id: string }).problem_id;
 
-  // U 型新建默认 private；标签筛选与匿名详情需要公开可见
-  const pubRes = await apiPut(
-    `/api/v1/problems/${problemId}/visibility`,
-    { visibility: "public" },
-    adminToken,
-  );
+  // 标签筛选与匿名详情需要公开可见：先发布（创建绑定）再改状态。
+  await publishProblemVersion(adminToken, problemId, "标签题发布");
+  const pubRes = await setProblemState(adminToken, problemId, {
+    visibility: "public",
+  });
   if (pubRes.status !== 200) {
     throw new Error(
       "设置题目公开失败: " + pubRes.status + " " +
@@ -156,7 +169,7 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
 
   // 按标签筛选命中
   const listRes = await apiGet(
-    `/api/v1/problems?tag=${tagId}&type=U`,
+    `/api/v1/problems?tag=${tagId}`,
     adminToken,
   );
   if (listRes.status !== 200) throw new Error("筛选失败: " + listRes.status);
@@ -170,7 +183,7 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
 e2eTest("[e2e/tags] 2.2 标签与难度组合筛选", async () => {
   if (!isE2E) return;
   const res = await apiGet(
-    `/api/v1/problems?tag=${tagId}&difficulty=easy&type=U`,
+    `/api/v1/problems?tag=${tagId}&difficulty=easy`,
     adminToken,
   );
   if (res.status !== 200) throw new Error("组合筛选失败: " + res.status);
@@ -204,7 +217,7 @@ e2eTest("[e2e/tags] 3.1 合并标签后关联正确", async () => {
 
   // 原标签已删除，关联重指向 target
   const listRes = await apiGet(
-    `/api/v1/problems?tag=${targetId}&type=U`,
+    `/api/v1/problems?tag=${targetId}`,
     adminToken,
   );
   const items = (listRes.body as { data: { id: string }[] }).data;
@@ -242,8 +255,8 @@ e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见",
   }
 
   // 给编程题打上算法标签（admin 更新）
-  const putRes = await apiPut(
-    `/api/v1/problems/${gatingProblemId}`,
+  const putRes = await apiPatch(
+    await domainProblemPath(gatingProblemId),
     { tag_ids: [algorithmTagId] },
     adminToken,
   );
@@ -291,10 +304,8 @@ e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见",
 
 e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
   if (!isE2E) return;
-  if (!(await isJudgeAvailable())) {
-    console.log("  ⚠ 评测不可用，跳过 AC 门控场景");
-    return;
-  }
+  // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
+  await requireJudgeCanary();
 
   // 复用 4.1 获取的编程题；若 4.1 已跳过（无 P1001）则本场景同样跳过
   if (!gatingProblemId) {
@@ -318,8 +329,10 @@ e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
   );
   const result = await pollSubmission(token, submissionId, 45, 2000, true);
   if (result.status !== "finished" || result.score <= 0) {
-    console.log(`  ⚠ 评测结果 ${result.status}，跳过 AC 可见性断言`);
-    return;
+    // Judge 已由 canary 证明可用；这里拿不到 AC 就是真实回归，不能静默跳过。
+    throw new Error(
+      `期望 AC 以验证算法标签门控，实际 ${result.status}（score=${result.score}）`,
+    );
   }
 
   const res = await apiGet(`/api/v1/problems/${judgeProblemId}`, token);

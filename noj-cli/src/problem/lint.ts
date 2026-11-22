@@ -5,15 +5,18 @@
  * 而不必等到服务端导入时才失败（P2）。同时执行 SHOULD 层质量规则（P3），
  * 这些规则**只告警不阻断**，`--strict` 时才计入退出码。
  *
- * ⚠️ 校验逻辑与 `noj-core/src/domains/catalog/types/problem-bundle.ts` 是
- * **刻意的两份实现**（issue #514 已确认的取舍）。两侧都对
- * `fixtures/problem-bundle-manifest.json` 断言，任一漂移即红灯。
+ * manifest 校验直接复用 noj-core 的实现（`types/problem-bundle.ts`），
+ * 离线结果与服务端导入一致；旧格式经同一转换函数升级并给出告警。
  */
-import { validateBundleManifest } from "./vendor/problem-bundle.ts";
+import {
+  upgradeBundleManifest,
+  validateBundleManifest,
+  validateObjectiveQuestions,
+} from "../../../noj-core/src/modules/problems/types/problem-bundle.ts";
 import {
   isOiRuntimeConfig,
   type OiRuntimeConfig,
-} from "./vendor/runtime-config.ts";
+} from "../../../noj-core/src/modules/problems/types/runtime-config.ts";
 
 /** 单条校验发现。 */
 export interface LintFinding {
@@ -119,19 +122,6 @@ export function runQualityRules(ctx: QualityContext): LintFinding[] {
     });
   }
 
-  // Q4：已废弃字段 samples（2026-09-24 审计 A2-2）
-  // 该字段从不落库、没有任何消费者。导入仍会容忍（兼容存量题包），
-  // 但新增题包不应再写，题面样例请直接写进题面正文。
-  if (manifest.samples !== undefined) {
-    findings.push({
-      level: "warn",
-      rule: "quality/deprecated-samples",
-      message:
-        "manifest.samples 已废弃（从不落库，导入时被忽略）。题面样例请直接写进题面正文，删除该字段。",
-      file: "problem.json",
-    });
-  }
-
   return findings;
 }
 
@@ -165,9 +155,21 @@ export function lintBundle(files: BundleFiles): LintReport {
     }
   }
 
+  // 题型按升级后的格式 3 `kind` 判定，旧格式与服务端导入走同一转换。
+  let kind: unknown;
   if (Object.keys(manifest).length > 0 || rawManifest !== undefined) {
     try {
+      const upgraded = upgradeBundleManifest(manifest);
+      kind = upgraded.manifest.kind;
       validateBundleManifest(manifest);
+      for (const warning of upgraded.warnings) {
+        findings.push({
+          level: "warn",
+          rule: "format/upgrade",
+          message: warning,
+          file: "problem.json",
+        });
+      }
     } catch (err) {
       findings.push({
         level: "error",
@@ -179,30 +181,40 @@ export function lintBundle(files: BundleFiles): LintReport {
   }
 
   // 打包必需文件（OI 题使用测试数据，不要求 evaluate.py）
-  if (manifest.is_objective !== true && manifest.judge_type !== "oi") {
-    if (!files.names.includes("evaluate.py")) {
+  if (kind === "objective") {
+    if (!files.names.includes("questions.json")) {
       findings.push({
         level: "error",
-        rule: "must/missing-evaluator",
-        message: "缺少 evaluate.py（编程题必须提供评测脚本）",
-        file: "evaluate.py",
+        rule: "must/missing-questions",
+        message: "客观题套卷缺少 questions.json",
+        file: "questions.json",
       });
+    } else {
+      // 与导入同一校验：字段名、选项与答案格式错误在本地即报出。
+      try {
+        validateObjectiveQuestions(
+          JSON.parse(files.texts["questions.json"] ?? ""),
+        );
+      } catch (err) {
+        findings.push({
+          level: "error",
+          rule: "must/questions-invalid",
+          message: `questions.json 不合法：${(err as Error).message}`,
+          file: "questions.json",
+        });
+      }
     }
-  } else if (
-    manifest.is_objective === true && !files.names.includes("questions.json")
-  ) {
+  } else if (kind !== "oi" && !files.names.includes("evaluate.py")) {
     findings.push({
       level: "error",
-      rule: "must/missing-questions",
-      message: "客观题套卷缺少 questions.json",
-      file: "questions.json",
+      rule: "must/missing-evaluator",
+      message: "缺少 evaluate.py（编程题必须提供评测脚本）",
+      file: "evaluate.py",
     });
   }
 
   // OI 题包的配置引用必须在同一个目录中，避免 pack 后才发现输入/答案缺失。
-  if (
-    manifest.judge_type === "oi" && isOiRuntimeConfig(manifest.runtime_config)
-  ) {
+  if (kind === "oi" && isOiRuntimeConfig(manifest.runtime_config)) {
     const runtime = manifest.runtime_config as OiRuntimeConfig;
     const requireFile = (path: string, context: string): void => {
       if (!files.names.includes(path)) {

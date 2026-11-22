@@ -32,6 +32,7 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
+  getProblemReference,
   isE2E,
   publishProblemVersion,
   registerUser,
@@ -89,16 +90,18 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
 
   // 创建 prediction 题目：无 Solution 容器，故省略 runtime_config.solution
   const createRes = await apiPost(
-    "/api/v1/problems",
+    "/api/v1/domains/main/problems",
     {
       title: `[E2E] Prediction ${ts}`,
       description: "prediction submission e2e",
       difficulty: "easy",
-      type: "P",
+      visibility: "public",
       submission_mode: "prediction",
       runtime_config: {
         evaluator: {
-          image: "noj-evaluator-python",
+          image: `noj-evaluator-python:${
+            Deno.env.get("E2E_INPUT_MODES_IMAGE_TAG") || "latest"
+          }`,
           command: buildEvaluatorCommand(),
           time_limit_ms: 15000,
           memory_limit_mb: 256,
@@ -115,17 +118,19 @@ e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async (
       }`,
     );
   }
-  const problemId = (createRes.body as { data: { id: string } }).data.id;
+  const problemId = (createRes.body as { problem_id: string }).problem_id;
+  // 域提交入口按题号定位题目（无域 POST /submissions 已删除）
+  const problemRef = await getProblemReference(problemId, adminToken);
 
   // 发布作答版本：版本化后提交必须携带 version_id
   const versionId = await publishProblemVersion(adminToken, problemId, "e2e");
 
   // multipart 上传单个预测 csv
   const form = new FormData();
-  form.append("problem_id", problemId);
+  form.append("problem_ref", problemRef);
   form.append("version_id", versionId);
   form.append("file", makePredictionCsv(), "predictions.csv");
-  const uploadRes = await fetch(`${BASE_URL}/api/v1/submissions`, {
+  const uploadRes = await fetch(`${BASE_URL}/api/v1/domains/main/submissions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${userToken}` },
     body: form,

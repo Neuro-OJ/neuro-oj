@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import { useRoute } from "vue-router"
-import { useMessages } from "~/composables/useMessages"
-import { useToast } from "~/composables/useToast"
 import { difficultyBadgeColors, difficultyLabels, formatDateTime, formatScore, getLanguageLabel } from "~/utils/submissionFormat"
-import { problemUrl, publicUrl } from "~/utils/publicIdentifiers"
+import { problemUrl, publicUrl, workspaceProblemUrl } from "~/utils/publicIdentifiers"
+import { workspacePath } from "~/utils/workspace"
 import { contestHiddenRowClass } from "~/utils/contestHidden"
 import { useBreadcrumbLabel } from '~/composables/useBreadcrumb'
 
 definePageMeta({ breadcrumbWidth: '900px' })
 
 const route = useRoute()
-const router = useRouter()
 const { user: currentUser } = useAuth()
-const { findOrCreateConversation } = useMessages()
-const { toast } = useToast()
-const { api } = useApi()
 
 const userId = route.params.id as string
 
@@ -58,9 +53,17 @@ interface UserProfile {
     score: number | null
     created_at: string
   }[]
-  community_stats: { following_count: number; follower_count: number; solution_count: number; moment_count: number }
+  /** 该用户创建的题目（跨域，按查看者可见性过滤；审计 F5）。 */
+  created_problems: {
+    id: string
+    /** `{domain}:{number}`，链接按域路由生成。 */
+    display_id: string
+    title: string
+    difficulty: string
+    created_at: string
+  }[]
+  community_stats: { solution_count: number }
   solutions: { id: string; public_id?: string; title: string; created_at: string }[]
-  moments: { id: string; public_id?: string; content: string; created_at: string }[]
 }
 
 interface ProfileResponse {
@@ -135,48 +138,38 @@ const contributionStart = computed(() => {
 })
 const contributionDays = computed(() => checkinHistory.value?.data?.days ?? [])
 
-const following = ref(false)
-
-// 该用户创建的 U 型题目
-interface CreatedProblem {
-  id: string
-  title: string
-  difficulty: string
-  display_id: string
-  created_at: string
-}
-
-const { data: createdData, pending: createdPending } = useFetch<{
-  data: CreatedProblem[]
-}>(
-  `/api/v1/problems?type=U&owner_id=${userId}&limit=50`,
-)
-
-const createdProblems = computed(() => createdData.value?.data ?? [])
+// 该用户创建的题目：0.11 起题库列表取消 P/U 分类，改由 profile 聚合下发
+// （审计 F5：原先请求 ?type=U 会被后端 400，页面再静默回退空数组）。
+const createdProblems = computed(() => profile.value?.created_problems ?? [])
 
 interface TrainingProfile {
   id: string
   public_id?: string
   title: string
-  description: string
   visibility: 'private' | 'unlisted' | 'public'
-  is_pinned: boolean
+  state: 'draft' | 'published'
   created_by: string
-  created_at: string
   updated_at: string
-  problem_count: number
 }
 
-const { data: trainingsData } = useFetch<{ data: TrainingProfile[]; total: number }>(
-  `/api/v1/trainings?created_by=${userId}`,
-  { query: { page: 1, per_page: 100 } },
+// 题单只存在于域内：0.11 起旧无域 `/api/v1/trainings?created_by=` 已删除，
+// 这里读默认域 main 的题单目录，按创建者过滤（他人只见已发布题单）。
+// userId 是 URL 中的 username，先由 profile 解析出稳定用户 id 再按 id 过滤。
+const profileUserId = computed(() => profile.value?.user?.id)
+const { data: trainingsData } = useFetch<{ items: TrainingProfile[] }>(
+  '/api/v1/domains/main/trainings',
+  {
+    query: computed(() => ({ page: 1, limit: 100, created_by: profileUserId.value })),
+    immediate: false,
+    watch: [profileUserId],
+  },
 )
-const profileTrainings = computed(() => trainingsData.value?.data ?? [])
+const profileTrainings = computed(() => trainingsData.value?.items ?? [])
 
 // 当前登录用户是否在查看自己的主页。
 // userId 来自 URL（userUrl 生成 /users/{username}），故用 username 对比；
 // 用 id 对比会因类型不同（UUID vs username）导致自己主页误判为他人主页，
-// 从而错误地显示关注/私信按钮。
+// 从而错误地显示关注按钮。
 const isOwnProfile = computed(
   () => currentUser.value?.username === userId,
 )
@@ -196,17 +189,6 @@ function formatDate(iso: string): string {
     month: "2-digit",
     day: "2-digit",
   })
-}
-
-async function startConversation() {
-  await findOrCreateConversation(userId)
-  router.push(`/messages`)
-}
-
-async function toggleFollow() {
-  const result = await api.post<{ data: { following: boolean } }>(`/api/v1/community/users/${userId}/follow`)
-  following.value = result.data.following
-  toast.success(following.value ? "已关注" : "已取消关注")
 }
 
 </script>
@@ -245,14 +227,6 @@ async function toggleFollow() {
               to="/settings">
               编辑个人资料
             </UButton>
-            <!-- 发送私信按钮（查看他人主页时显示，与关注按钮并列） -->
-            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5 flex items-center gap-1.5" v-else-if="currentUser"
-              @click="startConversation">
-              <UIcon name="i-lucide-send" class="size-3.5" />
-              发送私信
-            </UButton>
-            <!-- 关注按钮：独立 v-if（需与私信按钮同时显示） -->
-            <UButton color="primary" variant="outline" class="text-xs px-3 py-1.5" v-if="currentUser && !isOwnProfile" @click="toggleFollow">{{ following ? '已关注' : '关注' }}</UButton>
           </div>
 
           <!-- Bio（Markdown 渲染） -->
@@ -296,7 +270,7 @@ async function toggleFollow() {
         >
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">全站排名</span>
           <NuxtLink
-            to="/ranking"
+            to="/leaderboard"
             class="text-2xl font-bold text-text no-underline hover:text-primary tabular-nums"
           >
             #{{ profile.rank }}
@@ -304,22 +278,11 @@ async function toggleFollow() {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <!-- 社交：关注 + 粉丝 -->
-        <div class="rounded-xl border border-border bg-white px-5 py-4">
-          <h3 class="text-sm font-semibold text-text">社交</h3>
-          <div class="mt-3 flex items-center gap-8">
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">关注</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.following_count }}</p></div>
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">粉丝</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.follower_count }}</p></div>
-          </div>
-        </div>
-        <!-- 我的创作：题解 + 动态 -->
-        <div class="rounded-xl border border-border bg-white px-5 py-4">
-          <h3 class="text-sm font-semibold text-text">我的创作</h3>
-          <div class="mt-3 flex items-center gap-8">
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
-            <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">动态</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.moment_count }}</p></div>
-          </div>
+      <!-- 我的创作：题解 -->
+      <div class="rounded-xl border border-border bg-white px-5 py-4">
+        <h3 class="text-sm font-semibold text-text">我的创作</h3>
+        <div class="mt-3 flex items-center gap-8">
+          <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
         </div>
       </div>
 
@@ -379,7 +342,7 @@ async function toggleFollow() {
         </template>
       </section>
 
-      <section v-if="profile.solutions.length || profile.moments.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <section v-if="profile.solutions.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-messages-square" class="text-primary size-4.5" />
@@ -389,9 +352,6 @@ async function toggleFollow() {
         <div class="divide-y divide-border">
           <NuxtLink v-for="solution in profile.solutions" :key="solution.id" :to="publicUrl('post', solution.public_id || solution.id)" class="flex items-center gap-2 px-6 py-3 text-sm text-primary no-underline hover:bg-primary-bg">
             <UIcon name="i-lucide-lightbulb" class="size-4 shrink-0" />题解 · {{ solution.title }}
-          </NuxtLink>
-          <NuxtLink v-for="moment in profile.moments" :key="moment.id" :to="publicUrl('post', moment.public_id || moment.id)" class="flex items-center gap-2 px-6 py-3 text-sm text-primary no-underline hover:bg-primary-bg">
-            <UIcon name="i-lucide-pen-line" class="size-4 shrink-0" /><span class="line-clamp-1">动态 · {{ moment.content }}</span>
           </NuxtLink>
         </div>
       </section>
@@ -449,9 +409,9 @@ async function toggleFollow() {
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg"
           >
             <div class="flex items-center gap-3">
-              <ProblemId :display-id="problem.display_id" :type="'U'" />
+              <ProblemId :display-id="problem.display_id" />
               <NuxtLink
-                :to="problemUrl(problem.id, problem.display_id)"
+                :to="workspaceProblemUrl(problem.display_id)"
                 class="text-sm text-primary no-underline hover:underline"
               >
                 {{ problem.title }}
@@ -470,23 +430,23 @@ async function toggleFollow() {
         </div>
       </div>
 
-      <!-- 我的题单 -->
+      <!-- 题单（默认域 main） -->
       <div v-if="profileTrainings.length" class="bg-white border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-list-todo" class="text-primary size-4.5" />
-            我的题单
+            题单
           </h2>
         </div>
         <div class="divide-y divide-border">
           <NuxtLink
             v-for="training in profileTrainings"
             :key="training.id"
-            :to="publicUrl('training', training.public_id || training.id)"
+            :to="workspacePath('main', `trainings/${training.id}`)"
             class="flex items-center justify-between px-6 py-3 hover:bg-primary-bg no-underline"
           >
             <span class="text-sm text-primary">{{ training.title }}</span>
-            <span class="text-xs text-text-muted">{{ training.problem_count }} 题</span>
+            <span class="text-xs text-text-muted">{{ training.state === 'published' ? '已发布' : '草稿' }}</span>
           </NuxtLink>
         </div>
       </div>

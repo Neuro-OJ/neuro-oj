@@ -12,10 +12,17 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use tokio::io::AsyncWriteExt;
+use tokio::time::timeout;
 
 /// 文件注入 exec 完成轮询次数与间隔（50 × 100ms = 5s 上限）。
 const INJECT_POLL_ATTEMPTS: u32 = 50;
 const INJECT_POLL_INTERVAL_MS: u64 = 100;
+
+/// 单次 Docker daemon 调用（create_exec / start_exec / inspect_exec）的超时上限。
+///
+/// 与 `dual/container.rs` 中 create_exec 的 10s 保持一致：daemon 卡住时不能让
+/// 评测无限期挂起（挂起会占住 Worker 槽位直到 drain）。
+const DOCKER_CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// 校验注入用的容器内相对路径（拒绝绝对路径与 `..` 段）。
 ///
@@ -113,8 +120,9 @@ pub(crate) async fn inject_file_stream_to_container(
         .with_context(|| format!("读取待注入文件元数据失败: {}", host_path.display()))?
         .len();
 
-    let exec = docker
-        .create_exec(
+    let exec = timeout(
+        DOCKER_CALL_TIMEOUT,
+        docker.create_exec(
             container_id,
             bollard::models::ExecConfig {
                 cmd: Some(vec![
@@ -127,11 +135,16 @@ pub(crate) async fn inject_file_stream_to_container(
                 attach_stderr: Some(false),
                 ..Default::default()
             },
-        )
-        .await
-        .context("创建注入 exec 失败")?;
+        ),
+    )
+    .await
+    .context("创建注入 exec 超时（Docker daemon 无响应）")?
+    .context("创建注入 exec 失败")?;
 
-    let started = docker.start_exec(&exec.id, None).await?;
+    let started = timeout(DOCKER_CALL_TIMEOUT, docker.start_exec(&exec.id, None))
+        .await
+        .context("启动注入 exec 超时（Docker daemon 无响应）")?
+        .context("启动注入 exec 失败")?;
     let mut input = match started {
         bollard::exec::StartExecResults::Attached { input, .. } => input,
         bollard::exec::StartExecResults::Detached => {
@@ -170,7 +183,10 @@ pub(crate) async fn inject_file_stream_to_container(
     writer_result?;
 
     for _ in 0..INJECT_POLL_ATTEMPTS {
-        let inspect = docker.inspect_exec(&exec.id).await?;
+        let inspect = timeout(DOCKER_CALL_TIMEOUT, docker.inspect_exec(&exec.id))
+            .await
+            .context("查询注入 exec 状态超时（Docker daemon 无响应）")?
+            .context("查询注入 exec 状态失败")?;
         if let Some(code) = inspect.exit_code {
             if code != 0 {
                 anyhow::bail!("注入文件 {} 失败（exit_code={}）", rel, code);

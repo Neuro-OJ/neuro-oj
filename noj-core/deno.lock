@@ -13,6 +13,11 @@
     "jsr:@std/assert@*": "1.0.19",
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/assert@^1.0.19": "1.0.19",
+    "jsr:@std/async@^1.4.0": "1.5.1",
+    "jsr:@std/bytes@^1.0.6": "1.0.6",
+    "jsr:@std/csv@1": "1.0.6",
+    "jsr:@std/csv@1.0.6": "1.0.6",
+    "jsr:@std/data-structures@^1.1.0": "1.1.3",
     "jsr:@std/encoding@1": "1.0.10",
     "jsr:@std/encoding@^1.0.10": "1.0.10",
     "jsr:@std/fmt@^1.0.10": "1.0.10",
@@ -22,8 +27,10 @@
     "jsr:@std/path@1": "1.1.5",
     "jsr:@std/path@^1.1.5": "1.1.5",
     "jsr:@std/semver@^1.0.8": "1.0.8",
+    "jsr:@std/streams@^1.0.9": "1.2.0",
     "jsr:@std/testing@1": "1.0.19",
     "jsr:@std/text@^1.0.19": "1.0.19",
+    "jsr:@std/yaml@1": "1.3.0",
     "npm:@alicloud/dm20151123@*": "1.10.2",
     "npm:@alicloud/dm20151123@^1.10.2": "1.10.2",
     "npm:@alicloud/green20180509@1": "1.0.1",
@@ -32,19 +39,16 @@
     "npm:@alicloud/openapi-core@^1.0.7": "1.0.7",
     "npm:@aws-sdk/client-s3@3": "3.1078.0",
     "npm:@aws-sdk/s3-request-presigner@3": "3.1078.0",
-    "npm:@electric-sql/pglite@*": "0.5.3",
-    "npm:@electric-sql/pglite@~0.5.3": "0.5.3",
     "npm:@noble/hashes@2.2.0": "2.2.0",
     "npm:@types/pg@^8.20.0": "8.20.0",
-    "npm:asn1js@3.0.5": "3.0.5",
     "npm:bcryptjs@*": "2.4.3",
     "npm:bcryptjs@^2.4.3": "2.4.3",
     "npm:busboy@^1.6.0": "1.6.0",
     "npm:drizzle-kit@*": "0.31.10",
     "npm:drizzle-kit@0.31.10": "0.31.10",
-    "npm:drizzle-orm@*": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
-    "npm:drizzle-orm@0.35.2": "0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
-    "npm:drizzle-orm@0.45.2": "0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5",
+    "npm:drizzle-orm@*": "0.45.2_@types+pg@8.20.0_pg@8.23.1_postgres@3.4.5",
+    "npm:drizzle-orm@0.35.2": "0.35.2_@types+pg@8.20.0_pg@8.23.1_postgres@3.4.5",
+    "npm:drizzle-orm@0.45.2": "0.45.2_@types+pg@8.20.0_pg@8.23.1_postgres@3.4.5",
     "npm:fflate@~0.8.3": "0.8.3",
     "npm:hono@4": "4.12.26",
     "npm:ioredis@5.11.1": "5.11.1",
@@ -52,12 +56,14 @@
     "npm:keyv@4": "4.5.4",
     "npm:keyv@5": "5.6.0",
     "npm:otpauth@9": "9.5.1",
-    "npm:pkijs@3.2.4": "3.2.4",
+    "npm:pg@*": "8.23.1",
     "npm:postgres@*": "3.4.5",
     "npm:postgres@3": "3.4.5",
     "npm:postgres@3.4.5": "3.4.5",
     "npm:tencentcloud-sdk-nodejs-cms@^4.1.71": "4.1.71",
     "npm:tencentcloud-sdk-nodejs-ses@^4.1.247": "4.1.247",
+    "npm:typescript@5.7.2": "5.7.2",
+    "npm:typescript@5.9.2": "5.9.2",
     "npm:yaml@^2.9.1": "2.9.1"
   },
   "jsr": {
@@ -121,6 +127,21 @@
         "jsr:@std/internal@^1.0.12"
       ]
     },
+    "@std/async@1.5.1": {
+      "integrity": "c82455dc70cab29a0adf3ac8075db934785bffdd3902af5afcf25d21a74cfd86"
+    },
+    "@std/bytes@1.0.6": {
+      "integrity": "f6ac6adbd8ccd99314045f5703e23af0a68d7f7e58364b47d2c7f408aeb5820a"
+    },
+    "@std/csv@1.0.6": {
+      "integrity": "52ef0e62799a0028d278fa04762f17f9bd263fad9a8e7f98c14fbd371d62d9fd",
+      "dependencies": [
+        "jsr:@std/streams"
+      ]
+    },
+    "@std/data-structures@1.1.3": {
+      "integrity": "a5ec67199e79ee5b29123474d93fa9a47701ec08a4ef3bd1b623a36476306c5b"
+    },
     "@std/encoding@1.0.10": {
       "integrity": "8783c6384a2d13abd5e9e87a7ae0520a30e9f56aeeaa3bdf910a3eaaf5c811a1"
     },
@@ -142,14 +163,25 @@
     "@std/semver@1.0.8": {
       "integrity": "dc830e8b8b6a380c895d53fbfd1258dc253704ca57bbe1629ac65fd7830179b7"
     },
+    "@std/streams@1.2.0": {
+      "integrity": "256b934254778f2bf45f5713b934209ff29e9b4b7fd4ec095219966813758c5f",
+      "dependencies": [
+        "jsr:@std/bytes"
+      ]
+    },
     "@std/testing@1.0.19": {
       "integrity": "f4236172365b216728dc3cc8b5e80a9f4c33083d1e4ede7613d5b25b4014898e",
       "dependencies": [
-        "jsr:@std/assert@^1.0.19"
+        "jsr:@std/assert@^1.0.19",
+        "jsr:@std/async",
+        "jsr:@std/data-structures"
       ]
     },
     "@std/text@1.0.19": {
       "integrity": "003a0e032d360e8c3a4e0410fb792c77a66bd6553fee9d60c6ec1bce30d29223"
+    },
+    "@std/yaml@1.3.0": {
+      "integrity": "b250103854378b8b36cbff0fe95aec017d3d9ce86b489c67605180c602fb4922"
     }
   },
   "npm": {
@@ -1037,10 +1069,6 @@
       "integrity": "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==",
       "tarball": "https://registry.npmmirror.com/@keyv/serialize/-/serialize-1.1.1.tgz"
     },
-    "@noble/hashes@1.8.0": {
-      "integrity": "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==",
-      "tarball": "https://registry.npmmirror.com/@noble/hashes/-/hashes-1.8.0.tgz"
-    },
     "@noble/hashes@2.2.0": {
       "integrity": "sha512-IYqDGiTXab6FniAgnSdZwgWbomxpy9FtYvLKs7wCUs2a8RkITG+DFGO1DM9cr+E3/RgADRpFjrKVaJ1z6sjtEg==",
       "tarball": "https://registry.npmmirror.com/@noble/hashes/-/hashes-2.2.0.tgz"
@@ -1144,15 +1172,6 @@
       ],
       "tarball": "https://registry.npmmirror.com/agent-base/-/agent-base-6.0.2.tgz"
     },
-    "asn1js@3.0.5": {
-      "integrity": "sha512-FVnvrKJwpt9LP2lAMl8qZswRNm3T4q9CON+bxldk2iwk3FFpuwhx2FfinyitizWHsVYyaY+y5JzDR0rCMV5yTQ==",
-      "dependencies": [
-        "pvtsutils",
-        "pvutils",
-        "tslib@2.8.1"
-      ],
-      "tarball": "https://registry.npmmirror.com/asn1js/-/asn1js-3.0.5.tgz"
-    },
     "asynckit@0.4.0": {
       "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==",
       "tarball": "https://registry.npmmirror.com/asynckit/-/asynckit-0.4.0.tgz"
@@ -1179,10 +1198,6 @@
         "streamsearch"
       ],
       "tarball": "https://registry.npmmirror.com/busboy/-/busboy-1.6.0.tgz"
-    },
-    "bytestreamjs@2.0.1": {
-      "integrity": "sha512-U1Z/ob71V/bXfVABvNr/Kumf5VyeQRBEm6Txb0PQ6S7V5GpBM3w4Cbqz/xPDicR5tN0uvDifng8C+5qECeGwyQ==",
-      "tarball": "https://registry.npmmirror.com/bytestreamjs/-/bytestreamjs-2.0.1.tgz"
     },
     "call-bind-apply-helpers@1.0.2": {
       "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
@@ -1229,30 +1244,34 @@
       "bin": true,
       "tarball": "https://registry.npmmirror.com/drizzle-kit/-/drizzle-kit-0.31.10.tgz"
     },
-    "drizzle-orm@0.35.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5": {
+    "drizzle-orm@0.35.2_@types+pg@8.20.0_pg@8.23.1_postgres@3.4.5": {
       "integrity": "sha512-bLQtRchl8QvRo2MyG6kcZC90UDzR7Ubir4YwOHV3cZPdJbF+4jU/Yt0QOczsoXe25wLRt6CtCWLXtSDQKft3yg==",
       "dependencies": [
         "@electric-sql/pglite",
         "@types/pg",
+        "pg",
         "postgres"
       ],
       "optionalPeers": [
         "@electric-sql/pglite",
         "@types/pg",
+        "pg",
         "postgres"
       ],
       "tarball": "https://registry.npmmirror.com/drizzle-orm/-/drizzle-orm-0.35.2.tgz"
     },
-    "drizzle-orm@0.45.2_@electric-sql+pglite@0.5.3_@types+pg@8.20.0_postgres@3.4.5": {
+    "drizzle-orm@0.45.2_@types+pg@8.20.0_pg@8.23.1_postgres@3.4.5": {
       "integrity": "sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==",
       "dependencies": [
         "@electric-sql/pglite",
         "@types/pg",
+        "pg",
         "postgres"
       ],
       "optionalPeers": [
         "@electric-sql/pglite",
         "@types/pg",
+        "pg",
         "postgres"
       ],
       "tarball": "https://registry.npmmirror.com/drizzle-orm/-/drizzle-orm-0.45.2.tgz"
@@ -1596,17 +1615,32 @@
     "otpauth@9.5.1": {
       "integrity": "sha512-fJmDAHc8wImfqqqOXIlBvT1dEKrZK0Cmb2VEgScpNTolCz0PHh6ExUZGv4sLtOsWNaHCQlD+rRqaPgnoxFoZjQ==",
       "dependencies": [
-        "@noble/hashes@2.2.0"
+        "@noble/hashes"
       ],
       "tarball": "https://registry.npmmirror.com/otpauth/-/otpauth-9.5.1.tgz"
+    },
+    "pg-cloudflare@1.4.1": {
+      "integrity": "sha512-6PQbsFWZcp9EmJEwy5cGQ2La+AMWpP46lgbb8X+U/XsHIUweYDNCpeuKck5RxL2MdVFi7krbbEi5nX4Zh7JhrQ==",
+      "tarball": "https://registry.npmmirror.com/pg-cloudflare/-/pg-cloudflare-1.4.1.tgz"
+    },
+    "pg-connection-string@2.14.1": {
+      "integrity": "sha512-qR3kGNPBLpCNtz0evbKA0Y/MRFXwSSdT+pTJvYp/bXTcReZbvX1kzF0IyTc1QnxqF7AZbOeBhNL8R5mYQZV/MA==",
+      "tarball": "https://registry.npmmirror.com/pg-connection-string/-/pg-connection-string-2.14.1.tgz"
     },
     "pg-int8@1.0.1": {
       "integrity": "sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==",
       "tarball": "https://registry.npmmirror.com/pg-int8/-/pg-int8-1.0.1.tgz"
     },
-    "pg-protocol@1.15.0": {
-      "integrity": "sha512-cq9sECI5s0+uPUXjbz8ioyPJni6RzsRib0US67i5IoTZKw8fNeYlVE7u8F4dG7vEJJtc5wdD1K189lCCUwqWTQ==",
-      "tarball": "https://registry.npmmirror.com/pg-protocol/-/pg-protocol-1.15.0.tgz"
+    "pg-pool@3.14.0_pg@8.23.1": {
+      "integrity": "sha512-gKtPkFdQPU3DksooVLi9LsjZxrsBUZIpa+7aVx+LV5pNh0KzP4Zleud2po+ConrxbuXGBJ6Hfer6hdgpIBpBaw==",
+      "dependencies": [
+        "pg"
+      ],
+      "tarball": "https://registry.npmmirror.com/pg-pool/-/pg-pool-3.14.0.tgz"
+    },
+    "pg-protocol@1.16.1": {
+      "integrity": "sha512-p9VOFMiHB/ZbJATetbg+99PxssTVSQRnyuPSQ67mN1+1KBOjZaZ83ZQzltnxPhJwSsC3nwVjJ10DVJlerbFzLg==",
+      "tarball": "https://registry.npmmirror.com/pg-protocol/-/pg-protocol-1.16.1.tgz"
     },
     "pg-types@2.2.0": {
       "integrity": "sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==",
@@ -1619,17 +1653,26 @@
       ],
       "tarball": "https://registry.npmmirror.com/pg-types/-/pg-types-2.2.0.tgz"
     },
-    "pkijs@3.2.4": {
-      "integrity": "sha512-Et9V5QpvBilPFgagJcaKBqXjKrrgF5JL2mSDELk1vvbOTt4fuBhSSsGn9Tcz0TQTfS5GCpXQ31Whrpqeqp0VRg==",
+    "pg@8.23.1": {
+      "integrity": "sha512-aL96AHANtWjPLDOLqnhx+ngp9+UK7ETEU8VJrDCGvsSSi/mGLcWYsS6Herg7lmaBJe4uwrfqsa7gTEFaSizDoQ==",
       "dependencies": [
-        "@noble/hashes@1.8.0",
-        "asn1js",
-        "bytestreamjs",
-        "pvtsutils",
-        "pvutils",
-        "tslib@2.8.1"
+        "pg-connection-string",
+        "pg-pool",
+        "pg-protocol",
+        "pg-types",
+        "pgpass"
       ],
-      "tarball": "https://registry.npmmirror.com/pkijs/-/pkijs-3.2.4.tgz"
+      "optionalDependencies": [
+        "pg-cloudflare"
+      ],
+      "tarball": "https://registry.npmmirror.com/pg/-/pg-8.23.1.tgz"
+    },
+    "pgpass@1.0.5": {
+      "integrity": "sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==",
+      "dependencies": [
+        "split2"
+      ],
+      "tarball": "https://registry.npmmirror.com/pgpass/-/pgpass-1.0.5.tgz"
     },
     "postgres-array@2.0.0": {
       "integrity": "sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==",
@@ -1653,17 +1696,6 @@
     "postgres@3.4.5": {
       "integrity": "sha512-cDWgoah1Gez9rN3H4165peY9qfpEo+SA61oQv65O3cRUE1pOEoJWwddwcqKE8XZYjbblOJlYDlLV4h67HrEVDg==",
       "tarball": "https://registry.npmmirror.com/postgres/-/postgres-3.4.5.tgz"
-    },
-    "pvtsutils@1.3.6": {
-      "integrity": "sha512-PLgQXQ6H2FWCaeRak8vvk1GW462lMxB5s3Jm673N82zI4vqtVUPuZdffdZbPDFRoU8kAhItWFtPCWiPpp4/EDg==",
-      "dependencies": [
-        "tslib@2.8.1"
-      ],
-      "tarball": "https://registry.npmmirror.com/pvtsutils/-/pvtsutils-1.3.6.tgz"
-    },
-    "pvutils@1.2.0": {
-      "integrity": "sha512-BbubeCEyTuQjVMakvJQ/Sxbc93F2pwmbsxONT/ZRrwU7Ua38d8unYTwXpTVLAKJ4BDuH9IGztCjQcd/N/39Dvg==",
-      "tarball": "https://registry.npmmirror.com/pvutils/-/pvutils-1.2.0.tgz"
     },
     "redis-errors@1.2.0": {
       "integrity": "sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w==",
@@ -1699,6 +1731,10 @@
     "source-map@0.6.1": {
       "integrity": "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==",
       "tarball": "https://registry.npmmirror.com/source-map/-/source-map-0.6.1.tgz"
+    },
+    "split2@4.2.0": {
+      "integrity": "sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==",
+      "tarball": "https://registry.npmmirror.com/split2/-/split2-4.2.0.tgz"
     },
     "standard-as-callback@2.1.0": {
       "integrity": "sha512-qoRRSyROncaz1z0mvYqIE4lCd9p2R90i6GxW3uZv5ucSu8tU7B5HXUP1gG8pVZsYNVaXjk8ClXHPttLyxAL48A==",
@@ -1761,6 +1797,16 @@
       ],
       "bin": true,
       "tarball": "https://registry.npmmirror.com/tsx/-/tsx-4.23.12.tgz"
+    },
+    "typescript@5.7.2": {
+      "integrity": "sha512-i5t66RHxDvVN40HfDd1PsEThGNnlMCMT3jMUuoh9/0TaqWevNontacunWyN02LA9/fIbEWlcHZcgTKb9QoaLfg==",
+      "bin": true,
+      "tarball": "https://registry.npmmirror.com/typescript/-/typescript-5.7.2.tgz"
+    },
+    "typescript@5.9.2": {
+      "integrity": "sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==",
+      "bin": true,
+      "tarball": "https://registry.npmmirror.com/typescript/-/typescript-5.9.2.tgz"
     },
     "undici-types@6.21.0": {
       "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==",
@@ -2099,8 +2145,6 @@
       "npm:@alicloud/openapi-core@^1.0.7",
       "npm:@aws-sdk/client-s3@3",
       "npm:@aws-sdk/s3-request-presigner@3",
-      "npm:@electric-sql/pglite@~0.5.3",
-      "npm:asn1js@3.0.5",
       "npm:bcryptjs@^2.4.3",
       "npm:busboy@^1.6.0",
       "npm:drizzle-kit@0.31.10",
@@ -2110,7 +2154,6 @@
       "npm:ioredis@5.11.1",
       "npm:jose@5",
       "npm:otpauth@9",
-      "npm:pkijs@3.2.4",
       "npm:postgres@3.4.5",
       "npm:tencentcloud-sdk-nodejs-ses@^4.1.247",
       "npm:yaml@^2.9.1"

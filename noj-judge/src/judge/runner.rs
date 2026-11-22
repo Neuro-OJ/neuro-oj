@@ -29,11 +29,12 @@ fn package_size(pkg: &DownloadedPackage) -> u64 {
 /// 评测任务入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
 ///
 /// `instance_id`：确定性实例 ID（`noj-{hash12}`），透传到容器实例标签（VULN-15）。
+/// `resource_lease_client`：OI 进度/取消/资源租约所用 Redis；本地验题（`run-local`）传 `None`。
 // 保留独立库调用入口；Worker 二进制使用带资源上下文的入口。
 #[allow(dead_code, clippy::too_many_arguments)]
 pub async fn evaluate_with_cpu_limit(
     docker: bollard::Docker,
-    resource_lease_client: redis::Client,
+    resource_lease_client: Option<redis::Client>,
     task: &JudgeTask,
     download_timeout_secs: u64,
     cache_dir: String,
@@ -80,7 +81,7 @@ pub async fn evaluate_with_cpu_limit(
 #[allow(clippy::too_many_arguments)]
 pub async fn evaluate_with_scheduler(
     docker: bollard::Docker,
-    resource_lease_client: redis::Client,
+    resource_lease_client: Option<redis::Client>,
     task: &JudgeTask,
     download_timeout_secs: u64,
     cache_dir: String,
@@ -198,7 +199,7 @@ pub async fn evaluate_with_scheduler(
                 oi_image,
                 cpu_limit_millicores,
                 instance_id,
-                Some(&resource_lease_client),
+                resource_lease_client.as_ref(),
                 scheduling,
             ),
         )
@@ -373,10 +374,12 @@ mod tests {
         JudgeTask {
             scheduling_version: None,
             resource_pool: None,
+            task_kind: None,
             run_id: None,
             attempt_id: None,
             problem_version_id: None,
             evaluation_protocol_version: None,
+            self_test_run_id: None,
             submission_id: "sid-support-fail".to_string(),
             problem_id: "1001".to_string(),
             user_id: "u-1".to_string(),
@@ -425,7 +428,7 @@ mod tests {
 
         let err = evaluate_with_cpu_limit(
             offline_docker(),
-            redis::Client::open("redis://127.0.0.1/").unwrap(),
+            Some(redis::Client::open("redis://127.0.0.1/").unwrap()),
             &task,
             5,
             tmp.path().join("cache").to_string_lossy().to_string(),
@@ -473,7 +476,7 @@ mod tests {
 
         let err = evaluate_with_cpu_limit(
             offline_docker(),
-            redis::Client::open("redis://127.0.0.1/").unwrap(),
+            Some(redis::Client::open("redis://127.0.0.1/").unwrap()),
             &task,
             5,
             tmp.path().join("cache").to_string_lossy().to_string(),

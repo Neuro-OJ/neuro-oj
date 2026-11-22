@@ -2,8 +2,8 @@
  * 评测网络能力（evaluator 联网 + capability）跨模块 E2E。
  *
  * 覆盖（issue #197）：
- * - 普通用户创建带 network.enabled=true 的 U 型题目（权限放行，无需 admin）
- * - 普通用户通过 import-bundle 导入带联网配置的统一题目包（导入路径同权限）
+ * - 实例管理员创建带 network.enabled=true 的题目，联网仍受实例权限约束
+ * - format_version=2 联网题包显式发布后，普通用户通过 capability 作答
  * - 提交 solution（call_capability）→ 评测完成且 evaluator 联网真实生效：
  *   capability handler 内真实 TCP 出网探测（example.com:443）成功才 finished 且得分>0，
  *   evaluator 无网则返回 no-net → WrongAnswer（测试失败即暴露网络回归）
@@ -20,6 +20,7 @@ import {
   apiPost,
   apiPut,
   BASE_URL,
+  domainProblemPath,
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
@@ -27,6 +28,7 @@ import {
   pollSubmission,
   publishProblemVersion,
   registerUser,
+  setProblemState,
   submitCode,
   TEST_PASSWORD,
   waitForServer,
@@ -106,10 +108,9 @@ async function makeBundleZip(): Promise<Uint8Array> {
   const enc = new TextEncoder();
   try {
     const manifest = JSON.stringify({
-      format_version: 1,
+      format_version: 2,
       title: `[${TEST_TAG}] 联网能力导入题`,
       difficulty: "easy",
-      type: "U",
       // 普通用户导入不带 number（number 由系统自动分配）
       runtime_config: {
         evaluator: {
@@ -165,30 +166,38 @@ async function importBundle(zip: Uint8Array): Promise<string> {
     "netcap-bundle.zip",
   );
   const baseUrl = BASE_URL;
-  const res = await fetch(`${baseUrl}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${adminToken}` },
-    body: formData,
-  });
-  if (res.status !== 200) {
+  const res = await fetch(
+    `${baseUrl}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+      body: formData,
+    },
+  );
+  if (res.status !== 200 && res.status !== 201) {
     throw new Error(
       `导入失败: ${res.status} ${(await res.text()).slice(0, 500)}`,
     );
   }
-  const body = (await res.json()) as {
-    data: {
-      id: string;
-      runtime_config: {
-        evaluator: { network?: { enabled?: boolean } };
-      };
+  // 域导入只回 problem_id/number：runtime_config 从草稿内容里核对
+  const body = (await res.json()) as { data: { problem_id: string } };
+  const draft = await apiGet(
+    `${await domainProblemPath(body.data.problem_id)}/draft`,
+    adminToken,
+  );
+  const draftContent = (draft.body as {
+    content: {
+      runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
     };
-  };
-  if (body.data.runtime_config.evaluator.network?.enabled !== true) {
+  }).content;
+  if (
+    draftContent.runtime_config?.evaluator.network?.enabled !== true
+  ) {
     throw new Error(
       "导入后 runtime_config.evaluator.network.enabled 未保留为 true",
     );
   }
-  return body.data.id;
+  return body.data.problem_id;
 }
 
 /** 探测 judge 是否可用：提交样例题并等待评测有结果。
@@ -252,7 +261,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const res = await apiPost(
-      "/api/v1/problems",
+      "/api/v1/domains/main/problems",
       {
         title: `[${TEST_TAG}] 联网能力测试题`,
         description: `# 联网能力测试题\n\n管理员创建，evaluator 开启联网。`,
@@ -281,15 +290,17 @@ e2eTest(
         }`,
       );
     }
-    const data = (res.body as {
-      data: {
-        id: string;
-        runtime_config: {
-          evaluator: { network?: { enabled?: boolean } };
-        };
+    const created = res.body as { problem_id: string };
+    const draft = await apiGet(
+      `${await domainProblemPath(created.problem_id)}/draft`,
+      adminToken,
+    );
+    const draftContent = (draft.body as {
+      content: {
+        runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
       };
-    }).data;
-    if (data.runtime_config.evaluator.network?.enabled !== true) {
+    }).content;
+    if (draftContent.runtime_config?.evaluator.network?.enabled !== true) {
       throw new Error("runtime_config.evaluator.network.enabled 未保留为 true");
     }
   },
@@ -301,19 +312,17 @@ e2eTest(
     if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
-    // U 型导入默认 private；普通用户提交前需公开
-    const pubRes = await apiPut(
-      `/api/v1/problems/${bundleProblemId}/visibility`,
-      { visibility: "public" },
-      adminToken,
-    );
+    // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
+    await publishProblemVersion(adminToken, bundleProblemId, "E2E 联网题 V1");
+    // 发布建立域绑定后，才能通过 `/state` 修改题库配置（含公开范围）。
+    const pubRes = await setProblemState(adminToken, bundleProblemId, {
+      visibility: "public",
+    });
     if (pubRes.status !== 200) {
       throw new Error(
         `设置导入题目公开失败: ${pubRes.status} ${JSON.stringify(pubRes.body)}`,
       );
     }
-    // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）
-    await publishProblemVersion(adminToken, bundleProblemId, "E2E 联网题 V1");
     console.log(
       `  → 导入题目 ${bundleProblemId.slice(0, 8)} 成功（联网已开启）`,
     );

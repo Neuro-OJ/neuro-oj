@@ -1,0 +1,1 @@
+ALTER TABLE "contests" ADD COLUMN "secrecy_enabled" boolean DEFAULT true NOT NULL;

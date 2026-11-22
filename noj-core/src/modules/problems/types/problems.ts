@@ -1,0 +1,413 @@
+/**
+ * 去掉 Docker 镜像引用中的 tag，保留完整 repository 路径。
+ *
+ * 这里不能只比较 basename，否则：
+ * - `registry-a/team/noj-judge-python:latest`
+ * - `registry-b/evil/noj-judge-python:latest`
+ * 会被错误地视为同一镜像。
+ */
+function stripImageTag(name: string): string {
+  const lastSlash = name.lastIndexOf("/");
+  const lastColon = name.lastIndexOf(":");
+  if (lastColon > lastSlash) {
+    return name.slice(0, lastColon);
+  }
+  return name;
+}
+
+/** 解析后的镜像引用。 */
+export interface ParsedImageRef {
+  /** 不含 tag/digest 的 repository 路径 */
+  repository: string;
+  /** tag（无则 null） */
+  tag: string | null;
+  /** digest（形如 `sha256:...`，无则 null） */
+  digest: string | null;
+}
+
+/**
+ * 解析 Docker 镜像引用为 repository / tag / digest。
+ *
+ * 支持 `repo`、`repo:tag`、`repo@sha256:...`、`registry:5000/repo:tag@sha256:...`。
+ */
+export function parseImageRef(image: string): ParsedImageRef {
+  const trimmed = image.trim();
+  let rest = trimmed;
+  let digest: string | null = null;
+  const at = trimmed.lastIndexOf("@");
+  if (at >= 0) {
+    rest = trimmed.slice(0, at);
+    digest = trimmed.slice(at + 1);
+  }
+  const lastSlash = rest.lastIndexOf("/");
+  const lastColon = rest.lastIndexOf(":");
+  let tag: string | null = null;
+  let repository = rest;
+  // 冒号在最后一个斜杠之后才是 tag 分隔符（否则是 registry 端口）
+  if (lastColon > lastSlash) {
+    tag = rest.slice(lastColon + 1);
+    repository = rest.slice(0, lastColon);
+  }
+  return { repository, tag, digest };
+}
+
+/**
+ * 允许的难度等级。
+ */
+export const DIFFICULTIES = ["easy", "medium", "hard"] as const;
+export type Difficulty = typeof DIFFICULTIES[number];
+
+/**
+ * 校验难度值是否合法。
+ */
+export function isValidDifficulty(value: string): value is Difficulty {
+  return DIFFICULTIES.includes(value as Difficulty);
+}
+
+/**
+ * 允许的提交模式。
+ *
+ * - code：单文件 Python 代码提交（默认）
+ * - artifact：zip 产物提交
+ * - ui：界面提交——题包自带 `ui.html`，选手在界面里填写参数，核心把参数 JSON
+ *   注入脚本模板后交给 judge 运行（见 `submission/types/ui-solution.ts`）
+ */
+export const SUBMISSION_MODES = [
+  "code",
+  "artifact",
+  "prediction",
+  "ui",
+] as const;
+export type SubmissionMode = typeof SUBMISSION_MODES[number];
+
+/**
+ * 校验提交模式是否合法。
+ */
+export function isValidSubmissionMode(value: string): value is SubmissionMode {
+  return SUBMISSION_MODES.includes(value as SubmissionMode);
+}
+
+/**
+ * 题目 LLM 配置：出题人只声明预算，Provider/模型由使用域默认配置决定。
+ *
+ * 非 null 即启用 LLM；`provider_id` / `model` 等旧字段容忍并忽略。
+ */
+export interface LlmConfig {
+  /** 单次评测 LLM 调用上限；缺省 = 平台默认 */
+  max_calls?: number;
+  /** 单次评测 LLM billed token 上限；缺省 = 平台默认 */
+  max_tokens?: number;
+  /**
+   * 允许评测代码调用的模型别名（1–8 项）；缺省 = `["default"]`（平台默认模型）。
+   * 别名 → Provider + 真实模型由管理员在 Provider 管理页维护。
+   */
+  models?: string[];
+}
+
+/** 模型别名格式：小写字母开头，仅含小写字母、数字、`_`、`-`，≤ 32 字符。 */
+export const LLM_MODEL_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
+/** 保留别名：恒等于平台默认 Provider + 模型，不入别名表。 */
+export const LLM_DEFAULT_MODEL_ALIAS = "default";
+/** 题目允许的模型别名数量上限。 */
+export const LLM_MAX_MODELS_PER_PROBLEM = 8;
+
+/**
+ * 校验 LLM 配置是否合法。
+ *
+ * 只校验可选预算与模型别名字段（格式，不查别名是否存在）；未知键（含存量的 provider_id/model）忽略，保持前向兼容。
+ */
+export function isValidLlmConfig(value: unknown): value is LlmConfig {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  const isValidPositiveInt = (v: unknown): boolean =>
+    v === undefined ||
+    (typeof v === "number" && Number.isInteger(v) && v > 0);
+  const isValidModels = (v: unknown): boolean =>
+    v === undefined ||
+    (Array.isArray(v) && v.length >= 1 &&
+      v.length <= LLM_MAX_MODELS_PER_PROBLEM &&
+      new Set(v).size === v.length &&
+      v.every((a) => typeof a === "string" && LLM_MODEL_ALIAS_PATTERN.test(a)));
+  return isValidPositiveInt(obj.max_calls) &&
+    isValidPositiveInt(obj.max_tokens) && isValidModels(obj.models);
+}
+
+/**
+ * 双容器 Runtime 配置（与 ./index.ts RuntimeConfig 对齐）。
+ *
+ * 仅 admin 可设置；普通用户创建题目时该字段被忽略。
+ */
+import type { JudgeType, ProblemRuntimeConfig } from "./runtime-config.ts";
+import { isOiRuntimeConfig } from "./runtime-config.ts";
+
+/** 提取可公开的提交语言，不向选手暴露测试点、checker 或存储配置。 */
+export function getSubmissionLanguages(
+  judgeType: string | null | undefined,
+  config: ProblemRuntimeConfig | null | undefined,
+): string[] {
+  if (judgeType !== "oi") return ["python3"];
+  return isOiRuntimeConfig(config) ? [...config.languages] : [];
+}
+export {
+  type EvaluatorRuntime,
+  getJudgeBackend,
+  isOiRuntimeConfig,
+  type JudgeBackend,
+  type JudgeType,
+  judgeTypeForRuntimeConfig,
+  type OiRuntimeConfig,
+  type ProblemRuntimeConfig,
+  type RuntimeConfig,
+  type SolutionRuntime,
+  validateOiRuntimeConfig,
+} from "./runtime-config.ts";
+
+/**
+ * 创建题目请求体。
+ *
+ * 注意：`id` 字段已从客户端输入中移除——所有题目统一由服务端生成 UUID。
+ * 历史 seed 数据中的字符串 id（如 "1001"）仍可通过 `support_package_storage_url` 关联，
+ * 但新题目主键空间完全使用 UUID v4。
+ */
+export interface CreateProblemInput {
+  visibility?: "public" | "private";
+  samples?: import("./problem-samples.ts").ProblemSample[];
+  title: string;
+  description: string;
+  difficulty?: string;
+  support_package_storage_url?: string | null;
+  /**
+   * 双容器 Runtime 配置。仅 admin 可设置。
+   */
+  runtime_config?: ProblemRuntimeConfig | null;
+  /** 评测模式；缺省根据 runtime_config 兼容推断。 */
+  judge_type?: JudgeType;
+  tag_ids?: string[];
+  /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
+  is_objective?: boolean;
+  /** 提交模式：code（默认）/ artifact / prediction */
+  submission_mode?: string;
+  /** artifact 提交大小上限（MB），可空 */
+  artifact_max_size_mb?: number | null;
+  /** LLM 配置（可空）：需 evaluator 网络与实例敏感字段授权 */
+  llm?: LlmConfig | null;
+  /** 题号（仅 admin 可指定，普通用户自动分配） */
+  number?: number;
+}
+
+/**
+ * 更新题目请求体。
+ */
+export interface UpdateProblemInput {
+  /** 在线内容写入的预期共享草稿 revision。 */
+  expected_revision?: number;
+  visibility?: "public" | "private";
+  /** 仅数据编辑服务可写，客户端 CRUD 不允许指定对象存储引用。 */
+  oi_data_files?: Record<
+    string,
+    { storage_url: string; size: number; hash: string }
+  >;
+  samples?: import("./problem-samples.ts").ProblemSample[];
+  title?: string;
+  description?: string;
+  difficulty?: string;
+  support_package_storage_url?: string | null;
+  /**
+   * 双容器 Runtime 配置。设为 null 即清空。
+   */
+  runtime_config?: ProblemRuntimeConfig | null;
+  /** 评测模式；缺省根据 runtime_config 兼容推断。 */
+  judge_type?: JudgeType;
+  tag_ids?: string[];
+  /** 客观题标记变更（由客观题改回编程题时必须同时提供 runtime_config） */
+  is_objective?: boolean;
+  /** 提交模式变更：code / artifact / prediction */
+  submission_mode?: string;
+  /** artifact 提交大小上限（MB），可空 */
+  artifact_max_size_mb?: number | null;
+  /**
+   * 编辑器初始代码模板内容。**仅服务端题目包导入流程可写**（从包内
+   * `manifest.template` 声明的文件读取）；设为 null 表示清空模板。
+   */
+  template_content?: string | null;
+  /** LLM 配置变更（可空）；设为 null 表示移除 LLM 配置 */
+  llm?: LlmConfig | null;
+}
+
+/**
+ * 题目列表查询参数。
+ */
+export interface ProblemListQuery {
+  /** 按评测题型筛选：oi / dual（AI 代码题）/ objective。 */
+  judge_type?: string;
+  /** 按执行后端筛选：dual / oi-native / oi-wasm。 */
+  judge_backend?: string;
+  page?: number;
+  limit?: number;
+  difficulty?: string;
+  tag?: string;
+  keyword?: string;
+  /** 按类型筛选（U/P） */
+  /** 按题号筛选 */
+  number?: number;
+  /** 按所有者筛选 */
+  owner_id?: string;
+}
+
+/**
+ * 题目响应中的标签项。
+ */
+export interface ProblemTagRef {
+  id: string;
+  name: string;
+  kind: string;
+}
+
+/**
+ * 题目响应（含标签信息）。
+ */
+export interface ProblemResponseWithTags {
+  domain_id: string;
+  samples: import("./problem-samples.ts").ProblemSample[];
+  id: string;
+  title: string;
+  description: string;
+  difficulty: string;
+  /** 仅 owner/admin 返回；非 owner/admin 不返回该字段 */
+  support_package_storage_url?: string | null;
+  /** 是否有已上传的支持包文件 */
+  has_support_package: boolean;
+  /**
+   * 双容器 Runtime 配置（所有题目统一使用双容器模式）。
+   * 仅 owner/admin 返回；非 owner/admin 不返回该字段。
+   */
+  runtime_config?: ProblemRuntimeConfig | null;
+  /** 评测模式；来自 problems.judge_type，保留在响应中便于前端展示。 */
+  judge_type: JudgeType;
+  /** 公开执行后端名称，不包含隐藏运行配置。 */
+  judge_backend?: "dual" | "oi-native" | "oi-wasm" | null;
+  /** 所有可见题目的访问者均可读取的提交语言白名单。 */
+  supported_languages?: string[];
+  tags: ProblemTagRef[];
+  /**
+   * 存在被隐藏的算法标签时为 true（spoiler 门控：匿名/未 AC viewer
+   * 收不到算法标签名称与数量，仅收到此布尔占位标志）。
+   */
+  has_hidden_algorithm_tags: boolean;
+  created_at: string;
+  updated_at: string;
+  /** 域内数字题号 */
+  number: number;
+  /** 题目所有者 ID */
+  owner_id: string;
+  /** 题目所有者用户名（详情/列表场景 JOIN users 返回；可能为"未知"） */
+  owner_username?: string;
+  /** 题目所有者头像 URL（详情/列表场景 JOIN users 返回；未上传为 null） */
+  owner_avatar_url?: string | null;
+  /** 题目可见性：public / private */
+  visibility: "public" | "private";
+  /** 客观题标记：true 表示客观题套卷（无评测容器，服务端即时判定） */
+  is_objective: boolean;
+  /** 提交模式：code / artifact / prediction / ui */
+  submission_mode: SubmissionMode;
+  /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
+  artifact_max_size_mb: number | null;
+  /** LLM 配置（可空，仅 owner/admin 返回） */
+  llm_config?: LlmConfig | null;
+  /** 展示标识：默认域数字题号；跨域使用来源域限定题号 */
+  display_id: string;
+}
+
+/**
+ * 镜像用途分类（dual-container-judge §5）。
+ *
+ * - `evaluator`：单容器 / 双容器 Evaluator 角色（默认）
+ * - `solution`：双容器 Solution 角色
+ */
+export const JUDGE_IMAGE_KINDS = ["evaluator", "solution"] as const;
+export type JudgeImageKind = typeof JUDGE_IMAGE_KINDS[number];
+
+export function isValidJudgeImageKind(value: string): value is JudgeImageKind {
+  return JUDGE_IMAGE_KINDS.includes(value as JudgeImageKind);
+}
+
+/**
+ * 创建评测镜像白名单条目请求体。
+ */
+export interface CreateJudgeImageInput {
+  image: string;
+  mode: "exact" | "all_versions";
+  /**
+   * 镜像用途分类（dual-container-judge §5）。必填：'evaluator' / 'solution'。
+   */
+  kind: JudgeImageKind;
+  description?: string;
+}
+
+/**
+ * 更新评测镜像白名单条目请求体。
+ */
+export interface UpdateJudgeImageInput {
+  image?: string;
+  mode?: "exact" | "all_versions";
+  kind?: JudgeImageKind;
+  description?: string;
+}
+
+/**
+ * 评测镜像白名单条目响应。
+ */
+export interface JudgeImageResponse {
+  id: string;
+  image: string;
+  mode: string;
+  /**
+   * 镜像用途分类（dual-container-judge §5）。
+   */
+  kind: JudgeImageKind;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * 校验 judge_image 是否与白名单匹配。
+ *
+ * - `exact` 模式：完全相等（含 digest，若白名单登记了 digest）。
+ * - `all_versions` 模式：repository 路径必须一致；**若白名单条目登记了 digest
+ *   （`repo@sha256:...`），则请求的镜像必须携带同一 digest**。
+ *
+ * 为什么要有 digest 语义（2026-09-12 架构评审 §4.4）：tag 是**可变**的——`latest`
+ * 会被覆盖、同名 tag 可被重新推送，因此"tag 匹配"无法保证跑的还是当初审核过的那个
+ * 镜像。judge 侧基础镜像早已用 `FROM python:3.12-slim@sha256:...` 钉死，白名单却只比
+ * tag，形成不一致的安全水平。
+ *
+ * 向后兼容：白名单条目未登记 digest 时保持原行为（按 repository/tag 匹配），
+ * 因此无需一次性改造存量数据；推荐做法是把条目改为 `repo@sha256:<审核过的 digest>`，
+ * 之后任何不携带该 digest 的请求都会被拒绝。
+ */
+export function isImageInWhitelist(
+  image: string,
+  whitelist: { image: string; mode: string }[],
+): boolean {
+  for (const entry of whitelist) {
+    if (entry.mode === "exact") {
+      if (image === entry.image) return true;
+      continue;
+    }
+    if (entry.mode !== "all_versions") continue;
+
+    const expected = parseImageRef(entry.image);
+    const actual = parseImageRef(image);
+    if (expected.repository !== actual.repository) continue;
+
+    if (expected.digest) {
+      // 白名单登记了 digest → tag 不再作为凭据，必须 digest 一致
+      if (actual.digest === expected.digest) return true;
+      continue;
+    }
+    // 未登记 digest：保持历史语义（忽略 tag，repository 必须一致）
+    if (stripImageTag(image) === stripImageTag(entry.image)) return true;
+  }
+  return false;
+}

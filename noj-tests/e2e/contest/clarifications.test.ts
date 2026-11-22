@@ -9,7 +9,6 @@
 import {
   apiGet,
   apiPost,
-  apiPut,
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
@@ -69,18 +68,13 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
   if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
-    "/api/v1/admin/contest/contests",
+    "/api/v1/domains/main/contests",
     {
       title: `E2E 答疑竞赛 ${testSuffix}`,
       start_time: new Date(now - 60 * 60 * 1000).toISOString(),
       end_time: new Date(now + 60 * 60 * 1000).toISOString(),
       type: "kaggle",
-      config: {
-        penalty_minutes: 20,
-        freeze_time: null,
-        unfreeze_after_end: true,
-      },
-      is_public: true,
+      config: {},
       affect_global_ranking: false,
       problems: [{
         problem_id: problemId,
@@ -102,7 +96,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
 
   for (const token of [participantToken, otherParticipantToken]) {
     const registerResult = await apiPost(
-      `/api/v1/contests/${contestId}/register`,
+      `/api/v1/domains/main/contests/${contestId}/register`,
       undefined,
       token,
     );
@@ -119,7 +113,7 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
 e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async () => {
   if (!isE2E) return;
   const withProblem = await apiPost(
-    `/api/v1/contests/${contestId}/clarifications`,
+    `/api/v1/domains/main/contests/${contestId}/clarifications`,
     { content: "样例输入第三行是什么含义？", problem_id: problemId },
     participantToken,
   );
@@ -140,7 +134,7 @@ e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async
   }
 
   const globalQuestion = await apiPost(
-    `/api/v1/contests/${contestId}/clarifications`,
+    `/api/v1/domains/main/contests/${contestId}/clarifications`,
     { content: "罚时规则如何计算？" },
     participantToken,
   );
@@ -158,7 +152,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const forbidden = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications`,
       { content: "非参赛者提问" },
       outsiderToken,
     );
@@ -169,18 +163,13 @@ e2eTest(
     // 已结束竞赛：先建赛后改时间窗口（ended 竞赛无法注册）
     const now = Date.now();
     const endedCreate = await apiPost(
-      "/api/v1/admin/contest/contests",
+      "/api/v1/domains/main/contests",
       {
         title: `E2E 已结束答疑竞赛 ${testSuffix}`,
         start_time: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
         end_time: new Date(now - 60 * 60 * 1000).toISOString(),
         type: "kaggle",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: null,
-          unfreeze_after_end: true,
-        },
-        is_public: true,
+        config: {},
         affect_global_ranking: false,
         problems: [{
           problem_id: problemId,
@@ -194,7 +183,7 @@ e2eTest(
     const endedContestId =
       (endedCreate.body as { data: { id: string } }).data.id;
     const registerResult = await apiPost(
-      `/api/v1/contests/${endedContestId}/register`,
+      `/api/v1/domains/main/contests/${endedContestId}/register`,
       undefined,
       participantToken,
     );
@@ -205,18 +194,13 @@ e2eTest(
     // spec: pending / ended 期间提问 MUST 403（需已注册参赛者身份）
     // pending 竞赛：创建未来窗口竞赛，注册后赛前提问
     const pendingCreate = await apiPost(
-      "/api/v1/admin/contest/contests",
+      "/api/v1/domains/main/contests",
       {
         title: `E2E 待开始答疑竞赛 ${testSuffix}`,
         start_time: new Date(now + 60 * 60 * 1000).toISOString(),
         end_time: new Date(now + 120 * 60 * 1000).toISOString(),
         type: "kaggle",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: null,
-          unfreeze_after_end: true,
-        },
-        is_public: true,
+        config: {},
         affect_global_ranking: false,
         problems: [{
           problem_id: problemId,
@@ -237,7 +221,7 @@ e2eTest(
     const pendingContestId =
       (pendingCreate.body as { data: { id: string } }).data.id;
     const pendingRegister = await apiPost(
-      `/api/v1/contests/${pendingContestId}/register`,
+      `/api/v1/domains/main/contests/${pendingContestId}/register`,
       undefined,
       participantToken,
     );
@@ -249,7 +233,7 @@ e2eTest(
       );
     }
     const pendingAsk = await apiPost(
-      `/api/v1/contests/${pendingContestId}/clarifications`,
+      `/api/v1/domains/main/contests/${pendingContestId}/clarifications`,
       { content: "赛前提问" },
       participantToken,
     );
@@ -261,20 +245,17 @@ e2eTest(
       );
     }
 
-    // ended 竞赛：无法注册，先建 running 窗口竞赛注册，再由 admin 改为已结束
+    // ended 竞赛：无法注册，先建短窗口的 running 竞赛注册，再等它自然结束
+    // （域入口开赛后不能修改受理窗口）。
+    const endedAskEnd = Date.now() + 5_000;
     const endedAskCreate = await apiPost(
-      "/api/v1/admin/contest/contests",
+      "/api/v1/domains/main/contests",
       {
         title: `E2E 赛后提问竞赛 ${testSuffix}`,
         start_time: new Date(now - 60 * 60 * 1000).toISOString(),
-        end_time: new Date(now + 60 * 60 * 1000).toISOString(),
+        end_time: new Date(endedAskEnd).toISOString(),
         type: "kaggle",
-        config: {
-          penalty_minutes: 20,
-          freeze_time: null,
-          unfreeze_after_end: true,
-        },
-        is_public: true,
+        config: {},
         affect_global_ranking: false,
         problems: [{
           problem_id: problemId,
@@ -288,7 +269,7 @@ e2eTest(
     const endedAskContestId =
       (endedAskCreate.body as { data: { id: string } }).data.id;
     const endedAskRegister = await apiPost(
-      `/api/v1/contests/${endedAskContestId}/register`,
+      `/api/v1/domains/main/contests/${endedAskContestId}/register`,
       undefined,
       participantToken,
     );
@@ -299,18 +280,11 @@ e2eTest(
         }`,
       );
     }
-    const endContest = await apiPut(
-      `/api/v1/admin/contest/contests/${endedAskContestId}`,
-      { end_time: new Date(now - 1000).toISOString() },
-      adminToken,
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, endedAskEnd - Date.now()) + 500)
     );
-    if (endContest.status !== 200) {
-      throw new Error(
-        `结束竞赛失败: ${endContest.status} ${JSON.stringify(endContest.body)}`,
-      );
-    }
     const endedAsk = await apiPost(
-      `/api/v1/contests/${endedAskContestId}/clarifications`,
+      `/api/v1/domains/main/contests/${endedAskContestId}/clarifications`,
       { content: "赛后提问" },
       participantToken,
     );
@@ -329,7 +303,7 @@ e2eTest(
   async () => {
     if (!isE2E) return;
     const listResult = await apiGet(
-      `/api/v1/contests/${contestId}/clarifications`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications`,
       adminToken,
     );
     if (listResult.status !== 200) {
@@ -343,7 +317,7 @@ e2eTest(
 
     // admin 公开回复
     const publicReply = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/${target.id}/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/${target.id}/reply`,
       { content: "第三行是边界数据。", is_public: true },
       adminToken,
     );
@@ -357,7 +331,7 @@ e2eTest(
 
     // admin 私密回复
     const privateReply = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/${target.id}/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/${target.id}/reply`,
       { content: "注意初始化变量。", is_public: false },
       adminToken,
     );
@@ -371,7 +345,7 @@ e2eTest(
 
     // 非主办方（其他参赛者）回复被拒
     const forbiddenReply = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/${target.id}/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/${target.id}/reply`,
       { content: "我也回复", is_public: true },
       otherParticipantToken,
     );
@@ -381,7 +355,7 @@ e2eTest(
 
     // 回复不存在的提问
     const notFound = await apiPost(
-      `/api/v1/contests/${contestId}/clarifications/00000000-0000-0000-0000-000000000000/reply`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications/00000000-0000-0000-0000-000000000000/reply`,
       { content: "x", is_public: true },
       adminToken,
     );
@@ -394,7 +368,7 @@ e2eTest(
 e2eTest("[e2e/clarifications] 5. 提问者收到 clarification 通知", async () => {
   if (!isE2E) return;
   const notificationsResult = await apiGet(
-    "/api/v1/community/notifications?limit=30",
+    "/api/v1/notifications?per_page=30",
     participantToken,
   );
   if (notificationsResult.status !== 200) {
@@ -425,7 +399,7 @@ e2eTest("[e2e/clarifications] 6. 答疑列表可见性", async () => {
     token?: string,
   ): Promise<ClarificationData[]> => {
     const res = await apiGet(
-      `/api/v1/contests/${contestId}/clarifications`,
+      `/api/v1/domains/main/contests/${contestId}/clarifications`,
       token,
     );
     if (res.status !== 200) {

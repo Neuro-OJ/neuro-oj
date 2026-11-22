@@ -6,12 +6,10 @@
 
 ## 前置条件
 
-1. P 型题沿用主题库准入；**管理员也可为 U 型题配置
-   LLM**，适合需要保持私有的比赛题。U 型仍默认私有；普通出题人不能配置或发布含
-   LLM 的 U 型草稿。
-2. 平台已配置 **全局默认 LLM Provider 与模型**（`llm_default_provider_id` /
-   `llm_default_model`，**两项须同时配置**；后台「LLM → Provider
-   管理」页顶部）。运营者接入步骤见
+1. 使用域允许 LLM 题，操作者拥有该域资源编辑权限；题目包使用格式 2，不带 P/U
+   分类。
+2. 使用域已配置 **本域默认 LLM Provider 与模型**（两项须同时配置；域内「LLM →
+   Provider 管理」）。未配置的域不能使用源域或默认域密钥。运营者接入步骤见
    [如何提供 LLM 调用能力（运营者）](../operators/llm-call-capability.md)；后台操作见
    [后台管理指南](../operators/admin-guide.md#llm-管理)。
 3. 题目必须开启 **Evaluator
@@ -26,12 +24,11 @@ solution。 :::
 ## 题目配置
 
 在题目 JSON / 统一题目包 `problem.json`（manifest）中增加 `llm` 字段。题目只声明
-**需要 LLM 能力**与**本次评测预算**；用哪个 Provider、哪个模型由平台全局默认统一
+**需要 LLM 能力**与**本次评测预算**；用哪个 Provider、哪个模型由使用域默认统一
 决定，题目不再携带部署期的 Provider UUID 与模型名，因此题包可跨部署直接复用。
 
 ```json
 {
-  "type": "P",
   "llm": {
     "max_calls": 30,
     "max_tokens": 20000
@@ -44,13 +41,13 @@ solution。 :::
 }
 ```
 
-| 字段                                       | 必填 | 说明                                                                                                                                          |
-| ------------------------------------------ | :--: | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `llm`                                      |  ❌  | 非 `null` 即启用；`{}` 亦合法，表示启用并沿用平台默认预算                                                                                     |
-| `llm.max_calls`                            |  ❌  | 单次评测 LLM 调用上限，正整数                                                                                                                 |
-| `llm.max_tokens`                           |  ❌  | 单次评测 billed token 上限，正整数                                                                                                            |
-| `llm.models`                               |  ❌  | 允许评测代码调用的**模型别名**（1–8 个，如 `["default", "fast"]`）；缺省 = `["default"]`（平台默认模型）。同一道题的别名须属于同一个 Provider |
-| `runtime_config.evaluator.network.enabled` |  ✅  | 启用 LLM 时**必须**为 `true`                                                                                                                  |
+| 字段                                       | 必填 | 说明                                                         |
+| ------------------------------------------ | :--: | ------------------------------------------------------------ |
+| `llm`                                      |  ❌  | 非 `null` 即启用；`{}` 合法，采用默认单次预算                |
+| `llm.max_calls`                            |  ❌  | 单次评测调用上限，正整数                                     |
+| `llm.max_tokens`                           |  ❌  | 单次评测 billed token 上限，正整数                           |
+| `llm.models`                               |  ❌  | 允许调用的能力别名，1–8 个；缺省 `["default"]`，由使用域解析 |
+| `runtime_config.evaluator.network.enabled` |  ✅  | 启用 LLM 时必须为 `true`                                     |
 
 ::: warning 预算不得超过平台天花板 `max_calls` / `max_tokens`
 若提供必须为正整数，且不得超过平台默认上限 （`NOJ_LLM_MAX_CALLS`，默认
@@ -58,11 +55,10 @@ solution。 :::
 
 ```text
 旧题包/存量数据中的 provider_id / model 会被容忍并忽略（不报错），
-存量题目自动跟随平台默认。
+每次新评测尝试使用目标域的当前默认配置，历史尝试保留冻结配置。
 ```
 
-创建、更新、导入、草稿保存与发布均执行服务端准入校验：U 型仅允许管理员配置
-LLM；未开网络、超出平台预算或模型别名无效都会拒绝。
+创建/更新题目时服务端会强制校验：未开网络或单次预算超过实例上限都会拒绝。
 
 ## 在 Evaluator 中调用
 
@@ -73,7 +69,7 @@ from noj_evaluator_sdk import llm, result
 
 def evaluate(prompt: str) -> str:
     resp = llm.complete(
-        # 不要指定 model：平台默认模型即唯一允许值，省略后 SDK 自动取允许列表首个
+        # 不要指定 model：使用域默认模型即唯一允许值，省略后 SDK 自动取允许列表首个
         messages=[
             {"role": "system", "content": "你是数学解题助手。"},
             {"role": "user", "content": prompt},
@@ -87,14 +83,12 @@ from noj_evaluator_sdk import register_capability
 register_capability("solve_math", evaluate)
 ```
 
-- 可调用哪些模型由题目的 `llm.models`（模型别名）决定：`eval_token` 只允许
-  `NOJ_LLM_ALLOWED_MODELS` 中的名称，传入其他名称会被 gateway 以 403
-  `model_not_allowed` 拒绝。未声明 `llm.models` 时只允许平台默认模型，请**省略
-  `model=`**， 由 SDK 取允许列表首个。声明了多个别名时，`model=` 写别名（如
-  `model="fast"`）， 省略则取 `llm.models` 的第一个；gateway
-  会把别名换成平台配置的真实模型名，
-  评测代码里**不要**写真实模型名。可选别名见编辑器「允许调用的模型」列表，
-  别名由运营者在「LLM → Provider 管理」页维护，因此题包可以跨部署导入。
+- 可调用的名称由题目的 `llm.models` 决定。`eval_token` 只允许
+  `NOJ_LLM_ALLOWED_MODELS` 中的别名，其他名称返回 403 `model_not_allowed`。省略
+  `model=` 时 SDK 使用允许列表的第一个名称。
+- 真实模型与 Provider 由**使用域**配置。`default` 对应该域默认值；`model="fast"`
+  对应该域的 `fast` 映射。评测代码不写真实模型名或 Provider ID。
+- 题包可以跨部署或跨域引用；发布只校验能力名称，缺少使用域映射时拒绝新提交，不使用源域配置。每次评测尝试冻结当时解析的模型映射。
 - `llm.complete(messages=..., **params)` 会读取评测时自动注入的
   `NOJ_LLM_GATEWAY_URL`、`NOJ_LLM_TOKEN`、`NOJ_LLM_ALLOWED_MODELS`（以及
   `NOJ_LLM_PROVIDER_ID`）等环境变量。
@@ -111,21 +105,19 @@ register_capability("solve_math", evaluate)
 - 真实上游 API Key **只存在于 gateway**，不会进入 evaluator
   容器、支持包、日志或提交代码。
 - 每次评测使用短期
-  `eval_token`，绑定提交/题目/用户/Provider，并在评测时限内过期（TTL 由
-  `evaluator.time_limit_ms` 推算）。
-- 系统按单次提交、用户/全局/题目日/月维度限制
-  calls/tokens/cost；配额（`llm_quotas`）目前通过后台接口维护，管理后台可查询「LLM
-  用量」。
+  `eval_token`，绑定使用域/评测尝试/提交/题目/用户/Provider，并在评测时限内过期（TTL
+  由 `evaluator.time_limit_ms` 推算）。
+- 系统按单次提交、实例/域/域内用户/域内题目日/月维度限制
+  calls/tokens/cost；配额（`llm_quotas`）通过域内授权接口维护，域管理员只能降低现有域总额度；平台管理员可在实例上限内治理调整。
 - 请像普通网络能力一样封装**精确业务函数**，不要把通用 HTTP 转发注册为
   capability
   （参考[受限网络能力](../mechanisms/capability-networking.md)的安全清单）。
 
 ## 验证方法
 
-1. 在管理后台「LLM → Provider 管理」页顶部确认平台默认 Provider /
-   模型已配置（两项同时配置），并创建/编辑 P 型题目勾选 LLM 配置与 Evaluator
-   联网。
+1. 在使用域「LLM → Provider 管理」确认本域默认 Provider /
+   模型同时配置，并在创建/编辑题目时勾选 LLM 配置与 Evaluator 联网。
 2. 本地或 E2E 环境提交一次，确认 evaluator 能通过 `llm.complete` 拿到结果。
 3. 在「LLM 用量」页确认本次调用已落库（状态 `ok`），并检查
    token/费用是否符合预期。
-4. 恶意用例：非 P 型创建 LLM 题、或未开 Evaluator 联网，应被服务端拒绝。
+4. 缺本域 Provider、伪造其他域 Provider 或未开 Evaluator 联网，应被服务端拒绝。

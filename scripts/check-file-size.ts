@@ -21,34 +21,22 @@ export const MAX_LINES = 1200;
  * 拆分后请把数值改成新的实际行数（或直接删除条目）。
  */
 export const SIZE_BASELINE: Record<string, number> = {
-  // 2026-10-11：题目版本管理第二轮/第三轮修复新增 outbox 表
-  // （`llm_token_revocations`）与上传预约表（`storage_object_reservations`）的 PGlite
-  // DDL，使该文件从 1199 → 1215 行。DDL 数组是**顺序敏感的单一事实源**，逐条拆分
-  // 风险高于收益；后续把「版本管理 / 存储 / 尝试 / 任务」相关 DDL 整体抽成
-  // `schema-ddl-versioning.ts` 时同步下调本数值。
-  // 2026-10-12：LLM 模型别名新增 `llm_model_aliases` 表的 PGlite DDL 与审计 action
-  // CHECK 的两个新值，该文件 1215 → 1227 行（同上，待 DDL 整体拆分时下调）。
-  "noj-core/src/shared/db/schema-ddl.ts": 1227,
+  // 已拆分的历史大文件不再登记；棘轮只保留当前仍超过阈值的源文件。
   // 2026-09-28：按审计 VULN-16/17 的改动把管道写入原语拆到 dual/pipe.rs、
   // 单元测试拆到 dual/tests.rs（子模块，`use super::*` 语义不变），
   // dual/mod.rs 1839 → 1153 行，**已低于阈值，条目移除**（棘轮只允许下调/删除）。
-  "noj-ui/pages/messages/index.vue": 1632,
   // 2026-09-13 拆分后已降到阈值以下，条目移除（棘轮只允许下调/删除）：
   // - noj-core/.../messaging/services/messages.ts 1517 →
   //   messages.ts 1102 + messages-conversation-actions.ts 414 + messages-shared.ts 71
   // - noj-core/src/shared/config/settings-registry.ts 1380 →
   //   settings-registry.ts 946 + settings-registry-bootstrap.ts 458
-  "noj-core/src/domains/contest/services/contest-similarity.ts": 1315,
-  // 2026-09-21：`noj-cli` 是纯 TS 重写后的正式模块，此前**不在 SCAN_ROOTS**，
-  // 其 3 个超阈值文件从未受棘轮约束（实测 lifecycle.ts 2097 行、cli.ts 1611 行、
-  // config.ts 1218 行，门禁只报 3 个核心/UI 文件）。补入扫描根后按现状登记基线，
-  // 只允许下调。与同轮对 `check-test-discovery` / `silent-skip-report` 的
-  // 「补 noj-cli」修复同一模式。
-  "noj-cli/src/prod/lifecycle.ts": 2097,
-  // 2026-09-23：`backup` 参数解析抽到 `backup-args.ts`，cli.ts 1518 行；同步下调
-  // 以锁住成果（棘轮只允许下调）。
-  "noj-cli/src/cli.ts": 1506,
-  "noj-cli/src/prod/config.ts": 1218,
+  // 2026-11-08：rc/v0.11 大文件按职责拆分（原文件保留为门面，外部导入路径不变），
+  // 以下条目全部降到阈值以下并移除（棘轮只允许下调/删除）：
+  // - noj-core/.../contests/services/contest-similarity.ts 1315 → 门面 234 +
+  //   contest-similarity/{lexicon,normalize,fingerprint,detect}.ts
+  // - noj-cli/src/prod/lifecycle.ts 1966 → 门面 153 + prod/lifecycle/ 下各命令族
+  // - noj-cli/src/cli.ts 1476 → 177 + cli-commands/
+  // - noj-cli/src/prod/config.ts 1218 → 92 + prod/config/
 };
 
 const SCAN_ROOTS = [

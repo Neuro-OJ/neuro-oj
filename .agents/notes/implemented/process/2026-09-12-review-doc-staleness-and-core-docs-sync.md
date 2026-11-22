@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-文档与实现脱节会误导后续评审与 AI 助手（本次评审的初始假设就来自过期文档）：`architecture-review-2026-09-01.md` §4.2 声称"无前端单元测试""composable 命名 camelCase/kebab-case 混用"，而实际已有 30 个前端测试文件并接入 CI、31 个 composable 全部 camelCase；`noj-core/CLAUDE.md` 声称 38 张表（实际 54）、`users.role` 列"保留为 deprecated"（实际已删除）；`AGENTS.md` §7.1 允许直接推送 main，而模块文档写"禁止直接推送到 main"（直接矛盾）；`ROADMAP.md` Phase 3 把已实现的监控/日志/CI-CD/备份都列为未完成。
+文档与实现脱节会误导后续评审与 AI 助手（本次评审的初始假设就来自过期文档）：`architecture-review-2026-09-01.md` §4.2 声称"无前端单元测试""composable 命名 camelCase/kebab-case 混用"，而实际已有 30 个前端测试文件并接入 CI、31 个 composable 全部 camelCase；`noj-core/CLAUDE.md` 声称 38 张表（实际 54）、`users.role` 列"保留为 deprecated"（实际已删除）；`AGENTS.md` §7.1 允许直接推送 main，而模块文档写"禁止直接推送到 main"（直接矛盾）；`dev-docs/product/ROADMAP.md` Phase 3 把已实现的监控/日志/CI-CD/备份都列为未完成。
 
 ## Decision
 

@@ -235,7 +235,7 @@ mod tests {
     async fn test_noise_line_does_not_stop_reading_via_handle_eval_chunk() {
         let mut parser = LineParser::new();
         let mut payload = ResultPayload::new();
-        let mut tracker = InFlightTracker::new(2000);
+        let mut tracker = InFlightTracker::new(2000, 0);
 
         feed(
             &mut parser,
@@ -268,7 +268,7 @@ mod tests {
     async fn test_valid_json_noise_line_is_skipped_via_handle_eval_chunk() {
         let mut parser = LineParser::new();
         let mut payload = ResultPayload::new();
-        let mut tracker = InFlightTracker::new(2000);
+        let mut tracker = InFlightTracker::new(2000, 0);
 
         feed(
             &mut parser,

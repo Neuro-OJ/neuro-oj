@@ -1,5 +1,5 @@
 /**
- * 备份命令面（T18）：`verify` / `list` / `prune` / `restore --dry-run`。
+ * 备份命令面：`verify` / `list` / `prune` / `restore --dry-run`。
  *
  * ## 三条硬约束（都由测试锁死，且都是实测过的缺陷面）
  *
@@ -16,8 +16,7 @@
  *
  * `prod/backup/index.ts` / `backup_list.ts` 是纯逻辑（无文件系统以外的依赖），
  * 与模态无关，因此**直接复用**：`list` 的产物格式（`SnapshotEntry`）与
- * `snapshot-*.nojbackup` 单文件天然契合（T17 的文件名可在其 `parseBackupName`
- * 下解析）。这两点让 T18 无需为 prod 重写索引与保留策略。
+ * `snapshot-*.nojbackup` 单文件天然契合（文件名可由 `parseBackupName` 解析）。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
@@ -26,7 +25,6 @@ import { join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { prodComposeArgs } from "./driver.ts";
 import { restoreDataServices } from "./data_restore.ts";
-import { readEnvValues } from "../drill/plan.ts";
 import {
   listBackups,
   type ListResult,
@@ -40,6 +38,7 @@ import {
   verifyContainer,
   type VerifyContainerResult,
 } from "./container.ts";
+import { readEnvValuesOrEmpty } from "../../core/env-file.ts";
 
 /** `list` 的结果（复用 `prod/backup/list.ts` 的形状，不新造）。 */
 export type BackupListResult = ListResult;
@@ -105,9 +104,7 @@ export interface VerifyCommandOptions {
 /**
  * 路径形态守卫：verify/restore/drill 只接受 `.nojbackup` 单文件。
  *
- * 对照 bash `validate_snapshot_path`（:296-300）的意图——那里因为形态是目录而
- * 校验 `snapshot-*` 目录名；纯 TS 重写后形态**唯一**（T17 单文件），故守卫改为
- * 校验后缀，并**明确拒绝** legacy 目录（否则会走到解包失败，报出难以理解的错）。
+ * 形态**唯一**（单文件容器），故守卫校验后缀，并**明确拒绝** legacy 目录（否则会走到解包失败，报出难以理解的错）。
  */
 export function assertContainerPath(path: string): void {
   if (!path.endsWith(".nojbackup")) {
@@ -211,8 +208,7 @@ export interface RestorePlanOptions {
  * 这也是为什么本函数接受 `ops` 但**只要** `gpgDecrypt`/`untarZst` 两项：
  * 类型上就没有采集与恢复能力，想越权必须先改签名。
  *
- * 真实恢复（写目标数据）**本任务不实现**：它是不可逆操作，需要与 drill 同级的
- * 隔离与确认设计（T19 之后的独立任务）。
+ * 真实恢复（写目标数据）是另一条路径，见 `backup restore --confirm`。
  */
 export async function restorePlan(
   opts: RestorePlanOptions,
@@ -315,7 +311,7 @@ export interface RestoreConfirmedOptions {
   /**
    * docker 可执行名（缺省 `docker`；生产取自 `NOJ_DEPLOY_DOCKER_BIN`）。
    *
-   * 评审发现：恢复路径此前把 `docker` 写死，只有 install/update/create 装配
+   * 回归：恢复路径曾把 `docker` 写死，只有 install/update/create 装配
    * 尊重该变量——非默认 docker 路径的宿主机上 `restore --confirm` 会失败。
    */
   dockerBin?: string;
@@ -343,7 +339,7 @@ export interface RestoreConfirmedResult {
 /**
  * `backup restore --confirm`：**真实恢复**（不可逆）。
  *
- * 迁移 bash `restore_snapshot`（backup.sh:350-384）。与 `restorePlan` 的
+ * 与 `restorePlan` 的
  * dry-run 规划器是**两条路径**，不是同一个函数的开关：
  * dry-run 只要 `gpgDecrypt`/`untarZst` 两项能力（类型上就无法写数据），
  * 而本函数需要完整的数据恢复编排。共用编排逻辑在
@@ -351,15 +347,15 @@ export interface RestoreConfirmedResult {
  *
  * ## 顺序（每一步都是安全要求）
  *
- * 1. **`--confirm`**：不可逆操作必须显式确认（bash :352）；
- * 2. **校验快照**：解包 + 三档校验，不通过即停（bash :353）；
+ * 1. **`--confirm`**：不可逆操作必须显式确认；
+ * 2. **校验快照**：解包 + 三档校验，不通过即停；
  * 3. **确认服务已停**：`compose ps --status running -q` 非空即拒绝
- *    （bash `ensure_stopped` :336-340）——在**运行中的库上**做
+ *    ——在**运行中的库上**做
  *    `pg_restore --clean` 会与业务写入互相破坏；
  * 4. **恢复环境文件**（可选）：目标已存在即拒绝，避免覆盖用户文件
- *    （bash `restore_env_file` :342-348）；
+ *    ；
  * 5. **数据恢复序列**：起数据服务 → PostgreSQL → Redis → MinIO（共享实现）；
- * 6. **停数据服务**：等人工检查后再起业务（bash :382）。
+ * 6. **停数据服务**：等人工检查后再起业务。
  *
  * 失败时**不清理已恢复的数据**（那是不可逆的既成事实），但会如实抛出
  * 具名错误，避免把根因埋在后续步骤里。
@@ -390,7 +386,7 @@ export async function restoreConfirmed(
     throw new Error(`快照校验未通过，拒绝恢复：\n${detail}`);
   }
 
-  const env = await readEnvValues(opts.envFile);
+  const env = await readEnvValuesOrEmpty(opts.envFile);
   const dockerBin = opts.dockerBin ?? "docker";
   const composeArgs = (command: string[]): string[] =>
     prodComposeArgs({
@@ -448,7 +444,7 @@ export async function restoreConfirmed(
     composeArgs,
     waitTimeout: opts.waitTimeout ?? 180,
     log,
-    // 生产语义：恢复后停服务，等人工检查再起业务（bash :382）。
+    // 生产语义：恢复后停服务，等人工检查再起业务。
     stopAfterRestore: true,
   });
 
@@ -470,11 +466,6 @@ export async function backupCount(backupDir: string): Promise<number> {
 
 /**
  * prod 侧的默认备份子目录（`<install-dir>/backups`）。
- *
- * 命名带 `prod` 前缀是**有意**的：`maintain/backup.ts` 已导出同名的
- * `defaultBackupDir(config)`（JSON 模态，签名也不同）。两者在 T23 收敛前并存，
- * 同名会让包入口（`mod.ts`）的再导出撞名——而"撞名"正是双模态遗留问题的表征，
- * 不应靠改名掩盖，故这里用前缀显式区分，并在 T23 一并收敛。
  *
  * 落点与 `install` 的 `record-metadata` 一致（`<dir>/backups`）。
  */

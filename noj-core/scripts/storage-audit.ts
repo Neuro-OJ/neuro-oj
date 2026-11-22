@@ -11,25 +11,20 @@
 
 import { dirname } from "jsr:@std/path@^1";
 import { getDb } from "../src/shared/db/connection.ts";
-import {
-  messages,
-  problems,
-  submissions,
-  users,
-} from "../src/shared/db/schema.ts";
+import { problems, submissions, users } from "../src/shared/db/schema.ts";
+import { initSystemSettings } from "../src/modules/platform/system/index.ts";
 import {
   getStorageProvider,
   getStorageProviderKind,
-  initSystemSettings,
-} from "../src/domains/system/index.ts";
+} from "../src/modules/assets/storage/mod.ts";
 import {
   buildStorageAuditReport,
   renderStorageAuditPrometheus,
   type StorageAuditReport,
   type StorageReference,
   type StorageReferenceKind,
-} from "../src/domains/system/services/storage/audit.ts";
-import { parseStorageUrl } from "../src/domains/system/services/storage/types.ts";
+} from "../src/modules/assets/services/audit.ts";
+import { parseStorageUrl } from "../src/modules/assets/storage/types.ts";
 
 interface Options {
   output?: string;
@@ -90,14 +85,13 @@ async function collectReferences(): Promise<{
   invalidReferences: StorageAuditReport["invalidReferences"];
 }> {
   const db = getDb();
-  const [problemRows, submissionRows, userRows, messageRows] = await Promise
+  const [problemRows, submissionRows, userRows] = await Promise
     .all([
       db.select({ id: problems.id, url: problems.support_package_storage_url })
         .from(problems),
       db.select({ id: submissions.id, url: submissions.artifact_storage_url })
         .from(submissions),
       db.select({ id: users.id, url: users.avatar_url }).from(users),
-      db.select({ id: messages.id, url: messages.image_url }).from(messages),
     ]);
   const references: StorageReference[] = [];
   const invalidReferences: StorageAuditReport["invalidReferences"] = [];
@@ -128,16 +122,6 @@ async function collectReferences(): Promise<{
       "avatar",
       row.id,
       "users.avatar_url",
-      row.url,
-    );
-  }
-  for (const row of messageRows) {
-    addReference(
-      references,
-      invalidReferences,
-      "message_image",
-      row.id,
-      "messages.image_url",
       row.url,
     );
   }

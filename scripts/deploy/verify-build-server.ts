@@ -12,6 +12,42 @@ function readLines(rel: string): string[] {
   return Deno.readTextFileSync(p).split(/\r?\n/);
 }
 
+/**
+ * 提取 `deno compile --include <path>` 中的路径（相对 noj-core）。
+ *
+ * @param text 构建脚本或 Dockerfile 全文
+ * @returns 出现过的 include 路径
+ */
+export function extractCompileIncludes(text: string): string[] {
+  return [...text.matchAll(/--include\s+(\S+)/g)].map((m) => m[1]);
+}
+
+/**
+ * 校验 include 路径都真实存在：`deno compile` 遇到缺失路径会直接失败，
+ * 模块迁移后遗漏同步会让生产镜像无法构建（#698 P1-3 发现）。
+ *
+ * @param label 来源文件名，用于报错
+ * @param text 文件全文
+ * @param exists 路径存在性判断（可注入以便测试）
+ * @returns 问题清单
+ */
+export function verifyCompileIncludes(
+  label: string,
+  text: string,
+  exists: (rel: string) => boolean = (rel) => {
+    try {
+      Deno.statSync(path.join(ROOT, "noj-core", rel));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+): string[] {
+  return extractCompileIncludes(text)
+    .filter((rel) => !exists(rel))
+    .map((rel) => `${label} 的 deno compile --include 路径不存在：${rel}`);
+}
+
 /** 返回问题清单；空数组表示通过。 */
 export function verifyBuildServerScript(): string[] {
   const problems: string[] = [];
@@ -40,6 +76,14 @@ export function verifyBuildServerScript(): string[] {
       "deno.json 缺 build:server 任务（指向 scripts/build-server.sh）",
     );
   }
+
+  problems.push(...verifyCompileIncludes("build-server.sh", joined));
+  problems.push(
+    ...verifyCompileIncludes(
+      "noj-core/Dockerfile",
+      Deno.readTextFileSync(path.join(ROOT, "noj-core/Dockerfile")),
+    ),
+  );
 
   const scriptExists = lines.length > 1 &&
     lines[0]?.startsWith("#!/usr/bin/env bash");

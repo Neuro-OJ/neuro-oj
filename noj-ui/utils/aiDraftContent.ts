@@ -1,7 +1,7 @@
 /**
  * AI 题共享草稿内容中编辑器需要原样回写的字段。
  *
- * 草稿 `PUT /api/v1/problems/:id/draft` 是整体替换：编辑器没有编辑入口的字段
+ * 草稿 `PUT /api/v1/domains/:slug/problems/:reference/draft` 是整体替换：编辑器没有编辑入口的字段
  * （题包导入写入的脚本模板）也必须从加载的草稿读出、保存时原样带回。曾经把
  * `template_content` 硬编码为空串，网页上改题后发布，界面题模板被清空，评测时
  * 生成的脚本缺少模板函数（`function 'get_config' not registered`）。

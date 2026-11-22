@@ -1,10 +1,8 @@
 /**
- * CLI 参数解析与诊断的共用工具。
+ * CLI 参数解析与诊断的共用工具：旗标取值、用法错误与命令建议。
  *
- * 抽出原因（#517 E6/E8）：`--dir` 曾在 4 处各自手写解析且行为不一致——
- * `parseProductionArgs` 支持 `--dir=` 且缺值报错，而 `parseDeployArgs` /
- * `parseMaintainArgs` / `parseBackupArgs` 不支持 `--dir=` 且缺值静默取到
- * `undefined`。用户传了参数却没生效，且没有任何提示。
+ * 带值旗标一律经 {@link flagValue} 解析：`--flag v` 与 `--flag=v` 等价，缺值报
+ * 用法错误而非静默取到 `undefined`（用户传了参数却没生效且没有任何提示）。
  */
 
 /** 用法错误（参数非法、缺少必需参数）：对应退出码 2，与运行失败（1）区分。 */
@@ -13,36 +11,6 @@ export class UsageError extends Error {
     super(message);
     this.name = "UsageError";
   }
-}
-
-/**
- * 解析 `--dir <path>` / `--dir=<path>`，两者等价。
- *
- * 缺值（`--dir` 在末尾、`--dir=` 空值、或后面紧跟另一个选项）抛
- * {@link UsageError}，**不再静默返回 undefined**。
- *
- * @returns 目录值；未出现 `--dir` 时返回 undefined。
- */
-export function parseDirArg(args: string[]): string | undefined {
-  let dir: string | undefined;
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
-    if (arg === "--dir") {
-      const value = args[i + 1];
-      if (value === undefined || value.startsWith("--")) {
-        throw new UsageError("--dir 需要一个安装目录");
-      }
-      dir = value;
-      i++;
-    } else if (arg.startsWith("--dir=")) {
-      const value = arg.slice("--dir=".length);
-      if (value === "") {
-        throw new UsageError("--dir 需要一个安装目录");
-      }
-      dir = value;
-    }
-  }
-  return dir;
 }
 
 /**
@@ -105,25 +73,61 @@ export function suggestCommand(
   return best;
 }
 
-/** 解析 `--port <n>`，校验 1-65535；非法值与缺值均抛 {@link UsageError}。 */
-export function parsePortArg(
+/**
+ * 取 `--flag value` 或 `--flag=value` 的值（首次出现）；未出现返回 undefined。
+ *
+ * 缺值（末尾、`--flag=` 空值、或后面紧跟另一个选项）抛 {@link UsageError}，
+ * 文案可由 `missing` 覆盖。
+ */
+export function flagValue(
   args: string[],
-  fallback: number,
-): number {
-  const idx = args.indexOf("--port");
-  if (idx === -1) return fallback;
-  const raw = args[idx + 1];
-  return validatePort(raw);
+  name: string,
+  missing = `${name} 需要一个值`,
+): string | undefined {
+  const eq = `${name}=`;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === name) {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new UsageError(missing);
+      }
+      return value;
+    }
+    if (arg.startsWith(eq)) {
+      const value = arg.slice(eq.length);
+      if (value === "") throw new UsageError(missing);
+      return value;
+    }
+  }
+  return undefined;
 }
 
-/** 校验端口字符串；错误信息包含实际收到的值，便于用户定位。 */
-export function validatePort(raw: unknown): number {
-  if (raw === undefined || raw === "") {
-    throw new UsageError("--port 需要一个 1-65535 的整数");
+/**
+ * 读一个**非负整数**旗标；缺省返回 undefined，非法值抛用法错误。
+ *
+ * 存在的理由：这类值会被下游当作**数量/天数**参与"保护哪些备份"的计算，
+ * 而非法的 `NaN` 在 `slice`/比较里会静默退化为"什么都不保护"——
+ * 也就是说校验缺失的后果是**删数据**，不是报错。
+ */
+export function optionalCount(
+  args: string[],
+  name: string,
+): number | undefined {
+  const raw = flagValue(args, name);
+  if (raw === undefined) return undefined;
+  // 只接受十进制非负整数（拒绝 "1.5"、"1e3"、"0x10"、"-1"、""）
+  if (!/^\d+$/.test(raw)) {
+    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
   }
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) {
-    throw new UsageError(`--port 需要一个 1-65535 的整数，收到 "${raw}"`);
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isSafeInteger(n)) {
+    throw new UsageError(`${name} 超出可用范围，收到 "${raw}"`);
   }
   return n;
+}
+
+/** 取布尔旗标（支持 `-y` 这类短名）。 */
+export function hasFlag(args: string[], ...names: string[]): boolean {
+  return args.some((a) => names.includes(a));
 }

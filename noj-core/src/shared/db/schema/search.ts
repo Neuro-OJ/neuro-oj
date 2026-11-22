@@ -8,6 +8,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { tsvector } from "./common.ts";
+import { domains } from "./workspace.ts";
 
 /**
  * 统一搜索索引表。
@@ -17,6 +18,7 @@ export const searchEntries = pgTable(
   "search_entries",
   {
     id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+    domain_id: text("domain_id").references(() => domains.id),
     entity_type: text("entity_type").notNull(),
     entity_id: text("entity_id").notNull(),
     title: text("title").notNull().default(""),
@@ -28,10 +30,6 @@ export const searchEntries = pgTable(
     participant_ids: text("participant_ids").array().notNull().default(
       sql`'{}'`,
     ),
-    /** 已删除该消息的用户 id 列表；这些用户在该消息的搜索结果中不可见。 */
-    deleted_by_user_ids: text("deleted_by_user_ids").array().notNull().default(
-      sql`'{}'`,
-    ),
     is_public: boolean("is_public").notNull().default(false),
     admin_only: boolean("admin_only").notNull().default(false),
     is_active: boolean("is_active").notNull().default(true),
@@ -39,6 +37,11 @@ export const searchEntries = pgTable(
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
+    domainIdx: index("idx_search_entries_domain_type_updated").on(
+      table.domain_id,
+      table.entity_type,
+      table.updated_at,
+    ),
     entityUnique: uniqueIndex("idx_search_entries_entity").on(
       table.entity_type,
       table.entity_id,

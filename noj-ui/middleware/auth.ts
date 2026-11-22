@@ -33,19 +33,15 @@ const PASSWORD_CHANGE_WHITELIST = new Set<string>([
  * 白名单页面（改密/登录/登出）放行。
  */
 export default defineNuxtRouteMiddleware(async (to, _from) => {
-  // SSR 阶段仅对 messages 页跳过守卫（该页 ssr:false，水合后重新执行），
-  // 避免其他 SSR 页面失去服务端登录保护
-  if (import.meta.server && to.path.startsWith('/messages')) return;
-
   if (PUBLIC_AUTH_PATHS.has(to.path)) return;
 
-  const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth();
+  const { isLoggedIn, user, fetchUser, ensureAuthReady } = useAuth(to);
 
   // 等待认证状态就绪（SSR 会拉取 /auth/me；客户端由 session cookie 即时恢复）
   await ensureAuthReady();
 
   if (!isLoggedIn.value) {
-    return navigateTo('/login');
+    return navigateTo({ path: '/login', query: { redirect: to.fullPath } });
   }
 
   // ── issue #75：session cookie 启动时可能只含基础字段，必须调一次 /me 拿到完整 UserResponse ──

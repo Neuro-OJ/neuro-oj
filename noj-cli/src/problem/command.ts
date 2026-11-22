@@ -5,11 +5,21 @@
  * 退出码遵循 #517 的分层：0 通过 / 1 校验失败 / 2 用法错误。
  */
 import { dirname, join, relative, resolve } from "@std/path";
-import { EXIT_FAILURE, EXIT_OK, EXIT_USAGE } from "../exit_codes.ts";
+import {
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_USAGE,
+} from "../cli-commands/exit-codes.ts";
 import { UsageError } from "../util/args.ts";
 import { type BundleFiles, lintBundle, type LintFinding } from "./lint.ts";
-import { packBundle } from "./pack.ts";
-import { initProblemScaffold, validateSlug } from "./init.ts";
+import { collectBundleEntries, packBundle } from "./pack.ts";
+import { migrateManifest } from "./migrate.ts";
+import {
+  initProblemScaffold,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  validateSlug,
+} from "./init.ts";
 import {
   normalizeServer,
   pushBundle,
@@ -17,6 +27,8 @@ import {
   pushErrorHint,
 } from "./push.ts";
 import { guideProblemInit } from "./tui.ts";
+import { runProblemTest } from "./test-command.ts";
+import { installProblemSetterSkill } from "./skill.ts";
 import { realIO } from "../tui/io.ts";
 import { zipSync } from "fflate";
 
@@ -33,16 +45,36 @@ export interface ProblemArgs {
   json: boolean;
   /** init: 跳过 TUI 引导。 */
   noInteractive: boolean;
+  /** skill: 已存在且内容不同时覆盖。 */
+  force: boolean;
   /** init 选项。 */
   slug?: string;
   title?: string;
-  type?: string;
   difficulty?: string;
   judgeType?: "dual" | "oi";
+  /** init: 可验题模板名（code/prediction/llm/objective/ui）。 */
+  template?: string;
   /** push: 平台地址（缺省读 NOJ_SERVER）。 */
   server?: string;
+  /** push: 明确的使用域（默认 main）。 */
+  domain: string;
   /** push: 导入后立即发布。 */
   publish: boolean;
+  /** test: 参考解答（`path[@name]`，可多个）。 */
+  solutions: string[];
+  /** test: 分数断言（`name=100` / `name<60`，可多个）。 */
+  expects: string[];
+  /** test: noj-judge 二进制路径。 */
+  judgeBin?: string;
+  /** test: 显式允许 evaluator 联网（默认关闭）。 */
+  allowNetwork: boolean;
+  /** test: 联网时使用的 Docker 网络。 */
+  network?: string;
+  /** test: LLM 离线 mock（默认开启，--no-llm-mock 关闭）。 */
+  llmMock: boolean;
+  /** test: 真实 LLM 网关地址与 token。 */
+  llmGateway?: string;
+  llmToken?: string;
 }
 
 /** 解析 problem 子命令参数。 */
@@ -52,7 +84,13 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
     strict: false,
     json: false,
     noInteractive: false,
+    force: false,
     publish: false,
+    domain: "main",
+    solutions: [],
+    expects: [],
+    allowNetwork: false,
+    llmMock: true,
   };
   const positional: string[] = [];
   const takeValue = (name: string, i: number): string => {
@@ -79,9 +117,9 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       case "--type":
-        out.type = takeValue("--type", i);
-        i++;
-        break;
+        throw new UsageError(
+          "格式 2 已取消 --type；导入时使用 --domain 指定目标工作空间",
+        );
       case "--difficulty":
         out.difficulty = takeValue("--difficulty", i);
         i++;
@@ -95,12 +133,53 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         i++;
         break;
       }
+      case "--template":
+        out.template = takeValue("--template", i);
+        i++;
+        break;
       case "--server":
         out.server = takeValue("--server", i);
         i++;
         break;
+      case "--domain":
+        out.domain = takeValue("--domain", i);
+        i++;
+        break;
       case "--publish":
         out.publish = true;
+        break;
+      case "--solution":
+        out.solutions.push(takeValue("--solution", i));
+        i++;
+        break;
+      case "--expect":
+        out.expects.push(takeValue("--expect", i));
+        i++;
+        break;
+      case "--judge-bin":
+        out.judgeBin = takeValue("--judge-bin", i);
+        i++;
+        break;
+      case "--allow-network":
+        out.allowNetwork = true;
+        break;
+      case "--network":
+        out.network = takeValue("--network", i);
+        i++;
+        break;
+      case "--llm-mock":
+        out.llmMock = true;
+        break;
+      case "--no-llm-mock":
+        out.llmMock = false;
+        break;
+      case "--llm-gateway":
+        out.llmGateway = takeValue("--llm-gateway", i);
+        i++;
+        break;
+      case "--llm-token":
+        out.llmToken = takeValue("--llm-token", i);
+        i++;
         break;
       case "--strict":
         out.strict = true;
@@ -111,6 +190,9 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
       case "--no-interactive":
         out.noInteractive = true;
         break;
+      case "--force":
+        out.force = true;
+        break;
       default:
         if (a.startsWith("--")) {
           throw new UsageError(`未知选项: ${a}`);
@@ -118,14 +200,21 @@ export function parseProblemArgs(args: string[]): ProblemArgs {
         positional.push(a);
     }
   }
+  // --force 只对 skill 有意义；其他子命令静默接受会让人误以为生效（如 push --force）
+  if (out.force && out.sub !== "skill") {
+    throw new UsageError("--force 只能用于 problem skill");
+  }
   if (positional.length > 0) out.slug = positional[0];
   // init 的第一个位置参数是 slug，lint/pack 的是 dir。
   //
-  // **只有位置参数存在时才覆盖 --dir**（评审修正）：早先无条件赋值，
+  // **只有位置参数存在时才覆盖 --dir**：早先无条件赋值，
   // 使 `problem lint --dir <别的题包>` 把 out.dir 覆盖成 undefined，
   // 随后静默回落到 cwd 并返回 0——既忽略用户显式指定的目录，
   // 又给出假阳性结果（校验/打包的其实是当前目录）。
-  if (out.sub === "lint" || out.sub === "pack" || out.sub === "push") {
+  if (
+    out.sub === "lint" || out.sub === "pack" || out.sub === "push" ||
+    out.sub === "migrate" || out.sub === "test" || out.sub === "skill"
+  ) {
     if (positional.length > 0) out.dir = positional[0];
     out.slug = undefined;
   }
@@ -225,7 +314,7 @@ export async function runProblemLint(args: ProblemArgs): Promise<number> {
  * 从题目目录路径取产物 slug（最后一段目录名）。
  *
  * 平台无关：Windows 路径（`C:\work\a-plus-b`）与 POSIX 路径（`/w/a-plus-b`）
- * 都得到 `a-plus-b`。评审 P1：早先用 `dir.split("/")`，在 Windows 上会把
+ * 都得到 `a-plus-b`。早先用 `dir.split("/")`，在 Windows 上会把
  * 整条路径当成 slug，`join(outDir, slug + ".zip")` 因而写入错误位置。
  */
 export function bundleSlug(dir: string): string {
@@ -255,20 +344,7 @@ export async function packDirectory(dir: string): Promise<DirectoryPackResult> {
   const report = lintBundle(await readBundleFiles(dir));
   if (report.hasError) return { report, pack: null };
 
-  const entries: Record<string, Uint8Array> = {};
-  async function collect(current: string, prefix: string): Promise<void> {
-    for await (const entry of Deno.readDir(current)) {
-      const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-      if (entry.isDirectory) {
-        if (entry.name === "__pycache__" || entry.name === ".git") continue;
-        await collect(join(current, entry.name), rel);
-        continue;
-      }
-      if (!entry.isFile) continue;
-      entries[rel] = await Deno.readFile(join(current, entry.name));
-    }
-  }
-  await collect(dir, "");
+  const entries = await collectBundleEntries(dir);
   // 注意：模板文件（manifest.template，缺省 template.py）**保留在包内**——
   // 平台导入题目包时从这里取编辑器初始代码，不再依赖服务器本地 problems-src。
   return { report, pack: packBundle({ entries }) };
@@ -286,7 +362,7 @@ export async function runProblemPack(args: ProblemArgs): Promise<number> {
   const outDir = resolve(args.out ?? join(dirname(dir), "packages"));
   await Deno.mkdir(outDir, { recursive: true });
   // 产物以**题目目录名（slug）**命名，而非父目录名——父目录是所有题共享的根。
-  // 评审 P1（Windows）：必须 path-aware，不能用 dir.split("/")——
+  // Windows：必须 path-aware，不能用 dir.split("/")——
   // Windows 上 resolve 返回反斜杠路径（C:\work\problems\a-plus-b），
   // 按 "/" 切分会把整条路径当成 slug，产物名与输出位置都会出错。
   const slug = bundleSlug(dir);
@@ -350,7 +426,7 @@ export async function runProblemPush(args: ProblemArgs): Promise<number> {
   const interactive = !args.noInteractive && Deno.stdin.isTerminal();
   try {
     const result = await pushBundle(
-      { server, bundle, publish: args.publish },
+      { server, domain: args.domain, bundle, publish: args.publish },
       {
         fetch,
         io: interactive ? realIO() : null,
@@ -413,13 +489,11 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   let answers: {
     slug?: string;
     title?: string;
-    type?: string;
     difficulty?: string;
     judgeType?: "dual" | "oi";
   } = {
     slug: args.slug,
     title: args.title,
-    type: args.type,
     difficulty: args.difficulty,
     judgeType: args.judgeType,
   };
@@ -430,6 +504,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         ...(await guideProblemInit(realIO(), answers)),
         judgeType: args.judgeType,
       };
+      // 模板只由 --template 指定，TUI 不追问（保持既有引导流程不变）。
     } catch (err) {
       // 用户在确认环节取消：不是错误，用 0 退出（与常见 CLI 一致）
       if ((err as Error).message === "已取消") {
@@ -443,7 +518,7 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   const slug = answers.slug;
   if (!slug) {
     console.error(
-      "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b --type P）",
+      "problem init: 需要 <slug>（例如 noj-cli problem init a-plus-b）",
     );
     return EXIT_USAGE;
   }
@@ -451,11 +526,6 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   // 参数/取值非法属**用法错误**（退出码 2），而非运行失败
   try {
     validateSlug(slug);
-    if (
-      answers.type !== undefined && answers.type !== "U" && answers.type !== "P"
-    ) {
-      throw new UsageError(`--type 仅支持 U/P，收到 "${answers.type}"`);
-    }
     if (
       answers.difficulty !== undefined &&
       !["easy", "medium", "hard"].includes(answers.difficulty)
@@ -472,6 +542,20 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
         `--judge-type 仅支持 dual/oi，收到 "${answers.judgeType}"`,
       );
     }
+    if (args.template !== undefined) {
+      if (
+        !(PROBLEM_TEMPLATE_NAMES as readonly string[]).includes(args.template)
+      ) {
+        throw new UsageError(
+          `--template 仅支持 ${
+            PROBLEM_TEMPLATE_NAMES.join("/")
+          }，收到 "${args.template}"`,
+        );
+      }
+      if (answers.judgeType === "oi") {
+        throw new UsageError("--template 与 --judge-type oi 不能同时使用");
+      }
+    }
   } catch (err) {
     if (err instanceof UsageError) throw err;
     throw new UsageError((err as Error).message);
@@ -480,15 +564,93 @@ export async function runProblemInit(args: ProblemArgs): Promise<number> {
   const result = await initProblemScaffold({
     slug,
     title: answers.title,
-    type: answers.type,
     difficulty: answers.difficulty,
     judgeType: answers.judgeType,
+    template: args.template as ProblemTemplateName | undefined,
     root: args.dir,
   });
   console.log(`已生成题目骨架：${result.dir}`);
   for (const f of result.files) console.log(`  + ${f}`);
+  if (args.template !== undefined) {
+    console.log(
+      `\n下一步：先运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
+        "再按 README.md 的改造步骤改成你的题目",
+    );
+  } else {
+    console.log(
+      `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
+    );
+  }
+  return EXIT_OK;
+}
+
+/** 执行 `problem migrate`：把目录中的 problem.json 原地改写为当前格式。 */
+export async function runProblemMigrate(args: ProblemArgs): Promise<number> {
+  const dir = resolve(args.dir ?? Deno.cwd());
+  const path = join(dir, "problem.json");
+  let text: string;
+  try {
+    text = await Deno.readTextFile(path);
+  } catch {
+    throw new UsageError(`找不到 problem.json：${path}`);
+  }
+  let result;
+  try {
+    result = migrateManifest(text);
+  } catch (err) {
+    console.error(`problem migrate: ${(err as Error).message}`);
+    return EXIT_FAILURE;
+  }
+  if (result.changed) await Deno.writeTextFile(path, result.text);
+  if (args.json) {
+    console.log(JSON.stringify(
+      { path, changed: result.changed, warnings: result.warnings },
+      null,
+      2,
+    ));
+  } else if (!result.changed) {
+    console.log(`已是最新格式，无需迁移：${path}`);
+  } else {
+    console.log(`已迁移：${path}`);
+    for (const warning of result.warnings) console.log(`  - ${warning}`);
+  }
+  return EXIT_OK;
+}
+
+/** `problem skill [dir]`：把 AI 出题 Skill 写入出题仓库。 */
+export async function runProblemSkill(args: ProblemArgs): Promise<number> {
+  const root = resolve(args.dir ?? ".");
+  if (!(await isDirectory(root))) {
+    console.error(`problem skill: 目录不存在：${root}`);
+    return EXIT_USAGE;
+  }
+  let results;
+  try {
+    results = await installProblemSetterSkill({ root, force: args.force });
+  } catch (err) {
+    console.error(`problem skill: ${(err as Error).message}`);
+    return EXIT_FAILURE;
+  }
+  const conflict = results.some((r) => r.status === "conflict");
+  if (args.json) {
+    console.log(JSON.stringify({ root, targets: results }, null, 2));
+    return conflict ? EXIT_FAILURE : EXIT_OK;
+  }
+  const label = {
+    written: "已写入",
+    unchanged: "已是最新",
+    conflict: "已存在且内容不同，未覆盖",
+  } as const;
+  for (const r of results) {
+    console.log(`${label[r.status]}：${relative(Deno.cwd(), r.dir) || r.dir}`);
+  }
+  if (conflict) {
+    console.error("加 --force 覆盖（会先删除旧的 Skill 目录）。");
+    return EXIT_FAILURE;
+  }
   console.log(
-    `\n下一步：补齐题面/判分/用例，然后运行 noj-cli problem lint ${result.dir}`,
+    "AI 编码助手在该目录工作时会加载 noj-problem-setter；" +
+      "也可直接阅读其中的 SKILL.md。",
   );
   return EXIT_OK;
 }
@@ -504,8 +666,16 @@ export async function runProblem(args: ProblemArgs): Promise<number> {
       return await runProblemInit(args);
     case "push":
       return await runProblemPush(args);
+    case "migrate":
+      return await runProblemMigrate(args);
+    case "test":
+      return await runProblemTest(args);
+    case "skill":
+      return await runProblemSkill(args);
     default:
-      console.error("problem: 需要子命令 init/lint/pack/push");
+      console.error(
+        "problem: 需要子命令 init/lint/pack/push/migrate/test/skill",
+      );
       console.error("运行 'noj-cli problem --help' 查看用法。");
       return EXIT_USAGE;
   }

@@ -1,0 +1,121 @@
+/** application 组合层的稳定入口；HTTP/runtime 只从这里取得跨模块用例。 */
+export {
+  adminDeleteAccountCommand,
+  consumeDomainInvitationCommand,
+  createClassroomInvitationCommand,
+  createDomainCommand,
+  createDomainInvitationCommand,
+  deleteOwnAccountCommand,
+  joinDomainCommand,
+  previewDomainInvitationCommand,
+  registrationInvitationBoundary,
+  removeDomainMemberCommand,
+  reviewJoinRequestCommand,
+  revokeClassroomInvitationCommand,
+  revokeDomainInvitationCommand,
+  setDomainStatusCommand,
+  setMemberRoleCommand,
+  transferDomainCommand,
+  updateDomainCommand,
+} from "./access.ts";
+export {
+  accessClassroomInvitationBoundary,
+  accessDomainChangeBoundary,
+  accessMemberRemovalBoundary,
+} from "./access-capabilities.ts";
+export {
+  attachUploadCommandTx,
+  growUploadCommand,
+  readStorageUsageCommand,
+  releaseObjectCommand,
+  releaseUploadCommand,
+  reserveUploadCommand,
+  reserveUploadCommandTx,
+  settleUploadCommand,
+  settleUploadCommandTx,
+} from "./assets.ts";
+export type { AssetsCommandContext, ReserveUploadInput } from "./assets.ts";
+export {
+  addContestParticipantsCommand,
+  addDomainContestParticipantsCommand,
+  createContestCommand,
+  createDomainContestCommand,
+  deleteContestCommand,
+  registerDomainContestCommand,
+  registerForContestCommand,
+  removeContestParticipantCommand,
+  removeDomainContestParticipantCommand,
+  updateContestCommand,
+  updateDomainContestCommand,
+} from "./contests.ts";
+export type { ContestCommandOptions } from "./contests.ts";
+export {
+  acceptDomainSubmissionJobCommand,
+  acceptRejudgeJobCommand,
+  acceptUpgradeJobCommand,
+  applyAttemptResultCommand,
+  cancelDomainSubmissionJobCommand,
+  composeDomainEvaluationAdmissionContext,
+  composeDomainEvaluationAdmissionPlan,
+  deleteSubmissionCommand,
+  getEvaluationTodayStats,
+  getEvaluationTotalStats,
+  getObjectiveSubmissionCommand,
+  listContestSubmissionsCommand,
+  listObjectiveSubmissionsCommand,
+  rejudgeObjectiveSubmissionCommand,
+  rejudgeProblemSubmissionsCommand,
+  rejudgeSubmissionCommand,
+  requireEvaluationVersion,
+  retryRejudgeJobCommand,
+  saveEvaluationResultCommand,
+  setContestProblemEffectiveVersionPolicyCommand,
+  setProblemEffectiveVersionPolicyCommand,
+  submitArtifactCommand,
+  submitCodeCommand,
+  submitDomainArtifactCommand,
+  submitDomainCodeCommand,
+  submitDomainSelfTestCommand,
+  submitObjectivePaperCommand,
+  upgradeContestProblemPinnedVersionCommand,
+} from "./evaluations.ts";
+export {
+  createDomainProblemCommand,
+  createObjectiveQuestionCommand,
+  createProblemCommand,
+  deleteObjectiveQuestionCommand,
+  deleteProblemCommand,
+  deleteSupportPackageCommand,
+  importDomainProblemBundleCommand,
+  importDomainProblemCommand,
+  importDomainProblemDraftBundleCommand,
+  importProblemBundleCommand,
+  publishDomainProblemVersionCommand,
+  publishImportedProblemCommand,
+  publishProblemVersionCommand,
+  saveDomainOiDraftCommand,
+  saveDomainProblemDraftCommand,
+  saveOiDraftCommand,
+  saveProblemDraftCommand,
+  setDomainProblemBindingPolicyCommand,
+  setDomainProblemBindingPolicyCommandTx,
+  setDomainProblemBindingStateCommand,
+  updateObjectiveQuestionCommand,
+  updateProblemCommand,
+} from "./problems.ts";
+export type {
+  CreateProblemCommandOptions,
+  PublishProblemVersionCommandInput,
+  UpdateProblemCommandOptions,
+} from "./problems.ts";
+export { getDomainProblemSummaries } from "./read-models/problems.ts";
+export type { ProblemSubmissionSummary } from "./read-models/problems.ts";
+export { getUserProfilePage } from "./user-profile.ts";
+export type { UserProfileResponse } from "./user-profile.ts";
+export {
+  cleanupSucceededSearchTasks,
+  enqueueSearchIndexTaskTx,
+  SEARCH_TASK_RETENTION_DAYS,
+  startSearchTaskRetentionTask,
+} from "./search-tasks.ts";
+export type { SearchIndexTaskAction } from "./search-tasks.ts";

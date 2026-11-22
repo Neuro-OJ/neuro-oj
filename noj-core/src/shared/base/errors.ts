@@ -26,8 +26,9 @@ export class AppError extends Error {
     statusCode: number,
     code?: string,
     meta?: Record<string, unknown>,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "AppError";
     this.statusCode = statusCode;
     this.code = code ?? "INTERNAL_ERROR";
@@ -40,8 +41,8 @@ export class AppError extends Error {
  * 用于资源重复场景（如用户名/邮箱已存在）。
  */
 export class ConflictError extends AppError {
-  constructor(message: string) {
-    super(message, 409, "CONFLICT_ERROR");
+  constructor(message: string, code?: string) {
+    super(message, 409, code ?? "CONFLICT_ERROR");
     this.name = "ConflictError";
   }
 }
@@ -89,7 +90,9 @@ export class BadRequestError extends AppError {
     code?: string,
     meta?: Record<string, unknown>,
   ) {
-    super(message, 400, code, meta);
+    // 400 的默认错误码必须是校验类而不是 INTERNAL_ERROR：客户端与日志都按
+    // code 区分"请求非法"和"服务端故障"。
+    super(message, 400, code ?? "VALIDATION_ERROR", meta);
     this.name = "BadRequestError";
   }
 }
@@ -120,8 +123,8 @@ export class ForbiddenError extends AppError {
  * 当前由限流相关 Redis 调用在连接失败时抛出（issue #73 fail-closed）。
  */
 export class ServiceUnavailableError extends AppError {
-  constructor(message: string) {
-    super(message, 503, "SERVICE_UNAVAILABLE");
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, 503, "SERVICE_UNAVAILABLE", undefined, options);
     this.name = "ServiceUnavailableError";
   }
 }

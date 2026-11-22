@@ -1,0 +1,69 @@
+# 自然语言处理与音频（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: nlp
+name: 自然语言处理与音频
+nodes:
+  - id: nlp.text-preprocessing
+    name: 文本预处理
+    summary: 掌握分词、规范化、去停用词与构建词表的基本流程，能把原始文本转换成模型可用的符号序列
+    syllabus: [noai, ioai, lmcc]
+    requires: [data.tokenization]
+  - id: nlp.word-embeddings
+    name: 词向量
+    summary: 理解词向量把词语映射为稠密向量的思想，掌握训练与加载词向量并用余弦相似度衡量词语相关性
+    syllabus: [noai, ioai, lmcc]
+    requires: [nlp.text-preprocessing, dl.embeddings]
+  - id: nlp.text-classification
+    name: 文本分类
+    summary: 用池化嵌入或循环网络对句子或文档做情感、主题等分类，掌握变长序列批次处理与分类指标评估
+    syllabus: [ioai, noai]
+    requires: [nlp.word-embeddings, data.classification-metrics]
+  - id: nlp.ner
+    name: 命名实体识别
+    summary: 理解序列标注任务与 BIO 标签体系，能用循环网络或编码器模型识别文本中的人物、地点与机构等实体
+    syllabus: [noai]
+    requires: [nlp.word-embeddings, dl.rnn]
+  - id: nlp.language-modeling
+    name: 语言建模
+    summary: 理解用概率预测下一个词的目标与困惑度评价，能训练字符级或词级语言模型并用于文本生成
+    syllabus: [ioai, lmcc]
+    requires: [nlp.word-embeddings, dl.rnn]
+  - id: nlp.pretrained-encoders
+    name: 预训练文本编码器（BERT）
+    summary: 理解 BERT 的掩码语言建模预训练与双向编码结构，能加载预训练权重做分类、抽取等下游任务
+    syllabus: [ioai, lmcc]
+    requires: [nlp.language-modeling, dl.transformer, dl.fine-tuning]
+  - id: nlp.seq2seq
+    name: 序列到序列任务（翻译、摘要）
+    summary: 掌握编码器-解码器框架与教师强制训练方式，理解翻译、摘要等生成任务的数据处理与评价方法
+    syllabus: [ioai, lmcc]
+    requires: [nlp.language-modeling, dl.attention]
+  - id: nlp.text-decoders
+    name: 文本解码器与条件生成
+    summary: 理解自回归解码与提示条件生成，掌握贪心、束搜索与采样等解码策略的取舍及其对生成质量的影响
+    syllabus: [ioai, lmcc]
+    requires: [nlp.language-modeling, dl.transformer]
+  - id: nlp.sentence-embeddings
+    name: 句向量与语义相似度
+    summary: 掌握把句子编码为定长向量并检索近义句的方法，理解语义相似度任务与向量检索的基本流程
+    syllabus: [lmcc, ioai]
+    requires: [nlp.pretrained-encoders, math.similarity]
+  - id: nlp.pretrained-lm-usage
+    name: 使用开源与 API 预训练语言模型
+    summary: 能通过 Transformers 库或 API 调用预训练语言模型完成分类、问答与摘要，并注意提示设计与成本
+    syllabus: [ioai, lmcc]
+    requires: [nlp.pretrained-encoders, prog.hf-transformers]
+  - id: nlp.audio-features
+    name: 音频信号与特征
+    summary: 理解采样率、波形与频谱，能把音频转换为梅尔频谱、MFCC 等二维特征，为语音模型准备输入
+    syllabus: [ioai, noai]
+    requires: [data.feature-engineering]
+  - id: nlp.speech-recognition
+    name: 语音识别
+    summary: 理解声学特征到文本的映射过程与 CTC 对齐思想，能用预训练模型识别语音并计算词错误率评估效果
+    syllabus: [ioai, noai]
+    requires: [nlp.audio-features, nlp.seq2seq]
+  - id: nlp.audio-models
+    name: 音频预训练模型
+    summary: 了解 wav2vec 等自监督音频预训练与 Whisper 式编码器-解码器语音模型，能迁移到分类与识别任务
+    syllabus: [ioai]
+    requires: [nlp.speech-recognition]

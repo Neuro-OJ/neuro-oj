@@ -37,20 +37,27 @@ check_dockerfiles() {
 
   for file in "${files[@]}"; do
     require_file "$file"
-    local stages=() from_parts=() from_image known_stage stage_name from_count
+    local stages=() from_parts=() from_image from_image_lower known_stage stage_name from_count as_kw stage_alias
     while IFS= read -r line; do
       read -r -a from_parts <<< "$line"
       from_image="${from_parts[1]}"
       [[ "$from_image" != --platform=* ]] || from_image="${from_parts[2]}"
+      from_image_lower="$(printf '%s' "$from_image" | tr '[:upper:]' '[:lower:]')"
       known_stage=false
-      for stage_name in "${stages[@]}"; do
-        [[ "${from_image,,}" != "$stage_name" ]] || known_stage=true
-      done
+      if [[ "${#stages[@]}" -gt 0 ]]; then
+        for stage_name in "${stages[@]}"; do
+          [[ "$from_image_lower" != "$stage_name" ]] || known_stage=true
+        done
+      fi
       # 内部阶段继承已验证的固定基础镜像，不是新的外部镜像引用。
       [[ "$known_stage" == true || "$from_image" == *'@sha256:'* ]] || fail "$file 存在未固定 digest 的基础镜像：$line"
       from_count="${#from_parts[@]}"
-      if [[ "${from_parts[from_count-2]^^}" == AS ]]; then
-        stages+=("${from_parts[from_count-1],,}")
+      if [[ "$from_count" -ge 4 ]]; then
+        as_kw="$(printf '%s' "${from_parts[from_count-2]}" | tr '[:lower:]' '[:upper:]')"
+        if [[ "$as_kw" == AS ]]; then
+          stage_alias="$(printf '%s' "${from_parts[from_count-1]}" | tr '[:upper:]' '[:lower:]')"
+          stages+=("$stage_alias")
+        fi
       fi
     done < <(sed -n '/^[[:space:]]*FROM[[:space:]]/p' "$ROOT_DIR/$file")
   done
@@ -123,6 +130,10 @@ check_release_workflow() {
   grep -q 'needs: verify-release' "$file" || fail "CLI 发布必须等待生产镜像验证"
   grep -q 'deno task test:production' "$file" || fail "CLI 发布缺少生产安装测试"
   grep -q 'sha256sum noj-cli-linux-amd64' "$file" || fail "CLI 发布缺少 SHA-256 校验文件"
+  grep -q 'generate-release-set.ts' "$file" || fail "Release workflow 未从已验证 digest 生成发布集"
+  grep -Eq 'deno run -A --config deno\.json \.\./scripts/release/generate-release-set\.ts' "$file" \
+    || fail "生成发布集必须显式 --config deno.json（Deno 按脚本位置找配置，否则无法解析 @std/path）"
+  grep -q 'release-set.json' "$file" || fail "Release workflow 未上传发布集及校验文件"
   grep -q 'provenance: mode=max' "$file" || fail "Release workflow 未启用 provenance"
   grep -q 'sbom: true' "$file" || fail "Release workflow 未启用 BuildKit SBOM"
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"
@@ -141,7 +152,63 @@ check_release_workflow() {
   if grep -Eq ':[[:space:]]*(latest|beta)(["'"'"'[:space:]]|$)' "$file"; then
     fail "Release workflow 仍发布 latest/beta 可变标签"
   fi
-  ok "Release workflow 包含安全门禁且不发布 latest/beta"
+
+  local ide_job release_job
+  ide_job="$(awk '
+    /^  publish-ide:/ { in_job=1 }
+    in_job && /^  [A-Za-z0-9_-]+:/ && $0 !~ /^  publish-ide:/ { exit }
+    in_job { print }
+  ' "$file")"
+  [[ -n "$ide_job" ]] || fail "Release workflow 缺少 publish-ide 任务"
+  grep -q 'needs: verify-release' <<< "$ide_job" || fail "IDE 插件发布必须等待生产镜像验证"
+  grep -q 'npm ci' <<< "$ide_job" || fail "IDE 插件发布缺少 npm ci"
+  grep -q 'npm run check' <<< "$ide_job" || fail "IDE 插件发布缺少类型与格式检查"
+  grep -q 'npm test' <<< "$ide_job" || fail "IDE 插件发布缺少单元测试"
+  grep -Fq '@vscode/vsce package' <<< "$ide_job" || fail "IDE 插件发布缺少 vsce 打包步骤"
+  grep -Fq 'neuro-oj-lmcc-${VERSION#v}.vsix' <<< "$ide_job" || fail "IDE 插件发布未使用约定 VSIX 资产名"
+  grep -Fq '${asset}.sha256' <<< "$ide_job" || fail "IDE 插件发布缺少 VSIX SHA-256 校验文件"
+  grep -q 'gh release upload' <<< "$ide_job" || fail "IDE 插件发布缺少 Release 资产上传步骤"
+
+  release_job="$(awk '
+    /^  publish-release:/ { in_job=1 }
+    in_job && /^  [A-Za-z0-9_-]+:/ && $0 !~ /^  publish-release:/ { exit }
+    in_job { print }
+  ' "$file")"
+  [[ -n "$release_job" ]] || fail "Release workflow 缺少 publish-release 任务"
+  grep -Eq '^[[:space:]]*publish-ide,' <<< "$release_job" || fail "publish-release 必须等待 publish-ide 完成"
+
+  # 禁止对预发布后缀标签执行 --prerelease=false / --latest，必须显式按 SemVer 后缀分流。
+  if ! awk '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*(if|elif)[[:space:]]+\[\[.*\$VERSION.*=~[[:space:]]/ {
+      if (index($0, "^v?[0-9]+\\.[0-9]+\\.[0-9]+-[0-9A-Za-z.-]+$") > 0) {
+        branch = "prerelease"
+      } else if (index($0, "^v?[0-9]+\\.[0-9]+\\.[0-9]+$") > 0) {
+        branch = "stable"
+      } else {
+        branch = "other"
+      }
+      next
+    }
+    /^[[:space:]]*else([[:space:]]|$)/ { branch = "else"; next }
+    /^[[:space:]]*fi([[:space:]]|$)/ { branch = ""; next }
+    /gh[[:space:]]+release[[:space:]]+edit/ {
+      if ($0 ~ /--prerelease=false/ || $0 ~ /--latest/) {
+        if (branch != "stable") exit 2
+        saw_stable = 1
+      } else if ($0 ~ /--draft=false/ && $0 ~ /--prerelease([[:space:]]|$)/) {
+        if (branch != "prerelease") exit 3
+        saw_pre = 1
+      }
+    }
+    END {
+      if (saw_pre != 1 || saw_stable != 1) exit 4
+    }
+  ' "$file"; then
+    fail "Release workflow 禁止无条件或对预发布标签执行 --prerelease=false / --latest"
+  fi
+
+  ok "Release workflow 包含安全门禁、IDE 插件发布且保护预发布标签不被转正"
 }
 
 check_release_workflow

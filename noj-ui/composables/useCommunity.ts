@@ -1,6 +1,6 @@
 import type { CommunityNotificationType } from '~/utils/communityNotifications';
 
-export type PostType = 'discussion' | 'solution' | 'moment';
+export type PostType = 'discussion' | 'solution';
 
 export type PostStatus = 'draft' | 'pending' | 'published' | 'hidden' | 'deleted';
 
@@ -10,22 +10,21 @@ export interface CommunityConfig {
   read_only: boolean;
   solutions_enabled: boolean;
   discussions_enabled: boolean;
-  moments_enabled: boolean;
   comments_enabled: boolean;
-  reactions_enabled: boolean;
-  bookmarks_enabled: boolean;
-  follows_enabled: boolean;
-  private_messaging_enabled: boolean;
   external_images_enabled: boolean;
   solution_requires_accepted: boolean;
   new_user_review_hours?: number;
   post_max_length?: number;
-  moment_max_length?: number;
   comment_max_length?: number;
   post_interval_seconds?: number;
   permissions: Record<string, boolean>;
   /** 赛时社区全局静默：存在未结束公开赛且当前用户非审核员时为 true，写入入口应禁用。 */
   contest_silence?: boolean;
+  /**
+   * 新用户预审：当前账号在 `new_user_review_hours` 窗口内，发出的帖子/评论会先进入
+   * pending 队列（只有自己与审核员可见），编辑区应提前提示。
+   */
+  under_review?: boolean;
 }
 
 /** 社区帖子（来自后端完整行） */
@@ -55,7 +54,9 @@ export interface ReportRow {
     reporter_id: string;
     post_id: string | null;
     comment_id: string | null;
-    message_id: string | null;
+    assignment_id?: string | null;
+    feedback_id?: string | null;
+    help_id?: string | null;
     content_type: string;
     category: string;
     reason: string;
@@ -102,7 +103,6 @@ export interface ReportRow {
 export interface PostRow {
   post: CommunityPost;
   author: { id: string; username: string };
-  likes: number;
   comments: number;
 }
 
@@ -123,45 +123,26 @@ export interface CommunityComment {
 export interface CommentRow {
   comment: CommunityComment;
   author: { id: string; username: string };
-  likes: number;
-}
-
-/** 个人收藏列表行 */
-export interface BookmarkRow {
-  post: CommunityPost;
-  author: { id: string; username: string };
-  bookmarked_at: string;
-  likes: number;
-  comments: number;
 }
 
 /** 各类型已发布帖子计数 */
 export interface CommunityCounts {
   solution: number;
   discussion: number;
-  moment: number;
-}
-
-/**
- * 关注流条目。
- *
- * 系统活动事件（`community_activity_events`）已全栈下线（VULN-08）：
- * `GET /api/v1/community/feed` 只返回帖子，故这里不再有 `activity` 分支。
- */
-export interface FeedItem {
-  kind: 'moment';
-  post: CommunityPost;
-  author: { id: string; username: string };
 }
 
 /** 社区通知行 */
 export interface NotificationRow {
+  domain?: { id: string; slug: string; name: string } | null;
   notification: {
     id: string;
     // 类型定义与展示/跳转规则共用 utils/communityNotifications.ts，避免两处漂移
     type: CommunityNotificationType;
     post_id: string | null;
     comment_id: string | null;
+    assignment_id?: string | null;
+    feedback_id?: string | null;
+    help_id?: string | null;
     read_at: string | null;
     created_at: string;
     data: {
@@ -183,25 +164,28 @@ export interface NotificationRow {
 }
 
 export function useCommunity() {
-  const config = useState<CommunityConfig | null>('community:config', () => null);
-  const loading = useState('community:config-loading', () => false);
+  const scope = useCommunityScope();
   const { api } = useApi();
+  const { data, status, refresh, error } = useAsyncData(
+    computed(() => `${scope.key.value}:config`),
+    async () => {
+      const request = scope.capture();
+      const response = await api.get<{ data: CommunityConfig }>(request.apiPath('config'), { silent: true });
+      return { key: request.key, config: response.data };
+    },
+    { immediate: false },
+  );
+  const config = computed(() =>
+    status.value !== 'error' && data.value?.key === scope.key.value ? data.value.config : null
+  );
+  const loading = computed(() => status.value === 'pending');
 
   async function loadConfig(force = false) {
     if (config.value && !force) return config.value;
-    loading.value = true;
-    try {
-      const response = await api.get<{ data: CommunityConfig }>('/api/v1/community/config');
-      config.value = response.data;
-      return response.data;
-    } catch {
-      // 非关键配置：失败时降级为“社区未启用/不可用”，不让整页 SSR 抛错
-      config.value = null;
-      return null;
-    } finally {
-      loading.value = false;
-    }
+    await refresh();
+    // 配置不可用时隐藏入口，不能使用另一域或另一账号的旧权限。
+    return status.value === 'error' ? null : config.value;
   }
 
-  return { config, loading, loadConfig };
+  return { config, loading, loadConfig, error };
 }

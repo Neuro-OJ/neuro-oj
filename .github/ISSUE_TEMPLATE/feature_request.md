@@ -6,7 +6,7 @@ labels: ""
 assignees: ""
 ---
 
-<!-- 提交前请先阅读 ../../CONTRIBUTING.md；安全问题请查看 ../../SECURITY.md。 -->
+<!-- 提交前请先阅读 ../CONTRIBUTING.md；安全问题请查看 ../SECURITY.md。 -->
 
 ## 提交前确认
 

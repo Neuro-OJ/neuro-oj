@@ -1,6 +1,8 @@
 import type { ApiErrorInfo } from '~/utils/apiError';
 import { extractApiError } from '~/utils/apiError';
 import { useToast } from '~/composables/useToast';
+import { authCookieNames } from '~/utils/auth-cookies';
+import { clearUserDrafts } from '~/utils/draft-storage';
 
 /**
  * 统一 API 调用层。
@@ -36,11 +38,11 @@ export interface ApiCallOptions extends Omit<FetchOptions, 'method' | 'timeout'>
 
 type ApiMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-export function useApi() {
+export function useApi(targetRoute?: { path: string; fullPath: string }) {
+  const cookieNames = authCookieNames(useRuntimeConfig().public.authCookiePrefix);
   const { toast } = useToast();
-  const { locale } = useI18n();
   // 当前路由：401 时跳转登录页需要保留回跳目标（SSR 阶段不可跳转，仅客户端）
-  const route = useRoute();
+  const route = targetRoute ?? useRoute();
 
   // SSR 端 $fetch 不会自动携带浏览器 Cookie（server→server 直连）。
   // 使用 useRequestFetch 统一转发原始请求的 Cookie 与请求头，与 useFetch 行为对齐。
@@ -70,7 +72,7 @@ export function useApi() {
       const fetcher = import.meta.server && serverFetch ? serverFetch : $fetch;
       return await fetcher<T>(url, { method, ...fetchOptions }) as T;
     } catch (err) {
-      const info = extractApiError(err, locale.value);
+      const info = extractApiError(err);
       if (import.meta.client && import.meta.dev) {
         console.error('[useApi] 请求失败', {
           method: method.toUpperCase(),
@@ -97,10 +99,12 @@ export function useApi() {
       ) {
         // NOJ-210：统一 401 处理必须清掉僵尸登录态——
         // 本地 user state、可读 session cookie，以及 HTTP-only token cookie。
-        const authUser = useState<unknown>('auth:user', () => null);
+        const authUser = useState<{ id: string } | null>('auth:user', () => null);
+        clearUserDrafts(authUser.value?.id);
         authUser.value = null;
         try {
-          const session = useCookie('noj:session');
+          const session = useCookie<{ userId?: string } | null>(cookieNames.session);
+          clearUserDrafts(session.value?.userId);
           session.value = null;
         } catch {
           // ignore

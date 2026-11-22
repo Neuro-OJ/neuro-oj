@@ -3,7 +3,7 @@
  *
  * ## 为什么抽出来（而不是两处各写一份）
  *
- * 这段序列的顺序与错误处理是**评审迭代出来的**，不是随手写的：
+ * 这段序列的顺序与错误处理是**反复修正出来的**，不是随手写的：
  *
  * 1. **必须先 `--wait` 起数据服务**，否则后续 `psql`/`pg_restore` 会以
  *    "connection refused" 之类的下游错误掩盖"服务没起来"这一根因；
@@ -33,14 +33,8 @@ import type { CommandRunner } from "../../runtime/command.ts";
 import { valueOr } from "../env-values.ts";
 import { makeIdempotentGlobals } from "./globals.ts";
 
-/** 恢复序列所需的全部注入点与上下文。 */
-export interface DataRestoreContext {
-  /** 解包后的快照目录（`postgres.dump` / `redis.rdb` / `minio/` 所在处）。 */
-  staging: string;
-  /** 临时目录（幂等化后的 globals 脚本落在这里）。 */
-  tempDir: string;
-  /** `.env.prod` 解析出的键值（取 `POSTGRES_USER`/`POSTGRES_DB`/`S3_BUCKET`）。 */
-  env: Record<string, string>;
+/** 一个 Compose 项目的调用目标：命令注入点 + docker 可执行名 + 参数构造。 */
+export interface ComposeTarget {
   /** 命令注入点。 */
   runner: CommandRunner;
   /** docker 可执行名。 */
@@ -51,6 +45,16 @@ export interface DataRestoreContext {
    * 由调用方决定项目名/override/是否隔离——本模块只负责"恢复什么、按什么顺序"。
    */
   composeArgs: (command: string[]) => string[];
+}
+
+/** 恢复序列所需的全部注入点与上下文。 */
+export interface DataRestoreContext extends ComposeTarget {
+  /** 解包后的快照目录（`postgres.dump` / `redis.rdb` / `minio/` 所在处）。 */
+  staging: string;
+  /** 临时目录（幂等化后的 globals 脚本落在这里）。 */
+  tempDir: string;
+  /** `.env.prod` 解析出的键值（取 `POSTGRES_USER`/`POSTGRES_DB`/`S3_BUCKET`）。 */
+  env: Record<string, string>;
   /** `--wait` 超时（秒）。 */
   waitTimeout: number;
   /** 人类日志汇聚点。 */
@@ -58,7 +62,7 @@ export interface DataRestoreContext {
   /**
    * 是否在恢复结束后**停掉数据服务**。
    *
-   * - 生产 restore：`true`（与 bash 一致——恢复后停服务，等人工检查再起业务，
+   * - 生产 restore：`true`（恢复后停服务，等人工检查再起业务，
    *   避免应用在半恢复的数据上对外服务）；
    * - drill：`false`（它后续还要起业务服务做验收）。
    */
@@ -66,8 +70,8 @@ export interface DataRestoreContext {
 }
 
 /** 跑一条 compose 子命令并返回退出码。 */
-async function compose(
-  ctx: DataRestoreContext,
+export async function compose(
+  ctx: ComposeTarget,
   command: string[],
 ): Promise<number> {
   const res = await ctx.runner.run(ctx.dockerBin, ctx.composeArgs(command));
@@ -75,15 +79,31 @@ async function compose(
 }
 
 /**
+ * 启动并等待一次性 Compose service。
+ *
+ * Compose 的 `up --wait` 只等待服务进入 running/healthy；对正常退出的
+ * one-shot service（例如 `minio-init`）会把 exit 0 误报成命令失败。先保留
+ * 容器状态地 `up -d`，再用 `compose wait` 读取其真实退出码，才能同时满足
+ * `depends_on: service_completed_successfully` 与恢复错误可见性。
+ */
+export async function startOneShotService(
+  ctx: ComposeTarget,
+  service: string,
+): Promise<number> {
+  if (await compose(ctx, ["up", "-d", service]) !== 0) return 1;
+  return await compose(ctx, ["wait", service]);
+}
+
+/**
  * 把文件喂给一条 compose 子命令的 stdin（**文件重定向，不经字符串**）。
  *
  * 用 `sh -c 'bin="$1"; src="$2"; shift 2; exec "$bin" "$@" < "$src"'`：
  * 可执行名走 `$1`、快照路径走 `$2`、compose 参数走 `"$@"`，
- * **都不拼进脚本正文**。这是 T17 `driver.ts:feedFromFile` 的同一语义，
+ * **都不拼进脚本正文**。这是 `driver.ts:feedFromFile` 的同一语义，
  * 但那里只接受裸命令，这里需要带上完整的 compose 参数数组。
  */
-async function feedFileToCompose(
-  ctx: DataRestoreContext,
+export async function feedFileToCompose(
+  ctx: ComposeTarget,
   command: string[],
   srcFile: string,
 ): Promise<number> {
@@ -106,7 +126,7 @@ async function feedFileToCompose(
 export async function restoreDataServices(
   ctx: DataRestoreContext,
 ): Promise<void> {
-  const { runner, dockerBin, staging, tempDir, log } = ctx;
+  const { staging, tempDir, log } = ctx;
   const pgUser = valueOr(ctx.env, "POSTGRES_USER", "noj");
   const pgDb = valueOr(ctx.env, "POSTGRES_DB", "noj");
 
@@ -126,8 +146,11 @@ export async function restoreDataServices(
   ) {
     throw new Error("数据服务启动失败");
   }
-  // MinIO 桶初始化：**必须检查退出码**（曾因丢弃它把根因埋成"数据核对失败"）
-  if (await compose(ctx, ["run", "--rm", "minio-init"]) !== 0) {
+  // MinIO 桶初始化：保留一次性 service 容器，供后续 core 的
+  // `depends_on: service_completed_successfully` 复用。不能用 `run --rm`：
+  // 那会删除完成状态，后续 `up core` 只能再次执行初始化，恢复与演练的
+  // 生命周期因此不再是可观察的单一 one-shot 链。
+  if (await startOneShotService(ctx, "minio-init") !== 0) {
     throw new Error("MinIO 初始化失败（minio-init）");
   }
 
@@ -242,9 +265,7 @@ export async function restoreDataServices(
   // ---- 5. 收尾（生产语义：停服务等人工检查；drill：保留给后续验收）----
   if (ctx.stopAfterRestore) {
     log("✓ 停止数据服务（请人工检查后再启动业务服务）");
-    // 与 bash 一致：`|| true` —— 收尾失败不该把"数据已恢复成功"报成失败。
+    // 收尾失败不该把"数据已恢复成功"报成失败。
     await compose(ctx, ["stop", "postgres", "redis", "minio"]);
   }
-  void runner;
-  void dockerBin;
 }

@@ -1,7 +1,7 @@
 # 无人值守执行工作日志
 
 > 本文件记录一次无人值守会话的进度与实测证据。
-> 目标与验收标准见 `dev-docs/superpowers/specs/2026-09-11-unattended-24h-objective-design.md`。
+> 目标与验收标准见 `dev-docs/archive/superpowers/specs/2026-09-11-unattended-24h-objective-design.md`。
 >
 > **性质说明**：这是一份**时点快照**，不是持续维护的看板。最后更新：2026-09-11 02:10 (CST)。
 > 此后的事实变化不会自动同步到本文件；需要最新状态时以各 PR 与 `.agents/notes/` 为准。
@@ -112,8 +112,8 @@
 - **`plans/` 的 checkbox 不可信**：**47 份中 40 份**含未勾项，但对应工作早已上线
   （`2026-09-03-noj-core-organization-refactor.md` 有 139 未勾，对应域化重构已交付）。
   **不能当作待办清单使用**。
-  计数命令：`rg -l '^\s*-\s\[ \]' dev-docs/superpowers/plans/*.md | wc -l`（分子）、
-  `ls dev-docs/superpowers/plans/*.md | wc -l`（分母）。
+  计数命令：`rg -l '^\s*-\s\[ \]' dev-docs/archive/superpowers/plans/*.md | wc -l`（分子）、
+  `ls dev-docs/archive/superpowers/plans/*.md | wc -l`（分母）。
 - `.test-storage/` 产物被误提交（已在 `noj-core/.gitignore` 排除却仍被跟踪），导致每次跑测试
   都产生删除 diff，污染每个 PR、使干净基线不可达 → 已停止跟踪。
 
@@ -243,7 +243,7 @@
 # 2026-09-19 · noj-cli 纯 TS 重写（独立目标）
 
 > **与上文（2026-09-11 的 24 小时目标）是不同的目标**，故单列一节。
-> 计划见 `dev-docs/superpowers/plans/2026-09-19-noj-cli-pure-ts-rewrite.md`（26 个 Task）。
+> 计划见 `dev-docs/archive/superpowers/plans/2026-09-19-noj-cli-pure-ts-rewrite.md`（26 个 Task）。
 > 基线见 [`2026-09-19-baseline.md`](./2026-09-19-baseline.md)；
 > 验收证据见 [`2026-09-19-noj-cli-rewrite-evidence.md`](./2026-09-19-noj-cli-rewrite-evidence.md)；
 > 待人工 review 见 [`2026-09-19-noj-cli-manual-review.md`](./2026-09-19-noj-cli-manual-review.md)。
@@ -296,9 +296,21 @@ R7 `.nojbackup` 统一备份流；并收敛 M1–M7（删双模态）。
 
 ## 未取证项（诚实标注，不应视为通过）
 
+> 2026-10-23 最终架构整治收口：下列条目是本节形成时的历史缺口。P3–P8 的代码与自动化
+> 验收已完成；真实专用 rootless daemon 上的 `backup drill --skip-judge --keep` 已通过
+> 数据恢复和 Core/Gateway 登录、题目读取、摘要业务验收。完整 Judge 业务 verifier 因
+> rootless 宿主到容器 IP 不可路由未宣称通过，浏览器验收因本环境浏览器控制服务模块缺失
+> 未执行；两者均不能被下面的自动化证据替代。
+
+> 2026-10-24 复验：在同一隔离证据边界下，Core `deno task test` 再次为 `2509 passed / 0
+> failed / 11 ignored`（20m29s）；精确命名的 PostgreSQL/Redis 测试容器已在复验后停止。
+> 最终代码与文档变更已由 `2150e33b`（`feat(root): 完成 P3–P8 架构整治收口`）签名提交，
+> bookmark 为 `wip/architecture-remediation-p3`。
+
 1. `install`/`update --latest` 在**真实 Release** 上的端到端（取决于是否已发布含新资产）；
 2. 编译产物在**仅含 docker/curl/openssl** 的最小环境（本机已证实"不依赖仓库脚本"）；
-3. `backup drill` 在真实 Docker 上的完整演练（本机 Docker 可用，但需拉生产镜像起栈）；
+3. `backup drill` 的完整 Judge 业务链（`--skip-judge` 的真实恢复和业务验收已通过，
+   rootless 宿主到容器 IP 的路由限制阻断了完整 verifier）；
 4. `judge install` 在真实 rootless daemon 上；
 5. 每个 `test-*.sh` 到 TS 测试的**逐条**覆盖映射表（覆盖已承接，映射未做）；
 6. 真实 `pg_dump` 产物被 `pg_restore --list` 解析。

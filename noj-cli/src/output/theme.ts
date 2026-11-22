@@ -1,5 +1,5 @@
 /**
- * 品牌语义色 → ANSI 映射（Task 8 / spec R5）。
+ * 品牌语义色 → ANSI 映射。
  *
  * **单一事实来源**：`dev-docs/design/noj-design-tokens.md` 的「CLI / 终端」section。
  * 本模块只是那份文档的代码表示，两者必须同步；新增语义色先改文档再改这里。

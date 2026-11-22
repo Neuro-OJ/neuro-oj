@@ -1,15 +1,12 @@
 /**
  * 生产配置 schema（唯一事实源）。
  *
- * 本模块替换 `scripts/deploy/deploy.sh` 中散落的硬编码键名数组**与取值判定**：
- * 键清单、条件键与判定逻辑逐字对照 bash——
- * - `check_required_values()` 的 19 个必需键（deploy.sh:686-692）
- * - judge 分支的额外 2 个键（deploy.sh:702-710）
- * - 邮件分支的额外键（deploy.sh:718-737）
- * - 后半段取值约束 STORAGE_PROVIDER / JWT_SECRET / GID / APP_URL / NOJ_VERSION
- *   （deploy.sh:739-764）
- * - `is_placeholder()` 的 case 模式（deploy.sh:667-674）
- * - `judge_enabled()` 的真值集合（deploy.sh:676-682）
+ * - 19 个必需键
+ * - judge 启用时的额外 2 个键
+ * - 邮件分支的额外键
+ * - 取值约束 STORAGE_PROVIDER / JWT_SECRET / APP_URL / NOJ_VERSION
+ * - 占位值判定
+ * - `JUDGE_ENABLED` 的真值集合
  */
 
 /** 单个环境变量键的 schema 描述。 */
@@ -25,7 +22,7 @@ export interface EnvKeySpec {
 }
 
 /**
- * bash `check_required_values` 硬编码的 19 个必需键（顺序与 bash 一致）。
+ * 19 个必需键（顺序即报错顺序）。
  */
 export const ENV_KEYS: readonly EnvKeySpec[] = [
   { key: "NOJ_VERSION", required: true, note: "不可变 Release 标签" },
@@ -53,13 +50,13 @@ export const ENV_KEYS: readonly EnvKeySpec[] = [
   { key: "EMAIL_PROVIDER", required: true },
 ];
 
-/** `JUDGE_ENABLED` 为真时额外必需的键（deploy.sh:703）。 */
+/** `JUDGE_ENABLED` 为真时额外必需的键。 */
 export const JUDGE_KEYS: readonly string[] = [
   "JUDGE_DOCKER_SOCKET",
   "JUDGE_DOCKER_SOCKET_GID",
 ];
 
-/** `JUDGE_ENABLED` 判定为假的值（deploy.sh:678）。 */
+/** `JUDGE_ENABLED` 判定为假的值。 */
 const JUDGE_FALSY: ReadonlySet<string> = new Set([
   "false",
   "FALSE",
@@ -70,7 +67,7 @@ const JUDGE_FALSY: ReadonlySet<string> = new Set([
   "OFF",
 ]);
 
-/** `JUDGE_ENABLED` 判定为真的值（deploy.sh:679）；空串表示未设置。 */
+/** `JUDGE_ENABLED` 判定为真的值；空串表示未设置。 */
 const JUDGE_TRUTHY: ReadonlySet<string> = new Set([
   "",
   "true",
@@ -85,10 +82,10 @@ const JUDGE_TRUTHY: ReadonlySet<string> = new Set([
 /**
  * 校验 JUDGE_ENABLED 是否为受支持取值；非法值返回错误信息，合法值返回 null。
  *
- * 逐字对照 bash `judge_enabled()`（deploy.sh:676-682）：
+ * 取值集合：
  * - 假值集合 `false|FALSE|no|NO|0|off|OFF` → 关闭，合法；
  * - 真值集合 `""|true|TRUE|yes|YES|1|on|ON` → 启用，合法（空串/undefined 表示未设置）；
- * - 其余任意值 → bash 走 `*)` 分支 fail，此处返回同样的错误信息。
+ * - 其余任意值 → 返回错误信息。
  */
 export function judgeEnabledError(raw: string | undefined): string | null {
   if (raw === undefined) return null;
@@ -98,9 +95,9 @@ export function judgeEnabledError(raw: string | undefined): string | null {
 }
 
 /**
- * 判断 judge 是否启用，判定集合与 bash `judge_enabled()` 一致。
+ * 判断 judge 是否启用。
  *
- * 注意 bash 把**空/未设置**视为启用（deploy.sh:679），因此缺省要求 judge 键。
+ * 注意**空/未设置**视为启用，因此缺省要求 judge 键。
  * 枚举外的非法值须由调用方先用 {@link judgeEnabledError} 拒绝；本函数对非法值
  * 按「启用」兜底（fail-safe），使非法值不会静默跳过 judge 键要求。
  */
@@ -110,11 +107,11 @@ function judgeEnabled(env: Record<string, string>): boolean {
 }
 
 /**
- * 占位值 / 未配置判定，逐字对应 bash `is_placeholder()`（deploy.sh:667-674）。
+ * 占位值 / 未配置判定。
  *
- * 语义要点（与 bash 一致）：
+ * 语义要点：
  * - 空串或 undefined → true；
- * - bash 的 `case` 区分大小写；
+ * - 区分大小写；
  * - `*example*` 为**子串**匹配，故 `real.example.com` 亦为占位值；
  * - `test` / `xxx*` 为整体匹配（`testing` / `vxx` 不算）。
  */
@@ -134,9 +131,9 @@ export function isPlaceholder(value: string | undefined): boolean {
 }
 
 /**
- * 按 bash `check_required_values` 语义校验环境变量。
+ * 校验必需键。
  *
- * 返回两个互斥集合，其并集恰为 bash 的失败集合：
+ * 返回两个互斥集合：
  * - `missing`：键缺失或为空串（未配置）；
  * - `placeholder`：键有值但命中占位值黑名单。
  *
@@ -168,21 +165,21 @@ export function validateEnv(
 
 // ---------------- 条件键（EMAIL_PROVIDER 分支） ----------------
 
-/** `EMAIL_PROVIDER` 的受支持取值（deploy.sh:718-737 的 case 分支）。 */
+/** `EMAIL_PROVIDER` 的受支持取值。 */
 export const EMAIL_PROVIDERS: readonly string[] = [
   "aliyun",
   "tencent",
   "disabled",
 ];
 
-/** `EMAIL_PROVIDER=aliyun` 时额外必需的键（deploy.sh:720）。 */
+/** `EMAIL_PROVIDER=aliyun` 时额外必需的键。 */
 export const ALIYUN_EMAIL_KEYS: readonly string[] = [
   "ALIBABA_ACCESS_KEY_ID",
   "ALIBABA_ACCESS_KEY_SECRET",
   "ALIBABA_FROM_EMAIL",
 ];
 
-/** `EMAIL_PROVIDER=tencent` 时额外必需的键（deploy.sh:727）。 */
+/** `EMAIL_PROVIDER=tencent` 时额外必需的键。 */
 export const TENCENT_EMAIL_KEYS: readonly string[] = [
   "TENCENT_SECRET_ID",
   "TENCENT_SECRET_KEY",
@@ -204,9 +201,9 @@ export function emailBranchKeys(
   }
 }
 
-// ---------------- 取值约束（check_required_values 后半段） ----------------
+// ---------------- 取值约束 ----------------
 
-/** bash `check_required_values` 对单个键的取值约束。 */
+/** 单个键的取值约束。 */
 export interface EnvValueRule {
   /** 约束的目标键。 */
   key: string;
@@ -218,18 +215,18 @@ export interface EnvValueRule {
 }
 
 /**
- * 后半段取值约束，逐条对照 bash `check_required_values`（deploy.sh:739-764）：
- * - STORAGE_PROVIDER 必须恰为 s3（:739-742）；
- * - JWT_SECRET 不得含子串 test（:743-746）；
- * - APP_URL 必须 http:// 或 https:// 开头（:756-759），
- *   且 http:// 时必须显式 NOJ_ALLOW_INSECURE_HTTP=true（:751-755）；
- * - NOJ_VERSION 必须匹配 Release 标签正则（:760-764）。
+ * 取值约束：
+ * - STORAGE_PROVIDER 必须恰为 s3；
+ * - JWT_SECRET 不得含子串 test；
+ * - APP_URL 必须 http:// 或 https:// 开头，
+ *   且 http:// 时必须显式 NOJ_ALLOW_INSECURE_HTTP=true；
+ * - NOJ_VERSION 必须匹配 Release 标签正则。
  *
- * bash 是**独立 if 语句**而非 else-if，故同一键可挂多条规则；数组顺序即 bash 的
- * 报错顺序（STORAGE → JWT → APP_URL → VERSION）。
+ * 规则相互独立，同一键可挂多条；数组顺序即报错顺序
+ * （STORAGE → JWT → APP_URL → VERSION）。
  *
- * **不含 GID 规则**：bash `:747-750` 的 GID 数字校验仅在 judge 启用时生效，
- * 且其错误被 bash 计入 `missing` 计数，与本节"仅已配置键取值约束"语义不同；
+ * **不含 GID 规则**：GID 数字校验仅在 judge 启用时生效，且其错误计入
+ * `missing`，与本节"仅已配置键取值约束"语义不同；
  * 由 `prod/config.ts:checkRequiredValues` 的 judge 分支单独实现。
  */
 export const ENV_VALUE_RULES: readonly EnvValueRule[] = [
@@ -272,22 +269,21 @@ export const ENV_VALUE_RULES: readonly EnvValueRule[] = [
 ];
 
 /**
- * 配置文件的权限约束（bash `check_file_permissions`，deploy.sh:658-665）。
+ * 配置文件的权限约束。
  *
- * bash 语义：
- * - 权限**读不出来**（stat 两种形式都失败）→ fail（硬错误，脚本退出）；
- * - 权限读出来了但不是 600/400 → fail（硬错误）。
+ * - 权限**读不出来** → 硬错误；
+ * - 权限读出来了但不是 600/400 → 硬错误。
  */
 export type FilePermissionVerdict =
   | { kind: "ok"; mode: string }
   | { kind: "error"; mode: string; message: string }
   | { kind: "unreadable"; message: string };
 
-/** 生产配置文件的合法权限（bash check_file_permissions，deploy.sh:661）。 */
+/** 生产配置文件的合法权限。 */
 export const ENV_FILE_ALLOWED_MODES: readonly string[] = ["600", "400"];
 
 /**
- * 校验 .env.prod 的权限是否为 600 或 400（deploy.sh:658-665）。
+ * 校验 .env.prod 的权限是否为 600 或 400。
  *
  * @param mode probe 读到的八进制权限串；读不出时传 null。
  */

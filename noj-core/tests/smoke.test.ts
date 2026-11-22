@@ -2,8 +2,8 @@
  * 核心 API 冒烟测试（smoke test）。
  *
  * 快速验证核心 API 端点在 HTTP 层面的可达性和基础响应格式正确性。
- * 使用 PGlite 内存数据库，需要 REDIS_URL 可用（PR-1 后 authMiddleware
- * 校验 JWT 撤销状态依赖 Redis，fail-closed 设计）。
+ * 使用测试启动器提供的独立 PostgreSQL 数据库，需要 REDIS_URL 可用（PR-1 后
+ * authMiddleware 校验 JWT 撤销状态依赖 Redis，fail-closed 设计）。
  * 作为 CI 中 core-shared job 的快速反馈路径（预计 < 1 分钟完成）。
  *
  * 测试覆盖：
@@ -18,15 +18,12 @@
 
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
 import { createApp } from "../src/app.ts";
-import { resetDbForTest } from "./../src/shared/db/connection.ts";
+import { ensureDefaultWorkspace } from "./helpers/workspace-actors.ts";
+import { resetDbForTest } from "./helpers/db.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,
-} from "../src/domains/system/index.ts";
-import {
-  _resetEnvSnapshotForTest,
-  snapshotEnv,
-} from "./../src/domains/system/services/env-snapshot.ts";
+} from "../src/modules/platform/system/index.ts";
 
 // 模块级：连接 Redis（PR-1 后 authMiddleware 需要 Redis 校验 JWT 撤销状态）
 // 未配置 REDIS_URL 时跳过此步（依赖测试自身的 Redis fixture）
@@ -46,15 +43,10 @@ if (Deno.env.get("REDIS_URL")) {
   }
 }
 
-// PGlite 模式：运行 DDL 建表。
-if (!Deno.env.get("DATABASE_URL")) {
-  await resetDbForTest();
-}
+await resetDbForTest();
 
-// 初始化系统设置缓存 + env 快照，确保 DB-backed 设置项可正常读取。
+// 初始化系统设置缓存，确保 DB-backed 设置项可正常读取。
 _resetSystemSettingsForTest();
-_resetEnvSnapshotForTest();
-snapshotEnv();
 await initSystemSettings();
 
 // 切换为 test 模式，确保 RATE_LIMIT_ENABLED=false 生效（isRateLimitEnabled 仅在
@@ -62,10 +54,6 @@ await initSystemSettings();
 Deno.env.set("NOJ_ENV", "test");
 // 禁用速率限制（避免 Redis 未就绪时登录被限流/503）
 Deno.env.set("RATE_LIMIT_ENABLED", "false");
-// 设置测试 JWT_SECRET（CI 中通过 secret 注入，本地 PGlite 模式需默认值）
-if (!Deno.env.get("JWT_SECRET")) {
-  Deno.env.set("JWT_SECRET", "test-jwt-secret-for-smoke-test-min-32-chars!!");
-}
 
 const app = createApp();
 
@@ -187,6 +175,7 @@ Deno.test({
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
+    await ensureDefaultWorkspace();
     const res = await app.request("/api/v1/problems");
     assertEquals(res.status, 200, "题目列表应返回 200");
     const body = await res.json();

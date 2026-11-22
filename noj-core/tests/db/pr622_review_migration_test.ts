@@ -11,18 +11,19 @@
  *    （`problem_version_objects`），0109 必须把最新版本的文件集合复制到已存在的
  *    草稿行（`problem_draft_objects`），且幂等。
  *
- * 直接执行迁移文件中的真实语句（与 0080 回填测试同一套做法），依赖 preload 的
- * 每用例事务回滚，不污染其他用例。无 DATABASE_URL（PGlite）时不具备执行
- * `DELETE ... USING` / 复合外键等真实语义，按项目约定 skip。
+ * 直接执行迁移文件中的真实语句（与 0080 回填测试同一套做法），在启动器提供的
+ * 隔离数据库中显式清理探针，不依赖进程级事务代理。缺少 DATABASE_URL 时不具备
+ * 执行 `DELETE ... USING` / 复合外键等真实语义，按项目约定拒绝运行。
  */
 import { assert, assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
 import { dirname, fromFileUrl, resolve } from "jsr:@std/path@^1";
 import { getDb } from "../../src/shared/db/connection.ts";
 import { unwrapRows } from "../../src/shared/base/sql-rows.ts";
+import { DEFAULT_DOMAIN_ID } from "../../src/shared/workspace/types.ts";
+import { problemExecutionForTest } from "../helper.ts";
 
-/** 需要真实 PostgreSQL 的迁移语义（PGlite 下跳过）。 */
-const hasRealPg = !!Deno.env.get("DATABASE_URL");
+/** 需要真实 PostgreSQL 的迁移语义（测试数据库 下跳过）。 */
 
 const MIGRATION_PATH = resolve(
   dirname(fromFileUrl(import.meta.url)),
@@ -145,6 +146,12 @@ async function cleanupProbes(): Promise<void> {
   await db.execute(sql`
     DELETE FROM problem_drafts WHERE problem_id IN ${probeProblems}
   `);
+  await db.execute(sql`
+    DELETE FROM problem_binding_history WHERE problem_id IN ${probeProblems}
+  `);
+  await db.execute(sql`
+    DELETE FROM domain_problem_bindings WHERE problem_id IN ${probeProblems}
+  `);
   // 题目行的最新版指针先松开，否则删除版本会被 problems_latest_version_fk 拒绝
   await db.execute(sql`
     UPDATE problems SET latest_version_id = NULL WHERE id LIKE 'pv109-%'
@@ -165,16 +172,16 @@ async function seedProblem(
   number: number,
 ): Promise<void> {
   const db = getDb();
-  // 隔离 schema 下没有 seed root 用户；题目的 owner 外键需要一个真实用户。
+  // 在当前隔离 schema 回放迁移语句，资源归属遵守现行 Schema。
   await db.execute(sql`
     INSERT INTO users (id, username, email, created_at, updated_at)
     VALUES ('0', 'pr622-lead-probe', 'pr622-lead@example.test', ${NOW}, ${NOW})
     ON CONFLICT (id) DO NOTHING
   `);
   await db.execute(sql`
-    INSERT INTO problems (id, title, description, type, number, owner_id,
+    INSERT INTO problems (id, domain_id, title, description, number, owner_id,
                           difficulty, judge_type, created_at, updated_at)
-    VALUES (${problemId}, ${problemId}, 'd', 'P', ${number}, '0', 'easy', 'dual',
+    VALUES (${problemId}, ${DEFAULT_DOMAIN_ID}, ${problemId}, 'd', ${number}, '0', 'easy', 'dual',
             ${NOW}, ${NOW})
     ON CONFLICT (id) DO NOTHING
   `);
@@ -203,12 +210,13 @@ interface SubmissionProbe {
 /** 复刻 0103 回填后的存量形态：尝试 + 未知版本桶当前判定 + 有效成绩投影。 */
 async function seedLegacyImport(probe: SubmissionProbe): Promise<void> {
   const db = getDb();
+  const execution = await problemExecutionForTest("pv109-p1");
   // 先插提交（attempt 指针可空），再插尝试，最后回填指针：attempt 与提交之间的
   // 复合外键是延迟插入顺序无法满足的循环依赖，存量回填同样分两步。
   await db.execute(sql`
-    INSERT INTO submissions (id, user_id, problem_id, language, code, status,
+    INSERT INTO submissions (id, domain_id, domain_problem_binding_id, user_id, problem_id, language, code, status,
                              version_origin, submitted_version_id, created_at)
-    VALUES (${probe.submissionId}, '0', 'pv109-p1', 'python', 'print(1)',
+    VALUES (${probe.submissionId}, ${execution.domain_id}, ${execution.domain_problem_binding_id}, '0', 'pv109-p1', 'python', 'print(1)',
             'finished', 'legacy_unknown', NULL, ${NOW})
     ON CONFLICT (id) DO UPDATE SET
       is_valid = false, is_accepted = false,
@@ -270,7 +278,6 @@ async function readProjection(submissionId: string): Promise<ProjectionRow> {
 
 Deno.test({
   name: "migration 0109: 历史平台失败不建立正式有效判定，正式判定保留",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -382,7 +389,6 @@ Deno.test({
 
 Deno.test({
   name: "migration 0109: 存量题目草稿文件引用补齐且可重复执行",
-  ignore: !hasRealPg,
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {

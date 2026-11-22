@@ -1,0 +1,59 @@
+# 大模型评测与安全（NOJ 官方知识图谱，CC BY-SA 4.0）
+area: llm-eval
+name: 大模型评测与安全
+nodes:
+  - id: llm-eval.evaluation-process
+    name: 评测流程与范式
+    summary: 从确定目标、构造题集、设定判分标准到结果分析，建立可复现的大模型评测流程，并区分基准测试与人工评估
+    syllabus: [lmcc]
+    requires: [data.split]
+  - id: llm-eval.text-metrics
+    name: 文本生成指标（困惑度、BLEU、ROUGE）
+    summary: 用困惑度衡量语言模型对文本的预测能力，用 n 元组重叠类指标衡量生成文本与参考文本的匹配程度及其局限
+    syllabus: [lmcc]
+    requires: [nlp.language-modeling]
+  - id: llm-eval.ranking-metrics
+    name: 排序指标（NDCG、MRR）
+    summary: 评价检索与推荐给出结果列表的质量，关注正确结果排得多靠前、排在首位与否，是评估检索增强与重排组件的常用工具
+    syllabus: [lmcc]
+    requires: [llm-app.vector-retrieval]
+  - id: llm-eval.benchmarks
+    name: 公开评测集（MMLU、C-Eval、HELM）
+    summary: 了解学科知识、中文能力与多维统一评测等代表性公开题库的结构与用途，并会用相关工具批量运行与汇总成绩
+    syllabus: [lmcc]
+    requires: [llm-eval.evaluation-process, prog.llm-api]
+  - id: llm-eval.data-contamination
+    name: 数据污染
+    summary: 认识测试题误入训练数据导致成绩虚高的问题，掌握 n 元组重叠、扰动改写等检测手段，以及去污染与公平比较的原则
+    syllabus: [lmcc]
+    requires: [llm-eval.benchmarks, llm-train.pretraining-data]
+  - id: llm-eval.capability-evaluation
+    name: 能力评测（语言、知识、推理）
+    summary: 针对语言理解、学科知识与数学推理等能力分维度设计或选择任务，按能力画像解读模型强弱而不是只看总分
+    syllabus: [lmcc]
+    requires: [llm-eval.evaluation-process, data.classification-metrics]
+  - id: llm-eval.advanced-evaluation
+    name: 进阶评测（对齐、工具使用、鲁棒性）
+    summary: 评测模型是否安全有用符合人类偏好、能否正确调用工具，以及输入扰动或对抗提示下表现是否稳定
+    syllabus: [lmcc]
+    requires: [llm-eval.capability-evaluation, llm-app.tool-use]
+  - id: llm-eval.bias
+    name: 模型偏见与公平性
+    summary: 识别训练数据带来的性别、地域等群体偏见，学会用反事实与刻板印象数据集度量偏见，并了解去偏的常见思路
+    syllabus: [lmcc]
+    requires: [llm-eval.capability-evaluation]
+  - id: llm-eval.privacy
+    name: 隐私保护（差分隐私）
+    summary: 理解模型可能记忆并泄露训练数据中的个人信息，掌握差分隐私噪声机制与隐私预算权衡，以及去标识化等保护措施
+    syllabus: [lmcc]
+    requires: [llm-train.pretraining-data]
+  - id: llm-eval.data-security
+    name: 数据安全与对抗攻击
+    summary: 了解提示注入、越狱与对抗样本等攻击手法如何诱导模型违规输出，并能设计输入过滤、权限隔离等防御与评测方案
+    syllabus: [lmcc]
+    requires: [llm-eval.privacy, llm-app.prompt-engineering]
+  - id: llm-eval.ai-ethics
+    name: 人工智能伦理与负责任使用
+    summary: 从公平、透明、可问责与人类福祉出发权衡技术风险，在开发与使用中遵守规范并遵循负责任的人工智能实践
+    syllabus: [lmcc, noai]
+    requires: [ai.applications]

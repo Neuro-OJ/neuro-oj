@@ -151,7 +151,14 @@ async function collectModules(): Promise<ModuleResult[]> {
     }
     if (result.code !== 0) {
       // 聚合任务不能吞掉子任务的真实失败原因；保留有界尾部，便于 CI 定位。
-      const diagnostics = stripAnsi(`${result.stdout}\n${result.stderr}`)
+      // 过滤依赖下载与类型检查的噪声行，并把 stdout（测试结果）放在最后，避免有界尾部只剩
+      // stderr 中成百上千行 Download/Check 而丢失真正失败的用例名。
+      const noise = /^(Download|Check|Initialize) /;
+      const keep = (text: string) =>
+        stripAnsi(text).split("\n").filter((line) => !noise.test(line)).join(
+          "\n",
+        );
+      const diagnostics = `${keep(result.stderr)}\n${keep(result.stdout)}`
         .trim();
       console.error(
         `--- ${module} test:coverage 失败输出（末尾最多 8000 字符） ---\n${

@@ -1,6 +1,6 @@
 # nojctl 设计 draft-2 复审 + 易用性 / UI-UX 专项建议
 
-- 复审对象：`dev-docs/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`（**draft-2**，607 行，含新增 §0 变更记录）
+- 复审对象：`dev-docs/archive/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`（**draft-2**，607 行，含新增 §0 变更记录）
 - 首轮报告：`dev-docs/audit/2026-09-27-nojctl-design-pm-audit.md`（7 Blocker / 14 Major / 8 Minor / 6 处自相矛盾）
 - 审计方式：**只读**。除本文件外未修改任何文件、未 commit、未改 spec
 - 证据规则：spec 结论给章节号 + draft-2 行号；仓库事实给 `file:line`；无法证实的标 **假设 A#**（附录 A）

@@ -1,8 +1,8 @@
 # 无人值守执行工作日志（2026-09-28 / 29）
 
 > 性质说明：这是**时点快照**，不是持续维护的看板。
-> 目标与验收标准见 `dev-docs/superpowers/specs/2026-09-28-contest-readiness-unattended-audit-design.md`，
-> 实施计划见 `dev-docs/superpowers/plans/2026-09-28-contest-readiness-unattended-audit.md`。
+> 目标与验收标准见 `dev-docs/archive/superpowers/specs/2026-09-28-contest-readiness-unattended-audit-design.md`，
+> 实施计划见 `dev-docs/archive/superpowers/plans/2026-09-28-contest-readiness-unattended-audit.md`。
 
 - 计划窗口：2026-09-28 22:00 → 2026-09-29 07:00（CST）
 - 执行者：AI Agent（无人值守）

@@ -1,8 +1,8 @@
 /**
  * `noj-cli problem push`：把题目包推送到线上平台建题。
  *
- * 调用平台的 `POST /api/v1/problems/import-bundle`（与网页「从题目包导入」同一端点，
- * 不带 problem_id = 新建题目），默认导入为草稿，`--publish` 时导入后立即发布。
+ * 调用明确使用域的 import-bundle，默认写入草稿；--publish 使用返回的草稿
+ * revision 显式发布，不能仅在上传表单中传 publish 后假定已发布。
  *
  * 认证：优先 `NOJ_TOKEN` 环境变量；未设置且处于交互终端时提示登录（密码不回显，
  * 支持两步验证）。令牌只在本次进程内使用，不落盘。服务器地址必须是 HTTPS
@@ -10,6 +10,13 @@
  */
 import type { PromptIO } from "../tui/io.ts";
 import { UsageError } from "../util/args.ts";
+import {
+  type DomainProblemClientDeps,
+  DomainProblemHttpError,
+  type ImportedBundle,
+  importProblemBundle,
+  publishProblemVersion,
+} from "./client.ts";
 
 /** 推送所需的外部依赖（测试注入 fake）。 */
 export interface PushDeps {
@@ -23,6 +30,7 @@ export interface PushDeps {
 /** 推送输入。 */
 export interface PushInput {
   server: string;
+  domain: string;
   /** zip 字节与上传文件名（服务端只接受 .zip 后缀）。 */
   bundle: { name: string; data: Uint8Array };
   publish: boolean;
@@ -88,8 +96,17 @@ export function extractLoginToken(
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
+/** 把域客户端错误/响应错误统一成 {@link PushError}。 */
+function toPushError(error: unknown, fallback: string): PushError {
+  if (error instanceof DomainProblemHttpError) {
+    return new PushError(error.message, error.status, error.code);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return new PushError(`${fallback}：${message}`);
+}
+
 /** 解析平台错误响应体为 {@link PushError}。 */
-async function toPushError(
+async function responseToPushError(
   res: Response,
   fallback: string,
 ): Promise<PushError> {
@@ -125,11 +142,11 @@ async function interactiveLogin(
 
   let res = await attempt();
   if (!res.ok) {
-    const err = await toPushError(res, "登录失败");
+    const err = await responseToPushError(res, "登录失败");
     if (err.code !== "TFA_REQUIRED") throw err;
     const code = (await io.readLine("两步验证码: ")).trim();
     res = await attempt(code);
-    if (!res.ok) throw await toPushError(res, "登录失败");
+    if (!res.ok) throw await responseToPushError(res, "登录失败");
   }
   const token = extractLoginToken(
     await res.json().catch(() => null),
@@ -150,6 +167,11 @@ export async function pushBundle(
   deps: PushDeps,
 ): Promise<PushResult> {
   const server = normalizeServer(input.server);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.domain)) {
+    throw new UsageError(
+      "--domain 必须为工作空间 slug（小写字母、数字与连字符）",
+    );
+  }
   let token = deps.envToken?.trim();
   if (!token) {
     if (!deps.io) {
@@ -160,32 +182,43 @@ export async function pushBundle(
     token = await interactiveLogin(server, deps);
   }
 
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([input.bundle.data as BlobPart], { type: "application/zip" }),
-    input.bundle.name,
-  );
-  if (input.publish) form.append("publish", "true");
-
-  const res = await deps.fetch(`${server}/api/v1/problems/import-bundle`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
-  if (!res.ok) throw await toPushError(res, "导入失败");
-
-  // 平台返回完整题目资源（含题面、存储地址等）；只取出题人需要的字段
-  const data =
-    (await res.json() as { data: Omit<PushResult, "edit_url"> }).data;
+  const client: DomainProblemClientDeps = {
+    baseUrl: `${server}/api/v1`,
+    fetch: deps.fetch,
+    domain: input.domain,
+    headers: () => ({ Authorization: `Bearer ${token}` }),
+  };
+  let imported: ImportedBundle;
+  try {
+    imported = await importProblemBundle(client, {
+      name: input.bundle.name,
+      data: input.bundle.data,
+    });
+  } catch (error) {
+    throw toPushError(error, "导入失败");
+  }
+  let published: PushResult["published"] = null;
+  if (input.publish) {
+    try {
+      const result = await publishProblemVersion(
+        client,
+        imported.number,
+        imported.draft_revision,
+        "noj-cli problem push",
+      );
+      published = {
+        version: result.version,
+        unchanged: result.unchanged,
+      };
+    } catch (error) {
+      throw toPushError(error, "草稿已导入，发布失败");
+    }
+  }
   return {
-    id: data.id,
-    display_id: data.display_id,
-    title: data.title,
-    published: data.published
-      ? { version: data.published.version, unchanged: data.published.unchanged }
-      : null,
-    edit_url: `${server}/problems/${data.display_id ?? data.id}/edit`,
+    id: imported.problem_id,
+    display_id: `${input.domain}:${imported.number}`,
+    published,
+    edit_url: `${server}/d/${input.domain}/editor/${imported.number}`,
   };
 }
 
@@ -198,7 +231,7 @@ export function pushErrorHint(err: PushError): string | null {
     return "problem.json 中的 number 与已有题目重复：如需新建请删除 number；如需更新该题请在其编辑页上传支持包";
   }
   if (err.status === 403) {
-    return "当前账号无权导入该类型题目（主题库 P 型题需要管理员）";
+    return "当前账号没有目标工作空间的题目创建或发布权限";
   }
   return null;
 }

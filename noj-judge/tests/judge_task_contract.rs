@@ -43,6 +43,7 @@ fn judge_task_contract_fixture_deserializes() {
     assert_eq!(task.submission_id, "11111111-1111-4111-8111-111111111111");
     assert_eq!(task.problem_id, "22222222-2222-4222-8222-222222222222");
     assert_eq!(task.user_id, "33333333-3333-4333-8333-333333333333");
+    assert_eq!(task.task_kind.as_deref(), Some("submission"));
     assert_eq!(task.priority, "medium");
     assert_eq!(task.submission_mode, "artifact");
     assert_eq!(task.judge_type, "dual");
@@ -58,7 +59,7 @@ fn judge_task_contract_fixture_deserializes() {
         task.problem_version_id.as_deref(),
         Some("66666666-6666-4666-8666-666666666666")
     );
-    assert_eq!(task.evaluation_protocol_version, Some(2));
+    assert_eq!(task.evaluation_protocol_version, Some(3));
     assert_eq!(task.attempt_id, task.run_id);
     assert!(task.download_url.is_some());
     assert!(task.artifact_download_url.is_some());
@@ -92,6 +93,7 @@ fn judge_task_contract_has_no_unknown_fields() {
     let expected = [
         "scheduling_version",
         "resource_pool",
+        "task_kind",
         "run_id",
         "attempt_id",
         "problem_version_id",

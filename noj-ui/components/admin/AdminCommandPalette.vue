@@ -27,33 +27,33 @@ const allItems: PaletteItem[] = [
   // 概览监控
   { id: "dash", label: "仪表盘", to: "/admin", icon: "i-lucide-layout-dashboard", group: "概览监控", keywords: ["yibiaopan", "home", "stats", "queue", "zhibiao"] },
 
-  // 题务教务
-  { id: "prob", label: "题目管理", to: "/admin/problems", icon: "i-lucide-book-open", group: "题务教务", keywords: ["timu", "problem", "create", "testcase"] },
-  { id: "tags", label: "标签管理", to: "/admin/tags", icon: "i-lucide-tags", group: "题务教务", keywords: ["biaoqian", "tag", "category"] },
-  { id: "contests", label: "竞赛管理", to: "/admin/contests", icon: "i-lucide-trophy", group: "题务教务", keywords: ["jingsai", "contest", "match", "bisai"] },
-  { id: "trainings", label: "题单管理", to: "/admin/trainings", icon: "i-lucide-list-todo", group: "题务教务", keywords: ["tidan", "training", "roadmap"] },
+  // 公共分类
+  { id: "tags", label: "标签管理", to: "/admin/tags", icon: "i-lucide-tags", group: "公共分类", keywords: ["biaoqian", "tag", "category"] },
+  { id: "knowledge", label: "知识图谱", to: "/admin/knowledge", icon: "i-lucide-network", group: "公共分类", keywords: ["zhishi", "knowledge", "graph", "tubu", "tagging", "dagbiao", "审核", "huibian"] },
+
+  // 主空间（旧 /admin 题务教务入口的最终落点）
+  { id: "prob", label: "主空间 · 题库资源", to: "/d/main/problem-bindings", icon: "i-lucide-book-open", group: "主空间", keywords: ["timu", "problem", "binding", "testcase"] },
+  { id: "contests", label: "主空间 · 比赛", to: "/d/main/contests", icon: "i-lucide-trophy", group: "主空间", keywords: ["jingsai", "contest", "match", "bisai"] },
+  { id: "trainings", label: "主空间 · 题单", to: "/d/main/trainings", icon: "i-lucide-list-todo", group: "主空间", keywords: ["tidan", "training", "roadmap"] },
+  { id: "subs", label: "主空间 · 提交记录", to: "/d/main/submissions", icon: "i-lucide-files", group: "主空间", keywords: ["tijiao", "submission", "judge", "rejudge"] },
+  { id: "llm", label: "主空间 · LLM", to: "/d/main/llm", icon: "i-lucide-server", group: "主空间", keywords: ["llm", "ai", "model", "apikey", "gateway", "token", "usage", "xiaohao"] },
 
   // 评测与算力
-  { id: "subs", label: "提交记录", to: "/admin/submissions", icon: "i-lucide-files", group: "评测与算力", keywords: ["tijiao", "submission", "judge", "rejudge"] },
   { id: "images", label: "评测镜像", to: "/admin/judge-images", icon: "i-lucide-container", group: "评测与算力", keywords: ["jingxiang", "docker", "image", "sandbox"] },
-  { id: "providers", label: "LLM Provider", to: "/admin/llm/providers", icon: "i-lucide-server", group: "评测与算力", keywords: ["llm", "ai", "model", "apikey", "gateway"] },
-  { id: "llmusage", label: "LLM 用量统计", to: "/admin/llm/usage", icon: "i-lucide-bar-chart-3", group: "评测与算力", keywords: ["token", "cost", "usage", "xiaohao"] },
   { id: "llmquotas", label: "LLM 配额", to: "/admin/llm/quotas", icon: "i-lucide-gauge", group: "评测与算力", keywords: ["llm", "quota", "limit", "peie", "xianliang"] },
 
   // 社区与风控
   { id: "comm", label: "社区管理", to: "/admin/community", icon: "i-lucide-messages-square", group: "社区与风控", keywords: ["shequ", "community", "post", "comment"] },
-  { id: "review", label: "内容审查", to: "/admin/content-review", icon: "i-lucide-shield-alert", group: "社区与风控", keywords: ["shenhe", "review", "audit", "moderation"] },
   { id: "reports", label: "举报中心", to: "/admin/reports", icon: "i-lucide-flag", group: "社区与风控", keywords: ["jubao", "report", "violation"] },
   { id: "announce", label: "全站公告", to: "/admin/announcements", icon: "i-lucide-megaphone", group: "社区与风控", keywords: ["gonggao", "announcement", "notice"] },
-  { id: "carousel", label: "轮播管理", to: "/admin/carousel", icon: "i-lucide-gallery-horizontal", group: "社区与风控", keywords: ["lunbo", "banner", "carousel"] },
 
   // 用户与安全
   { id: "users", label: "用户管理", to: "/admin/users", icon: "i-lucide-users", group: "用户与安全", keywords: ["yonghu", "user", "account", "member"] },
-  { id: "roles", label: "角色权限", to: "/admin/roles", icon: "i-lucide-shield-check", group: "用户与安全", keywords: ["jiaose", "role", "rbac", "permission"] },
   { id: "blacklist", label: "黑名单管理", to: "/admin/blacklist", icon: "i-lucide-ban", group: "用户与安全", keywords: ["heimingdan", "ban", "ip", "block"] },
   { id: "legal", label: "法律与合规", to: "/admin/legal", icon: "i-lucide-scale", group: "用户与安全", keywords: ["falv", "privacy", "terms", "compliance"] },
 
   // 系统运维
+  { id: "instance", label: "实例与空间治理", to: "/admin/instance", icon: "i-lucide-building-2", group: "系统运维", keywords: ["instance", "domain", "workspace", "空间", "审核", "额度"] },
   { id: "settings", label: "系统设置", to: "/admin/settings", icon: "i-lucide-settings", group: "系统运维", keywords: ["shezhi", "config", "settings", "env"] },
   { id: "audit", label: "审计日志", to: "/admin/audit-logs", icon: "i-lucide-scroll-text", group: "系统运维", keywords: ["shenji", "audit", "log", "security"] },
 ]

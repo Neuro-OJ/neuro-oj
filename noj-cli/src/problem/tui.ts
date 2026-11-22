@@ -1,5 +1,5 @@
 /**
- * `problem init` 的 TUI 引导（#514 P6，T22 补 R6 收口）。
+ * `problem init` 的 TUI 引导（#514 P6）。
  *
  * 复用既有 TUI 基座（`tui/io.ts` 的 PromptIO + `tui/widgets.ts` 的
  * input/select/confirm），不引入新依赖——这正是 issue 所指
@@ -9,9 +9,9 @@
  * - 交互模式（默认，且 stdin 是 TTY）：缺什么问什么，带默认值；
  * - `--no-interactive` 或非 TTY：不提问，直接要求显式参数（避免 #517 修过的空转）。
  *
- * ## T22 补的三件事
+ * ## 三个要点
  *
- * ### 1. EOF 不再挂死（修一个实测缺陷）
+ * ### 1. EOF 不挂死
  *
  * 早先 slug 的校验是 `for (;;) { const raw = await input(...); if (SLUG_RE.test(raw)) break; }`。
  * `PromptIO.readLine` 在**输入结束时返回空串**（`realIO` 读到 EOF 就是这条路径），
@@ -28,7 +28,7 @@
  *
  * ### 2. 回退（back）
  *
- * R6 明文要求"含校验与回退"。任一提问处输入 `back` / `:b` 即回到**上一个**字段
+ * 引导要求"含校验与回退"。任一提问处输入 `back` / `:b` 即回到**上一个**字段
  * 重新提问；在第一步输入则给出提示后重问（无处可退）。回退计数同样受上限约束，
  * 避免"来回退"变成另一种挂死。
  *
@@ -46,7 +46,6 @@ import { SLUG_PATTERN } from "./init.ts";
 export interface ProblemInitAnswers {
   slug: string;
   title?: string;
-  type: string;
   difficulty: string;
 }
 
@@ -54,7 +53,6 @@ export interface ProblemInitAnswers {
 export interface InitPromptPlan {
   askSlug: boolean;
   askTitle: boolean;
-  askType: boolean;
   askDifficulty: boolean;
 }
 
@@ -62,19 +60,17 @@ export interface InitPromptPlan {
 export function planInitPrompts(partial: {
   slug?: string;
   title?: string;
-  type?: string;
   difficulty?: string;
 }): InitPromptPlan {
   return {
     askSlug: !partial.slug,
     askTitle: !partial.title,
-    askType: !partial.type,
     askDifficulty: !partial.difficulty,
   };
 }
 
 /**
- * 单字段的连续拒绝上限（T22）。
+ * 单字段的连续拒绝上限。
  *
  * **这个上限的存在只是为了保证"有限次后结束"**，而不是为了限制用户耐心：
  * EOF 下 `readLine` 恒返回空串，任何"重试直到合法"的循环都会永远转下去并把堆吃满
@@ -112,7 +108,6 @@ export function isBackWord(raw: string): boolean {
 const FIELD_FLAGS: Readonly<Record<string, string>> = {
   slug: "--slug <slug>",
   title: "--title <title>",
-  type: "--type P|U",
   difficulty: "--difficulty easy|medium|hard",
   "确认": "--yes",
 };
@@ -135,8 +130,8 @@ export function eofHint(field: string): string {
   );
 }
 
-/** 引导的四步（顺序即提问顺序，也是回退的依据）。 */
-type Field = "slug" | "title" | "type" | "difficulty";
+/** 引导的三步（顺序即提问顺序，也是回退的依据）。 */
+type Field = "slug" | "title" | "difficulty";
 
 /** 一个待提问步骤。 */
 interface Step {
@@ -150,7 +145,6 @@ export function buildSteps(plan: InitPromptPlan): Step[] {
   const fields: { field: Field; label: string }[] = [];
   if (plan.askSlug) fields.push({ field: "slug", label: "题目 slug" });
   if (plan.askTitle) fields.push({ field: "title", label: "题目标题" });
-  if (plan.askType) fields.push({ field: "type", label: "题目归属" });
   if (plan.askDifficulty) fields.push({ field: "difficulty", label: "难度" });
   return fields.map((f, i) => ({
     field: f.field,
@@ -171,7 +165,6 @@ export async function guideProblemInit(
   partial: {
     slug?: string;
     title?: string;
-    type?: string;
     difficulty?: string;
   },
 ): Promise<ProblemInitAnswers> {
@@ -182,7 +175,6 @@ export async function guideProblemInit(
   const answers: ProblemInitAnswers = {
     slug: partial.slug ?? "",
     title: partial.title,
-    type: partial.type ?? "",
     difficulty: partial.difficulty ?? "",
   };
 
@@ -236,7 +228,7 @@ export async function guideProblemInit(
   // 最后确认一次（确认环节的 EOF 也走同一上限）。
   const ok = await confirmWithLimit(
     io,
-    `确认生成：${answers.slug}（${answers.type} / ${answers.difficulty}）`,
+    `确认生成：${answers.slug}（${answers.difficulty}）`,
   );
   if (!ok) throw new Error("已取消");
 
@@ -255,9 +247,6 @@ function applyAnswer(
       break;
     case "title":
       answers.title = value;
-      break;
-    case "type":
-      answers.type = value;
       break;
     case "difficulty":
       answers.difficulty = value;
@@ -318,14 +307,6 @@ async function askField(
       if (isBackWord(raw)) return { kind: "back" };
       const value = raw === "" ? answers.slug : raw;
       return { kind: "ok", value };
-    }
-    case "type": {
-      const idx = await select(io, step.prompt, [
-        "P（主题库，默认）",
-        "U（用户题库，visibility=private）",
-      ], { backWords: BACK_WORDS, defaultIndex: 0 });
-      if (idx === -1) return { kind: "back" };
-      return { kind: "ok", value: idx === 0 ? "P" : "U" };
     }
     case "difficulty": {
       const idx = await select(io, step.prompt, [

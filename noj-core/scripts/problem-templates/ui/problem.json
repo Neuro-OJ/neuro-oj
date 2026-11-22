@@ -1,0 +1,11 @@
+{
+  "format_version": 3,
+  "kind": "ai",
+  "title": "模板：界面题（规则调参）",
+  "difficulty": "easy",
+  "submission_mode": "ui",
+  "runtime_config": {
+    "evaluator": { "time_limit_ms": 30000, "memory_limit_mb": 256 },
+    "solution": { "call_timeout_ms": 2000, "memory_limit_mb": 256 }
+  }
+}

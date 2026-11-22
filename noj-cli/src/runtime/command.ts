@@ -26,6 +26,22 @@ export interface SpawnHandle {
   kill(): Promise<void>;
 }
 
+/** `pipe` 单侧子进程规格。 */
+export interface PipeSpec {
+  cmd: string;
+  args: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+/** `pipe` 双子进程管道执行结果。 */
+export interface PipeResult {
+  firstCode: number;
+  secondCode: number;
+  firstStderr: string;
+  secondStderr: string;
+}
+
 /**
  * 系统命令/进程抽象：deploy 的所有 docker 调用与进程管理只经该接口，
  * 便于测试注入 fake 模拟 docker / process。
@@ -34,13 +50,24 @@ export interface CommandRunner {
   run(
     cmd: string,
     args: string[],
-    opts?: { cwd?: string; env?: Record<string, string>; stdin?: string },
+    opts?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      stdin?: string;
+      timeoutMs?: number;
+    },
   ): Promise<CmdResult>;
   spawn(opts: SpawnOpts): SpawnHandle;
   /**
+   * 无 shell 直连管道：`first.stdout` 字节流直接 `pipeTo` `second.stdin`。
+   *
+   * 可选：既有仅测试 non-pipe 行为的 fake 可不实现。
+   */
+  pipe?(first: PipeSpec, second: PipeSpec): Promise<PipeResult>;
+  /**
    * 逐行流式执行命令；`onLine` 每收到一行（不含换行）回调一次，返回退出码。
    *
-   * `opts.onStderr` 控制 **stderr 的行路由**（2026-09-22 评审）：
+   * `opts.onStderr` 控制 **stderr 的行路由**：
    * - 未提供（缺省）：stderr 与 stdout 一样逐行交给 `onLine`。这是安全默认——
    *   子进程写满 stderr 管道会**挂死**（Linux 管道缓冲约 64 KiB），排空是必需的，
    *   而"排空的字节必须有去处"。
@@ -67,7 +94,8 @@ export function realRunner(): CommandRunner {
   return {
     async run(cmd, args, opts) {
       const stdin = opts?.stdin;
-      if (stdin === undefined) {
+      const timeoutMs = opts?.timeoutMs;
+      if (stdin === undefined && (timeoutMs === undefined || timeoutMs <= 0)) {
         const p = new Deno.Command(cmd, {
           args,
           cwd: opts?.cwd,
@@ -86,27 +114,73 @@ export function realRunner(): CommandRunner {
         args,
         cwd: opts?.cwd,
         env: opts?.env ?? {},
-        stdin: "piped",
+        stdin: stdin !== undefined ? "piped" : "null",
         stdout: "piped",
         stderr: "piped",
       });
       const child = p.spawn();
       // 先开始读 stdout/stderr，避免大 stdin 时子进程写满管道导致双方阻塞。
-      const stdoutPromise = new Response(child.stdout).arrayBuffer();
-      const stderrPromise = new Response(child.stderr).arrayBuffer();
-      const writer = child.stdin.getWriter();
-      await writer.write(new TextEncoder().encode(stdin));
-      await writer.close();
-      const [status, stdoutBuf, stderrBuf] = await Promise.all([
-        child.status,
-        stdoutPromise,
-        stderrPromise,
-      ]);
-      return {
-        code: status.code,
-        stdout: decoder.decode(stdoutBuf),
-        stderr: decoder.decode(stderrBuf),
-      };
+      const stdoutPromise = new Response(child.stdout).arrayBuffer().catch(() =>
+        new ArrayBuffer(0)
+      );
+      const stderrPromise = new Response(child.stderr).arrayBuffer().catch(() =>
+        new ArrayBuffer(0)
+      );
+      let stdinPromise: Promise<void> = Promise.resolve();
+      if (stdin !== undefined) {
+        stdinPromise = (async () => {
+          const writer = child.stdin.getWriter();
+          try {
+            await writer.write(new TextEncoder().encode(stdin));
+            await writer.close();
+          } catch {
+            // 子进程提前退出时忽略管道写入错误
+          }
+        })();
+      }
+      let timedOut = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let killTimer: ReturnType<typeof setTimeout> | undefined;
+      if (timeoutMs !== undefined && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          timedOut = true;
+          try {
+            child.kill("SIGTERM");
+          } catch {
+            // 已退出则忽略
+          }
+          killTimer = setTimeout(() => {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+              // 已退出则忽略
+            }
+          }, 200);
+        }, timeoutMs);
+      }
+      try {
+        const [status, stdoutBuf, stderrBuf] = await Promise.all([
+          child.status,
+          stdoutPromise,
+          stderrPromise,
+        ]);
+        await stdinPromise.catch(() => {});
+        if (timedOut) {
+          return {
+            code: 124,
+            stdout: "",
+            stderr: "command timed out",
+          };
+        }
+        return {
+          code: status.code,
+          stdout: decoder.decode(stdoutBuf),
+          stderr: decoder.decode(stderrBuf),
+        };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        if (killTimer !== undefined) clearTimeout(killTimer);
+      }
     },
     spawn(opts) {
       const cmd = new Deno.Command(opts.cmd, {
@@ -166,7 +240,7 @@ export function realRunner(): CommandRunner {
       // `--follow` 的子进程正是 `docker compose ... logs --follow`，多服务时
       // 会向 stderr 输出告警/进度，属真实可达路径。
       //
-      // 行的去处由 `opts.onStderr` 决定（评审建议）：缺省与 stdout 同等对待
+      // 行的去处由 `opts.onStderr` 决定：缺省与 stdout 同等对待
       // （安全默认，保证排空的字节可见）；传函数则分流；传 `false` 只排空。
       const stderrRoute = opts?.onStderr === undefined
         ? onLine
@@ -209,6 +283,94 @@ export function realRunner(): CommandRunner {
       const code = (await child.status).code;
       await stderrDone;
       return code;
+    },
+    async pipe(first, second) {
+      const firstChild = new Deno.Command(first.cmd, {
+        args: first.args,
+        cwd: first.cwd,
+        env: first.env ?? {},
+        stdin: "null",
+        stdout: "piped",
+        stderr: "piped",
+      }).spawn();
+      const secondChild = new Deno.Command(second.cmd, {
+        args: second.args,
+        cwd: second.cwd,
+        env: second.env ?? {},
+        stdin: "piped",
+        stdout: "piped",
+        stderr: "piped",
+      }).spawn();
+
+      let pipeDone = false;
+      const pipePromise = firstChild.stdout
+        .pipeTo(secondChild.stdin)
+        .catch(() => {
+          // 下游提前退出导致写入端 EPIPE 时及时终止上游，避免写入阻塞
+          try {
+            firstChild.kill("SIGTERM");
+          } catch {
+            // 已退出则忽略
+          }
+        })
+        .finally(() => {
+          pipeDone = true;
+        });
+
+      // 并发排空两个子进程的 stderr 以及下游 stdout，防止 64KiB 管道缓冲写满死锁
+      const firstStderrPromise = new Response(firstChild.stderr)
+        .arrayBuffer()
+        .catch(() => new ArrayBuffer(0));
+      const secondStdoutPromise = new Response(secondChild.stdout)
+        .arrayBuffer()
+        .catch(() => new ArrayBuffer(0));
+      const secondStderrPromise = new Response(secondChild.stderr)
+        .arrayBuffer()
+        .catch(() => new ArrayBuffer(0));
+
+      const secondStatusPromise = secondChild.status;
+      const watchEarlyExit = (async () => {
+        await secondStatusPromise;
+        if (pipeDone) return;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          pipePromise,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 20);
+          }),
+        ]);
+        if (timer !== undefined) clearTimeout(timer);
+        if (!pipeDone) {
+          try {
+            firstChild.kill("SIGTERM");
+          } catch {
+            // 已退出则忽略
+          }
+        }
+      })();
+
+      const [
+        firstStatus,
+        secondStatus,
+        firstStderrBuf,
+        _secondStdoutBuf,
+        secondStderrBuf,
+      ] = await Promise.all([
+        firstChild.status,
+        secondStatusPromise,
+        firstStderrPromise,
+        secondStdoutPromise,
+        secondStderrPromise,
+        pipePromise,
+        watchEarlyExit,
+      ]);
+
+      return {
+        firstCode: firstStatus.code,
+        secondCode: secondStatus.code,
+        firstStderr: decoder.decode(firstStderrBuf),
+        secondStderr: decoder.decode(secondStderrBuf),
+      };
     },
   };
 }

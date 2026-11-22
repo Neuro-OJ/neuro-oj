@@ -116,4 +116,50 @@ fi
 pass "latest 生产版本拒绝"
 reset_fixture
 
+sed -i.bak '/if \[\[ "\$VERSION" =~ \^v?\[0-9\]+\\\.\[0-9\]+\\\.\[0-9\]+-\[0-9A-Za-z\.-\]+\$ \]\]; then/,/^[[:space:]]*fi$/c\
+          gh release edit "$VERSION" --draft=false --prerelease=false --latest
+' "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "无条件执行 --prerelease=false --latest 的工作流未被拒绝"
+fi
+pass "无条件转正为 latest 拒绝"
+reset_fixture
+
+sed -i.bak 's/gh release edit "\$VERSION" --draft=false --prerelease$/gh release edit "\$VERSION" --draft=false --prerelease=false --latest/' \
+  "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "预发布分支误执行 --prerelease=false --latest 的工作流未被拒绝"
+fi
+pass "预发布分支误转正拒绝"
+reset_fixture
+
+sed -i.bak '/neuro-oj-lmcc-\${VERSION#v}\.vsix/d' \
+  "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "缺少 IDE 插件 VSIX 打包的工作流未被拒绝"
+fi
+pass "缺少 IDE VSIX 资产拒绝"
+reset_fixture
+
+sed -i.bak '/^[[:space:]]*publish-ide,/d' \
+  "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "publish-release 未等待 publish-ide 的工作流未被拒绝"
+fi
+pass "publish-release 漏等 publish-ide 拒绝"
+reset_fixture
+
+sed -i.bak 's/deno run -A --config deno\.json \.\.\/scripts\/release\/generate-release-set\.ts/deno run -A ..\/scripts\/release\/generate-release-set.ts/' \
+  "$TEST_ROOT/.github/workflows/release.yml"
+if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
+  >/dev/null 2>&1; then
+  fail "生成发布集未指定 --config deno.json 的工作流未被拒绝"
+fi
+pass "生成发布集缺少 --config 拒绝"
+reset_fixture
+
 printf '全部供应链配置测试通过\n'

@@ -1,0 +1,40 @@
+<label>关键词（英文逗号分隔）</label>
+<textarea id="keywords" rows="3" style="width: 100%"></textarea>
+<label>最少命中数
+  <input id="min_hits" type="number" min="1" max="5" step="1">
+</label>
+<p>
+  <button id="run">自测</button>
+  <button id="go">提交</button>
+  <span id="status"></span>
+</p>
+
+<script>
+var kw = document.getElementById("keywords");
+var hits = document.getElementById("min_hits");
+
+// 初始化 / 回滚到历史参数时刷新控件
+function render(v) {
+  kw.value = v.keywords || "";
+  hits.value = v.min_hits || 1;
+}
+NOJ.onInit(render);
+NOJ.onSet(render);
+
+// 控件变化时把整份参数同步给平台
+function sync() {
+  NOJ.setValues({ keywords: kw.value, min_hits: Number(hits.value) });
+}
+kw.oninput = hits.oninput = sync;
+
+document.getElementById("run").onclick = NOJ.selfTest;
+document.getElementById("go").onclick = NOJ.submit;
+NOJ.onDisabled(function (disabled) {
+  kw.disabled = hits.disabled = disabled;
+});
+NOJ.onResult(function (r) {
+  document.getElementById("status").textContent = r
+    ? r.label + (r.score != null ? "（" + r.score + " 分）" : "")
+    : "";
+});
+</script>

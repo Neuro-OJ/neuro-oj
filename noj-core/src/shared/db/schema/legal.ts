@@ -41,7 +41,6 @@ export const legalDocuments = pgTable(
  *
  * 改政策 = 追加新版本；已发布版本行不允许修改。
  * - `is_material`：重大变更标记，决定是否要求用户重新同意（只对重大版本判定）。
- * - `tsa_*`：可选 RFC 3161 时间戳（含证书链，供长期验证）。
  */
 export const legalDocumentVersions = pgTable(
   "legal_document_versions",
@@ -65,16 +64,6 @@ export const legalDocumentVersions = pgTable(
     created_by: text("created_by").references(() => users.id, {
       onDelete: "set null",
     }),
-    /** 时间戳 Provider 标识（disabled 时为空） */
-    tsa_provider: text("tsa_provider"),
-    /** RFC 3161 时间戳响应中的 TimeStampToken（base64，含 CMS 签名） */
-    tsa_token: text("tsa_token"),
-    /** 时间戳证书链（base64，多证书以换行分隔；长期验证必需） */
-    tsa_chain: text("tsa_chain"),
-    /** 原始 RFC 3161 请求（base64，含 nonce），供事后重放/复核 */
-    tsa_query: text("tsa_query"),
-    /** 时间戳签发时间（TSTInfo.genTime，ISO 8601；TSA 签名保证） */
-    tsa_timestamp: text("tsa_timestamp"),
   },
   (table) => ({
     docVersionUnique: unique("legal_document_versions_doc_version_unique").on(

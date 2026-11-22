@@ -12,8 +12,45 @@ import {
   problemTypeLabel,
   submissionModeLabel,
   toContestProblemView,
+  toDomainProblemView,
   toProblemView,
 } from '../utils/problemView.ts';
+
+Deno.test('problemView: 域题目保留来源题号、作答版本与已裁剪的标签', () => {
+  const view = toDomainProblemView({
+    reference: {
+      problem_id: 'source',
+      source_domain_id: 'main',
+      source_domain_slug: 'main',
+      number: 1001,
+      qualified_ref: 'main:1001',
+      display_ref: 'main:1001',
+    },
+    binding_id: 'school-binding',
+    policy_revision: 2,
+    effective_version_mode: 'exact',
+    version_id: 'published-v2',
+    answer_version_id: 'published-v2',
+    required_version_id: 'published-v2',
+    version: 2,
+    can_edit: false,
+    difficulty: 'easy',
+    judge_backend: 'oi-native',
+    owner: { id: 'author', username: 'alice', avatar_url: null },
+    tags: [{ id: 'topic', name: '基础', kind: 'problem' }],
+    has_hidden_algorithm_tags: true,
+    limits: { time_limit_ms: 1000, memory_limit_mb: 256 },
+    content: { kind: 'oi', title: '共享加法', description: '题面', samples: [] },
+  });
+  assertEquals(view.display_id, 'main:1001');
+  assertEquals(view.id, 'source');
+  assertEquals(view.effective_version_policy, { mode: 'exact', version_id: 'published-v2' });
+  assertEquals(view.judge_backend, 'oi-native');
+  assertEquals(view.time_limit_ms, 1000);
+  assertEquals(view.owner_username, 'alice');
+  assertEquals(view.tags.map((tag) => tag.id), ['topic']);
+  assertEquals(view.has_hidden_algorithm_tags, true);
+});
 
 Deno.test('problemView: 独立题目资源映射为统一视图', () => {
   const view = toProblemView({
@@ -227,9 +264,9 @@ Deno.test('problemView: 提交模式文案与预测 accept 白名单', () => {
 });
 
 Deno.test('problemView: 类型文案与空值兜底', () => {
-  assertEquals(problemTypeLabel('U'), '用户题库');
-  assertEquals(problemTypeLabel('T'), '主题库');
-  assertEquals(problemTypeLabel(undefined), '主题库');
+  assertEquals(problemTypeLabel('U'), '题库');
+  assertEquals(problemTypeLabel('T'), '题库');
+  assertEquals(problemTypeLabel(undefined), '题库');
 });
 
 Deno.test('problemView: 时限/内存文案占位一致', () => {

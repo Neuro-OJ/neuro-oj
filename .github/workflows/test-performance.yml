@@ -1,0 +1,125 @@
+# NOJ 性能门禁（P7）
+#
+# 目标：性能基准从 PR 路径中移出，改为每日定时 + 候选发布固定 SHA 调用。
+# 共享 Runner 的单次波动只用于趋势与人工验收，不用来阻断普通 PR。
+#
+# 定时：北京时间 02:00（UTC 18:00）。
+# 调用方：release.yml（候选发布先固定 SHA 再调用）、workflow_dispatch。
+name: Test Performance
+
+on:
+  schedule:
+    # UTC 18:00 = Asia/Shanghai 02:00（仓库时区约定）。
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 要测量的提交（留空使用触发 ref）
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      ref:
+        description: 要测量的提交（候选发布传入固定 SHA）
+        required: false
+        type: string
+    secrets:
+      JWT_SECRET:
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-performance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  # noj-core — 性能基准（seed 100k problems，只在性能门禁运行）
+  # ===========================================================================
+  core-perf:
+    name: Core Perf (Benchmark)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: noj
+          POSTGRES_PASSWORD: noj
+          POSTGRES_DB: noj
+        ports:
+          - 5432:5432
+        options: >-
+          --shm-size=512m
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      REDIS_URL: redis://localhost:6379/
+      DATABASE_URL: postgres://noj:noj@localhost:5432/noj
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      NOJ_RUN_PERF: "1"
+      NOJ_PERF_ALLOW_EXTERNAL_DB: "1"
+      DENO_DIR: ${{ github.workspace }}/noj-core/.deno_cache
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: 记录被测提交
+        run: git rev-parse HEAD
+      - name: 安装 Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+
+      - name: 缓存 Deno 依赖
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ github.workspace }}/noj-core/.deno_cache
+          key: deno-${{ hashFiles('noj-core/deno.lock', 'noj-core/deno.json') }}
+          restore-keys: |
+            deno-
+
+      # tests/perf 在 resetDbForTest() 里需要完整 schema 与种子；未先跑
+      # 00_migrate_test.ts 时会撞 "relation does not exist"（2026-08-06 根因）。
+      - name: 运行性能基准 (NOJ_RUN_PERF=1)
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: |
+          mkdir -p test-results/performance
+          deno task test:perf 2>&1 | tee test-results/performance/core-perf.log
+
+      - name: 教学矩阵性能（真实 PostgreSQL 入口）
+        working-directory: noj-core
+        env:
+          BCRYPT_SALT_ROUNDS: 4
+        run: |
+          mkdir -p test-results/performance
+          deno task test:domain education --perf 2>&1 | tee test-results/performance/education-perf.log
+
+      - name: 上传性能产物
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-perf-results
+          path: noj-core/test-results/performance/
+          retention-days: 30
+          if-no-files-found: warn

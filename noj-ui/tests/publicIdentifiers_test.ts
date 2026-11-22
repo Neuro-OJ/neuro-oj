@@ -4,7 +4,7 @@ import { assertEquals } from 'jsr:@std/assert@^1';
 import { problemUrl, publicUrl, userUrl } from '../utils/publicIdentifiers.ts';
 
 Deno.test('publicIdentifiers: problemUrl 优先 display_id', () => {
-  assertEquals(problemUrl('uuid', 'P100'), '/problems/P100');
+  assertEquals(problemUrl('uuid', 'P100'), '/d/main/problems/100');
   assertEquals(problemUrl('uuid'), '/problems/uuid');
 });
 
@@ -15,7 +15,7 @@ Deno.test('publicIdentifiers: userUrl 使用 username', () => {
 Deno.test('publicIdentifiers: publicUrl 生成各实体链接', () => {
   assertEquals(
     publicUrl('contest', 'ct-8f3k2xq'),
-    '/contests/ct-8f3k2xq',
+    '/d/main/contests/ct-8f3k2xq',
   );
   assertEquals(
     publicUrl('training', 'tr-9qx2lm'),
@@ -23,7 +23,7 @@ Deno.test('publicIdentifiers: publicUrl 生成各实体链接', () => {
   );
   assertEquals(
     publicUrl('submission', 'sub-3fk9xq'),
-    '/submissions/sub-3fk9xq',
+    '/d/main/submissions/sub-3fk9xq',
   );
   assertEquals(
     publicUrl('post', 'post-7m2nq8'),

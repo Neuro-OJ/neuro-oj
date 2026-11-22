@@ -1,0 +1,14 @@
+NOJ 官方知识图谱内容包（noj-core/data/knowledge-graph/ 目录下的全部内容，
+包括 pack.yaml、areas/ 与 docs/）采用知识共享 署名-相同方式共享 4.0 国际许可协议
+（Creative Commons Attribution-ShareAlike 4.0 International，CC BY-SA 4.0）授权。
+
+协议全文：https://creativecommons.org/licenses/by-sa/4.0/legalcode
+中文摘要：https://creativecommons.org/licenses/by-sa/4.0/deed.zh-hans
+
+署名方式：「Neuro OJ 官方知识图谱贡献者」，并注明来源仓库与内容包版本。
+
+本目录以外的 Neuro OJ 代码仍按仓库根目录 LICENSE（GNU AGPL-3.0）授权。
+
+考纲名称（IOAI、NOAI、LMCC）仅用于标注知识点与考纲的对应关系。本内容包中的知识点
+划分、名称与说明均为原创整理，不包含上述考纲的原文；Neuro OJ 与 CCF、IOAI、NOAI
+及其主办方无任何官方关系。

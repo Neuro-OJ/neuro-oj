@@ -2,8 +2,9 @@ import * as http from "node:http";
 import * as https from "node:https";
 import type {
   CreatedSubmission,
+  Domain,
+  DomainProblem,
   Problem,
-  ProblemDetail,
   SubmissionDetail,
   User,
 } from "./types";
@@ -155,70 +156,148 @@ export class NeuroOjApi {
 
   /** 通过公开题目端点验证服务器地址，无需登录或发送已有令牌。 */
   async checkConnection(): Promise<void> {
-    await this.request("/api/v1/problems?page=1&limit=1&type=P", {
+    await this.request("/api/v1/instance", {
       authenticated: false,
     });
   }
 
-  async listProblems(): Promise<Problem[]> {
+  async domains(): Promise<Domain[]> {
+    return (await this.request<{ data: Domain[] }>("/api/v1/me/domains")).data;
+  }
+
+  async domainProblems(slug: string): Promise<Problem[]> {
     const items: Problem[] = [];
-    let page = 1;
-    let total = Number.POSITIVE_INFINITY;
-
-    while (items.length < total) {
-      const response = await this.request<{
-        data: Problem[];
+    for (let page = 1; ; page++) {
+      const result = await this.request<{
+        items: DomainProblem[];
         total: number;
-      }>(`/api/v1/problems?page=${page}&limit=100&type=P`);
-      items.push(...response.data);
-      total = response.total;
-      if (response.data.length === 0) break;
-      page += 1;
+      }>(
+        `/api/v1/domains/${encodeURIComponent(
+          slug,
+        )}/problems?page=${page}&limit=100`,
+      );
+      for (const problem of result.items) {
+        if (problem.kind === "objective") continue;
+        items.push({
+          id: problem.reference.display_ref,
+          display_id: problem.reference.display_ref,
+          title: problem.title,
+          difficulty: "",
+          is_objective: false,
+          submission_mode: "code",
+        });
+      }
+      if (page * 100 >= result.total || result.items.length === 0) return items;
     }
+  }
 
-    return items.filter(
-      (problem) => !problem.is_objective && problem.submission_mode === "code",
+  async domainProblem(
+    slug: string,
+    reference: string,
+  ): Promise<{
+    version_id: string;
+    version: number;
+    supported_languages?: string[];
+    content: { submission_mode?: string; title: string };
+  }> {
+    return await this.request(
+      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+        reference,
+      )}`,
     );
   }
 
-  /**
-   * 读取题目详情（含作答版本元数据）。
-   *
-   * 选择题目时调用一次，把 `version_id` 固定进扩展状态；提交时原样发送。
-   */
-  async problem(problemId: string): Promise<ProblemDetail> {
-    const response = await this.request<{ data: ProblemDetail }>(
-      `/api/v1/problems/${encodeURIComponent(problemId)}`,
+  async submitDomainCode(
+    slug: string,
+    reference: string,
+    code: string,
+    fileName: string,
+    versionId: string,
+  ): Promise<CreatedSubmission> {
+    return (
+      await this.request<{ data: CreatedSubmission }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/submissions`,
+        {
+          method: "POST",
+          body: {
+            problem_ref: reference,
+            language: "python3",
+            code,
+            file_name: fileName,
+            version_id: versionId,
+          },
+        },
+      )
+    ).data;
+  }
+
+  async domainSubmission(slug: string, id: string): Promise<SubmissionDetail> {
+    return (
+      await this.request<{ data: SubmissionDetail }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(
+          id,
+        )}`,
+      )
+    ).data;
+  }
+
+  async domainTemplate(
+    slug: string,
+    reference: string,
+    versionId: string,
+  ): Promise<{ version_id: string; template_content: string | null }> {
+    const path = `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+      reference,
+    )}/template`;
+    return (
+      await this.request<{
+        data: { version_id: string; template_content: string | null };
+      }>(`${path}?version_id=${encodeURIComponent(versionId)}`)
+    ).data;
+  }
+
+  async domainVersions(
+    slug: string,
+    reference: string,
+    page = 1,
+  ): Promise<{
+    items: Array<{
+      version_id: string;
+      version: number;
+      change_note: string | null;
+      published_at: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+    answer_version_id: string;
+  }> {
+    return await this.request(
+      `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+        reference,
+      )}/versions?page=${page}&limit=20`,
     );
-    return response.data;
   }
 
   async submitCode(
-    problemId: string,
+    slug: string,
+    reference: string,
     code: string,
     fileName: string,
-    versionId?: string | null,
+    versionId: string,
   ): Promise<CreatedSubmission> {
     const response = await this.request<{ data: CreatedSubmission }>(
-      "/api/v1/submissions",
+      `/api/v1/domains/${encodeURIComponent(slug)}/submissions`,
       {
         method: "POST",
         body: {
-          problem_id: problemId,
+          problem_ref: reference,
           language: "python3",
           code,
           file_name: fileName,
-          // 新客户端必须携带作答版本；缺失会被服务端 409 拒绝（明确升级提示）
-          ...(versionId ? { version_id: versionId } : {}),
+          version_id: versionId,
         },
       },
-    );
-    return response.data;
-  }
-
-  async submission(id: string): Promise<SubmissionDetail> {
-    const response = await this.request<{ data: SubmissionDetail }>(
-      `/api/v1/submissions/${encodeURIComponent(id)}`,
     );
     return response.data;
   }

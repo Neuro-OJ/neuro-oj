@@ -1,420 +1,78 @@
 # noj-judge — Neuro OJ 评测 Worker
 
-基于 **Rust + Docker** 的代码评测执行器。
+> Rust + Tokio + Docker 的评测执行器（双容器 Evaluator + Solution）。本文件只放
+> **禁令 / 命令 / 路由**；细节从 [docs/flow.md](docs/flow.md) 进。
 
-## 职责
+## 禁令
 
-- 从 Redis MQ 拉取评测任务（Consumer）
-- 在 Docker 容器中构建隔离的评测环境
-- 执行用户提交的代码
-- 限制资源使用（CPU、内存、时间、网络）
-- 捕获执行输出并与预期输出对比
-- 将评测结果返回给 noj-core
+1. `cargo fmt` + `cargo clippy` 必须零警告。CI 跑 `cargo fmt --all --check` 与
+   `cargo clippy --locked --all-targets -- -D warnings`，提交前本地先过一遍。
+2. 集成测试必须有 Docker daemon + `NOJ_RUN_E2E=1`；未设该变量时 `#[ignore]` 用例
+   只是被跳过，不得当作"已通过"。
+3. 容器安全项禁止放宽：`cap_drop ALL`、`no-new-privileges`、`network_mode none`
+   （默认）、`ipc_mode none`、`pids_limit 256`、readonly rootfs + tmpfs、
+   Evaluator 网络禁 `bridge` / `host`。
+4. zip 防护禁止放宽：拒绝 `..` 与 `/` 开头的条目；1000 条目 / 单文件 64MB /
+   总解压 512MB 按**实际解压字节**实时限额，不信任条目声明大小。
+5. 非法评分禁止 clamp、禁止 `unwrap_or(0)`：缺 `score`、非整数、越界一律转
+   `result_kind=platform_error`，绝不当成 0 分 / 满分覆盖已有成绩。
+6. wire 契约以
+   [`noj-tests/fixtures/judge-task.contract.json`](../noj-tests/fixtures/judge-task.contract.json)
+   为准，不得改字段名或语义；结果字段由
+   [`tests/judge_result_contract.rs`](tests/judge_result_contract.rs) 钉住。
+7. 协议 v3 字段（`run_id` / `attempt_id` / `problem_version_id` /
+   `result_kind`） 只走可信封套，禁止写进 evaluator 可控的 `details`。
+8. 支持包获取或 SHA-256 校验失败必须终止任务，禁止静默放行空环境。
+9. 错误处理用 `anyhow::Result` + `.context()`，日志用 `tracing::info!` / `warn!`
+   / `error!` 宏，I/O 一律 async。`#[allow(dead_code)]` 只允许在 `types.rs` 的
+   `CaseResult` 字段；`#[allow(unreachable_code)]` 只允许在 `main.rs`
+   `rt.block_on` 之后的 `Ok(())`。
+10. 新增环境变量必须同时更新 `docs/env*.md` 与 `.env.example`；`Cargo.lock`
+    不手改。
 
-## 技术栈
-
-| 组件         | 选择                       |
-| ------------ | -------------------------- |
-| 语言         | Rust (Edition 2021)        |
-| 异步运行时   | Tokio                      |
-| Redis 客户端 | redis-rs 0.27 (tokio-comp) |
-| Docker API   | bollard 0.21               |
-| 沙箱         | Docker 容器                |
-
-## 目录结构
-
-```
-noj-judge/
-├── Cargo.toml
-├── Cargo.lock              # 版本锁定（提交到 git）
-├── docker/                 # 评测镜像 Dockerfile
-│   ├── evaluator-python/Dockerfile  # Evaluator Python 运行时（python:3.12-slim）
-│   ├── solution-python/Dockerfile   # Solution Python 运行时（python:3.12-slim）
-│   ├── solution-ai/Dockerfile       # Solution AI 运行时（CPU torch/CV/ML）
-│   └── python/Dockerfile            # 遗留单容器运行时（已不再使用，保留供参考）
-├── Dockerfile.e2e          # E2E 测试用 Dockerfile（多阶段构建）
-├── .dockerignore           # 排除 target/ tests/ docker/ 等
-├── src/
-│   ├── main.rs             # 入口（dual container 评测）
-│   ├── lib.rs              # 库入口（暴露模块给集成测试）
-│   ├── config.rs           # 环境变量配置
-│   ├── types.rs            # JudgeTask、JudgeResult、CaseResult 类型
-│   ├── drain.rs            # 优雅关闭时排空 in-flight 评测任务
-│   ├── mq.rs               # Redis MQ 任务拉取 + 结果推送（带重试 + fallback）
-│   ├── docker.rs           # Docker 客户端/daemon 连接封装
-│   ├── logging.rs          # tracing 初始化与日志约定
-│   ├── metrics.rs          # Prometheus 指标
-│   ├── user_claim.rs       # 用户级公平调度 claim（Redis）
-│   ├── sandbox/
-│   │   ├── mod.rs
-│   │   ├── container.rs    # 容器生命周期 + zip 解压 + 命令解析
-│   │   ├── download.rs     # noj-download:// 下载（base64 / s3 / local）
-│   │   ├── cache.rs        # 内容寻址缓存
-│   │   ├── cleanup.rs      # 孤儿容器清理
-│   │   └── host_config.rs  # 容器 HostConfig 构造（安全项）
-│   ├── judge/
-│   │   ├── mod.rs
-│   │   └── runner.rs       # 评测入口（支持包获取 + 双容器 / prediction 分发）
-│   ├── prediction/
-│   │   └── mod.rs          # prediction 单容器数据评分路径（无 Solution 容器）
-│   └── dual/
-│       ├── mod.rs          # 双容器编排（Evaluator + Solution）
-│       ├── container.rs    # 双容器生命周期
-│       ├── tracker.rs      # 调用/超时追踪
-│       └── protocol.rs     # NDJSON 编排协议
-└── tests/
-    ├── common/mod.rs       # 测试公共辅助函数
-    ├── e2e/
-    │   ├── Dockerfile.test-runner  # 测试用 Python 镜像（DaoCloud 镜像源）
-    │   └── evaluate.py     # 测试用评测脚本（支持 --hang/--memory-test 等标志）
-    ├── e2e_docker_basic.rs
-    ├── e2e_resource_limits.rs
-    ├── e2e_security_isolation.rs
-    ├── e2e_support_package.rs
-    ├── e2e_dual_container.rs  # 双容器 NDJSON 编排 E2E
-    ├── e2e_abnormal.rs        # 异常/畸形输入 E2E
-    ├── e2e_solution_ai.rs     # Solution AI 运行时 E2E
-    ├── judge_task_contract.rs # JudgeTask wire 契约快照
-    ├── user_claim_redis.rs    # 用户级 claim（需 Redis）
-    ├── e2e_network_capability.rs  # evaluator 联网 + capability 转发 E2E
-    ├── e2e_prediction.rs     # prediction 单容器数据评分 E2E（无 Solution 容器）
-    └── e2e_problem_limits.rs  # 验证 time_limit_ms/memory_limit_mb 实际生效
-```
-
-## 开发命令
+## 命令
 
 ```bash
-# 编译
-cargo build
-
-# 运行单元测试（推荐 cargo-nextest：并行执行多个 test binary，更快）
-cargo nextest run --all-targets
-# 或等价的 cargo test（无 doctest，覆盖相同）
-cargo test
-
-# 加速本地 Rust 编译（可选，强烈推荐）：
-#   cargo install sccache --locked && export RUSTC_WRAPPER=sccache
-# CI 已内置 mozilla/sccache-action（GHA cache backend），跨 run 复用编译产物
-
-# 运行集成测试（需要 Docker daemon + NOJ_RUN_E2E=1）
-NOJ_RUN_E2E=1 cargo test --test e2e_docker_basic -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_resource_limits -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_security_isolation -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_support_package -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_network_capability -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_prediction -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_problem_limits -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_abnormal -- --ignored
-NOJ_RUN_E2E=1 cargo test --test e2e_solution_ai -- --ignored
-
-# 运行指定集成测试
-NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored test_dual_container_basic
-
-# 代码检查
-cargo clippy
-
-# 格式化
-cargo fmt
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo nextest run --locked --all-targets          # 或 cargo test
+NOJ_RUN_E2E=1 cargo test --test e2e_dual_container -- --ignored --test-threads=1
+./scripts/build-sdk-images.sh
+docker build -t noj-evaluator-python -f docker/evaluator-python/Dockerfile .
 ```
 
-> 集成测试需要 Docker daemon 运行中，且当前用户有权限访问
-> `/var/run/docker.sock`。 每个集成测试是独立的 test binary，需分别指定
-> `--test <name>`。 所有集成测试使用 `#[serial_test::serial]` 序列化执行，避免
-> Docker 资源冲突。
+全部 E2E 目标与 CI 分组见 [docs/testing.md](docs/testing.md)。
 
-## 环境变量
+## 路由
 
-| 变量                                 | 默认值                         | 说明                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `REDIS_URL`                          | `redis://127.0.0.1/`           | Redis 连接                                                                                                                                                                                                                                                                                                                                                              |
-| `JUDGE_QUEUE`                        | `noj:judge:queue`              | 评测任务队列名前缀，实际消费 `{prefix}:high/:medium/:low`；必须与 noj-core 的 `JUDGE_QUEUE` 一致                                                                                                                                                                                                                                                                        |
-| `JUDGE_PRIORITY_POLL_TIMEOUT_MS`     | `100`                          | 各池非阻塞轮询均为空时的等待上限（毫秒），必须为有限正数                                                                                                                                                                                                                                                                                                                |
-| `RESULT_QUEUE`                       | `noj:judge:results`            | 评测结果队列名                                                                                                                                                                                                                                                                                                                                                          |
-| `WORK_DIR`                           | `/tmp/noj-judge`               | 临时工作目录                                                                                                                                                                                                                                                                                                                                                            |
-| `JUDGE_MAX_CONCURRENT_JUDGES`        | 已弃用                         | 不再限制新资源池；改用以下分池容量，启动时提示替代配置                                                                                                                                                                                                                                                                                                                  |
-| `JUDGE_RESOURCE_POOLS`               | `oi-wasm,oi-native,ai`         | 启用的资源池；无 WASI SDK 的 AI 专用 Worker 应只启用 `ai`                                                                                                                                                                                                                                                                                                               |
-| `JUDGE_RESOURCE_GROUP`               | 实例标识                       | 共享硬件的 Worker 必须设置相同组，Redis 协调容量及内存租约                                                                                                                                                                                                                                                                                                              |
-| `JUDGE_WASM_TASK_CONCURRENCY`        | `4`                            | WASM 活跃提交上限                                                                                                                                                                                                                                                                                                                                                       |
-| `JUDGE_WASM_COMPILE_CONCURRENCY`     | `2`                            | WASM 编译槽位上限                                                                                                                                                                                                                                                                                                                                                       |
-| `JUDGE_WASM_CASE_CONCURRENCY`        | `16`                           | 同资源组所有 WASM 测试点与 checker 的运行槽位上限                                                                                                                                                                                                                                                                                                                       |
-| `JUDGE_NATIVE_TASK_CONCURRENCY`      | `2`                            | Native 活跃提交上限                                                                                                                                                                                                                                                                                                                                                     |
-| `JUDGE_AI_TASK_CONCURRENCY`          | `2`                            | AI 活跃提交上限                                                                                                                                                                                                                                                                                                                                                         |
-| `JUDGE_RESOURCE_MEMORY_MB`           | `auto`                         | 有效宿主/cgroup 内存的 50%，也可指定 MiB；同组配置必须一致                                                                                                                                                                                                                                                                                                              |
-| `JUDGE_CPU_LIMIT_MILLICORES`         | `1000`                         | 每个评测容器 CPU 上限（1000m = 1 核，有效范围 100-16000）                                                                                                                                                                                                                                                                                                               |
-| `JUDGE_PREDICTION_WORKSPACE_MB`      | `2048`                         | prediction 题 Evaluator `/workspace`（tmpfs）缺省大小（MB，有效范围 512-16384；题目可用 `runtime_config.evaluator.workspace_size_mb` 覆盖）。**仅 judge 消费**，noj-core 不读取                                                                                                                                                                                         |
-| `JUDGE_INSTANCE_ID`                  | 确定性派生 `noj-{hash12}`      | 实例标识（日志/claim 前缀/容器实例标签）。解析优先级：环境变量 → `WORK_DIR/.instance_id` → `auto:{canonical_work_dir}:{hostname}:{machine_id}` 派生并落盘；重启后保持不变。**注意**：`WORK_DIR` 是实例 ID 的持久化位置，多副本部署若共享同一 `WORK_DIR`（命名卷）必须为每个副本显式设置唯一 `JUDGE_INSTANCE_ID`，否则副本间实例标签冲突（启动清扫会回收彼此的在跑容器） |
-| `JUDGE_IMAGE_PREFIX`                 | `noj-`                         | 允许的评测镜像名前缀（启动期与调度期复验）                                                                                                                                                                                                                                                                                                                              |
-| `JUDGE_OI_IMAGE`                     | `noj-oi-cpp`                   | OI C/C++ 固定编译/运行镜像；必须以 `JUDGE_IMAGE_PREFIX` 开头，不从题目消息读取                                                                                                                                                                                                                                                                                          |
-| `JUDGE_GO_JUDGE_URL`                 | 未设置                         | 生产 OI native 编译/运行服务的 HTTPS/HTTP 地址；设置后 native 任务不在本机 Docker 执行                                                                                                                                                                                                                                                                                  |
-| `JUDGE_GO_JUDGE_TOKEN`               | 未设置                         | go-judge 服务认证 token，通过 `X-Auth-Token` 发送                                                                                                                                                                                                                                                                                                                       |
-| `JUDGE_GO_JUDGE_RESOURCE_CAPACITY`   | `2`                            | 跨 Worker 的 go-judge 资源租约槽位数；所有远端 OI 子任务共享该上限                                                                                                                                                                                                                                                                                                      |
-| `JUDGE_GO_JUDGE_RESOURCE_TTL_MS`     | `660000`                       | go-judge 资源租约 TTL（毫秒，最小 660000）；Worker 崩溃后由 Redis 自动回收                                                                                                                                                                                                                                                                                              |
-| `JUDGE_GO_JUDGE_RESOURCE_WAIT_MS`    | `300000`                       | 等待远端资源槽位的最长时间（毫秒）                                                                                                                                                                                                                                                                                                                                      |
-| `JUDGE_GO_JUDGE_RESOURCE_KEY`        | `noj:judge:oi:go-judge`        | 资源租约 Redis 有序集合 key（只能使用无空格控制字符的短 key）                                                                                                                                                                                                                                                                                                           |
-| `JUDGE_WASI_CC`                      | `clang`                        | WASM C99 编译器固定路径；只由 Worker 配置提供                                                                                                                                                                                                                                                                                                                           |
-| `JUDGE_WASI_CXX`                     | `clang++`                      | WASM C++11 编译器固定路径；只由 Worker 配置提供                                                                                                                                                                                                                                                                                                                         |
-| `JUDGE_WASI_TARGET`                  | `wasm32-wasip1`                | WASI 编译 target；必须与 Worker 的 Wasmtime/WASI SDK 匹配                                                                                                                                                                                                                                                                                                               |
-| `JUDGE_WASI_SYSROOT`                 | 未设置                         | 可选的固定 WASI sysroot 路径，不从题目消息读取                                                                                                                                                                                                                                                                                                                          |
-| `JUDGE_WASI_TESTLIB_INCLUDE`         | 未设置                         | 可选的固定 testlib 头文件目录；WASM checker 编译时使用                                                                                                                                                                                                                                                                                                                  |
-| `JUDGE_COMMAND_WHITELIST`            | `python3,deno,node,bash,sh`    | 允许的命令可执行文件白名单（逗号分隔）                                                                                                                                                                                                                                                                                                                                  |
-| `JUDGE_ALLOW_EVALUATOR_NETWORK`      | `false`                        | 是否允许 Evaluator 容器联网（LLM 题需开启）                                                                                                                                                                                                                                                                                                                             |
-| `JUDGE_EVALUATOR_NETWORK`            | `noj-eval-net`                 | Evaluator 联网时加入的 Docker 网络名；生产校验**禁止** `bridge`/`host`                                                                                                                                                                                                                                                                                                  |
-| `JUDGE_ALLOW_HTTP_S3`                | `false`                        | 是否允许经 HTTP 下载支持包（自建 MinIO 内网常需开启）                                                                                                                                                                                                                                                                                                                   |
-| `JUDGE_MAX_EVALUATOR_TIME_MS`        | `300000`                       | 单次评测 Evaluator 总时长硬上限（毫秒）                                                                                                                                                                                                                                                                                                                                 |
-| `JUDGE_MAX_SOLUTION_CALL_TIMEOUT_MS` | `60000`                        | 单次调用超时硬上限（毫秒）                                                                                                                                                                                                                                                                                                                                              |
-| `JUDGE_DOCKER_HOST`                  | `unix:///var/run/docker.sock`  | Docker daemon 地址（Unix socket，生产应指向独立 rootless daemon）                                                                                                                                                                                                                                                                                                       |
-| `JUDGE_REQUIRE_ISOLATED_DOCKER`      | `false`                        | 是否强制使用独立/隔离的 Docker daemon                                                                                                                                                                                                                                                                                                                                   |
-| `JUDGE_USER_CLAIM_PREFIX`            | 队列前缀的同名父命名空间       | 用户级公平调度 claim 的 Redis key 前缀                                                                                                                                                                                                                                                                                                                                  |
-| `JUDGE_USER_CLAIM_TTL_MS`            | `3600000`                      | 用户级 claim 的 TTL（毫秒）                                                                                                                                                                                                                                                                                                                                             |
-| `SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT`   | `60`                           | 支持包下载超时（**秒**；实现按 `Duration::from_secs` 使用）                                                                                                                                                                                                                                                                                                             |
-| `SUPPORT_CACHE_DIR`                  | `/tmp/noj-judge/support-cache` | 支持包内容寻址缓存目录                                                                                                                                                                                                                                                                                                                                                  |
-| `SUPPORT_CACHE_MAX_ITEMS`            | `500`                          | 缓存最大条目数                                                                                                                                                                                                                                                                                                                                                          |
-| `SUPPORT_CACHE_MAX_MB`               | `2048`                         | 缓存最大容量（MB）                                                                                                                                                                                                                                                                                                                                                      |
+| 想找                                       | 看                                       |
+| ------------------------------------------ | ---------------------------------------- |
+| 通用环境变量全表                           | [docs/env.md](docs/env.md)               |
+| OI / go-judge / WASI 变量与工具链          | [docs/env-oi.md](docs/env-oi.md)         |
+| 容器安全项、zip 防护、镜像与支持包缓存     | [docs/sandbox.md](docs/sandbox.md)       |
+| wire 契约、协议 v3 封套、结果字段语义      | [docs/protocol.md](docs/protocol.md)     |
+| 职责、技术栈、双容器主流程、超时归属       | [docs/flow.md](docs/flow.md)             |
+| prediction 单容器流程                      | [docs/prediction.md](docs/prediction.md) |
+| 测试命令矩阵、E2E 清单、测试设施           | [docs/testing.md](docs/testing.md)       |
 
-> `POOL_*` 环境变量已随容器池移除（见 remove-container-pool 变更），不再被读取。
+## 模块坐标
 
-## 评测流程（核心，双容器）
+| 入口                                             | 职责                                              |
+| ------------------------------------------------ | ------------------------------------------------- |
+| `src/main.rs`                                    | 启动、MQ 消费循环、推送前 `apply_protocol` 封套   |
+| `src/judge/runner.rs`                            | 评测入口：支持包获取 + 双容器 / prediction 分发   |
+| `src/dual/`                                      | 双容器编排、NDJSON 帧与管道、调用追踪             |
+| `src/prediction/mod.rs`                          | prediction 单容器数据评分（无 Solution 容器）     |
+| `src/sandbox/`                                   | 容器生命周期、HostConfig 安全项、下载、缓存、清扫 |
+| `src/oi/`                                        | OI WASM / native 编译运行、go-judge 租约          |
+| `src/mq.rs`、`src/user_claim.rs`、`src/drain.rs` | 拉取与重投、用户级 claim、优雅关闭排空            |
+| `src/types.rs`、`src/config.rs`                  | wire 类型、环境变量解析                           |
 
-> 所有代码 / 产物评测统一走 `dual::evaluate_dual()`（Evaluator + Solution 双容器
-> NDJSON 编排）， 旧的单容器路径已移除。**prediction 模式是唯一例外**：走
-> `prediction::evaluate_prediction()` 单容器路径（见下节），不创建 Solution
-> 容器、无 NDJSON 编排。核心流程（`src/dual/mod.rs`）：
+## 外部约定
 
-```
-任务到达
-  │
-  ├─ 0. 白名单复验（镜像前缀 JUDGE_IMAGE_PREFIX / 命令可执行文件白名单 / 网络开关）
-  ├─ 1. 获取支持包 — 缓存优先 → 按 host 分派下载（仅 HTTPS，禁重定向）→ SHA-256 校验 → 写缓存（含 zip 路径穿越/实时解压限额）；**获取或校验失败直接终止任务**（不静默放行空环境）
-  ├─ 2. 创建 Evaluator + Solution 两个容器（cap_drop ALL / network none 默认 / pids_limit / 可配置 CPU 上限 / readonly rootfs + tmpfs）
-  ├─ 3. 注入用户代码/artifact zip 到 Solution 容器（artifact 模式解压到 /workspace，入口 submission.py）
-  ├─ 4. 注入支持包 zip 到 Evaluator 容器 /workspace（**全部文件写入同一个内存 tar 流，容器内只发起一次 `tar xf -` exec**）
-  ├─ 5. 启动两个 exec — Evaluator 跑 evaluate.py；Solution 跑 host.py
-  ├─ 6. Evaluator 首帧输出前受 30s 启动 deadline 约束；Solution 侧在就绪前只接受 `ready` 帧（其余忽略），无独立超时
-  ├─ 7. 双向消息转发 — evaluator stdout ↔ solution stdin/stderr（调用级超时；帧写入受 3s 超时约束，超时/EPIPE 判定对端 stdin 已死并立即异常收尾）
-  │     ├─ 超时 → 向等待方写入 CallTimeout/error 帧
-  │     └─ 正常 → 读取 stdout/stderr 直到 RESULT 或 EOF
-  ├─ 8. 等待 Evaluator stdout 出现 ---RESULT--- 标记，解析 JSON {score, details}
-  │     ├─ 有标记 + 评分合法 → 统一映射 finished/error（分数是唯一结果）
-  │     ├─ 有标记 + 评分非法（缺 score/非整数/越界）→ 平台错误（result_kind=platform_error）
-  │     ├─ 总超时（启动超时 / time_limit_ms）→ SystemError（finalize_outcome 优先）
-  │     ├─ 无标记 + 曾发送 CallTimeout 错误帧 → TimeLimitExceeded
-  │     └─ 无标记 + 未发送 → SystemError
-  └─ 9. 结果取得后立即收尾 → 显式 `dual.destroy()` 强制清理两个容器（编排循环不发 `shutdown` 帧、也不关闭 Solution stdin）
-```
-
-当前实现回填 `time_ms`（从评测开始到 `dual.destroy()`
-清理完成的墙上时钟总耗时，含清理）； `memory_kb` 通过销毁前读取一次 Docker stats
-尽力回填：
-
-- cgroups v1 使用 `memory_stats.max_usage`（真实峰值）；
-- cgroups v2 无 `max_usage` 时回退到 `usage`（近似值）；
-- 读取失败或容器不可用时保持 `null`（不阻断评测）。
-
-OOM 容器由 `docker rm -f` 回收；当前仍不单独映射 `MemoryLimitExceeded`
-（Solution OOM 由 evaluator/超时路径归因）。
-
-### 超时处理细节
-
-- 判定超时阈值 = `time_limit_ms`
-- 超时由 judge 内部 deadline 判定（启动 30s / 题目 `time_limit_ms` / 调用级
-  `call_timeout_ms`）
-- 超时后通过 `dual.destroy()` 的 `docker rm -f` 强制清理容器
-- 状态由 `finalize_outcome` 按超时来源与 CallTimeout 归因决定（总超时 →
-  SystemError；仅调用级 CallTimeout → TLE）
-- 输出从 Bollard exec 流实时收集（非 `docker logs`）
-
-### prediction 单容器流程
-
-`runner.rs` 按 `submission_mode == "prediction"` 分派到
-`src/prediction/mod.rs::evaluate_prediction()`：
-
-```
-任务到达
-  │
-  ├─ 0. clamp/validate runtime_config（solution 为 None，自动跳过其校验）
-  ├─ 1. 获取支持包（与双容器同一套下载/校验路径）→ 注入 Evaluator /workspace
-  ├─ 2. 只创建 Evaluator 容器（无 Solution；workspace_size_mb 取题目值或
-  │     JUDGE_PREDICTION_WORKSPACE_MB）
-  ├─ 3. 流式注入预测文件到 /workspace/prediction/<file_name>
-  │     （inject_file_stream_to_container 自身无截止时间，调用方用启动期 30s 预算兜底）
-  ├─ 4. 启动唯一 exec — Evaluator 跑 evaluate.py，注入 NOJ_PREDICTION_DIR /
-  │     NOJ_PREDICTION_FILE
-  ├─ 5. 流式读 stdout/stderr（append_capped 硬上限 1 MiB；标记流式检测），
-  │     等 `---RESULT---` 后取下一非空行 JSON {score, details}
-  ├─ 6. 读一次 Docker stats 回填 memory_kb
-  └─ 7. dual.destroy() 清理 Evaluator 容器
-```
-
-- **绝不创建 Solution 容器**（E2E 以标签断言）。
-- 结果解析与双容器共用 `build_judge_result`；标记缺失 / JSON 非法 / 启动超时 /
-  `time_limit_ms` 超时均归 `SystemError`。
-- 输出全文经 `append_capped` 累积（1 MiB，超出丢头部保尾部），标记检测用
-  `LineParser` 流式完成，不依赖滚动缓冲重扫（避免 O(n²) 与标记被截断误判）。
-
-## MQ 消息格式
-
-**JudgeTask（noj-core → noj-judge）**：
-
-```json
-{
-  "submission_id": "uuid",
-  "problem_id": "uuid",
-  "user_id": "uuid",
-  "priority": "medium",
-  "download_url": "noj-download://base64/?content=UEsDBBQAAAAIA...&checksum_sha256=abc123",
-  "artifact_download_url": "noj-download://s3?url=...&checksum_sha256=abc123",
-  "runtime_config": {
-    "evaluator": {
-      "image": "noj-evaluator-python",
-      "command": "python3 /workspace/evaluate.py",
-      "time_limit_ms": 5000,
-      "memory_limit_mb": 512
-    },
-    "solution": {
-      "image": "noj-solution-python",
-      "call_timeout_ms": 2000,
-      "memory_limit_mb": 512
-    }
-  },
-  "language": "python3",
-  "code": "...",
-  "file_name": "submission.py",
-  "rejudge_seq": 1
-}
-```
-
-> 完整 wire 契约以 `noj-tests/fixtures/judge-task.contract.json` 与
-> `JUDGE_TASK_FIELDS` 为准（`user_id` 必填；`priority` 缺省 `medium`—— Rust 侧带
-> `#[serde(default = "default_priority")]`；启用 LLM 的题目 另带 `llm`）。
-
-> 双容器架构后 `judge_image` / `judge_command` / `time_limit_ms` /
-> `memory_limit_mb` 顶层字段已移除，统一由 `runtime_config`（Evaluator +
-> Solution）承载。
-
-**JudgeResult（noj-judge → noj-core）**：
-
-```json
-{
-  "submission_id": "uuid",
-  "status": "finished",
-  "score": 1000,
-  "output": "---RESULT---\n{\"score\":1000,\"details\":{}}",
-  "details": { "cases": [...] },
-  "time_ms": 42,
-  "memory_kb": null,
-  "rejudge_seq": 0,
-  "evaluation_protocol_version": 2,
-  "run_id": "attempt-uuid",
-  "attempt_id": "attempt-uuid",
-  "problem_version_id": "version-uuid",
-  "result_kind": "graded"
-}
-```
-
-> **版本化封套（协议 v2，Handbook §5.5/§5.6）**：`main.rs`
-> 在推送前对**全部**成功 / 失败 / 超时结果统一调用
-> `JudgeResult::apply_protocol`，回显 `run_id` （=
-> `evaluation_attempts.id`）、`attempt_id`（缺省回退为 `run_id`，自测任务也
-> 因此完整）、`problem_version_id` 与
-> `evaluation_protocol_version=2`，并显式给出 `result_kind`（`graded` /
-> `platform_error`）。协议字段**只**走可信封套，不写入 evaluator 可控的
-> `details`。`envelope_gaps()` 在推送前复核，不完整时记 error 日志 ——core
-> 会整体拒绝这类结果（`applied=false`），提交将卡在 judging。 Wire 字段集合由
-> `tests/judge_result_contract.rs` 钉住，平台错误白名单与 core
-> `shared/versioning/verdict.ts` 同表。
->
-> **非法评分（defect #29）**：`---RESULT---` 的 payload 必须是 JSON 对象且
-> `score` 为 `0..=10000` 的整数值（与 core `isValidGradedScore` 的
-> `Number.isInteger` 语义一致）。缺
-> `score`、字符串/非整数/布尔、越界一律转成**平台错误**
-> （`result_kind=platform_error`，固定公开文案），**绝不** `unwrap_or(0)` 或
-> clamp 成正式零分/满分去覆盖已有成绩。
-
-## 关键安全措施
-
-- **zip 路径穿越防护**：拒绝含 `..` 或 `/` 开头的 zip 条目
-- **zip 炸弹防护**：最大条目数 1000、单文件 64MB、总解压
-  512MB（硬编码；按实际解压字节实时限额，不信任条目声明大小）
-- **文件名安全**：拒绝含 `/`、`\`、`..` 的文件名
-- **容器安全**：`cap_drop ALL`、`no-new-privileges`、`network_mode none`（默认）、`ipc_mode none`、`pids_limit 256`、CPU
-  上限、readonly rootfs + tmpfs
-  `/tmp`（`size=256M,mode=1777,noexec,nosuid,nodev`）与
-  `/workspace`（`size=512M,mode=1777,noexec,nosuid,nodev`）
-- **平台错误自动重试**：`platform_error` 首次执行外最多重试 3 次；Redis
-  原子重投原消息， 按 run
-  共享计数并保留七天。成功/正式判定/取消不重试，中间失败不写回 core。
-- **结果重试**：推送结果最多重试 3
-  次（指数退避），全部失败则序列化到本地文件系统
-- **孤儿容器清理**：启动时按**确定性实例标签**
-  `com.noj.judge.instance=noj-{hash12}` 精准清理本实例残留容器（实例 ID
-  重启后不变）；同时打平台级归属标签 `com.noj.managed-by=noj-judge`
-  供运维兜底筛查（不进入启动清扫路径，避免误杀业务容器）。 退出阶段（drain 超时
-  abort 后）在运行时尚存活时按同一标签做一次有界兜底清扫
-- **JudgeResult::error()** 有意隐藏错误详情（不暴露内部路径/配置给用户）；
-  启动前的平台侧失败（白名单复验、支持包/artifact 获取或校验）以
-  `PublicJudgeError(&'static str)` 为根错误，`JudgeResult::from_error()`
-  只回传其固定公开文案，详细原因仍只写日志
-- **镜像白名单复验**：镜像前缀（`JUDGE_IMAGE_PREFIX`）、命令可执行文件白名单与网络开关在任务执行前复验；容器创建直接调
-  `docker.create_container`，不存在启动期的镜像拉取/探测辅助函数。
-
-## 日志约定
-
-- 使用 `tracing` crate 输出结构化日志
-- 关键事件：任务到达、评测开始/完成、超时、OOM、容器状态变化
-
-## 代码规范
-
-- `cargo fmt` 格式化 + `cargo clippy`（禁止 warnings）
-- 错误处理：`anyhow::Result` + `.context()`
-- 日志：`tracing::info!` / `warn!` / `error!`
-- 异步优先：所有 I/O 操作用 async/await
-- `#[allow(dead_code)]` 合法使用位置：
-  - `types.rs`：`CaseResult` 结构体字段
-- `#[allow(unreachable_code)]`：`main.rs` 中 `rt.block_on` 后的
-  `Ok(())`，属合法使用
-- `#[ignore]`：集成测试，需要 `NOJ_RUN_E2E=1` + Docker 环境
-
-## 测试基础设施
-
-- 所有集成测试使用 `#[ignore]` + `NOJ_RUN_E2E=1` 守卫
-- 使用 `#[serial_test::serial]` 序列化执行（避免 Docker 资源竞争）
-- 30 秒外层超时：`tokio::time::timeout(Duration::from_secs(30), ...)`
-- 测试用镜像：`noj-judge-test-runner`（基于 `python:3.12-alpine`，digest 固定；
-  基础镜像仓库默认 DaoCloud 代理 `docker.m.daocloud.io/library/python`，可用
-  `NOJ_E2E_PYTHON_IMAGE_REPO` 覆盖，CI 设为 `python` 直连 Docker Hub）
-- 测试用 evaluate.py
-  支持标志：`--hang`（死循环）、`--memory-test`（OOM）、`--no-result`、`--result-json`、`--exit-code`
-- 测试镜像通过 docker CLI 子进程构建（bollard tar 构建在测试环境中不可靠）
-
-## Docker 构建
-
-**Evaluator 镜像**（`docker/evaluator-python/Dockerfile`）：
-
-- 基于 `python:3.12-slim`，无额外包
-- 依赖由 evaluate.py 自身管理
-- 本地构建：`docker build -t noj-evaluator-python -f docker/evaluator-python/Dockerfile .`
-
-**Solution AI 镜像**（`docker/solution-ai/Dockerfile`）：
-
-- 基于 `python:3.12-slim` + CPU 版 torch/torchvision + CV/ML 常用库 +
-  noj_solution_sdk
-- 供 artifact 题（CV/ML 小模型）推理使用
-- 构建：`./scripts/build-sdk-images.sh`（同时构建
-  evaluator/solution/solution-ai）
-
-**E2E 测试镜像**（`Dockerfile.e2e`）：
-
-- 多阶段构建：BuildKit 缓存挂载编译 → debian:bookworm-slim 运行
-- 用于在容器中运行 noj-judge 二进制本身
-
-**.dockerignore**：排除
-`target/`、`tests/`、`docker/`、`AGENTS.md`、`CLAUDE.md`（构建上下文从 800MB+
-降至 ~200KB）
-
-## 相关文档
-
-- [Tokio 文档](https://tokio.rs/)
-- [redis-rs 文档](https://docs.rs/redis/)
-- [Docker Engine API](https://docs.docker.com/engine/api/)
-- [bollard](https://docs.rs/bollard/)
+- 任务来源与结果消费方：noj-core（`JUDGE_QUEUE` / `RESULT_QUEUE` 两侧必须一致）
+- 安全基线：
+  [`dev-docs/engineering/defensive-patterns.md`](../dev-docs/engineering/defensive-patterns.md)、
+  [`noj-docs/docs/system/security.md`](../noj-docs/docs/system/security.md)
+- 参考：[Tokio](https://tokio.rs/)、[redis-rs](https://docs.rs/redis/)、
+  [bollard](https://docs.rs/bollard/)、[Docker Engine API](https://docs.docker.com/engine/api/)
