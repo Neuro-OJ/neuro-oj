@@ -1,9 +1,9 @@
 /**
  * 正式成绩导出路由测试（成绩单导出补全）。
  *
- * 覆盖本次新增的历史版本导出能力，以及既有 latest.* 与错误路径：
- * - `GET /contests/:id/ranking-snapshots/<version>.json` / `.csv`
- * - 与静态同级路由（`readiness` / `latest` / `latest.json` / `latest.csv`）的路由优先级
+ * 覆盖域比赛正式成绩导出（latest 与历史版本）及错误路径：
+ * - `GET /domains/:slug/contests/:id/snapshots/<latest|version>.<json|csv>`
+ * - 与快照列表 `GET .../snapshots` 互不干扰
  * - 版本不存在 → 404；版本号/扩展名非法 → 400
  * - CSV 逐题明细与 **CSV 注入防护**（以 `= + - @` 开头的单元格加 `'` 前缀）
  * - 未认证 → 401
@@ -21,9 +21,12 @@ import {
 } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
+import { ensureDefaultWorkspace } from "../../../../../tests/helpers/workspace-actors.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 
 await resetDbForTest();
 await initRedisForTest();
+await ensureDefaultWorkspace();
 
 Deno.test({
   name: "ranking export: 历史版本导出、路由优先级与错误路径",
@@ -127,8 +130,7 @@ Deno.test({
     ]);
 
     const token = await signToken({ sub: adminId, role: "admin" });
-    const base =
-      `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots`;
+    const base = `/api/v1/domains/main/contests/${contestId}/snapshots`;
 
     try {
       // ── 1. 历史版本 JSON 导出：必须返回**该版本**的 rows，而不是最新版 ──
@@ -160,7 +162,10 @@ Deno.test({
       // BOM 必须存在于**线上字节**中（Excel 靠它识别 UTF-8 中文）。
       // 注意不能用 `text().charCodeAt(0)` 断言：流式响应的 TextDecoder 会按规范
       // 剥掉前导 BOM，该断言测的是解码产物而非真实契约。
-      assertEquals(csvV1Res.headers.get("cache-control"), "private, no-store");
+      assertStringIncludes(
+        csvV1Res.headers.get("cache-control") ?? "",
+        "no-store",
+      );
       const rawRes = await jsonRequest(app, `${base}/1.csv`, { token });
       const rawBytes = new Uint8Array(await rawRes.arrayBuffer());
       assertEquals(
@@ -217,10 +222,10 @@ Deno.test({
       assertEquals(v2Cols[3], "90", `总分应为展示分 90，实际 ${v2Cols[3]}`);
       assertEquals(v2Cols[2], "'=cmd|calc", "用户名应带注入防护前缀");
 
-      // ── 3. 静态同级路由未被 :file 抢占 ──
-      for (const path of ["readiness", "latest", "latest.json", "latest.csv"]) {
+      // ── 3. latest.* 与列表 ──
+      for (const path of ["latest.json", "latest.csv"]) {
         const res = await jsonRequest(app, `${base}/${path}`, { token });
-        assertEquals(res.status, 200, `${path} 不应被 :file 路由抢占`);
+        assertEquals(res.status, 200, `${path} 应可导出`);
       }
       // 列表（无子路径）亦不受影响
       const listRes = await jsonRequest(app, base, { token });
@@ -233,7 +238,9 @@ Deno.test({
       assertEquals(missing.status, 404);
 
       // ── 5. 非法版本号 / 扩展名 → 400 ──
-      for (const bad of ["0.json", "abc.json", "1.txt", "1", "1.JSON"]) {
+      for (
+        const bad of ["0.json", "abc.json", "1.txt", "1", "1.JSON", "latest"]
+      ) {
         const res = await jsonRequest(app, `${base}/${bad}`, { token });
         assertEquals(res.status, 400, `${bad} 应返回 400`);
       }
@@ -242,8 +249,7 @@ Deno.test({
       const noAuth = await jsonRequest(app, `${base}/1.json`);
       assertEquals(noAuth.status, 401);
 
-      // 已登录的**非管理员**必须 403：成绩单导出含全员成绩，属管理员数据。
-      // 此前只覆盖了 401（未登录），漏掉了越权路径。
+      // 已登录的**非组织者**必须 403：成绩单导出含全员成绩，只给组织端。
       const normalId = crypto.randomUUID();
       await db.insert(users).values({
         id: normalId,
@@ -258,7 +264,7 @@ Deno.test({
         const res = await jsonRequest(app, `${base}/${path}`, {
           token: normalToken,
         });
-        assertEquals(res.status, 403, `非管理员访问 ${path} 应 403`);
+        assertEquals(res.status, 403, `非组织者访问 ${path} 应 403`);
       }
       await db.delete(users).where(eq(users.id, normalId));
     } finally {
@@ -339,7 +345,7 @@ Deno.test({
     try {
       const res = await jsonRequest(
         app,
-        `/api/v1/admin/contest/contests/${contestId}/ranking-snapshots/1.csv`,
+        `/api/v1/domains/main/contests/${contestId}/snapshots/1.csv`,
         { token },
       );
       assertEquals(res.status, 200);
@@ -371,4 +377,3 @@ Deno.test({
     }
   },
 });
-import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";

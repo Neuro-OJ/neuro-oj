@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-模型别名设计（`dev-docs/superpowers/specs/2026-10-12-llm-model-aliases-design.md`）的 gateway（#630）与 core（#631）已就绪，运营者与出题人还没有界面，文档也未说明新字段。本 PR 是实施拆分第 3 步。
+模型别名设计（`dev-docs/archive/superpowers/specs/2026-10-12-llm-model-aliases-design.md`）的 gateway（#630）与 core（#631）已就绪，运营者与出题人还没有界面，文档也未说明新字段。本 PR 是实施拆分第 3 步。
 
 ## Decision
 

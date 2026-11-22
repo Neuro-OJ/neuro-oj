@@ -19,7 +19,7 @@ import {
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 
 function connection() {
   return postgres(Deno.env.get("DATABASE_URL")!, {

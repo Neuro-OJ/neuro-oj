@@ -16,14 +16,14 @@ import {
   hashPassword,
 } from "../../../identity/index.ts";
 import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
+import { loadWorkspace } from "../../index.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
   joinDomain,
-  loadWorkspace,
   setDomainStatus,
   transferDomain,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 async function account(admin = false) {
   const id = crypto.randomUUID();

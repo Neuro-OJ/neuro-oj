@@ -20,21 +20,23 @@ import {
 import { updateSetting } from "../../../../platform/system/index.ts";
 import {
   assertWorkspacePermission,
+  loadWorkspace,
+  requestDomainCreation,
+  reviewDomainCreation,
+} from "../../index.ts";
+import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
   ensureDefaultWorkspace,
   joinDomain,
   listDomains,
-  loadWorkspace,
   removeDomainMember,
-  requestDomainCreation,
-  reviewDomainCreation,
   revokeDomainInvitation,
   setMemberRole,
   transferDomain,
   updateDomain,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 await resetDbForTest();
 

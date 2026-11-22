@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 import { account } from "../_fixtures.ts";
-import { addDomainMember } from "../../../access/workspace/index.ts";
+import { addDomainMember } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   assignments,
   classroomMemberships,

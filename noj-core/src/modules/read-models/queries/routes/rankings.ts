@@ -12,7 +12,7 @@ import {
 } from "../../../../shared/http/pagination.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspace } from "../../../access/domains.ts";
-import { createSystemActor } from "../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../shared/access/system-actors.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 
 const router = new Hono<OptionalAuthEnv>();

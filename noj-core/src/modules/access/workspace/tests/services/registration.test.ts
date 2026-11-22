@@ -15,12 +15,12 @@ import {
 } from "../../../../../shared/base/errors.ts";
 import { registerUser } from "../../../identity/index.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../index.ts";
 import {
   createDomain,
   createDomainInvitation,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 // 验证真实事务，直接使用启动器提供的隔离测试数据库。
 await resetDbForTest();

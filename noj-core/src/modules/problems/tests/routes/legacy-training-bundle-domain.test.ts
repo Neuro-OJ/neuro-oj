@@ -14,10 +14,8 @@ import {
   trainings,
 } from "../../../../shared/db/schema.ts";
 import { AppError, NotFoundError } from "../../../../shared/base/errors.ts";
-import {
-  createDomain,
-  DEFAULT_DOMAIN_ID,
-} from "../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
+import { createDomain } from "../../../../../tests/helpers/workspace-actors.ts";
 import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
 import {
   createDefaultCatalogToken,

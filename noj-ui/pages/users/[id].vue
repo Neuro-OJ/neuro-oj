@@ -270,7 +270,7 @@ function formatDate(iso: string): string {
         >
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">全站排名</span>
           <NuxtLink
-            to="/ranking"
+            to="/leaderboard"
             class="text-2xl font-bold text-text no-underline hover:text-primary tabular-nums"
           >
             #{{ profile.rank }}

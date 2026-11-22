@@ -13,7 +13,13 @@
 //     脚手架给不出来；README 会提示需要自行补齐用于自测。
 //   - 不生成「已通过全部测试」的代码——那正是质量规范禁止的。
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import {
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
+  type ProblemTemplateName,
+  renderProblemTemplate,
+} from "./problem-templates.ts";
 
 /** 脚手架选项。 */
 export interface ProblemInitOptions {
@@ -25,6 +31,11 @@ export interface ProblemInitOptions {
   difficulty?: "easy" | "medium" | "hard";
   /** 目标根目录（缺省 data/problems-src）。 */
   root?: string;
+  /**
+   * 可验题模板（P0-2 B）：生成带参考解答与断言的完整题目，可直接
+   * `noj-cli problem test`。模板内容与 noj-cli 共用 `problem-templates.ts`。
+   */
+  template?: ProblemTemplateName;
 }
 
 /** slug 合法性问题（供 CLI 报错）。 */
@@ -506,6 +517,12 @@ export async function initProblem(
     throw new Error(`难度非法：${difficulty}（仅允许 easy / medium / hard）`);
   }
 
+  if (opts.template !== undefined && !isProblemTemplateName(opts.template)) {
+    throw new Error(
+      `未知模板：${opts.template}（可选 ${PROBLEM_TEMPLATE_NAMES.join("/")}）`,
+    );
+  }
+
   const root = opts.root ?? defaultProblemSrcDir();
   const dir = join(root, opts.slug);
   const title = opts.title?.trim() || opts.slug;
@@ -554,21 +571,25 @@ export async function initProblem(
     createdDir = true;
   }
 
-  const files: Array<[string, string]> = [
-    ["problem.json", problemJson({ slug: opts.slug, title, difficulty })],
-    ["statement.md", statementMarkdown(title)],
-    ["template.py", templatePy()],
-    ["evaluate.py", evaluatePy()],
-    ["visible.jsonl", visibleJsonl()],
-    ["hidden.jsonl", hiddenJsonl()],
-    ["README.md", readmeMarkdown(title)],
-  ];
+  const files: Array<[string, string]> = opts.template !== undefined
+    ? renderProblemTemplate(opts.template, { title, difficulty })
+    : [
+      ["problem.json", problemJson({ slug: opts.slug, title, difficulty })],
+      ["statement.md", statementMarkdown(title)],
+      ["template.py", templatePy()],
+      ["evaluate.py", evaluatePy()],
+      ["visible.jsonl", visibleJsonl()],
+      ["hidden.jsonl", hiddenJsonl()],
+      ["README.md", readmeMarkdown(title)],
+    ];
 
   // 写入失败时回滚，避免留下「半成品目录」——它会因非空而拒绝后续重跑。
   const written: string[] = [];
   try {
     for (const [name, content] of files) {
       const target = join(dir, name);
+      // 模板含子目录（如 submissions/）；dir 已确认是本次可写的空目录。
+      await Deno.mkdir(dirname(target), { recursive: true });
       // createNew：并发/重入下不覆盖已存在的文件。
       await Deno.writeTextFile(target, content, { createNew: true });
       written.push(target);
@@ -577,7 +598,7 @@ export async function initProblem(
     for (const target of written) {
       await Deno.remove(target).catch(() => {});
     }
-    if (createdDir) await Deno.remove(dir).catch(() => {});
+    if (createdDir) await Deno.remove(dir, { recursive: true }).catch(() => {});
     throw err;
   }
 

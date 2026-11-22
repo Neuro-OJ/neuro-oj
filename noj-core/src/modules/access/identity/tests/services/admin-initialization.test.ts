@@ -16,13 +16,13 @@ import {
   initializeFirstAdmin as initializeFirstAdminTx,
   sealExistingSiteAdminInitialization,
 } from "../../services/auth/admin-initialization.ts";
-import { createSystemActor } from "../../../../runtime/index.ts";
+import { createSystemActor } from "../../../../../shared/access/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../../../contracts/actor.ts";
 import { registerUser } from "../../services/auth/auth-register.ts";
 import { isUserAdmin } from "../../services/security/permissions.ts";
 import { comparePassword } from "../../services/security/password.ts";
 import { deleteOwnAccount } from "../../index.ts";
-import { transferDomain } from "../../../workspace/index.ts";
+import { transferDomain } from "../../../../../../tests/helpers/workspace-actors.ts";
 const input = {
   username: "site_admin",
   email: "admin@example.com",

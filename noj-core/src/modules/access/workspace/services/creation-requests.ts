@@ -20,7 +20,7 @@ import { userActorFromAuthenticatedId } from "../../contracts/actor.ts";
 import { workspaceAuditTx } from "../../audit.ts";
 import { createDomainTx } from "../../domains.ts";
 import { validateDomainSlug } from "../types.ts";
-import { getInstanceAccessPolicy } from "./instance.ts";
+import { getInstanceAccessPolicy } from "../../../platform/contracts/resource-policy.ts";
 
 /** 申请创建与申请加入分开；同一用户同一标识的待审申请幂等复用。 */
 export async function requestDomainCreation(

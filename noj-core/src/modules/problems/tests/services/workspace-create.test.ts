@@ -14,7 +14,7 @@ import { AppError, ForbiddenError } from "../../../../shared/base/errors.ts";
 import {
   createDomain,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { deleteProblemCommand } from "../../../application/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";
 import {

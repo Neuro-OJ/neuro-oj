@@ -13,12 +13,12 @@ import {
   ForbiddenError,
   NotFoundError,
 } from "../../../../../shared/base/errors.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../../access/workspace/index.ts";
 import {
   createDomain,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
   transferDomain,
-} from "../../../../access/workspace/index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 import { _resetSystemSettingsForTest } from "../../../system/index.ts";
 import {
   buildJudgeTaskLlm,
@@ -320,7 +320,7 @@ Deno.test({
       preset: "education",
     }, admin);
     const { createDomainInvitation, consumeDomainInvitation } = await import(
-      "../../../../access/workspace/index.ts"
+      "../../../../../../tests/helpers/workspace-actors.ts"
     );
     const invite = await createDomainInvitation(
       school.slug,
@@ -669,7 +669,7 @@ Deno.test({
     );
     // 转交前需要有效域成员；直接写入当前成员夹具由公开加入入口创建。
     const { createDomainInvitation, consumeDomainInvitation } = await import(
-      "../../../../access/workspace/index.ts"
+      "../../../../../../tests/helpers/workspace-actors.ts"
     );
     const invite = await createDomainInvitation(
       a.slug,

@@ -6,7 +6,7 @@ import {
   saveEvaluationResultTx,
 } from "../services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../types/index.ts";
-import { recordSseEventTx } from "../../runtime/index.ts";
+import { recordSseEventTx } from "../../../shared/sse/sse-event-tx.ts";
 declare const root: DbRoot;
 declare const tx: DbTx;
 declare const actor: UserActor;

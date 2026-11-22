@@ -207,7 +207,7 @@ export const COMMANDS: readonly TopCommandSpec[] = [
     tier: "problem",
     aliases: ["problems"],
     summary:
-      "题目包管理（离线 init/lint/pack/migrate；build/import 经 Tier 3 容器）",
+      "题目包管理（离线 init/lint/pack/migrate/test/skill；build/import 经 Tier 3 容器）",
     subcommands: [
       {
         name: "init",
@@ -219,8 +219,16 @@ export const COMMANDS: readonly TopCommandSpec[] = [
       },
       { name: "pack", summary: "打包为可导入的题目包 ZIP" },
       {
+        name: "test",
+        summary: "本地 Docker 沙箱验题，断言参考解答得分（需 noj-judge）",
+      },
+      {
         name: "migrate",
         summary: "将 problem.json 升级为当前格式（原地改写）",
+      },
+      {
+        name: "skill",
+        summary: "把 AI 出题 Skill 写入出题仓库（.agents/.claude skills）",
       },
       {
         name: "build",

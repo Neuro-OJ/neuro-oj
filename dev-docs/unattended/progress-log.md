@@ -1,7 +1,7 @@
 # 无人值守执行工作日志
 
 > 本文件记录一次无人值守会话的进度与实测证据。
-> 目标与验收标准见 `dev-docs/superpowers/specs/2026-09-11-unattended-24h-objective-design.md`。
+> 目标与验收标准见 `dev-docs/archive/superpowers/specs/2026-09-11-unattended-24h-objective-design.md`。
 >
 > **性质说明**：这是一份**时点快照**，不是持续维护的看板。最后更新：2026-09-11 02:10 (CST)。
 > 此后的事实变化不会自动同步到本文件；需要最新状态时以各 PR 与 `.agents/notes/` 为准。
@@ -112,8 +112,8 @@
 - **`plans/` 的 checkbox 不可信**：**47 份中 40 份**含未勾项，但对应工作早已上线
   （`2026-09-03-noj-core-organization-refactor.md` 有 139 未勾，对应域化重构已交付）。
   **不能当作待办清单使用**。
-  计数命令：`rg -l '^\s*-\s\[ \]' dev-docs/superpowers/plans/*.md | wc -l`（分子）、
-  `ls dev-docs/superpowers/plans/*.md | wc -l`（分母）。
+  计数命令：`rg -l '^\s*-\s\[ \]' dev-docs/archive/superpowers/plans/*.md | wc -l`（分子）、
+  `ls dev-docs/archive/superpowers/plans/*.md | wc -l`（分母）。
 - `.test-storage/` 产物被误提交（已在 `noj-core/.gitignore` 排除却仍被跟踪），导致每次跑测试
   都产生删除 diff，污染每个 PR、使干净基线不可达 → 已停止跟踪。
 
@@ -243,7 +243,7 @@
 # 2026-09-19 · noj-cli 纯 TS 重写（独立目标）
 
 > **与上文（2026-09-11 的 24 小时目标）是不同的目标**，故单列一节。
-> 计划见 `dev-docs/superpowers/plans/2026-09-19-noj-cli-pure-ts-rewrite.md`（26 个 Task）。
+> 计划见 `dev-docs/archive/superpowers/plans/2026-09-19-noj-cli-pure-ts-rewrite.md`（26 个 Task）。
 > 基线见 [`2026-09-19-baseline.md`](./2026-09-19-baseline.md)；
 > 验收证据见 [`2026-09-19-noj-cli-rewrite-evidence.md`](./2026-09-19-noj-cli-rewrite-evidence.md)；
 > 待人工 review 见 [`2026-09-19-noj-cli-manual-review.md`](./2026-09-19-noj-cli-manual-review.md)。

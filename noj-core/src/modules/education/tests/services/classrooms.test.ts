@@ -1,4 +1,4 @@
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import { assertEquals, assertIsError, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
@@ -28,7 +28,7 @@ import {
   consumeDomainInvitation,
   createDomainInvitation,
   removeDomainMember,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { educationFixture } from "../_fixtures.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/contracts/actor.ts";

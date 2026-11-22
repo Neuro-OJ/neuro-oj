@@ -56,7 +56,7 @@ deno task build
 deno task test:bff:ssr
 ```
 
-浏览器测试需要 Playwright Chromium：`deno run -A npm:playwright install chromium`。 验收启动独立模拟 Core
+浏览器测试需要 Playwright Chromium：`deno run -A npm:playwright@1.62.1 install chromium`。 验收启动独立模拟 Core
 和生产构建，检查匿名/学生/域教练/普通成员、初始 HTML、HTTP 状态、 水合零重复取数、SPA 单次 BFF
 取数与局部刷新，不访问生产或修改真实 Core 数据。
 

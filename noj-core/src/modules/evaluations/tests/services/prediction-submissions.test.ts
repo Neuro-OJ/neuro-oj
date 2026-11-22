@@ -26,11 +26,11 @@ import {
   deleteProblemFixtures,
   publishBaselineVersionForTest,
 } from "../../../../../tests/helper.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import {
   addDomainMember,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 import {

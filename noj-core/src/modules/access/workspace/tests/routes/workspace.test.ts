@@ -14,7 +14,7 @@ import {
   updateSetting,
 } from "../../../../platform/system/index.ts";
 import { unlimitedDomainLimits } from "../../../../../shared/workspace/resource-policy.ts";
-import { createDomainInvitation } from "../../index.ts";
+import { createDomainInvitation } from "../../../../../../tests/helpers/workspace-actors.ts";
 
 await resetDbForTest();
 await initRedisForTest();

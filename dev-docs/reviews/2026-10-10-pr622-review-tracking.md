@@ -1,7 +1,7 @@
 # PR #622 题目版本管理审查问题跟踪清单
 
 > **审查基准**：PR #622 提交 [`061ff7d0`](https://github.com/Neuro-OJ/neuro-oj/commit/061ff7d05)  
-> **对照文档**：[Handbook](/home/xyber-nova/Github/neuro-oj/dev-docs/problem-version-management-handbook.md)  
+> **对照文档**：[Handbook](../engineering/problem-version-management-handbook.md)  
 > **审查结论**：**目前不建议合并 PR #622**。实现搭出了版本、尝试和有效成绩投影的主体，但评测配置来源、存储留存、事务一致性、批任务恢复、客观题统计等关键路径没有闭环，“功能全部落地”的结论不成立。  
 > **说明**：本清单用于跟踪发现的 56 项缺陷与并发风险，区分已确认的实现缺陷与并发时序风险，待后续统筹修复与验收。
 

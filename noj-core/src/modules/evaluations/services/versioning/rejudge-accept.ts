@@ -3,7 +3,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
-import type { Executor, RootDb } from "../../../../shared/db/executor.ts";
+import type { DbRoot, Executor } from "../../../../shared/db/executor.ts";
 import {
   objectiveSubmissions,
   problems,
@@ -400,7 +400,7 @@ export async function acceptRejudgeJob(
   actorId: string,
   request: RejudgeRequest,
   idempotencyKey: string,
-  testRootDb?: RootDb,
+  testRootDb?: DbRoot,
 ): Promise<AcceptJobResult> {
   if (!idempotencyKey || idempotencyKey.length > 128) {
     throw new AppError(

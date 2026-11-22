@@ -1,5 +1,19 @@
-/** 无空间前缀的旧业务入口固定属于 main，不读取用户导航偏好。 */
-export type DefaultWorkspaceDestination = { path: string; kind?: 'oi' | 'ai' | 'objective' } | {
+/**
+ * 无空间前缀的旧业务入口固定属于 main，不读取用户导航偏好。
+ *
+ * 这是旧 URL 重定向的唯一规则表：由全局中间件 `default-workspace.global.ts`
+ * 在页面 setup 前执行；`pages/[...legacy].vue` 只为旧路径提供可匹配的路由，
+ * 规则之外的路径一律 404。静态路径段不区分大小写（与原 Vue Router 页面一致），
+ * ID、引用与查询参数保持原样。
+ *
+ * 全站排行榜（含签到榜）在 `/leaderboard`：v0.11.0 曾把 `/ranking` 301 到域排行榜，
+ * 浏览器会缓存该 301，所以换新地址；未缓存的 `/ranking` 仍转到 `/leaderboard`。
+ */
+export type DefaultWorkspaceDestination = {
+  path: string;
+  kind?: 'oi' | 'ai' | 'objective';
+  query?: Record<string, string>;
+} | {
   problemRef: string;
   editor: boolean;
   solve?: boolean;
@@ -14,6 +28,8 @@ export function defaultProblemLabel(value: string) {
 }
 export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDestination | null {
   path = path.replace(/\/+$/, '') || '/';
+  const lower = path.toLowerCase();
+  if (lower === '/ranking') return { path: '/leaderboard' };
   const fixed: Record<string, string> = {
     '/problems': 'problems',
     '/trainings': 'trainings',
@@ -21,8 +37,8 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/contests': 'contests',
     '/submissions': 'submissions',
     '/my/submissions': 'submissions',
-    '/ranking': 'rankings',
     '/search': 'search',
+    '/queue': 'queue',
     '/community': 'community',
     '/my/problems': 'problem-drafts',
     '/admin/problems': 'problem-bindings',
@@ -35,16 +51,17 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     '/admin/llm/providers': 'llm',
     '/admin/llm/usage': 'llm',
   };
-  if (fixed[path]) return { path: `/d/main/${fixed[path]}` };
-  if (path === '/problems/new' || path === '/admin/problem-new') return { path: '/d/main/problems/new' };
+  if (fixed[lower]) return { path: `/d/main/${fixed[lower]}` };
+  if (lower === '/problems/new' || lower === '/admin/problem-new') return { path: '/d/main/problems/new' };
+  if (lower === '/problems/new/bundle') return { path: '/d/main/problems/new', query: { import: '1' } };
   const kind = {
     '/problems/new/oi': 'oi',
     '/admin/problem-new-oi': 'oi',
     '/problems/new/coding': 'ai',
     '/problems/new/objective': 'objective',
   } as const;
-  if (path in kind) return { path: '/d/main/problems/new', kind: kind[path as keyof typeof kind] };
-  const problem = /^\/(?:problems|editor|admin\/problem-edit)\/([^/]+)(\/edit)?\/?$/.exec(path);
+  if (lower in kind) return { path: '/d/main/problems/new', kind: kind[lower as keyof typeof kind] };
+  const problem = /^\/(?:problems|editor|admin\/problem-edit)\/([^/]+)(\/edit)?\/?$/i.exec(path);
   if (problem) {
     let reference: string;
     try {
@@ -54,13 +71,15 @@ export function defaultWorkspaceDestination(path: string): DefaultWorkspaceDesti
     }
     return {
       problemRef: reference,
-      editor: path.startsWith('/admin/problem-edit/') || !!problem[2],
-      ...(path.startsWith('/editor/') ? { solve: true } : {}),
+      editor: lower.startsWith('/admin/problem-edit/') || !!problem[2],
+      ...(lower.startsWith('/editor/') ? { solve: true } : {}),
     };
   }
-  const resource = /^\/(trainings|contests|submissions)\/(.+)$/.exec(path);
-  if (/^\/community\/posts\/[^/]+$/.test(path)) return { path: `/d/main${path}` };
-  if (resource?.[1] === 'trainings' && resource[2]?.startsWith('tr-')) return { trainingRef: resource[2] };
-  if (resource) return { path: `/d/main/${resource[1]}/${resource[2]}` };
+  const resource = /^\/(trainings|contests|submissions)\/(.+)$/i.exec(path);
+  const post = /^\/community\/posts\/([^/]+)$/i.exec(path);
+  if (post) return { path: `/d/main/community/posts/${post[1]}` };
+  const kindOf = resource?.[1]?.toLowerCase();
+  if (kindOf === 'trainings' && resource![2]?.startsWith('tr-')) return { trainingRef: resource![2] };
+  if (resource) return { path: `/d/main/${kindOf}/${resource[2]}` };
   return null;
 }

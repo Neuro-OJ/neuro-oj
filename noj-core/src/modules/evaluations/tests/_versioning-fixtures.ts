@@ -13,11 +13,11 @@ import {
 import { publishBaselineVersionForTest } from "../../../../tests/helper.ts";
 import { saveEvaluationResult } from "../services/submissions/submissions-result.ts";
 import type { JudgeResult } from "../types/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../access/workspace/index.ts";
 import {
   addDomainMember,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../access/workspace/index.ts";
+} from "../../../../tests/helpers/workspace-actors.ts";
 import type { DomainMemberRole } from "../../../shared/access/roles.ts";
 import { acceptRejudgeJob } from "../services/versioning/rejudge-jobs.ts";
 import { backfillDefaultCatalog } from "../../problems/index.ts";

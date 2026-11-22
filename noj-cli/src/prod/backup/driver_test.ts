@@ -276,3 +276,142 @@ Deno.test("MinIO 镜像沿用采集数据库的独立 Compose 项目", async () 
     await Deno.remove(dir, { recursive: true });
   }
 });
+
+Deno.test("tarZstEncrypt：有 pipe() 时流式直出，零中间 .tar.zst 且捕获两端失败", async () => {
+  const dir = await makeTempDir();
+  try {
+    const piped: Array<{
+      firstCmd: string;
+      firstArgs: string[];
+      secondCmd: string;
+      secondArgs: string[];
+    }> = [];
+    let outcome = {
+      firstCode: 0,
+      secondCode: 0,
+      firstStderr: "",
+      secondStderr: "",
+    };
+    const runner = {
+      ...realRunner(),
+      pipe(
+        first: { cmd: string; args: string[] },
+        second: { cmd: string; args: string[] },
+      ) {
+        piped.push({
+          firstCmd: first.cmd,
+          firstArgs: [...first.args],
+          secondCmd: second.cmd,
+          secondArgs: [...second.args],
+        });
+        return Promise.resolve(outcome);
+      },
+    };
+    const compose = {
+      composeFile: "/opt/noj/docker-compose.prod.yml",
+      envFile: "/opt/noj/.env.prod",
+      dockerBin: "docker",
+    };
+    const ops = createProdPayloadOps({
+      runner,
+      driver: realRawDriver(runner),
+      compose,
+      env: {},
+    });
+    const staging = join(dir, "staging");
+    await Deno.mkdir(staging, { recursive: true });
+    const dest = join(dir, ".nojbackup-out.tmp");
+    await ops.tarZstEncrypt!(staging, dest, 9, "/etc/pass");
+    assertEquals(piped.length, 1);
+    assertEquals(piped[0]!.firstCmd, "tar");
+    assertEquals(
+      piped[0]!.firstArgs,
+      ["-I", "zstd -9", "-cf", "-", "-C", staging, "."],
+    );
+    assertEquals(piped[0]!.secondCmd, "gpg");
+    assertEquals(
+      piped[0]!.secondArgs.some((a) => a.endsWith(".tar.zst")),
+      false,
+      "流式管道不得引用中间 .tar.zst 文件",
+    );
+    const entries = await Array.fromAsync(Deno.readDir(dir));
+    assertEquals(
+      entries.some((e) => e.name.endsWith(".tar.zst")),
+      false,
+      "目录内不得产生任何中间 .tar.zst",
+    );
+
+    outcome = {
+      firstCode: 2,
+      secondCode: 0,
+      firstStderr: "tar pipe err",
+      secondStderr: "",
+    };
+    let errMsg = "";
+    try {
+      await ops.tarZstEncrypt!(staging, dest, 9, "/etc/pass");
+    } catch (err) {
+      errMsg = (err as Error).message;
+    }
+    assert(errMsg.includes("tar 打包") && errMsg.includes("tar pipe err"));
+
+    outcome = {
+      firstCode: 0,
+      secondCode: 2,
+      firstStderr: "",
+      secondStderr: "gpg pipe err",
+    };
+    errMsg = "";
+    try {
+      await ops.tarZstEncrypt!(staging, dest, 9, "/etc/pass");
+    } catch (err) {
+      errMsg = (err as Error).message;
+    }
+    assert(errMsg.includes("gpg 加密") && errMsg.includes("gpg pipe err"));
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
+Deno.test("tarZstEncrypt：无 pipe() 时回退临时归档并在失败后清理", async () => {
+  const dir = await makeTempDir();
+  try {
+    const runner = {
+      run(cmd: string, _args: string[]) {
+        if (cmd === "gpg") {
+          return Promise.resolve({ code: 2, stdout: "", stderr: "gpg boom" });
+        }
+        return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      },
+      spawn() {
+        throw new Error("no spawn");
+      },
+    };
+    const ops = createProdPayloadOps({
+      runner,
+      driver: realRawDriver(runner),
+      compose: {
+        composeFile: "/opt/noj/docker-compose.prod.yml",
+        envFile: "/opt/noj/.env.prod",
+        dockerBin: "docker",
+      },
+      env: {},
+    });
+    const dest = join(dir, ".nojbackup-fallback.tmp");
+    let errMsg = "";
+    try {
+      await ops.tarZstEncrypt!(join(dir, "staging"), dest, 9, "/etc/pass");
+    } catch (err) {
+      errMsg = (err as Error).message;
+    }
+    assert(errMsg.includes("gpg boom"));
+    const entries = await Array.fromAsync(Deno.readDir(dir));
+    assertEquals(
+      entries.some((e) => e.name.endsWith(".tar.zst")),
+      false,
+      "失败后必须清理回退临时 .tar.zst",
+    );
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});

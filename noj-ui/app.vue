@@ -35,7 +35,7 @@ const TITLE_RULES: { match: string; key: string }[] = [
   { match: "/submissions", key: "submission.title" },
   { match: "/contests", key: "contest.title" },
   { match: "/community", key: "nav.community" },
-  { match: "/ranking", key: "nav.ranking" },
+  { match: "/leaderboard", key: "nav.ranking" },
   { match: "/about", key: "nav.about" },
   { match: "/", key: "nav.home" },
 ]

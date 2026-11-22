@@ -8,7 +8,6 @@ import { type QueueData, type QueueScope, useDomainQueue } from '~/composables/u
 import QueueRow from '~/components/feature/QueueRow.vue';
 import SubmissionsPage from '~/pages/d/[slug]/submissions/index.vue';
 import QueuePage from '~/pages/d/[slug]/queue.vue';
-import LegacyQueuePage from '~/pages/queue.vue';
 import LegacyObjectiveSubmissionsPage from '~/pages/d/[slug]/objective-submissions/index.vue';
 
 const getMock = vi.fn();
@@ -615,11 +614,6 @@ describe('评测队列页面', () => {
 });
 
 describe('兼容重定向页面', () => {
-  it('旧 /queue 页面渲染重定向状态提示', () => {
-    const view = mount(LegacyQueuePage, { global: { stubs } });
-    expect(view.text()).toContain('正在重定向至评测队列...');
-  });
-
   it('旧 /d/:slug/objective-submissions 页面渲染重定向状态提示', () => {
     const view = mount(LegacyObjectiveSubmissionsPage, { global: { stubs } });
     expect(view.text()).toContain('正在重定向至客观题提交...');

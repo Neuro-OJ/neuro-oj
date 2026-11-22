@@ -23,8 +23,8 @@ Status: implemented
 - 排版遵循 GitHub Markdown 常见写法：顶部 `div align="center"` 居中标题块，
   标准 shields 徽章从 7 个减到 3 个（License、CI、文档站），标题不使用 emoji，
   章节间不插入额外分隔线，最多保留一张角色表。不做自定义品牌配色或过度 HTML。
-- 面向贡献者的链接仍保留仓库相对路径（`CONTRIBUTING.md`、`AGENTS.md`、
-  `SECURITY.md`、`LICENSE`），因为它们本就在仓库内。
+- 面向贡献者的链接仍保留仓库相对路径（`.github/CONTRIBUTING.md`、`AGENTS.md`、
+  `.github/SECURITY.md`、`LICENSE`），因为它们本就在仓库内。
 - 因 `noj-docs` 配置 `cleanUrls: false`，文档站链接带 `.html` 后缀。
 
 连带修复 `AGENTS.md` §13 故障排查条目：原 `README.md#故障排查` 锚点随章节删除而

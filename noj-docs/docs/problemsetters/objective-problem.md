@@ -85,34 +85,42 @@ Markdown 格式与 LaTeX 科学公式：
   {
     "key": "q1",
     "type": "single",
-    "title": "在标准 Transformer 架构中，自注意力机制（Self-Attention）的计算复杂度关于序列长度 $N$ 是：",
-    "options": {
-      "A": "$\\mathcal{O}(N)$",
-      "B": "$\\mathcal{O}(N \\log N)$",
-      "C": "$\\mathcal{O}(N^2)$",
-      "D": "$\\mathcal{O}(N^3)$"
-    },
-    "answer": "C",
+    "prompt": "在标准 Transformer 架构中，自注意力机制（Self-Attention）的计算复杂度关于序列长度 $N$ 是：",
+    "options": [
+      { "key": "A", "text": "$\\mathcal{O}(N)$" },
+      { "key": "B", "text": "$\\mathcal{O}(N \\log N)$" },
+      { "key": "C", "text": "$\\mathcal{O}(N^2)$" },
+      { "key": "D", "text": "$\\mathcal{O}(N^3)$" }
+    ],
+    "answer": [
+      "C"
+    ],
     "explanation": "标准 Dot-Product Attention 需要计算长度为 $N \\times N$ 的注意力矩阵，因此复杂度为二次方 $\\mathcal{O}(N^2)$。"
   },
   {
     "key": "q2",
     "type": "multiple",
-    "title": "下列微调技术中，属于参数高效微调（PEFT）范畴的是：",
-    "options": {
-      "A": "LoRA (Low-Rank Adaptation)",
-      "B": "全量参数微调 (Full Parameter Fine-Tuning)",
-      "C": "Prefix-Tuning",
-      "D": "QLoRA"
-    },
-    "answer": ["A", "C", "D"],
+    "prompt": "下列微调技术中，属于参数高效微调（PEFT）范畴的是：",
+    "options": [
+      { "key": "A", "text": "LoRA (Low-Rank Adaptation)" },
+      { "key": "B", "text": "全量参数微调 (Full Parameter Fine-Tuning)" },
+      { "key": "C", "text": "Prefix-Tuning" },
+      { "key": "D", "text": "QLoRA" }
+    ],
+    "answer": [
+      "A",
+      "C",
+      "D"
+    ],
     "explanation": "全量参数微调更新所有模型权重，不属于参数高效微调（PEFT）；A、C、D 均为经典 PEFT 方法。"
   },
   {
     "key": "q3",
     "type": "judge",
-    "title": "FlashAttention 主要通过利用 GPU SRAM 的高速局部性与重计算，减少了对 HBM 的显存读写访问。",
-    "answer": true,
+    "prompt": "FlashAttention 主要通过利用 GPU SRAM 的高速局部性与重计算，减少了对 HBM 的显存读写访问。",
+    "answer": [
+      true
+    ],
     "explanation": "FlashAttention 核心优化是将注意力计算分块置于片上 SRAM 中，避免在昂贵的 HBM 间来回搬运中间注意力图。"
   }
 ]
@@ -122,14 +130,20 @@ Markdown 格式与 LaTeX 科学公式：
 
 - **`key`**：题目的唯一英文标识符（字符串），用于客户端与判分引擎定位作答；
 - **`type`**：小题类型，严格限定为 `"single"`、`"multiple"` 或 `"judge"`；
-- **`title`**：小题题干，支持富文本排版与公式；
-- **`options`**：选项字典（仅 `single` 与 `multiple` 必需），键名推荐大写字母
-  `"A"`, `"B"`, `"C"`, `"D"`；
-- **`answer`**：标准答案：
-  - 单选：字符串（如 `"A"`）；
-  - 多选：字符串数组（如 `["A", "C"]`，内部无序存储）；
-  - 判断：布尔值（`true` 或 `false`）；
+- **`prompt`**：小题题干，支持富文本排版与公式；
+- **`options`**：选项数组（仅 `single` 与 `multiple` 必需），每项为
+  `{"key": "A", "text": "..."}`，`key` 不可重复，推荐大写字母 `A`、`B`、`C`、`D`；
+  判断题省略本字段；
+- **`answer`**：标准答案，**一律为非空数组**：
+  - 单选：恰好一个选项 key（如 `["A"]`）；
+  - 多选：选项 key 数组（如 `["A", "C"]`，不可重复，内部无序存储）；
+  - 判断：`[true]` 或 `[false]`；
+- **`sort_order`**（可选）：卷内排序，非负整数且不重复，缺省按数组顺序；
 - **`explanation`**（可选）：试题详解，在符合揭榜条件时向作答者展示。
+
+`noj-cli problem lint` 按导入同一规则校验 `questions.json`（字段写错即报
+`must/questions-invalid`）；`noj-cli problem init <slug> --template objective`
+可生成一份带作答样例、能直接 `problem test` 的客观题模板。
 
 ---
 

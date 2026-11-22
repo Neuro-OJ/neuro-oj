@@ -9,7 +9,10 @@ import { connectRedis, getRedis } from "../../../../../shared/mq/connection.ts";
 import { createUserToken } from "../../../../../../tests/helper.ts";
 import { verifyToken } from "../../../identity/index.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
-import { createDomain, ensureDefaultWorkspace } from "../../index.ts";
+import {
+  createDomain,
+  ensureDefaultWorkspace,
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 import { consumeDomainSubmissionQuota } from "../../services/submission-limit.ts";
 
 Deno.test({

@@ -30,11 +30,11 @@ import {
   users,
 } from "../../../../shared/db/schema.ts";
 import { listPaperQuestionsWithAccess } from "../../../problems/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
 import {
   addDomainMember,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { generatePublicId } from "../../../../shared/security/public-id.ts";
 
 await resetDbForTest();

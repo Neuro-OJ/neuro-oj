@@ -23,18 +23,20 @@ import {
 import { updateSetting } from "../../../../platform/system/index.ts";
 import {
   assertDomainFeatureEnabled,
+  DEFAULT_DOMAIN_ID,
+  getDomainEffectiveLimits,
+  getInstancePolicy,
+} from "../../index.ts";
+import {
   consumeDomainInvitation,
   createDomain,
   createDomainInvitation,
-  DEFAULT_DOMAIN_ID,
   ensureDefaultWorkspace,
-  getDomainEffectiveLimits,
-  getInstancePolicy,
   joinDomain,
   setMemberRole,
   updateDomain,
   updateDomainLimits,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 async function account(admin = false) {
   const id = crypto.randomUUID();

@@ -19,10 +19,27 @@ import {
   createContainer,
   type CreateContainerResult,
 } from "../backup/container.ts";
+import {
+  acquireBackupLock,
+  checkAndCleanStaleBackupArtifacts,
+} from "../backup/stale-cleanup.ts";
 import { pruneBackups } from "../backup/list.ts";
-import { createProdPayloadOps, realRawDriver } from "../backup/driver.ts";
+import {
+  createProdPayloadOps,
+  type ProdComposeContext,
+  realRawDriver,
+} from "../backup/driver.ts";
 import { writeBackupMetrics } from "../backup/metrics.ts";
 import type { ContainerPayloadOps } from "../backup/container.ts";
+import {
+  type BackupDataEstimate,
+  type DiskPartitionInfo,
+  estimateBackupDataSize,
+  evaluateBackupDiskSpace,
+  formatDiskBytes,
+  probeDiskPartition,
+  resolveBackupMinFreeMb,
+} from "../disk-space.ts";
 import {
   installSchedule,
   removeSchedule,
@@ -68,27 +85,19 @@ function assertNonNegative(value: number, flag: string): number {
   return value;
 }
 
-/**
- * 探测目录可用字节数（`df -Pk <dir>` 的等价，经注入 runner）。
- *
- * 与 `drill/plan.ts:probeFreeBytes` 同源，但这里返回**字节**且无法探测时返回
- * `Infinity`（放行）——空间守卫的语义是"明显不足才拒绝"，而不是因为
- * `df` 不可用就拒绝一切备份。
- */
-async function probeDirFreeBytes(
-  runner: CommandRunner,
-  dir: string,
-): Promise<number> {
-  try {
-    const res = await runner.run("df", ["-Pk", dir]);
-    if (res.code !== 0) return Number.POSITIVE_INFINITY;
-    const lines = res.stdout.trim().split("\n");
-    const cols = lines[lines.length - 1]?.split(/\s+/) ?? [];
-    const availKb = Number(cols[3]);
-    return Number.isFinite(availKb) ? availKb * 1024 : Number.POSITIVE_INFINITY;
-  } catch {
-    return Number.POSITIVE_INFINITY;
-  }
+/** 构造备份采集与数据量估算共用的只读 compose 上下文。 */
+export function buildBackupComposeContext(
+  composeFile: string,
+  envFile: string,
+  processEnv: Record<string, string | undefined>,
+): ProdComposeContext {
+  return {
+    composeFile,
+    envFile,
+    dockerBin: processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker",
+    judge: true,
+    noAnsi: true,
+  };
 }
 
 /**
@@ -176,7 +185,7 @@ export interface BackupCreateCliOptions {
   /**
    * 最低可用空间（MB，`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）。
    *
-   * 采集**之前**校验，空间不足直接失败，避免 `backup create` 把磁盘写满。
+   * 作为固定兜底下限与数据量估算峰值取较大值，空间不足直接失败。
    */
   minFreeMb?: number;
   args: string[];
@@ -185,27 +194,27 @@ export interface BackupCreateCliOptions {
    * 采集/打包操作集注入点；缺省用真实的 `createProdPayloadOps`。
    *
    * 存在的理由：**让"create 成功后是否写了指标"这条接线可测**。
-   * 真实 ops 需要 pg/redis/minio 与 tar/zstd，单测环境不具备；
-   * 若不注入，指标接线就只能靠"手抄一个 writeBackupMetrics 再断言"来假装覆盖
-   * （那样测的是 metrics.ts 自身，而非 create 的接线）。
    */
   ops?: ContainerPayloadOps;
-  /**
-   * 可用空间探测注入点（缺省用 `df -Pk`）。
-   *
-   * 单独暴露是为了让"空间不足必须拒绝"这条守卫可测——真实 `df` 无法在单测里
-   * 造出"磁盘已满"。
-   */
+  /** 可用空间探测注入点（仅返回可用字节）。 */
   probeFreeBytes?: (dir: string) => Promise<number>;
+  /** 分区级磁盘空间探测注入点（缺省用 `probeDiskPartition`）。 */
+  probePartition?: (dir: string) => Promise<DiskPartitionInfo | null>;
+  /** 数据量估算注入点（缺省用 `estimateBackupDataSize`）。 */
+  estimateDataSize?: () => Promise<BackupDataEstimate | null>;
+  /** 调用方预估算的结果透传（如 `update` 预检已估过，避免重复运行 `mc du`）。 */
+  precomputedEstimate?: BackupDataEstimate | null;
+  /** 进程存活探测注入点（供测试残留清理与锁判定）。 */
+  isProcessAlive?: (pid: number) => Promise<boolean>;
 }
 
 /**
  * `backup create`（`createContainer` 的**命令级装配**）。
  *
- * 读 `.env.prod` → 构造 prod-raw 操作集 → 采集 → 打包加密 → 写 sidecar。
- *
- * `migrationStatus` 经 {@link readMigrationStatus} **真查**数据库，
- * 与 drill 的比对口径一致。
+ * 1. 参数校验；
+ * 2. 检查并发锁并清理上次崩溃遗留的 staging / 临时产物；
+ * 3. 按数据量与兜底下限执行磁盘空间预检（在任何写入与锁创建之前）；
+ * 4. 持锁执行采集 → 流式打包加密 → 原子提交 → 指标 → 清理旧快照。
  */
 export async function runBackupCreate(
   dir: string,
@@ -235,107 +244,173 @@ export async function runBackupCreate(
     opts.retentionDays ?? 30,
     "--retention-days",
   );
-  const minFreeMb = assertNonNegative(opts.minFreeMb ?? 1024, "--min-free-mb");
+  const flagMinFreeMb = opts.minFreeMb !== undefined
+    ? assertNonNegative(opts.minFreeMb, "--min-free-mb")
+    : numberFlag(opts.args, "--min-free-mb");
+  const minFreeMb = resolveBackupMinFreeMb({
+    flag: flagMinFreeMb,
+    processEnv: d.processEnv["NOJ_BACKUP_MIN_FREE_MB"],
+    configured: env["NOJ_BACKUP_MIN_FREE_MB"],
+  });
+  const note = opts.deps.err ?? ((t: string) => console.error(t));
 
-  // ---- 0b. 可用空间守卫----
-  // 这是备份场景最常见的自伤方式：磁盘写满后连恢复都没有余量。
-  const probe = opts.probeFreeBytes ??
-    ((target: string) => probeDirFreeBytes(d.runner, target));
-  const freeBytes = await probe(backupDir);
-  if (Number.isFinite(freeBytes) && freeBytes < minFreeMb * 1024 * 1024) {
-    throw new Error(
-      `备份目录可用空间不足：需要至少 ${minFreeMb}MB（可用 ${
-        Math.floor(freeBytes / (1024 * 1024))
-      }MB）`,
+  // ---- 0a. 启动前检查锁并清理上次异常中断残留的临时产物 ----
+  const cleaned = await checkAndCleanStaleBackupArtifacts(backupDir, {
+    runner: d.runner,
+    isProcessAlive: opts.isProcessAlive,
+    now: opts.deps.now?.(),
+  });
+  if (cleaned.removedStaleLock || cleaned.removed.length > 0) {
+    note(
+      `✓ 启动前已清理崩溃残留（释放 ${
+        formatDiskBytes(cleaned.reclaimedBytes)
+      }，移除 ${cleaned.removed.length} 项临时产物）`,
     );
+  }
+
+  // ---- 0b. 按固定下限 + 真实数据量预估执行磁盘空间预检（零写入前拦截）----
+  const composeCtx = buildBackupComposeContext(
+    composeFile,
+    envFile,
+    d.processEnv,
+  );
+  let partition: DiskPartitionInfo | null = null;
+  let availableBytes = Number.POSITIVE_INFINITY;
+  if (opts.probeFreeBytes !== undefined) {
+    availableBytes = await opts.probeFreeBytes(backupDir);
+  } else {
+    partition = opts.probePartition !== undefined
+      ? await opts.probePartition(backupDir)
+      : await probeDiskPartition(d.runner, backupDir);
+    if (partition !== null) availableBytes = partition.availableBytes;
+  }
+
+  const streaming = opts.noEncrypt === true || (
+    opts.ops === undefined
+      ? d.runner.pipe !== undefined
+      : opts.ops.tarZstEncrypt !== undefined
+  );
+  if (Number.isFinite(availableBytes)) {
+    const floorCheck = evaluateBackupDiskSpace({
+      partition,
+      availableBytes,
+      minFreeMb,
+      estimate: null,
+      streaming,
+    });
+    if (!floorCheck.ok) {
+      throw new Error(floorCheck.error ?? "备份目录可用空间不足");
+    }
+
+    const estimate = opts.precomputedEstimate !== undefined
+      ? opts.precomputedEstimate
+      : opts.estimateDataSize !== undefined
+      ? await opts.estimateDataSize()
+      : await estimateBackupDataSize({
+        runner: d.runner,
+        compose: composeCtx,
+        env,
+      });
+    const fullCheck = evaluateBackupDiskSpace({
+      partition,
+      availableBytes,
+      minFreeMb,
+      estimate,
+      streaming,
+    });
+    if (!fullCheck.ok) {
+      throw new Error(fullCheck.error ?? "备份目录可用空间不足");
+    }
   }
 
   const ops = opts.ops ?? createProdPayloadOps({
     runner: d.runner,
     driver: realRawDriver(d.runner),
-    compose: {
-      composeFile,
-      envFile,
-      dockerBin: d.processEnv["NOJ_DEPLOY_DOCKER_BIN"] ?? "docker",
-      judge: true,
-      noAnsi: true,
-    },
+    compose: composeCtx,
     env,
   });
 
-  const created = await createContainer({
-    backupDir,
-    // staging 与产物同目录：跨目录 rename 可能退化为拷贝并丢失原子性
-    stagingParent: backupDir,
-    passphraseFile,
-    noEncrypt: opts.noEncrypt === true,
-    zstdLevel: opts.zstdLevel,
-    retentionDays,
-    envFile,
-    postgresDatabase: env["POSTGRES_DB"] ?? "noj",
-    migrationStatus: await readMigrationStatus(
-      d.runner,
-      composeFile,
-      envFile,
-      env,
-    ),
-    ops,
+  // ---- 0c. 获取排他锁并在 finally 确保释放 ----
+  const lock = await acquireBackupLock(backupDir, {
+    runner: d.runner,
+    isProcessAlive: opts.isProcessAlive,
     now: opts.deps.now?.(),
   });
-
-  // ---- 13. 备份新鲜度指标（node_exporter textfile）----
-  // **只在成功后写**：`NojBackupStale` 的语义是"最近一次**成功**距今多久"，
-  // 失败也写会让"备份一直没成功"被掩盖——那正是该告警要抓的。
-  // 指标缺失（脚本删掉后 TS 侧曾无写入方）会触发 `NojBackupMetricMissing`
-  // 持续报警，进而让人忽略真正的备份故障。
+  let created: CreateContainerResult;
   try {
-    const size = (await Deno.stat(created.path)).size;
-    const at = opts.deps.now?.() ?? new Date();
-    await writeBackupMetrics({
+    created = await createContainer({
       backupDir,
-      explicitDir: d.processEnv["NOJ_BACKUP_METRICS_DIR"],
-      unixSeconds: Math.floor(at.getTime() / 1000),
-      snapshotBytes: size,
+      // staging 与产物同目录：跨目录 rename 可能退化为拷贝并丢失原子性
+      stagingParent: backupDir,
+      passphraseFile,
+      noEncrypt: opts.noEncrypt === true,
+      zstdLevel: opts.zstdLevel,
+      retentionDays,
+      envFile,
+      postgresDatabase: env["POSTGRES_DB"] ?? "noj",
+      migrationStatus: await readMigrationStatus(
+        d.runner,
+        composeFile,
+        envFile,
+        env,
+      ),
+      ops,
+      now: opts.deps.now?.(),
     });
-  } catch (err) {
-    // 备份**本体**已成功，指标写失败不该把成功报成失败；但必须可见
-    // （静默会让"指标缺失"变成无声故障）。
-    (opts.deps.err ?? ((t: string) => console.error(t)))(
-      `! 备份已完成，但新鲜度指标写入失败：${(err as Error).message}`,
-    );
-  }
 
-  // ---- 14. 按保留天数清理旧快照----
-  // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
-  // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
-  //
-  // **人类提示一律走 stderr**（2026-09-23 复审）：`backup create --json` 的 stdout
-  // 必须**逐字节为 JSON**，此前这些 `✓ 已清理…` 走 stdout
-  // 会让 `JSON.parse(stdout)` 直接抛错。
-  const note = opts.deps.err ?? ((t: string) => console.error(t));
-  try {
-    const pruned = await pruneBackups(backupDir, {
-      olderThanDays: retentionDays,
-      confirm: true,
-      // **必须把"刚创建的这一份"排除在清理之外**：`--retention-days 0` 的语义是
-      // "不留旧快照"，但刚产出的这一份不在其列。
-      // 若按 `ageDays > 0` 判定，刚产出的快照（ageDays≈0）在某些时钟/时区下会
-      // 被判为"过期"并当场删除，只剩孤儿 `.sha256`（复审实测：exit 0 但快照消失）。
-      excludePaths: new Set([created.path]),
-    });
-    for (const path of pruned.deleted) {
-      note(`✓ 已清理过期快照：${path}`);
+    // ---- 13. 备份新鲜度指标（node_exporter textfile）----
+    // **只在成功后写**：`NojBackupStale` 的语义是"最近一次**成功**距今多久"，
+    // 失败也写会让"备份一直没成功"被掩盖——那正是该告警要抓的。
+    // 指标缺失（脚本删掉后 TS 侧曾无写入方）会触发 `NojBackupMetricMissing`
+    // 持续报警，进而让人忽略真正的备份故障。
+    try {
+      const size = (await Deno.stat(created.path)).size;
+      const at = opts.deps.now?.() ?? new Date();
+      await writeBackupMetrics({
+        backupDir,
+        explicitDir: d.processEnv["NOJ_BACKUP_METRICS_DIR"],
+        unixSeconds: Math.floor(at.getTime() / 1000),
+        snapshotBytes: size,
+      });
+    } catch (err) {
+      // 备份**本体**已成功，指标写失败不该把成功报成失败；但必须可见
+      // （静默会让"指标缺失"变成无声故障）。
+      note(`! 备份已完成，但新鲜度指标写入失败：${(err as Error).message}`);
     }
-    if (pruned.failed.length > 0) {
-      note(
-        `! 有 ${pruned.failed.length} 份过期快照清理失败：` +
-          pruned.failed.map((f) => f.path).join("、"),
-      );
+
+    // ---- 14. 按保留天数清理旧快照----
+    // **只在成功后做**：备份失败时清理旧快照等于把"没有新备份"变成"没有备份"。
+    // 删除失败不改变备份已成功的事实，但必须可见（否则"已清理"是假成功）。
+    //
+    // **人类提示一律走 stderr**（2026-09-23 复审）：`backup create --json` 的 stdout
+    // 必须**逐字节为 JSON**，此前这些 `✓ 已清理…` 走 stdout
+    // 会让 `JSON.parse(stdout)` 直接抛错。
+    try {
+      const pruned = await pruneBackups(backupDir, {
+        olderThanDays: retentionDays,
+        confirm: true,
+        // **必须把"刚创建的这一份"排除在清理之外**：`--retention-days 0` 的语义是
+        // "不留旧快照"，但刚产出的这一份不在其列。
+        // 若按 `ageDays > 0` 判定，刚产出的快照（ageDays≈0）在某些时钟/时区下会
+        // 被判为"过期"并当场删除，只剩孤儿 `.sha256`（复审实测：exit 0 但快照消失）。
+        excludePaths: new Set([created.path]),
+      });
+      for (const path of pruned.deleted) {
+        note(`✓ 已清理过期快照：${path}`);
+      }
+      if (pruned.failed.length > 0) {
+        note(
+          `! 有 ${pruned.failed.length} 份过期快照清理失败：` +
+            pruned.failed.map((f) => f.path).join("、"),
+        );
+      }
+    } catch (err) {
+      note(`! 备份已完成，但过期快照清理失败：${(err as Error).message}`);
     }
-  } catch (err) {
-    note(`! 备份已完成，但过期快照清理失败：${(err as Error).message}`);
+    return created;
+  } finally {
+    await lock.release();
   }
-  return created;
 }
 
 /** `backup verify`（三档）。 */

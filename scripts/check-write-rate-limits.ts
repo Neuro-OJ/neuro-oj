@@ -47,10 +47,6 @@ export const ALLOWLIST: Record<
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
-  "noj-core/src/modules/http/admin/routes/contest.ts": {
-    status: "exempt",
-    reason: "管理后台写操作：admin 权限 + 审计日志兜底",
-  },
   "noj-core/src/modules/http/admin/routes/gateway.ts": {
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",

@@ -27,10 +27,12 @@ import {
   listDomainContests,
 } from "../services/domain-contests.ts";
 import {
+  findDomainContestSimilarSubmissions,
   getDomainContestFinalRanking,
   getDomainContestProblems,
   getDomainContestRanking,
   getDomainContestSettlement,
+  getDomainContestSnapshotExport,
   getDomainContestSnapshots,
   publishDomainContestRanking,
 } from "../services/domain-results.ts";
@@ -47,6 +49,14 @@ import {
   replyToClarification,
 } from "../services/contest-clarifications.ts";
 import { domainContestSseRouter } from "./sse.ts";
+import {
+  buildRankingCsv,
+  buildRankingSnapshotJson,
+  csvResponse,
+  parseSimilarityLimit,
+  parseSimilarityThreshold,
+  parseSnapshotFile,
+} from "./ranking-export.ts";
 import {
   getDomainContestObjectiveQuestions,
   getDomainContestTemplate,
@@ -419,6 +429,80 @@ domainContestRouter.get(
         c.var.userId!,
       ),
     }),
+);
+/**
+ * 导出正式成绩：`latest.json` / `latest.csv` / `<版本号>.json` / `<版本号>.csv`。
+ *
+ * Hono 会把 `:version.json` 整体当作参数名，故用单段 `:file` 捕获后自行拆分。
+ * 分数统一换算为展示量纲；CSV 流式写出并带 BOM，禁止缓存。
+ */
+domainContestRouter.get(
+  `${path}/:id/snapshots/:file`,
+  authMiddleware,
+  async (c) => {
+    const { version, format } = parseSnapshotFile(c.req.param("file"));
+    const { contestId, snapshot } = await getDomainContestSnapshotExport(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId!,
+      version,
+    );
+    if (!snapshot) {
+      throw new NotFoundError(
+        version === undefined
+          ? "尚未发布正式成绩"
+          : `正式成绩第 ${version} 版不存在`,
+      );
+    }
+    if (format === "json") {
+      return c.json(buildRankingSnapshotJson(contestId, snapshot));
+    }
+    return csvResponse(
+      buildRankingCsv(snapshot),
+      `contest-${contestId}-ranking-v${snapshot.version}.csv`,
+    );
+  },
+);
+/**
+ * 比赛内互相高度相似的提交对，供组织者人工复核，不代表作弊结论。
+ *
+ * query：`threshold` (0, 1] 默认 0.8；`limit` 1-200 默认 50；
+ * `problem_id` 可选，本场赛题的题目 ID 或标签。响应不含源代码。
+ */
+domainContestRouter.get(
+  `${path}/:id/anti-cheat/similar-submissions`,
+  authMiddleware,
+  async (c) => {
+    const result = await findDomainContestSimilarSubmissions(
+      c.req.param("slug")!,
+      c.req.param("id")!,
+      c.var.userId!,
+      {
+        threshold: parseSimilarityThreshold(c.req.query("threshold")),
+        limit: parseSimilarityLimit(c.req.query("limit")),
+        problem: c.req.query("problem_id")?.trim() || undefined,
+      },
+    );
+    return c.json({
+      data: result.data,
+      meta: {
+        threshold: result.threshold,
+        limit: result.limit,
+        total: result.total,
+        truncated: result.truncated,
+        candidates: result.candidates,
+        participating: result.participating,
+        skipped: result.skipped,
+        buckets: result.buckets,
+        max_submissions: result.max_submissions,
+      },
+      data_policy: {
+        purpose: "竞赛期间代码相似度人工复核",
+        retention_days: 180,
+        automated_penalty: false,
+      },
+    });
+  },
 );
 domainContestRouter.post(
   `${path}/:id/publish-ranking`,

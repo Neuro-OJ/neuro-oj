@@ -3,10 +3,8 @@ import { and, eq } from "drizzle-orm";
 import { ForbiddenError } from "../../../../shared/base/errors.ts";
 import { assignments, userBans } from "../../../../shared/db/schema.ts";
 import { banUser } from "../../../access/identity/index.ts";
-import {
-  consumeDomainInvitation,
-  loadWorkspace,
-} from "../../../access/workspace/index.ts";
+import { loadWorkspace } from "../../../access/workspace/index.ts";
+import { consumeDomainInvitation } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   createAssignment,
   createClassroomInvitation,

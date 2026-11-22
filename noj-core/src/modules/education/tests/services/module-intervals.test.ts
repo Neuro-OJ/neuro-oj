@@ -5,7 +5,7 @@ import {
   getMyAssignmentProgress,
   publishAssignment,
 } from "../../index.ts";
-import { updateDomain } from "../../../access/workspace/index.ts";
+import { updateDomain } from "../../../../../tests/helpers/workspace-actors.ts";
 import { resetSetting, updateSetting } from "../../../platform/system/index.ts";
 import {
   educationDisabledIntervals,

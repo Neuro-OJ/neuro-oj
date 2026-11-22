@@ -313,8 +313,11 @@ Deno.test("evaluation-gate: DELETE 取消等待者并清理", async () => {
       () => readEvaluationGate(placement, gateId),
       (status) => status.arrivals === 1,
     );
+    // 必须在 DELETE 之前挂上拒绝处理：服务端唤醒等待者可能早于 DELETE 响应
+    // 返回，若此时 waiting 尚无处理器，Deno 会判为未处理拒绝并使整个模块失败。
+    const cancelled = assertRejects(() => waiting, EvaluationGateError);
     await deleteEvaluationGate(placement, gateId);
-    const error = await assertRejects(() => waiting, EvaluationGateError);
+    const error = await cancelled;
     assertEquals(error.kind, "cancelled");
     const missing = await assertRejects(
       () => readEvaluationGate(placement, gateId),

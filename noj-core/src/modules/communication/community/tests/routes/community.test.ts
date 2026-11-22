@@ -13,7 +13,7 @@ import {
   problems,
   users,
 } from "../../../../../shared/db/schema.ts";
-import { addDomainMember } from "../../../../access/workspace/index.ts";
+import { addDomainMember } from "../../../../../../tests/helpers/workspace-actors.ts";
 import {
   _resetSystemSettingsForTest,
   initSystemSettings,

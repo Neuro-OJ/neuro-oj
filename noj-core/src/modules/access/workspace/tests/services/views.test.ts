@@ -6,6 +6,7 @@ import { getDb } from "../../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../../tests/helpers/db.ts";
 import { users } from "../../../../../shared/db/schema.ts";
 import { updateSetting } from "../../../../platform/system/index.ts";
+import { previewDomainInvitation } from "../../index.ts";
 import {
   consumeDomainInvitation,
   createDomain,
@@ -14,9 +15,8 @@ import {
   listDomainInvitations,
   listDomainJoinRequests,
   listDomainMembers,
-  previewDomainInvitation,
   setMemberRole,
-} from "../../index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 
 async function account(admin = false) {
   const id = crypto.randomUUID();
@@ -70,7 +70,9 @@ Deno.test("加入申请视图：按域隔离，注销后隐藏用户名且不能
     name: "其他学校",
     preset: "education",
   }, operator);
-  const { updateDomain } = await import("../../index.ts");
+  const { updateDomain } = await import(
+    "../../../../../../tests/helpers/workspace-actors.ts"
+  );
   await updateDomain(domain.slug, operator, domain.revision, {
     configuration: {
       discoverable: true,

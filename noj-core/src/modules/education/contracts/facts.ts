@@ -5,7 +5,51 @@ import {
 } from "../../../shared/db/schema.ts";
 import { sql } from "drizzle-orm";
 import type { EducationNoticeType } from "../../../shared/education-types.ts";
-import { enqueueEducationOutboxTaskTx } from "./outbox-migration.ts";
+import { enqueueTaskTx } from "../../../shared/tasks/repository.ts";
+import type { EnqueueTaskResult } from "../../../shared/tasks/contracts.ts";
+
+/**
+ * outbox 行的通用任务映射。
+ *
+ * 教学事件写入 `education_outbox`（承载游标、租约与通知投递进度），同事务登记
+ * 一条 `education.recompute` 通用任务负责调度；去重键使用 outbox id。
+ */
+/** 旧 outbox 行的稳定任务去重键：保证重复迁移映射到同一条任务。 */
+export function educationOutboxDedupeKey(outboxId: string): string {
+  return `outbox:${outboxId}`;
+}
+
+/**
+ * 在事实事务内登记对应的通用任务。
+ *
+ * outbox 保留完整分页游标，通用任务只携带可恢复的摘要。
+ */
+export async function enqueueEducationOutboxTaskTx(
+  tx: DbTx,
+  row: typeof educationOutbox.$inferSelect,
+): Promise<EnqueueTaskResult> {
+  const payload = row.payload ?? {};
+  const hasCursor = typeof payload._education_cursor === "object" &&
+    payload._education_cursor !== null;
+  return await enqueueTaskTx(tx, {
+    taskType: "education.recompute",
+    targetKind: row.assignment_id ? "assignment" : "domain",
+    targetId: row.assignment_id ?? row.domain_id,
+    dedupeKey: educationOutboxDedupeKey(row.id),
+    payloadVersion: 1,
+    payload: {
+      outbox_id: row.id,
+      domain_id: row.domain_id,
+      event_type: row.event_type,
+      user_id: row.user_id,
+      problem_id: row.problem_id,
+      classroom_id: row.classroom_id,
+      assignment_id: row.assignment_id,
+      education_cursor: hasCursor ? payload._education_cursor : null,
+    },
+    availableAt: row.available_at,
+  });
+}
 
 /** 生产者只登记事实定位，消费者从数据库读取最新结果，不信任事件里的成绩。 */
 export interface EducationEvent {

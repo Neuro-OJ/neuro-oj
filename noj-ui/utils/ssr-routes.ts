@@ -14,12 +14,5 @@ export const CLIENT_ONLY_ROUTES = [
   '/d/*/settings/announcements',
   '/d/*/settings/community',
   '/d/*/solve/*',
-  '/messages',
-  '/my/problems',
-  '/problems/*/edit',
-  '/problems/new/bundle',
-  '/problems/new/objective',
-  '/problems/new/oi',
   '/settings',
-  '/submissions',
 ] as const;

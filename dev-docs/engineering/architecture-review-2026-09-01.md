@@ -108,7 +108,7 @@ Neuro OJ 已从“MVP + 高危审计整改”阶段走向“工程化”阶段�
 建议：
 - schema 按域拆成多个文件（auth、problem、submission、community、contest、llm、system…）再聚合导出；
 - judge `dual/mod.rs` 按“状态机 / 协议解析 / 容器编排”拆分；
-- 继续执行 `dev-docs/superpowers/plans/2026-08-28-engineering-quality-roadmap.md` 中的代码质量治理。
+- 继续执行 `dev-docs/archive/superpowers/plans/2026-08-28-engineering-quality-roadmap.md` 中的代码质量治理。
 
 ### 4.2 前端测试与工程化仍是短板
 

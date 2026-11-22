@@ -54,7 +54,7 @@ AI 工程能力。
 及更早的二进制必须显式指定）：
 
 ```bash
-VERSION=v0.11.0-rc.2   # 替换为目标 Release 标签（见 Releases 页面）
+VERSION=v0.11.0   # 替换为目标 Release 标签（见 Releases 页面）
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64"
 curl -fsSLO "https://github.com/Neuro-OJ/neuro-oj/releases/download/$VERSION/noj-cli-linux-amd64.sha256"
 sha256sum -c noj-cli-linux-amd64.sha256
@@ -79,7 +79,7 @@ chmod +x noj-cli-linux-amd64
 - [快速开始](https://docs.noj.xyber-nova.space/intro/getting-started.html)：完成第一次注册、做题和提交
 - [常见问题](https://docs.noj.xyber-nova.space/intro/faq.html)：排查常见使用与部署问题
 
-开发者请阅读[贡献指南](./CONTRIBUTING.md)与[项目开发约定](./AGENTS.md)。
+开发者请阅读[贡献指南](./.github/CONTRIBUTING.md)与[项目开发约定](./AGENTS.md)；逐版变更记录见[CHANGELOG](./dev-docs/CHANGELOG.md)。
 
 ## 项目结构
 
@@ -109,10 +109,10 @@ noj-docs             用户、运营者和出题人文档站
 ## 参与贡献
 
 欢迎通过 Issue 和 Pull Request
-参与项目。修改代码前请先阅读[贡献指南](./CONTRIBUTING.md)与[项目开发约定](./AGENTS.md)。
+参与项目。修改代码前请先阅读[贡献指南](./.github/CONTRIBUTING.md)与[项目开发约定](./AGENTS.md)。
 
 - [提交 Issue](https://github.com/Neuro-OJ/neuro-oj/issues)
-- [报告安全漏洞（私下）](./SECURITY.md)
+- [报告安全漏洞（私下）](./.github/SECURITY.md)
 - [查看 CI](https://github.com/Neuro-OJ/neuro-oj/actions)
 
 ## 许可证

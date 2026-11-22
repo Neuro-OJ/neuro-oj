@@ -201,6 +201,14 @@ export default withMermaid(defineConfig({
             },
             { text: "A+B 完整样例题拆解", link: "/problemsetters/ab-example" },
             {
+              text: "本地验题（problem test）",
+              link: "/problemsetters/local-test",
+            },
+            {
+              text: "AI 辅助出题（Skill）",
+              link: "/problemsetters/ai-skill",
+            },
+            {
               text: "Web 题目编辑器全流程",
               link: "/problemsetters/web-editor",
             },
@@ -245,6 +253,14 @@ export default withMermaid(defineConfig({
             },
             { text: "A+B 完整样例题拆解", link: "/problemsetters/ab-example" },
             {
+              text: "本地验题（problem test）",
+              link: "/problemsetters/local-test",
+            },
+            {
+              text: "AI 辅助出题（Skill）",
+              link: "/problemsetters/ai-skill",
+            },
+            {
               text: "Web 题目编辑器全流程",
               link: "/problemsetters/web-editor",
             },
@@ -286,6 +302,10 @@ export default withMermaid(defineConfig({
             {
               text: "生产部署 (noj-cli)",
               link: "/operators/production-deploy",
+            },
+            {
+              text: "从 v0.10.6 升级至 v0.11",
+              link: "/operators/upgrade-v010-to-v011",
             },
             {
               text: "工作空间部署与治理",

@@ -18,19 +18,23 @@ import { eq } from "drizzle-orm";
 import { closeDbForShutdown, getDb } from "../src/shared/db/connection.ts";
 import { closeRedisForShutdown } from "../src/shared/mq/connection.ts";
 import { domains } from "../src/shared/db/schema.ts";
-import { Command } from "@cliffy/command";
+import { Command, ValidationError } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
-import { runMigrations } from "./../src/shared/db/migrate.ts";
+import { runMigrations } from "../src/shared/db/migrate.ts";
 import { Secret } from "jsr:@cliffy/prompt@^1.2.1";
 import {
   ensureRootUser,
   initializeFirstAdmin,
   sealExistingSiteAdminInitialization,
 } from "../src/modules/access/identity/index.ts";
-import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
+import { createSystemActor } from "../src/shared/access/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
 import { initProblem } from "./problems-init.ts";
+import {
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
+} from "./problem-templates.ts";
 import { runMaintain } from "./maintain.ts";
 import {
   ensureAdminFromEnv,
@@ -45,9 +49,9 @@ import {
   importDomainProblemBundle,
   publishDomainProblemVersion,
 } from "../src/modules/problems/index.ts";
-import { ensureDefaultWorkspace } from "../src/modules/access/workspace/index.ts";
+import { ensureDefaultWorkspace } from "../src/modules/access/domains.ts";
 import { reindexAll } from "../src/modules/read-models/search/index.ts";
-import { getBuildInfo } from "./../src/shared/base/build-info.ts";
+import { getBuildInfo } from "../src/shared/base/build-info.ts";
 import {
   importPack,
   type ImportPackResult,
@@ -65,7 +69,8 @@ let requestedExitCode = 0;
 /**
  * 构建单个题目包（problems-src/<id>/ → packages/<id>.zip）。
  *
- * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git。
+ * 排除规则：submission*（参考实现）、__pycache__（字节码）、.git，以及根级
+ * AI 编码助手目录 .agents/ / .claude/（与 noj-cli 的 shouldExclude 对齐）。
  *
  * **模板不做排除**：编辑器初始代码（manifest.template，缺省 template.py）随包
  * 上传，导入时由 `importProblemBundle` 落库到 `problems.template_content`，
@@ -99,6 +104,10 @@ async function buildProblemPackage(id: string): Promise<void> {
       "*__pycache__*",
       "-x",
       ".git/*",
+      "-x",
+      ".agents/*",
+      "-x",
+      ".claude/*",
     ],
     cwd: srcDir,
   });
@@ -221,7 +230,7 @@ async function runInitSystem(): Promise<void> {
   console.log("初始化系统基础数据...");
   await ensureRootUser();
   await sealExistingSiteAdminInitialization();
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
   await seedDomainLlmDefaults();
   console.log("初始化评测镜像白名单...");
   await seedJudgeImages();
@@ -243,7 +252,7 @@ async function runBootstrapAdmin(
   console.log("检查管理员...");
   await ensureAdminFromEnv();
   await ensureBootstrapAdmin();
-  await ensureDefaultWorkspace();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
 }
 
 /** 开发环境一键初始化（含 dev 专用数据：E2E 守卫用户）。 */
@@ -294,7 +303,7 @@ const dbCmd = new Command()
   )
   .action(async () => {
     await ensureRootUser();
-    await ensureDefaultWorkspace();
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
     console.log(JSON.stringify(await backfillDefaultCatalog()));
   })
   .command(
@@ -306,6 +315,52 @@ const dbCmd = new Command()
       "../src/modules/evaluations/index.ts"
     );
     console.log(JSON.stringify(await backfillExecutionWorkspaces()));
+  })
+  .command(
+    "upgrade-v010",
+    "从只读 v0.10.6 源库逻辑迁移历史数据至全新空 v0.11 目标库",
+  )
+  .option(
+    "--source-url <url:string>",
+    "只读 v0.10.6 源库 URL（推荐改用 NOJ_UPGRADE_SOURCE_URL，避免口令进入进程列表）",
+  )
+  .option(
+    "--target-url <url:string>",
+    "只执行过 v0.11 schema 迁移的空目标库 URL（推荐 NOJ_UPGRADE_TARGET_URL）",
+  )
+  .option(
+    "--gateway-url <url:string>",
+    "独立部署的 Gateway 库 URL（推荐 NOJ_UPGRADE_GATEWAY_URL）",
+  )
+  .option(
+    "--private-problems <policy:string>",
+    "已发布私有题处置：disable（禁用绑定待复核）或 expose（接受公开）",
+  )
+  .option(
+    "--restricted-contests <policy:string>",
+    "非公开/邀请/口令比赛处置：expose（接受在 main 域公开）",
+  )
+  .option("--dry-run", "只做只读预检、映射与行数统计，不写入目标库")
+  .option("--json", "输出单个 JSON 文档")
+  .action(async (opts: {
+    sourceUrl?: string;
+    targetUrl?: string;
+    gatewayUrl?: string;
+    privateProblems?: string;
+    restrictedContests?: string;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const { executeUpgradeCli } = await import("./upgrade-from-v010.ts");
+    requestedExitCode = await executeUpgradeCli({
+      sourceUrl: opts.sourceUrl,
+      targetUrl: opts.targetUrl,
+      gatewayUrl: opts.gatewayUrl,
+      privateProblems: opts.privateProblems,
+      restrictedContests: opts.restrictedContests,
+      dryRun: opts.dryRun,
+      json: opts.json,
+    });
   });
 
 const initCmd = new Command()
@@ -353,28 +408,46 @@ const problemsCmd = new Command()
     default: "medium",
   })
   .option("--dir <dir:string>", "输出根目录（缺省 data/problems-src）")
+  .option(
+    "--template <template:string>",
+    `可验题模板：${
+      PROBLEM_TEMPLATE_NAMES.join(" / ")
+    }（含参考解答，可直接 noj-cli problem test）`,
+  )
   .action(
     async (
       opts: {
         title?: string;
         difficulty?: string;
         dir?: string;
+        template?: string;
       },
       slug: string,
     ) => {
+      if (
+        opts.template !== undefined && !isProblemTemplateName(opts.template)
+      ) {
+        throw new ValidationError(
+          `--template 仅支持 ${PROBLEM_TEMPLATE_NAMES.join("/")}`,
+        );
+      }
       const result = await initProblem({
         slug,
         title: opts.title,
         difficulty: opts.difficulty as "easy" | "medium" | "hard" | undefined,
         root: opts.dir,
+        template: opts.template,
       });
       console.log(`已生成题目骨架：${result.dir}`);
       for (const file of result.files) {
         console.log(`  + ${file}`);
       }
       console.log(
-        `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
-          `deno task problems:build --id ${slug}`,
+        opts.template !== undefined
+          ? `\n下一步：运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
+            `再按 README.md 的改造步骤改成你的题目`
+          : `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
+            `deno task problems:build --id ${slug}`,
       );
       if (opts.dir) {
         console.log(

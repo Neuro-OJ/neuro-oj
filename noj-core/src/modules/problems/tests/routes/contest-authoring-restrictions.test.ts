@@ -14,10 +14,8 @@ import {
   problemVersions,
 } from "../../../../shared/db/schema.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
-import {
-  createDomain,
-  DEFAULT_DOMAIN_ID,
-} from "../../../access/workspace/index.ts";
+import { DEFAULT_DOMAIN_ID } from "../../../access/workspace/index.ts";
+import { createDomain } from "../../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import {
   createDefaultCatalogToken,
@@ -136,13 +134,12 @@ Deno.test({
       assertEquals(data.questions[0].answer, [true]);
       assertEquals(data.questions[0].explanation, "秘密解析");
     }
-    const version =
-      (await read(`/api/v1/problems/1001/versions/${versionId}`)).data;
+    const version = await read(`${path}?version_id=${versionId}`);
     assertEquals(version.content.questions[0].answer, [true]);
-    for (const url of [`${path}/draft`, "/api/v1/problems/1001/draft"]) {
-      const response = await jsonRequest(app, url, { token });
-      assertEquals(response.status, 200);
-    }
+    assertEquals(
+      (await jsonRequest(app, `${path}/draft`, { token })).status,
+      200,
+    );
     // 本人创建且当前具有 manage_own 的比赛才属于真实组织权限。
     await db.update(contests).set({ created_by: actor }).where(
       eq(contests.id, contestId),

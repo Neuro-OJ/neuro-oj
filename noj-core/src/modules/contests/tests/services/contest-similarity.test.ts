@@ -707,7 +707,7 @@ Deno.test({
     const adminToken = await signToken({ sub: adminId, role: "admin" });
     const response = await jsonRequest(
       app,
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/similar-submissions`,
+      `/api/v1/domains/main/contests/${contestId}/anti-cheat/similar-submissions`,
       { token: adminToken },
     );
     assertEquals(response.status, 200);
@@ -742,7 +742,7 @@ Deno.test({
     ) {
       const bad = await jsonRequest(
         app,
-        `/api/v1/admin/contest/contests/${contestId}/anti-cheat/similar-submissions?${query}`,
+        `/api/v1/domains/main/contests/${contestId}/anti-cheat/similar-submissions?${query}`,
         { token: adminToken },
       );
       assertEquals(bad.status, 400, `query=${query}`);
@@ -751,7 +751,7 @@ Deno.test({
     // 合法参数：阈值与条数被回显
     const ok = await jsonRequest(
       app,
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/similar-submissions?threshold=0.9&limit=5&problem_id=${problemA}`,
+      `/api/v1/domains/main/contests/${contestId}/anti-cheat/similar-submissions?threshold=0.9&limit=5`,
       { token: adminToken },
     );
     assertEquals(ok.status, 200);
@@ -759,11 +759,19 @@ Deno.test({
     assertEquals(okBody.meta.threshold, 0.9);
     assertEquals(okBody.meta.limit, 5);
 
-    // 权限：普通用户 403（与既有风控端点同一权限口径）
+    // problem_id 只在本场赛题内解析：不是赛题的题目 ID → 404，不能借此探测域外题目
+    const outside = await jsonRequest(
+      app,
+      `/api/v1/domains/main/contests/${contestId}/anti-cheat/similar-submissions?problem_id=${problemA}`,
+      { token: adminToken },
+    );
+    assertEquals(outside.status, 404);
+
+    // 权限：非组织者 403
     const userToken = await signToken({ sub: userC, role: "user" });
     const forbidden = await jsonRequest(
       app,
-      `/api/v1/admin/contest/contests/${contestId}/anti-cheat/similar-submissions`,
+      `/api/v1/domains/main/contests/${contestId}/anti-cheat/similar-submissions`,
       { token: userToken },
     );
     assertEquals(forbidden.status, 403);

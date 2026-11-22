@@ -71,7 +71,6 @@ runtime/type SCC 为 0。
 | read-models   | `src/modules/read-models/`   | 搜索、统计、排行榜、Dashboard 等只读投影                  |
 | application   | `src/modules/application/`   | 跨模块事务编排、后台任务 handler 与系统组合入口           |
 | http          | `src/modules/http/`          | HTTP 路由、middleware 与 admin 聚合装配                   |
-| runtime       | `src/modules/runtime/`       | 持久后台任务、生命周期、系统 actor 与运行时合同           |
 
 ## 表所有权
 
@@ -108,7 +107,7 @@ runtime/type SCC 为 0。
 
 | 设施                                            | 用途                                                                      | 现有使用方                                                                                            |
 | ----------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| PostgreSQL 后台任务（`modules/runtime/tasks/`） | Core 内部必须可靠、需与业务事务一起提交的工作；失败可重试，不允许静默丢失 | `evaluation.dispatch`、`search.index`、`education.recompute`、`storage.reclaim`、`notification.email` |
+| PostgreSQL 后台任务（`shared/tasks/`） | Core 内部必须可靠、需与业务事务一起提交的工作；失败可重试，不允许静默丢失 | `evaluation.dispatch`、`search.index`、`education.recompute`、`storage.reclaim`、`notification.email` |
 | Redis 列表队列（`shared/mq/`）                  | **只用于 Core 与 noj-judge 之间的通信**：评测任务下发与评测结果回传       | 三级评测队列 `{JUDGE_QUEUE}:high/medium/low`、评测结果消费者（`evaluations/mq/`）                     |
 | Redis Pub/Sub                                   | 尽力而为的广播，丢失可接受（SSE 推送、配置变更广播）                      | `noj:events:*`                                                                                        |
 

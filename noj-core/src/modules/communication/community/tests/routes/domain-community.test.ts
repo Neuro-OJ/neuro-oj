@@ -11,7 +11,7 @@ import { signToken } from "../../../../access/identity/index.ts";
 import {
   removeDomainMember,
   setMemberRole,
-} from "../../../../access/workspace/index.ts";
+} from "../../../../../../tests/helpers/workspace-actors.ts";
 import { createComment, withDomainCommunity } from "../../index.ts";
 import { accountNotificationRouter } from "../../../../http/account-notifications.ts";
 import { domainCommunityRouter } from "../../routes/domain-community.ts";

@@ -1,4 +1,4 @@
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import { domainProblemBindings } from "../../../../shared/db/schema.ts";

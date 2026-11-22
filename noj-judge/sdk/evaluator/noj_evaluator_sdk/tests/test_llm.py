@@ -68,6 +68,61 @@ class LlmTest(TestCase):
         with self.assertRaises(llm.LLMError):
             llm.complete(model="qwen-plus", messages=[{"role": "user", "content": "hi"}])
 
+    def test_mock_gateway_echoes_last_user_message_offline(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "mock://echo"
+        os.environ["NOJ_LLM_TOKEN"] = "local"
+        os.environ["NOJ_LLM_ALLOWED_MODELS"] = "default"
+        # 断言不发起任何网络请求
+        with patch.object(llm, "_open_request", side_effect=AssertionError("不应联网")):
+            result = llm.complete(
+                messages=[
+                    {"role": "system", "content": "sys"},
+                    {"role": "user", "content": "第一问"},
+                    {"role": "assistant", "content": "x"},
+                    {"role": "user", "content": [{"type": "text", "text": "第二问"}]},
+                ],
+            )
+        self.assertEqual(result["choices"][0]["message"]["content"], "第二问")
+        self.assertEqual(result["model"], "default")
+        self.assertGreater(result["usage"]["total_tokens"], 0)
+
+    def test_mock_gateway_rejects_disallowed_model(self):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = "mock://echo"
+        os.environ["NOJ_LLM_TOKEN"] = "local"
+        os.environ["NOJ_LLM_ALLOWED_MODELS"] = "default"
+        with self.assertRaises(llm.LLMError) as ctx:
+            llm.complete(model="gpt-x", messages=[{"role": "user", "content": "hi"}])
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.error_code, "model_not_allowed")
+
+    def _use_mock(self, url):
+        os.environ["NOJ_LLM_GATEWAY_URL"] = url
+        os.environ["NOJ_LLM_TOKEN"] = "local"
+        os.environ["NOJ_LLM_ALLOWED_MODELS"] = "default"
+        llm._mock_usage.update(calls=0, tokens=0)
+
+    def test_mock_gateway_enforces_max_calls(self):
+        self._use_mock("mock://echo?max_calls=1")
+        msgs = [{"role": "user", "content": "hi"}]
+        llm.complete(messages=msgs)
+        with self.assertRaises(llm.LLMError) as ctx:
+            llm.complete(messages=msgs)
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(ctx.exception.error_code, "out_of_usage")
+
+    def test_mock_gateway_enforces_max_tokens(self):
+        self._use_mock("mock://echo?max_tokens=5")
+        msgs = [{"role": "user", "content": "x" * 40}]
+        llm.complete(messages=msgs)  # 首次调用前未超，累计后已超
+        with self.assertRaises(llm.LLMError) as ctx:
+            llm.complete(messages=msgs)
+        self.assertEqual(ctx.exception.error_code, "out_of_usage")
+
+    def test_mock_gateway_without_budget_is_unlimited(self):
+        self._use_mock("mock://echo")
+        for _ in range(5):
+            llm.complete(messages=[{"role": "user", "content": "hi"}])
+
     def test_complete_success(self):
         server = _start_server()
         try:

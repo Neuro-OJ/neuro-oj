@@ -3,7 +3,7 @@ import {
   accountNotifications,
   educationNotificationEmails,
 } from "../../../../shared/db/schema.ts";
-import { removeDomainMember } from "../../../access/workspace/index.ts";
+import { removeDomainMember } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   createAssignment,
   createAssignmentFeedback,

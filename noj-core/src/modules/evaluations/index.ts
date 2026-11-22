@@ -324,3 +324,10 @@ export {
   supersedeEvaluationAttemptTx,
   upsertCurrentVersionResultTx,
 } from "./services/versioning/tx-contracts.ts";
+
+// 掌握度任务由有效成绩投影登记，handler 在 features/knowledge 注册。
+export {
+  enqueueKnowledgeMasteryTaskTx,
+  KNOWLEDGE_MASTERY_TARGET_KIND,
+  KNOWLEDGE_MASTERY_TASK_TYPE,
+} from "./services/versioning/knowledge-mastery-task.ts";

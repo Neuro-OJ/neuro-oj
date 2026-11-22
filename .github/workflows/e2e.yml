@@ -4,6 +4,7 @@
 # 在每个 PR 和推送到 main 时运行完整的端到端测试：
 #   - e2e-full：noj-tests 全量 E2E（30 个测试文件 / 204 个 e2eTest 用例）
 #   - judge-sandbox：noj-judge Docker 沙箱 E2E（7 个 binary，独立 job）
+#   - problem-local-test：noj-cli problem test 本地验题门禁（fixtures/problem-test + 五类出题模板）
 #
 # 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
 #
@@ -549,3 +550,86 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
         continue-on-error: true
+
+  # P0-2：`noj-cli problem test` 本地验题门禁。与生产同一评测入口
+  # （noj-judge run-local → evaluate_with_scheduler），覆盖正向断言与负例
+  # （错解断言为满分时必须退出 1）。只依赖 Docker，不起 noj-core 栈。
+  problem-local-test:
+    name: Problem Local Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        with:
+          toolchain: stable
+      - name: 启用 sccache（Rust 编译缓存）
+        uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - name: 缓存 Cargo 注册表
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ hashFiles('noj-judge/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+
+      - name: 并行编译 noj-judge 与构建评测镜像
+        run: |
+          set -euo pipefail
+          (cd noj-judge && cargo build --locked --bin noj-judge) > "$RUNNER_TEMP/noj-judge-build.log" 2>&1 &
+          build_pid=$!
+          docker build -t noj-evaluator-python -f noj-judge/docker/evaluator-python/Dockerfile noj-judge > "$RUNNER_TEMP/noj-evaluator-image-build.log" 2>&1 &
+          eval_pid=$!
+          docker build -t noj-solution-python -f noj-judge/docker/solution-python/Dockerfile noj-judge > "$RUNNER_TEMP/noj-solution-image-build.log" 2>&1 &
+          sol_pid=$!
+          fail=0
+          wait "$build_pid" || fail=1
+          wait "$eval_pid" || fail=1
+          wait "$sol_pid" || fail=1
+          cat "$RUNNER_TEMP"/noj-*-build.log
+          exit "$fail"
+
+      - name: problem test（正向断言 + 负例）
+        working-directory: noj-cli
+        env:
+          NOJ_JUDGE_BIN: ${{ github.workspace }}/noj-judge/target/debug/noj-judge
+        run: |
+          set -uo pipefail
+          for dir in ../fixtures/problem-test/*/; do
+            echo "── problem test ${dir}"
+            deno run -A src/cli.ts problem test "$dir" || exit 1
+          done
+          # 负例：错解断言满分必须以退出码 1 失败（0 = 断言失效，2 = 用法/环境错误）
+          # Actions 默认 shell 为 bash -e，必须用 || 捕获退出码，否则负例的 1 会直接终止步骤
+          code=0
+          deno run -A src/cli.ts problem test ../fixtures/problem-test/aplusb --expect wrong=100 || code=$?
+          if [ "$code" -ne 1 ]; then
+            echo "负例期望退出码 1，实际 ${code}"
+            exit 1
+          fi
+
+      # P0-2 B：五类出题模板都必须「生成即可验题」——经 init --template 生成
+      # （覆盖嵌入与渲染路径），再 lint --strict 零发现 + problem test 断言全过。
+      - name: problem init --template 五类模板验题
+        working-directory: noj-cli
+        env:
+          NOJ_JUDGE_BIN: ${{ github.workspace }}/noj-judge/target/debug/noj-judge
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/problem-templates"
+          for t in code prediction llm objective ui; do
+            echo "── template ${t}"
+            deno run -A src/cli.ts problem init "tpl-${t}" --template "$t" --no-interactive --dir "$out"
+            deno run -A src/cli.ts problem lint --strict "$out/tpl-${t}"
+            deno run -A src/cli.ts problem test "$out/tpl-${t}"
+          done

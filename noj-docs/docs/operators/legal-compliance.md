@@ -135,6 +135,6 @@ NOJ 的 LLM 网关（`llm_usage` 表）**保留完整 prompt 与调用参数**�
 
 ## 10. 相关文件
 
-- 设计文档：`dev-docs/superpowers/specs/2026-09-23-legal-compliance-and-announcement-separation-design.md`
+- 设计文档：`dev-docs/archive/superpowers/specs/2026-09-23-legal-compliance-and-announcement-separation-design.md`
 - 后台管理指南：[admin-guide.md](./admin-guide.md)
 - 生产密钥轮换：[production-secrets.md](./production-secrets.md)

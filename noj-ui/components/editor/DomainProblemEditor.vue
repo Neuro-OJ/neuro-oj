@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ProblemDraftView, PublishPreflightReport } from '~/composables/useProblemVersions';
+import type { ProblemDraftView, PublishPreflightReport } from '~/composables/useDomainProblemEditor';
 import type { DomainEditorContent, DomainOiRuntime } from '~/utils/domain-problem-editor';
 import { domainEditorPayload, normalizeDomainEditorContent } from '~/utils/domain-problem-editor';
 import { extractApiError } from '~/utils/apiError';

@@ -258,6 +258,37 @@ Deno.test("接线: update 未接线备份时明确失败", async () => {
   }
 });
 
+Deno.test("接线: update 解析 --latest 并先查询最新 Release", async () => {
+  const dir = await makeInstallDir();
+  try {
+    const { runProdUpdate } = await import("./commands/update.ts");
+    const urls: string[] = [];
+    const result = await runProdUpdate(dir, ["--latest"], {
+      runner: {
+        run() {
+          throw new Error("解析最新版本失败后不得调用 docker");
+        },
+        spawn() {
+          throw new Error("不应 spawn");
+        },
+      },
+      fetcher: (url: string) => {
+        urls.push(url);
+        return Promise.reject(new Error("offline"));
+      },
+      io: { stdout: () => {}, stderr: () => {}, jsonMode: false },
+      isTty: () => false,
+      processEnv: {},
+      processState: undefined,
+    } as never);
+    assertEquals(result.latest, true);
+    assertEquals(urls.length > 0, true, "必须查询最新 Release");
+    assertEquals(result.exitCode, 1);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
+});
+
 Deno.test("P1d: update --drain-timeout 非法值 → 用法错误（零 docker 调用）", async () => {
   const dir = await makeInstallDir();
   try {
@@ -663,4 +694,126 @@ Deno.test("复审: positionals 不得把 --min-free-mb 的值当位置参数", a
     positionals(["--retention-days", "7", "--min-free-mb", "1024", "snap"]),
     ["snap"],
   );
+});
+
+Deno.test("check / verify: 展示安装目录与 Docker 数据目录磁盘余量及低空间告警", async () => {
+  const root = await Deno.makeTempDir();
+  try {
+    const dir = join(root, "install");
+    const dockerRoot = join(root, "docker-root");
+    await Deno.mkdir(dir, { recursive: true });
+    await Deno.mkdir(dockerRoot, { recursive: true });
+    await Deno.writeTextFile(
+      join(dir, "docker-compose.prod.yml"),
+      "services: {}\n",
+    );
+    const HEX = "a".repeat(64);
+    await Deno.writeTextFile(
+      join(dir, ".env.prod"),
+      [
+        "NOJ_VERSION=v0.11.0",
+        "DOMAIN=oj.testoj.cn",
+        "APP_URL=https://oj.testoj.cn",
+        "CORS_ALLOWED_ORIGINS=https://oj.testoj.cn",
+        "TRUSTED_PROXIES=172.28.0.0/16",
+        `POSTGRES_PASSWORD=${HEX}`,
+        `REDIS_PASSWORD=${HEX}`,
+        "MINIO_ROOT_USER=nojminio123456",
+        `MINIO_ROOT_PASSWORD=${HEX}`,
+        "S3_ACCESS_KEY=nojs3123456",
+        `S3_SECRET_KEY=${HEX}`,
+        "S3_BUCKET=noj-support-packages",
+        "S3_ENDPOINT=http://minio:9000",
+        "STORAGE_PROVIDER=s3",
+        `JWT_SECRET=${HEX}`,
+        `TFA_ENCRYPTION_KEY=${HEX}`,
+        `NOJ_LLM_SERVICE_TOKEN=${HEX}`,
+        `NOJ_LLM_STORE_KEY=${HEX}`,
+        "EMAIL_PROVIDER=disabled",
+        "JUDGE_ENABLED=false",
+        "NOJ_ENFORCE_IMAGE_SIGNATURES=false",
+        "",
+      ].join("\n"),
+    );
+    await Deno.chmod(join(dir, ".env.prod"), 0o600);
+
+    const { runProdCheck, runProdVerify } = await import("./commands/check.ts");
+    const outCheck: string[] = [];
+    const outVerify: string[] = [];
+    const runner = {
+      run(cmd: string, args: string[]) {
+        if (cmd === "docker" && args[0] === "info") {
+          return Promise.resolve({
+            code: 0,
+            stdout: `${dockerRoot}\n`,
+            stderr: "",
+          });
+        }
+        if (cmd === "df") {
+          const target = args[args.length - 1] ?? "";
+          if (target === dockerRoot) {
+            return Promise.resolve({
+              code: 0,
+              stdout:
+                "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+                `/dev/vdb1 104857600 94371840 ${
+                  3 * 1024 * 1024
+                } 90% /var/lib/docker\n`,
+              stderr: "",
+            });
+          }
+          return Promise.resolve({
+            code: 0,
+            stdout:
+              "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+              `/dev/vda1 104857600 20971520 ${80 * 1024 * 1024} 20% /\n`,
+            stderr: "",
+          });
+        }
+        return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+      },
+      spawn() {
+        throw new Error("no spawn");
+      },
+    };
+    const depsBase = {
+      runner,
+      io: {
+        write: () => {},
+        readLine: () => Promise.resolve(""),
+        readSecret: () => Promise.resolve(""),
+      },
+      isTty: () => false,
+      processEnv: {},
+      err: () => {},
+    };
+
+    const checked = await runProdCheck(dir, [], {
+      ...depsBase,
+      out: (line) => outCheck.push(line),
+    });
+    assertEquals(checked.exitCode, 0);
+    assert(
+      outCheck.some((l) => l.includes("安装目录") && l.includes("80 GiB")),
+    );
+    assert(
+      outCheck.some((l) =>
+        l.includes("Docker 数据目录") && l.includes("告警") &&
+        l.includes("3 GiB")
+      ),
+    );
+
+    const verified = await runProdVerify(dir, [], {
+      ...depsBase,
+      out: (line) => outVerify.push(line),
+    });
+    assertEquals(verified.exitCode, 0);
+    assert(
+      outVerify.some((l) =>
+        l.includes("Docker 数据目录") && l.includes("告警")
+      ),
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true }).catch(() => {});
+  }
 });

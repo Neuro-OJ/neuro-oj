@@ -182,16 +182,14 @@ async function importBundle(zip: Uint8Array): Promise<string> {
   // 域导入只回 problem_id/number：runtime_config 从草稿内容里核对
   const body = (await res.json()) as { data: { problem_id: string } };
   const draft = await apiGet(
-    `/api/v1/problems/${body.data.problem_id}/draft`,
+    `${await domainProblemPath(body.data.problem_id)}/draft`,
     adminToken,
   );
   const draftContent = (draft.body as {
-    data: {
-      content: {
-        runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
-      };
+    content: {
+      runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
     };
-  }).data.content;
+  }).content;
   if (
     draftContent.runtime_config?.evaluator.network?.enabled !== true
   ) {
@@ -294,16 +292,14 @@ e2eTest(
     }
     const created = res.body as { problem_id: string };
     const draft = await apiGet(
-      `/api/v1/problems/${created.problem_id}/draft`,
+      `${await domainProblemPath(created.problem_id)}/draft`,
       adminToken,
     );
     const draftContent = (draft.body as {
-      data: {
-        content: {
-          runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
-        };
+      content: {
+        runtime_config?: { evaluator: { network?: { enabled?: boolean } } };
       };
-    }).data.content;
+    }).content;
     if (draftContent.runtime_config?.evaluator.network?.enabled !== true) {
       throw new Error("runtime_config.evaluator.network.enabled 未保留为 true");
     }

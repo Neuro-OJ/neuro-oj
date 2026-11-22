@@ -10,7 +10,7 @@
  * 该 handler 由 application 注入 runtime worker；runtime 本身不导入 read-models。
  */
 import { getLogger } from "@logtape/logtape";
-import type { ClaimedTask } from "../runtime/tasks/contracts.ts";
+import type { ClaimedTask } from "../../shared/tasks/contracts.ts";
 import { processSearchIndexEvent } from "../read-models/search/services/index-writer.ts";
 import type { SearchEntityType } from "../../shared/search-events.ts";
 

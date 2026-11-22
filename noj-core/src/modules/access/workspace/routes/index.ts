@@ -35,7 +35,7 @@ import {
   loadWorkspace,
 } from "../../policy.ts";
 import { listDomains } from "../../domains.ts";
-import { getInstancePolicy } from "../services/instance.ts";
+import { getInstancePolicy } from "../../../platform/contracts/resource-policy.ts";
 import { listDomainInvitations } from "../../invitations.ts";
 import {
   listDomainJoinRequests,
@@ -48,7 +48,7 @@ import {
 import { DOMAIN_PRESETS } from "../../../../shared/workspace/types.ts";
 import { constrainDomainConfiguration } from "../../../../shared/workspace/resource-policy.ts";
 import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
-import { getInstanceResourcePolicy } from "../services/instance.ts";
+import { getInstanceResourcePolicy } from "../../../platform/contracts/resource-policy.ts";
 import {
   listAdminDomains,
   listDomainCreationRequests,

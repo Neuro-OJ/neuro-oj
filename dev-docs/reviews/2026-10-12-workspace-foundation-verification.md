@@ -2,7 +2,7 @@
 
 日期：2026-10-12。范围：升级阶段 0 / 1 / 2 / 4 的当前基础实现及既有业务回归。
 完整阶段仍未签收，以
-[任务清单](../superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)为准。
+[任务清单](../archive/superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)为准。
 
 ## 实现与审查依据
 

@@ -11,7 +11,7 @@
  *   事实推给 Judge"，业务进度仍在自己的表里。
  */
 import { getLogger } from "@logtape/logtape";
-import type { ClaimedTask } from "../runtime/tasks/contracts.ts";
+import type { ClaimedTask } from "../../shared/tasks/contracts.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import { AppError } from "../../shared/base/errors.ts";
 import { and, eq } from "drizzle-orm";

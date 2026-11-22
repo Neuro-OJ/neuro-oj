@@ -64,17 +64,17 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 ## 日常运维
 
 ```bash
-noj-cli check                  # 配置与依赖校验（只读）
+noj-cli check                  # 配置、依赖校验与分区磁盘余量/低空间告警
 noj-cli verify                 # check + 镜像签名验证
 noj-cli config check           # 只做本地配置校验
-noj-cli status                 # 状态（含 compose ps 表）
+noj-cli status                 # 状态（含 compose ps 表与安装/Docker 分区磁盘余量）
 noj-cli logs core --follow     # 日志（着色契约 + 实时跟随）
 noj-cli start | stop | restart # 启停（stop 不删数据卷）
-noj-cli update                 # 按 .env.prod 的版本升级（升级前自动备份 + 自动排空）
+noj-cli update                 # 按 .env.prod 的版本升级（先做数据+镜像空间预检，再自动备份与排空）
 noj-cli update --latest        # 升级到最新的资产就绪正式 Release（已是最新则 no-op）
 noj-cli maintain status        # 维护模式/排空状态（blockers、队列与在途任务）
 noj-cli maintain enter | wait | exit   # 人工进入 / 等待排空 / 退出维护模式
-noj-cli backup create          # 创建 .nojbackup 单文件快照（整包加密）
+noj-cli backup create          # 创建 .nojbackup 单文件快照（流式降峰，启动前清理崩溃残留并按数据量预检空间）
 noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除
 noj-cli backup restore <快照> --dry-run   # 只规划并校验（等价于省略 --confirm）
@@ -117,9 +117,13 @@ openssl rand -hex 32    # → NOJ_INTERNAL_SERVICE_TOKEN=<上一步输出>
 - 人工干预：`noj-cli maintain enter|status|wait|exit`（Tier 3，容器内执行； 支持
   `--json`、`--timeout`、`--interval` 透传）。
 
-**备份是 `.nojbackup` 单文件**（tar.zst + 整包 GPG AES-256，manifest 标
-`payload_layout=prod-raw`），同级 `.sha256` 为校验文件。包内含 `postgres.dump`
-（原始二进制）、`redis.rdb`、`minio/` 与加密后的 `.env.prod`。
+**备份是 `.nojbackup` 单文件**（通过 `tar | zstd | gpg` 流式管道整包 AES-256
+加密，不落中间 `.tar.zst` 并在打包后立即清理 staging；manifest 标
+`payload_layout=prod-raw`），同级 `.sha256` 为校验文件。包内含
+`postgres.dump`（原始二进制）、`redis.rdb`、`minio/` 与加密后的
+`.env.prod`。`backup create` 启动前会按 `.nojbackup-create.lock` 与 PID
+存活检查清理崩溃残留的临时文件，并结合 PostgreSQL / Redis / MinIO 数据量与
+`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB` 兜底下限执行空间预检。
 
 `backup drill` 会起**独立 Compose 项目**（默认 `noj-drill`）、独立子网，且
 **不映射宿主机端口**；必须用 `--docker-host` 或 `NOJ_DRILL_DOCKER_HOST`
@@ -160,12 +164,15 @@ noj-cli judge reset-config --group <资源组> [--ai-tasks 6] [--restart]
 ```bash
 noj-cli problem init <slug> [--judge-type dual|oi] \
   [--difficulty easy|medium|hard]
+noj-cli problem init <slug> --template code|prediction|llm|objective|ui
 noj-cli problem lint <目录>
+noj-cli problem test <目录> [--solution <文件|目录>[@名称]]... [--expect good=100]... [--json]
 noj-cli problem pack <目录> --out <目录>
 noj-cli problem migrate <目录>   # 将旧格式 problem.json 原地改写为格式 3
 noj-cli problem import --domain school --dir <题包目录>
 noj-cli problem push <目录或zip> --server https://noj.example.com --domain school
 noj-cli problem push <目录或zip> --server https://noj.example.com --domain school --publish
+noj-cli problem skill [目录] [--force]   # 写入 AI 出题 Skill
 ```
 
 `problem init` 生成格式 3 最小题包（`kind` 声明题型，AI 题 `runtime_config`
@@ -178,6 +185,24 @@ noj-cli problem push <目录或zip> --server https://noj.example.com --domain sc
 
 `problem init` 在 TTY 下进入交互引导（含校验与回退，输入 `:b` 退回上一步）； 非
 TTY 或 `--no-interactive` 需显式给出参数。
+
+`problem test` 先跑 lint，再经 `noj-judge run-local`（与线上 Worker 同一评测
+入口）在本地 Docker 沙箱逐个评测参考解答（缺省读取 `submissions/` 与
+`submissions/expect.json`），退出码 0 通过 / 1 校验或断言失败 / 2 用法错误。默认
+不联网，LLM 题默认离线 mock；详见文档站「出题人 → 本地验题」。
+
+`--template` 从五类**可验题模板**生成（代码题、预测提交题、LLM 工程题、客观题、
+界面题）：每个模板自带评测脚本、满分解 / 错解 / 空解与
+`submissions/expect.json`， 生成后可直接 `problem test` 验题，再按模板 README
+改造。模板事实源在 `noj-core/scripts/problem-templates/`，与
+`noj problems init --template` 共用。
+
+`problem skill` 把 AI 出题 Skill（`noj-problem-setter`）写入目标目录（缺省当前
+目录）的 `.agents/skills/` 与 `.claude/skills/`，AI 编码助手在出题仓库里即可按
+「选题型 → 模板 → 评测脚本 → 参考解答 → 验题 → lint → pack/push」的流程出题。
+已存在且内容不同时不覆盖，加 `--force` 整体替换。Skill 事实源在
+`noj-cli/skills/noj-problem-setter/`，由 `src/problem/gen-skill.ts`
+嵌入单二进制。
 
 `--judge-type oi` 会生成 C99/C++11 传统 OI 题包骨架（`testdata/`、default
 checker 与子任务配置），不生成双容器题所需的 `evaluate.py`。

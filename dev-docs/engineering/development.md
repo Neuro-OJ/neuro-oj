@@ -2,7 +2,7 @@
 
 本文档面向 NOJ 贡献者，汇总本地开发、提交、检查与协作流程。详细模块约定见各模块 `AGENTS.md` / `CLAUDE.md`。
 
-面向外部贡献者的入口是根目录的 [`CONTRIBUTING.md`](../../CONTRIBUTING.md)；安全问题请走 [`SECURITY.md`](../../SECURITY.md) 中的私下报告流程。
+面向外部贡献者的入口是 [`.github/CONTRIBUTING.md`](../../.github/CONTRIBUTING.md)；安全问题请走 [`.github/SECURITY.md`](../../.github/SECURITY.md) 中的私下报告流程。
 
 ## 本地环境
 

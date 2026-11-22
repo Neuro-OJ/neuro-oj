@@ -40,7 +40,7 @@ import {
   addDomainMember,
   createDomain,
   setMemberRole,
-} from "../../modules/access/workspace/index.ts";
+} from "../../../tests/helpers/workspace-actors.ts";
 import { invalidateKnowledgeGraphCache } from "./graph.ts";
 import {
   computeNodeMastery,
@@ -608,7 +608,7 @@ Deno.test({
 
     // 有效成绩变更（无提交事务，直接写提交 + 调用入队 helper）→ 任务入队。
     const { enqueueKnowledgeMasteryTaskTx } = await import(
-      "../../modules/runtime/index.ts"
+      "../../modules/evaluations/index.ts"
     );
     await db().transaction(async (tx) => {
       await enqueueKnowledgeMasteryTaskTx(tx, {

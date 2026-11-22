@@ -10,7 +10,7 @@ import {
   Channels,
 } from "../../../../shared/sse/event-bus.ts";
 import { signToken } from "../../../access/identity/index.ts";
-import { removeDomainMember } from "../../../access/workspace/index.ts";
+import { removeDomainMember } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
   createDomainSelfTest,
   createDomainSubmission,

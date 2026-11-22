@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-2026-09-21 解耦后全部 LLM 题只能用平台默认模型，无法逐题选择。设计见 `dev-docs/superpowers/specs/2026-10-12-llm-model-aliases-design.md`；本 PR 是实施拆分第 2 步（须在 gateway `model_map` 发布之后）。
+2026-09-21 解耦后全部 LLM 题只能用平台默认模型，无法逐题选择。设计见 `dev-docs/archive/superpowers/specs/2026-10-12-llm-model-aliases-design.md`；本 PR 是实施拆分第 2 步（须在 gateway `model_map` 发布之后）。
 
 ## Decision
 

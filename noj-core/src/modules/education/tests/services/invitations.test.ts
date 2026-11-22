@@ -1,4 +1,4 @@
-import { setMemberRole } from "../../../access/workspace/index.ts";
+import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@^1";
 import { and, eq } from "drizzle-orm";
 import { registrationInvitationBoundary } from "../../../application/index.ts";

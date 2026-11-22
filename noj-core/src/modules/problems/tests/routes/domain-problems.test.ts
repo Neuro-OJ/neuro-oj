@@ -15,7 +15,7 @@ import {
   createDomain,
   createDomainInvitation,
   ensureDefaultWorkspace,
-} from "../../../access/workspace/index.ts";
+} from "../../../../../tests/helpers/workspace-actors.ts";
 import { updateSetting } from "../../../platform/system/index.ts";
 import { domainProblemsRouter } from "../../routes/domain-problems.ts";
 

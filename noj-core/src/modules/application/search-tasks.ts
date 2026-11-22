@@ -26,8 +26,8 @@ import {
   type EnqueueTaskInput,
   type EnqueueTaskResult,
   type TaskTargetKind,
-} from "../runtime/tasks/contracts.ts";
-import { enqueueTaskTx } from "../runtime/tasks/repository.ts";
+} from "../../shared/tasks/contracts.ts";
+import { enqueueTaskTx } from "../../shared/tasks/repository.ts";
 
 const logger = getLogger(["noj", "application", "search-tasks"]);
 

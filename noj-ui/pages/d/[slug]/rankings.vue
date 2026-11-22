@@ -16,6 +16,10 @@ useSeoMeta({ title: '域排行榜' });
 <template>
   <div class="space-y-5">
     <LibraryPageHeader title="排行榜" icon="i-lucide-award" description="当前域的训练与解题排名" />
+    <p class="text-sm text-text-secondary">
+      全站解题榜与每月签到活跃榜见
+      <NuxtLink to="/leaderboard" class="text-primary underline">全站榜单</NuxtLink>。
+    </p>
     <div v-if="mine.data.value?.data" class="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-primary/20 bg-primary-bg/30 px-5 py-3.5 shadow-xs">
       <div class="flex items-center gap-3">
         <UIcon name="i-lucide-award" class="size-5 text-primary" />

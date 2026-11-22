@@ -94,7 +94,7 @@ e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
   const problemId = await getProblemIdByNumber(1001);
   const now = Date.now();
   const res = await apiPost(
-    "/api/v1/admin/contest/contests",
+    "/api/v1/domains/main/contests",
     {
       title: "AC Abnormal " + ts,
       type: "kaggle",

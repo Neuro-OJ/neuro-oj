@@ -112,13 +112,9 @@ export async function dispatchProduction(
         say(r.error ?? "");
         return r.exitCode;
       }
-      case "update": {
-        const r = await runProdUpdate(dir, rest, {});
-        say(r.error ?? "");
-        return r.exitCode;
-      }
+      case "update":
       case "upgrade": {
-        const r = await runProdUpdate(dir, rest, {}, true);
+        const r = await runProdUpdate(dir, rest, {});
         say(r.error ?? "");
         return r.exitCode;
       }

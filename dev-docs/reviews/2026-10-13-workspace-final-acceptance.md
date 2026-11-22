@@ -2,8 +2,8 @@
 
 更新日期：2026-10-14。实现、API、浏览器及性能验收已交付；合入等待仓库要求的批准
 review。 审查：[PR #643](https://github.com/Neuro-OJ/neuro-oj/pull/643)。
-依据：[已批准计划](../superpowers/plans/2026-10-12-workspace-education-contest-upgrade.md)、
-[106 项任务清单](../superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
+依据：[已批准计划](../archive/superpowers/plans/2026-10-12-workspace-education-contest-upgrade.md)、
+[106 项任务清单](../archive/superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
 
 ## 已交付行为
 

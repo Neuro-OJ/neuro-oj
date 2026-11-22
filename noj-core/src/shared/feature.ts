@@ -9,10 +9,7 @@ import type { Hono } from "hono";
 import type { AuthEnv } from "./http/hono-env.ts";
 import type { ObservabilityRegistry } from "./observability/index.ts";
 import type { ManagedTask } from "./runtime/managed-task.ts";
-import type {
-  FeatureTaskType,
-  TaskHandler,
-} from "../modules/runtime/tasks/contracts.ts";
+import type { FeatureTaskType, TaskHandler } from "./tasks/contracts.ts";
 
 /** 功能名：小写 kebab-case，与 `src/features/<name>/` 目录名一致。 */
 const FEATURE_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;

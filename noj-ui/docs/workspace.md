@@ -194,7 +194,7 @@ deno task build
 Vue 新页面另用 `deno fmt --unstable-component` 格式化。组件测试固定线程池， 避免本地 Deno 下默认 fork 池全部断言通过后以
 BrokenPipe 退出。 域来源、身份变化、缓存、确认期间切换、冲突草稿及模板预览有对应测试。
 构建和组件测试不能证明真实交互、窄屏布局或完整 Public / Private / Mixed 旅程；这些验收仍记录在
-[升级任务清单](../../dev-docs/superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
+[升级任务清单](../../dev-docs/archive/superpowers/plans/2026-10-12-workspace-upgrade-tasks.md)。
 
 ## 原版界面与域运营恢复
 
@@ -213,4 +213,4 @@ BrokenPipe 退出。 域来源、身份变化、缓存、确认期间切换、�
 教学后台刷新优先保留既有数据，避免卸载筛选、选中成绩、反馈和求助输入。选中
 成绩从最新矩阵更新，账号或任务变化仍清除原作用域的选择与草稿。
 
-本轮任务和验收依据见 [原版界面恢复清单](../../dev-docs/superpowers/plans/2026-10-15-original-ui-restoration.md)。
+本轮任务和验收依据见 [原版界面恢复清单](../../dev-docs/archive/superpowers/plans/2026-10-15-original-ui-restoration.md)。

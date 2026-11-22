@@ -17,7 +17,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { AppError } from "../../../../shared/base/errors.ts";
 import { recordEvaluationChangeTx } from "../../../education/contracts/events.ts";
-import { enqueueKnowledgeMasteryTaskTx } from "../../../runtime/knowledge-mastery-task.ts";
+import { enqueueKnowledgeMasteryTaskTx } from "./knowledge-mastery-task.ts";
 import type { DbTx, Executor } from "../../../../shared/db/executor.ts";
 import {
   contestProblems,

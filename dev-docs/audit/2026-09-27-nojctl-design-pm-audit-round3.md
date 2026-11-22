@@ -1,6 +1,6 @@
 # nojctl 设计 draft-3 第三轮复核（含本轮修复引入的新风险）
 
-- 复核对象：`dev-docs/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`（**draft-3**，637 行，§0 含 draft-3 变更记录与所有者三处定调）
+- 复核对象：`dev-docs/archive/superpowers/specs/2026-09-27-nojctl-deploy-cli-design.md`（**draft-3**，637 行，§0 含 draft-3 变更记录与所有者三处定调）
 - 前两轮报告：`dev-docs/audit/2026-09-27-nojctl-design-pm-audit.md`（首轮 7 Blocker / 14 Major / 8 Minor / 6 矛盾）、`dev-docs/audit/2026-09-27-nojctl-design-pm-reaudit-ux.md`（复审 N1–N12 + UX 专项）
 - 基线：`main @ 63615a816`（draft-3 已提交）
 - 审计方式：**只读**（除本文件外未改任何文件、未 commit、未改 spec）。唯一执行的系统命令是只读的 `docker ps` / `docker inspect` / `docker compose ls`，用于**核实**一条修复建议的可行性（见 §3-R8）

@@ -15,7 +15,7 @@ import {
   saveEvaluationResultTx,
 } from "../../src/modules/evaluations/services/submissions/submissions-result.ts";
 import { revalidateEvaluationAdmissionTx } from "../../src/modules/evaluations/contracts/admission.ts";
-import { recordSseEventTx } from "../../src/modules/runtime/contracts/sse-events.ts";
+import { recordSseEventTx } from "../../src/shared/sse/sse-event-tx.ts";
 import { deleteProblemEvaluationRowsTx } from "../../src/modules/evaluations/contracts/problem-deletion.ts";
 import type {
   ApplyAttemptResultInput,

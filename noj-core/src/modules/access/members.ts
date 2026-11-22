@@ -26,7 +26,7 @@ import {
 import { ROOT_USER_ID } from "../../shared/base/constants.ts";
 import type { DomainMemberRole } from "../../shared/access/roles.ts";
 import { combineDomainLimits } from "../../shared/workspace/resource-policy.ts";
-import { getInstanceResourcePolicy } from "./workspace/services/instance.ts";
+import { getInstanceResourcePolicy } from "../platform/contracts/resource-policy.ts";
 import { requireUserActor, type UserActor } from "./contracts/actor.ts";
 import { workspaceAuditTx } from "./audit.ts";
 import {

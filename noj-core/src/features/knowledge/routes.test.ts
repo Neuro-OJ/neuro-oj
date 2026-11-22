@@ -49,7 +49,7 @@ import {
   addDomainMember,
   createDomain,
   setMemberRole,
-} from "../../modules/access/workspace/index.ts";
+} from "../../../tests/helpers/workspace-actors.ts";
 
 await resetDbForTest();
 // 认证中间件校验 JTI 撤销（Redis）；与路由测试统一在模块顶层初始化。

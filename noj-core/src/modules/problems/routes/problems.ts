@@ -28,16 +28,12 @@ import {
   assertProblemEditPermissionForActor,
   listProblems,
 } from "../services/problems/problems.ts";
-import { getProblemDraft } from "../services/versioning/draft.ts";
 import {
   getProblemVersionOrThrow,
-  listProblemVersions,
-  preflightProblemDraft,
   resolveProblemAnswerVersion,
 } from "../services/versioning/publish.ts";
 import {
   projectProblemContent,
-  trimProblemContentForViewer,
 } from "../services/versioning/version-read-view.ts";
 import {
   getVersionSupportPackageUrl,
@@ -338,145 +334,6 @@ async function canEditProblem(
     return false;
   }
 }
-
-/**
- * 题目读取权限：与详情接口同口径（无权限一律 404，防存在性探测）。
- *
- * 管理员用 `admin:full_access` 走 fast path；非管理员沿用统一访问解析，
- * 因此历史版本读取同样无法绕过竞赛保密。
- */
-async function assertProblemReadable(
-  c: Context<AuthEnv>,
-  problem: Awaited<ReturnType<typeof resolveProblem>>,
-): Promise<void> {
-  const userId = c.get("userId") as string | undefined;
-  const isAdmin = userId ? await isCurrentUserAdmin(c) : false;
-  const { result: access } = await evaluateProblemAccess(problem, {
-    viewerId: userId ?? null,
-    isAdmin,
-  });
-  if (!access.allowed) {
-    throw new NotFoundError("题目不存在");
-  }
-  // 未发布题目（尚无已发布版本）对普通访问者一律 404（Handbook §4.1）：
-  // 编辑者改用草稿接口读取，避免把"草稿内容"当作公开题面下发。
-  if (!isAdmin && !await isProblemPublished(problem.id)) {
-    if (!await canEditProblem(c, problem)) {
-      throw new NotFoundError("题目不存在");
-    }
-  }
-}
-
-/** 题目是否已有已发布版本（`problems.latest_version_id` 非空）。 */
-async function isProblemPublished(problemId: string): Promise<boolean> {
-  const [row] = await getDb()
-    .select({ latest: problems.latest_version_id })
-    .from(problems)
-    .where(eq(problems.id, problemId))
-    .limit(1);
-  return row?.latest != null;
-}
-
-/**
- * 版本内容的权限裁剪：与题目详情**同一**按字段允许的公开响应
- * （{@link trimProblemContentForViewer}）——非编辑者不下发评测配置
- * （`runtime_config`：评测命令、镜像、网络权限、测试点路径）、LLM 配置、
- * 模板内容与客观题标准答案。
- */
-function trimVersionContent(
-  content: ProblemContentV1,
-  canEdit: boolean,
-): ProblemContentV1 {
-  return trimProblemContentForViewer(content, canEdit);
-}
-
-/**
- * 读取共享草稿（编辑者）。
- *
- * 没有草稿行时返回基于最新版内容（其次题目投影）的编辑初值，`synthesized: true`。
- * 未发布题目对普通访问者不可见，但编辑者必须能通过本接口拿到初值。
- *
- * GET /api/v1/problems/:id/draft
- */
-router.get("/:id/draft", authMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  await assertProblemEditPermissionForActor(
-    problem,
-    userActorFromAuthenticatedId(c.get("userId")),
-  );
-  const draft = await getProblemDraft(problem.id);
-  return c.json({ data: draft });
-});
-
-/**
- * 发布预检（编辑者）：对**当前**草稿 revision 执行完整校验，不写库。
- *
- * GET /api/v1/problems/:id/draft/preflight
- */
-router.get("/:id/draft/preflight", authMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  await assertProblemEditPermissionForActor(
-    problem,
-    userActorFromAuthenticatedId(c.get("userId")),
-  );
-  const report = await preflightProblemDraft(problem.id, {
-    verifyObjects: c.req.query("verify") !== "false",
-  });
-  return c.json({ data: report });
-});
-
-/**
- * 版本元数据列表（分页，新→旧）。
- *
- * GET /api/v1/problems/:id/versions
- */
-router.get("/:id/versions", optionalAuthMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  await assertProblemReadable(c, problem);
-  const { page, perPage } = parsePagination(c);
-  const versions = await listProblemVersions(problem.id, { page, perPage });
-  return c.json({
-    data: versions.data,
-    total: versions.total,
-    page,
-    per_page: perPage,
-  });
-});
-
-/**
- * 指定版本内容（经过权限裁剪）。
- *
- * 历史版本遵循题目**当前**访问权限与竞赛保密规则：选择旧版本不能绕过保密。
- * 非编辑者拿不到客观题标准答案与存储位置。
- *
- * GET /api/v1/problems/:id/versions/:versionId
- */
-router.get("/:id/versions/:versionId", optionalAuthMiddleware, async (c) => {
-  const problem = await resolveProblem(c.req.param("id") as string);
-  const canEdit = await canEditProblem(c, problem);
-  await assertProblemReadable(c, problem);
-  const version = await getProblemVersionOrThrow(
-    problem.id,
-    c.req.param("versionId") as string,
-  );
-  const [identityRow] = await getDb().select({
-    latest_version_id: problems.latest_version_id,
-  }).from(problems).where(eq(problems.id, problem.id)).limit(1);
-  return c.json({
-    data: {
-      version_id: version.id,
-      version: version.version,
-      origin: version.origin,
-      change_note: version.change_note,
-      published_at: version.published_at,
-      is_latest: identityRow?.latest_version_id === version.id,
-      content: trimVersionContent(
-        version.content as ProblemContentV1,
-        canEdit,
-      ),
-    },
-  });
-});
 
 /**
  * 下载支持包。
