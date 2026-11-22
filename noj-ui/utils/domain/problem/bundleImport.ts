@@ -7,26 +7,26 @@ import type { ApiErrorInfo } from '../../server/apiError.ts';
 
 /** 校验所选文件是否为 zip；合法返回 null，否则返回提示文案。 */
 export function validateZipFileName(name: string): string | null {
-    return name.toLowerCase().endsWith('.zip') ? null : '仅支持 .zip 格式文件';
+  return name.toLowerCase().endsWith('.zip') ? null : '仅支持 .zip 格式文件';
 }
 
 /** 使用域题包导入的响应。 */
 export interface BundleImportResult {
-    problem_id: string;
-    number: number;
-    draft_revision: number;
-    published?: { version: number; unchanged?: boolean } | null;
+  problem_id: string;
+  number: number;
+  draft_revision: number;
+  published?: { version: number; unchanged?: boolean } | null;
 }
 
 /** 导入成功提示。 */
 export function bundleImportSuccessMessage(result: BundleImportResult): string {
-    const label = String(result.number);
-    if (result.published) {
-        return result.published.unchanged
-            ? `已导入 ${label}，内容未变化，继续使用 V${result.published.version}`
-            : `已导入 ${label} 并发布 V${result.published.version}`;
-    }
-    return `已导入 ${label}（草稿：核对后发布即可作答）`;
+  const label = String(result.number);
+  if (result.published) {
+    return result.published.unchanged
+      ? `已导入 ${label}，内容未变化，继续使用 V${result.published.version}`
+      : `已导入 ${label} 并发布 V${result.published.version}`;
+  }
+  return `已导入 ${label}（草稿：核对后发布即可作答）`;
 }
 
 /**
@@ -38,8 +38,8 @@ export function bundleImportSuccessMessage(result: BundleImportResult): string {
  * 可操作的提示。
  */
 export function bundleImportErrorMessage(err: ApiErrorInfo): string {
-    if (err.code === 'DRAFT_REVISION_REQUIRED' || err.status === 428) {
-        return '题包 problem.json 中的 number 与已有题目重复：如需更新该题，请到该题编辑页上传支持包；如需新建，请删除 number 字段后重试';
-    }
-    return err.message;
+  if (err.code === 'DRAFT_REVISION_REQUIRED' || err.status === 428) {
+    return '题包 problem.json 中的 number 与已有题目重复：如需更新该题，请到该题编辑页上传支持包；如需新建，请删除 number 字段后重试';
+  }
+  return err.message;
 }

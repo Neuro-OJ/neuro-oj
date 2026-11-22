@@ -9,6 +9,6 @@ const __dirname = dirname(fromFileUrl(import.meta.url));
  * `schema-compat.ts` 的运行时环：三处都要读同一个目录，但只有迁移器需要执行迁移。
  */
 export function resolveMigrationsDirectory(): string {
-    return Deno.env.get("NOJ_MIGRATIONS_DIR") ??
-        resolve(__dirname, "../../../drizzle");
+  return Deno.env.get("NOJ_MIGRATIONS_DIR") ??
+    resolve(__dirname, "../../../drizzle");
 }

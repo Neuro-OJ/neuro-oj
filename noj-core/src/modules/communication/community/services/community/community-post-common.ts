@@ -2,25 +2,25 @@ import { eq, type SQL, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../../shared/base/sql-rows.ts";
 import { communityPosts, users } from "../../../../../shared/db/schema.ts";
 import {
-    ForbiddenError,
-    NotFoundError,
+  ForbiddenError,
+  NotFoundError,
 } from "../../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "../../../../problems/contracts/cross-module/services_problem-resolve.ts";
 import { endedWindowCondition } from "../../../../contests/contracts/cross-module/services_contest-window.ts";
 import {
-    hasUnendedPublicContest,
-    unendedPublicContestForProblem,
+  hasUnendedPublicContest,
+  unendedPublicContestForProblem,
 } from "../../../../contests/contracts/cross-module/services_problem-secrecy.ts";
 import type {
-    CommunityConfig,
-    CommunityPostStatus,
-    CommunityPostType,
+  CommunityConfig,
+  CommunityPostStatus,
+  CommunityPostType,
 } from "../../types/community.ts";
 import { getCommunityConfig } from "./community-config.ts";
 import {
-    communityDb,
-    communityDomainId,
-    type CommunityScope,
+  communityDb,
+  communityDomainId,
+  type CommunityScope,
 } from "./community-scope.ts";
 
 /**
@@ -34,21 +34,18 @@ import {
  * @throws {ForbiddenError} 存在未结束公开赛且非审核员时抛出（code=CONTEST_SILENCE）。
  */
 export async function assertNotContestSilenced(
-    moderator: boolean,
-    scope?: CommunityScope,
+  moderator: boolean,
+  scope?: CommunityScope,
 ): Promise<void> {
-    if (moderator) return;
-    if (
-        await hasUnendedPublicContest(
-            communityDomainId(scope),
-            communityDb(scope),
-        )
-    ) {
-        throw new ForbiddenError(
-            "比赛期间当前域暂停公开发布讨论、题解与评论，参赛提问请使用赛中答疑",
-            "CONTEST_SILENCE",
-        );
-    }
+  if (moderator) return;
+  if (
+    await hasUnendedPublicContest(communityDomainId(scope), communityDb(scope))
+  ) {
+    throw new ForbiddenError(
+      "比赛期间当前域暂停公开发布讨论、题解与评论，参赛提问请使用赛中答疑",
+      "CONTEST_SILENCE",
+    );
+  }
 }
 
 /**
@@ -57,7 +54,7 @@ export async function assertNotContestSilenced(
  * @returns 对应的 CommunityConfig 功能开关键。
  */
 export function featureForType(type: CommunityPostType): keyof CommunityConfig {
-    return type === "solution" ? "solutions_enabled" : "discussions_enabled";
+  return type === "solution" ? "solutions_enabled" : "discussions_enabled";
 }
 
 /**
@@ -67,18 +64,18 @@ export function featureForType(type: CommunityPostType): keyof CommunityConfig {
  * @throws {NotFoundError} 用户不存在时抛出。
  */
 export async function publicationStatus(
-    authorId: string,
-    scope?: CommunityScope,
+  authorId: string,
+  scope?: CommunityScope,
 ): Promise<CommunityPostStatus> {
-    const reviewHours = getCommunityConfig().new_user_review_hours;
-    if (reviewHours <= 0) return "published";
-    const db = communityDb(scope);
-    const row = await db.select({ created_at: users.created_at }).from(users)
-        .where(eq(users.id, authorId)).limit(1);
-    if (!row[0]) throw new NotFoundError("用户不存在");
-    return Date.parse(row[0].created_at) + reviewHours * 3600_000 > Date.now()
-        ? "pending"
-        : "published";
+  const reviewHours = getCommunityConfig().new_user_review_hours;
+  if (reviewHours <= 0) return "published";
+  const db = communityDb(scope);
+  const row = await db.select({ created_at: users.created_at }).from(users)
+    .where(eq(users.id, authorId)).limit(1);
+  if (!row[0]) throw new NotFoundError("用户不存在");
+  return Date.parse(row[0].created_at) + reviewHours * 3600_000 > Date.now()
+    ? "pending"
+    : "published";
 }
 
 /**
@@ -87,9 +84,9 @@ export async function publicationStatus(
  * 题目不存在时返回 null。
  */
 export function resolveProblemId(
-    reference: string,
+  reference: string,
 ): Promise<string | null> {
-    return resolveProblemIdOrNull(reference);
+  return resolveProblemIdOrNull(reference);
 }
 
 /**
@@ -104,31 +101,31 @@ export function resolveProblemId(
  * 客观题的用户无法满足题解门槛，与个人资料/全局排行的口径不一致。
  */
 export async function hasAcceptedSolution(
-    authorId: string,
-    problemId: string,
-    scope?: CommunityScope,
+  authorId: string,
+  problemId: string,
+  scope?: CommunityScope,
 ): Promise<boolean> {
-    const db = communityDb(scope);
-    const rows = await db.execute(sql`SELECT 1 FROM (
+  const db = communityDb(scope);
+  const rows = await db.execute(sql`SELECT 1 FROM (
       SELECT id FROM submissions WHERE user_id = ${authorId} AND problem_id = ${problemId}
         AND coalesce(domain_id, ${communityDomainId()}) = ${
-        communityDomainId(scope)
-    } AND is_accepted = true
+    communityDomainId(scope)
+  } AND is_accepted = true
         AND (contest_id IS NULL OR EXISTS (SELECT 1 FROM contests visible_contest
           WHERE visible_contest.id = submissions.contest_id AND ${
-        endedWindowCondition(sql`visible_contest.end_time`)
-    }))
+    endedWindowCondition(sql`visible_contest.end_time`)
+  }))
       UNION ALL
       SELECT id FROM objective_submissions WHERE user_id = ${authorId} AND paper_id = ${problemId}
         AND coalesce(domain_id, ${communityDomainId()}) = ${
-        communityDomainId(scope)
-    } AND is_accepted = true
+    communityDomainId(scope)
+  } AND is_accepted = true
         AND (contest_id IS NULL OR EXISTS (SELECT 1 FROM contests visible_contest
           WHERE visible_contest.id = objective_submissions.contest_id AND ${
-        endedWindowCondition(sql`visible_contest.end_time`)
-    }))
+    endedWindowCondition(sql`visible_contest.end_time`)
+  }))
     ) accepted LIMIT 1`);
-    return unwrapRows(rows as never).length > 0;
+  return unwrapRows(rows as never).length > 0;
 }
 
 /**
@@ -149,14 +146,14 @@ export async function hasAcceptedSolution(
  * @returns 可直接 push 进 drizzle conditions 数组的 SQL 片段。
  */
 export function notGatedContestContent(scope?: CommunityScope): SQL {
-    return sql`NOT (
+  return sql`NOT (
     ${communityPosts.type} IN ('solution', 'discussion')
     AND ${communityPosts.problem_id} IS NOT NULL
     AND ${
-        unendedPublicContestForProblem(
-            communityPosts.problem_id,
-            sql`${communityDomainId(scope)}`,
-        )
-    }
+    unendedPublicContestForProblem(
+      communityPosts.problem_id,
+      sql`${communityDomainId(scope)}`,
+    )
+  }
   )`;
 }

@@ -6,8 +6,8 @@
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
-    createUserToken,
-    initRedisForTest,
+  createUserToken,
+  initRedisForTest,
 } from "../../../../../tests/helper.ts";
 import { createApp } from "../../../../app.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
@@ -18,264 +18,256 @@ import { eq } from "drizzle-orm";
 const ts = Date.now();
 
 Deno.test({
-    name: "judge-images route: GET /api/v1/judge-images 公开返回列表",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        await initRedisForTest();
-        const app = createApp();
-        const res = await app.request("/api/v1/judge-images");
-        assertEquals(res.status, 200);
-        const body = await res.json();
-        assertEquals(Array.isArray(body.data), true);
-        // 应包含默认 seed
-        assertEquals(
-            body.data.some((i: { image: string }) =>
-                i.image === "noj-judge-python"
-            ),
-            true,
-        );
-    },
+  name: "judge-images route: GET /api/v1/judge-images 公开返回列表",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    await initRedisForTest();
+    const app = createApp();
+    const res = await app.request("/api/v1/judge-images");
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+    // 应包含默认 seed
+    assertEquals(
+      body.data.some((i: { image: string }) => i.image === "noj-judge-python"),
+      true,
+    );
+  },
 });
 
 Deno.test({
-    name: "judge-images route: GET /api/v1/judge-images 无需认证",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const res = await app.request("/api/v1/judge-images");
-        assertEquals(res.status, 200);
-    },
+  name: "judge-images route: GET /api/v1/judge-images 无需认证",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await app.request("/api/v1/judge-images");
+    assertEquals(res.status, 200);
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: GET /api/v1/admin/system/judge-images 管理员返回列表",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken("admin");
-        const res = await app.request("/api/v1/admin/system/judge-images", {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        assertEquals(res.status, 200);
-        const body = await res.json();
-        assertEquals(Array.isArray(body.data), true);
-    },
+  name:
+    "judge-images route: GET /api/v1/admin/system/judge-images 管理员返回列表",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await app.request("/api/v1/admin/system/judge-images", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(Array.isArray(body.data), true);
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: GET /api/v1/admin/system/judge-images 非管理员返回 403",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken();
-        const res = await app.request("/api/v1/admin/system/judge-images", {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        assertEquals(res.status, 403);
-    },
+  name:
+    "judge-images route: GET /api/v1/admin/system/judge-images 非管理员返回 403",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken();
+    const res = await app.request("/api/v1/admin/system/judge-images", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    assertEquals(res.status, 403);
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: POST /api/v1/admin/system/judge-images 管理员创建成功",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken("admin");
-        const res = await app.request("/api/v1/admin/system/judge-images", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                image: `route-test-image-${ts}`,
-                mode: "exact",
-                kind: "evaluator",
-                description: "路由测试",
-            }),
-        });
-        assertEquals(res.status, 201);
-        const body = await res.json();
-        assertEquals(body.data.image, `route-test-image-${ts}`);
-        assertEquals(body.data.mode, "exact");
-    },
+  name:
+    "judge-images route: POST /api/v1/admin/system/judge-images 管理员创建成功",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await app.request("/api/v1/admin/system/judge-images", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        image: `route-test-image-${ts}`,
+        mode: "exact",
+        kind: "evaluator",
+        description: "路由测试",
+      }),
+    });
+    assertEquals(res.status, 201);
+    const body = await res.json();
+    assertEquals(body.data.image, `route-test-image-${ts}`);
+    assertEquals(body.data.mode, "exact");
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: POST /api/v1/admin/system/judge-images 非法 mode 返回 400",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken("admin");
-        const res = await app.request("/api/v1/admin/system/judge-images", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-                image: "test-image",
-                mode: "regex",
-            }),
-        });
-        assertEquals(res.status, 400);
-    },
+  name:
+    "judge-images route: POST /api/v1/admin/system/judge-images 非法 mode 返回 400",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await app.request("/api/v1/admin/system/judge-images", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        image: "test-image",
+        mode: "regex",
+      }),
+    });
+    assertEquals(res.status, 400);
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: PUT /api/v1/admin/system/judge-images/:id 管理员更新成功",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken("admin");
+  name:
+    "judge-images route: PUT /api/v1/admin/system/judge-images/:id 管理员更新成功",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
 
-        // 先创建
-        const createRes = await app.request(
-            "/api/v1/admin/system/judge-images",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    image: `route-update-test-${ts}`,
-                    mode: "exact",
-                    kind: "evaluator",
-                }),
-            },
-        );
-        const created = await createRes.json();
+    // 先创建
+    const createRes = await app.request("/api/v1/admin/system/judge-images", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        image: `route-update-test-${ts}`,
+        mode: "exact",
+        kind: "evaluator",
+      }),
+    });
+    const created = await createRes.json();
 
-        // 再更新
-        const updateRes = await app.request(
-            `/api/v1/admin/system/judge-images/${created.data.id}`,
-            {
-                method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    description: "更新后的介绍",
-                    mode: "all_versions",
-                }),
-            },
-        );
-        assertEquals(updateRes.status, 200);
-        const updated = await updateRes.json();
-        assertEquals(updated.data.description, "更新后的介绍");
-        assertEquals(updated.data.mode, "all_versions");
-    },
+    // 再更新
+    const updateRes = await app.request(
+      `/api/v1/admin/system/judge-images/${created.data.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          description: "更新后的介绍",
+          mode: "all_versions",
+        }),
+      },
+    );
+    assertEquals(updateRes.status, 200);
+    const updated = await updateRes.json();
+    assertEquals(updated.data.description, "更新后的介绍");
+    assertEquals(updated.data.mode, "all_versions");
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 管理员删除成功",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken("admin");
+  name:
+    "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 管理员删除成功",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
 
-        // 先创建
-        const createRes = await app.request(
-            "/api/v1/admin/system/judge-images",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    image: `route-delete-test-${ts}`,
-                    mode: "exact",
-                    kind: "evaluator",
-                }),
-            },
-        );
-        const created = await createRes.json();
+    // 先创建
+    const createRes = await app.request("/api/v1/admin/system/judge-images", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        image: `route-delete-test-${ts}`,
+        mode: "exact",
+        kind: "evaluator",
+      }),
+    });
+    const created = await createRes.json();
 
-        // 再删除
-        const deleteRes = await app.request(
-            `/api/v1/admin/system/judge-images/${created.data.id}`,
-            { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
-        );
-        assertEquals(deleteRes.status, 204);
-    },
+    // 再删除
+    const deleteRes = await app.request(
+      `/api/v1/admin/system/judge-images/${created.data.id}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
+    );
+    assertEquals(deleteRes.status, 204);
+  },
 });
 
 Deno.test({
-    name:
-        "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 不存在的返回 404",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const token = await createUserToken("admin");
-        const res = await app.request(
-            "/api/v1/admin/system/judge-images/nonexistent-id",
-            {
-                method: "DELETE",
-                headers: { Authorization: `Bearer ${token}` },
-            },
-        );
-        assertEquals(res.status, 404);
-    },
+  name:
+    "judge-images route: DELETE /api/v1/admin/system/judge-images/:id 不存在的返回 404",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const token = await createUserToken("admin");
+    const res = await app.request(
+      "/api/v1/admin/system/judge-images/nonexistent-id",
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    assertEquals(res.status, 404);
+  },
 });
 
 Deno.test({
-    name: "judge-images route: 未登录访问 admin 端点返回 401",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        await resetDbForTest();
-        const app = createApp();
-        const res = await app.request("/api/v1/admin/system/judge-images");
-        assertEquals(res.status, 401);
-    },
+  name: "judge-images route: 未登录访问 admin 端点返回 401",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const app = createApp();
+    const res = await app.request("/api/v1/admin/system/judge-images");
+    assertEquals(res.status, 401);
+  },
 });
 
 // 清理
 Deno.test({
-    name: "judge-images route: cleanup",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    fn: async () => {
-        try {
-            const db = getDb();
-            await db.delete(judgeImages).where(
-                eq(judgeImages.image, `route-test-image-${ts}`),
-            );
-            await db.delete(judgeImages).where(
-                eq(judgeImages.image, `route-update-test-${ts}`),
-            );
-            await db.delete(judgeImages).where(
-                eq(judgeImages.image, `route-delete-test-${ts}`),
-            );
-        } catch {
-            // ignore
-        }
-    },
+  name: "judge-images route: cleanup",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    try {
+      const db = getDb();
+      await db.delete(judgeImages).where(
+        eq(judgeImages.image, `route-test-image-${ts}`),
+      );
+      await db.delete(judgeImages).where(
+        eq(judgeImages.image, `route-update-test-${ts}`),
+      );
+      await db.delete(judgeImages).where(
+        eq(judgeImages.image, `route-delete-test-${ts}`),
+      );
+    } catch {
+      // ignore
+    }
+  },
 });

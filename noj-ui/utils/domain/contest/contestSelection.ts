@@ -12,12 +12,12 @@
 
 /** 邀请赛挂载公开题时的风险提示文案。 */
 export const INVITE_PUBLIC_PROBLEM_WARNING =
-    '若希望比赛题目对外完全保密，请务必使用您名下的私有题目（Private）。公开题目无法在全站隐藏，仍允许公共练习。';
+  '若希望比赛题目对外完全保密，请务必使用您名下的私有题目（Private）。公开题目无法在全站隐藏，仍允许公共练习。';
 
 /** 题目可见性最小形状（`AdminProblemOption` 的可见性子集）。 */
 export interface ProblemVisibilityRef {
-    id: string;
-    visibility?: 'public' | 'private';
+  id: string;
+  visibility?: 'public' | 'private';
 }
 
 /**
@@ -31,11 +31,11 @@ export interface ProblemVisibilityRef {
  * @returns 命中公开可见性的题目 id，顺序同入参。
  */
 export function selectedPublicProblemIds(
-    selectedProblemIds: readonly string[],
-    options: readonly ProblemVisibilityRef[],
+  selectedProblemIds: readonly string[],
+  options: readonly ProblemVisibilityRef[],
 ): string[] {
-    const visibilityById = new Map(options.map((option) => [option.id, option.visibility]));
-    return selectedProblemIds.filter((id) => visibilityById.get(id) === 'public');
+  const visibilityById = new Map(options.map((option) => [option.id, option.visibility]));
+  return selectedProblemIds.filter((id) => visibilityById.get(id) === 'public');
 }
 
 /**
@@ -46,12 +46,12 @@ export function selectedPublicProblemIds(
  * @param options 候选题列表。
  */
 export function invitePublicProblemIds(
-    kind: string | undefined,
-    selectedProblemIds: readonly string[],
-    options: readonly ProblemVisibilityRef[],
+  kind: string | undefined,
+  selectedProblemIds: readonly string[],
+  options: readonly ProblemVisibilityRef[],
 ): string[] {
-    if (kind !== 'invite') return [];
-    return selectedPublicProblemIds(selectedProblemIds, options);
+  if (kind !== 'invite') return [];
+  return selectedPublicProblemIds(selectedProblemIds, options);
 }
 
 /**
@@ -62,9 +62,9 @@ export function invitePublicProblemIds(
  * @param options 候选题列表。
  */
 export function needsInvitePublicWarning(
-    kind: string | undefined,
-    selectedProblemIds: readonly string[],
-    options: readonly ProblemVisibilityRef[],
+  kind: string | undefined,
+  selectedProblemIds: readonly string[],
+  options: readonly ProblemVisibilityRef[],
 ): boolean {
-    return invitePublicProblemIds(kind, selectedProblemIds, options).length > 0;
+  return invitePublicProblemIds(kind, selectedProblemIds, options).length > 0;
 }

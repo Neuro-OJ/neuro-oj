@@ -5,54 +5,54 @@ import { assertEquals, assertRejects } from 'jsr:@std/assert@^1';
 import { restoreCodeTemplate } from '../../../utils/domain/problem/codeEditorTemplate.ts';
 
 function createOptions(overrides: Partial<Parameters<typeof restoreCodeTemplate>[0]> = {}) {
-    const events: string[] = [];
-    const options: Parameters<typeof restoreCodeTemplate>[0] = {
-        fetchTemplate: () => {
-            events.push('fetch');
-            return Promise.resolve('print("hello")');
-        },
-        clearDraft: () => {
-            events.push('clear');
-        },
-        setCode: (template) => {
-            events.push(`set:${template}`);
-        },
-        ...overrides,
-    };
-    return { options, events };
+  const events: string[] = [];
+  const options: Parameters<typeof restoreCodeTemplate>[0] = {
+    fetchTemplate: () => {
+      events.push('fetch');
+      return Promise.resolve('print("hello")');
+    },
+    clearDraft: () => {
+      events.push('clear');
+    },
+    setCode: (template) => {
+      events.push(`set:${template}`);
+    },
+    ...overrides,
+  };
+  return { options, events };
 }
 
 Deno.test('codeEditorTemplate: 模板成功后才清除草稿并替换代码', async () => {
-    const { options, events } = createOptions();
+  const { options, events } = createOptions();
 
-    const restored = await restoreCodeTemplate(options);
+  const restored = await restoreCodeTemplate(options);
 
-    assertEquals(restored, true);
-    assertEquals(events, ['fetch', 'clear', 'set:print("hello")']);
+  assertEquals(restored, true);
+  assertEquals(events, ['fetch', 'clear', 'set:print("hello")']);
 });
 
 Deno.test('codeEditorTemplate: 空模板不会覆盖现有代码或清除草稿', async () => {
-    const { options, events } = createOptions({
-        fetchTemplate: () => {
-            events.push('fetch');
-            return Promise.resolve(null);
-        },
-    });
+  const { options, events } = createOptions({
+    fetchTemplate: () => {
+      events.push('fetch');
+      return Promise.resolve(null);
+    },
+  });
 
-    const restored = await restoreCodeTemplate(options);
+  const restored = await restoreCodeTemplate(options);
 
-    assertEquals(restored, false);
-    assertEquals(events, ['fetch']);
+  assertEquals(restored, false);
+  assertEquals(events, ['fetch']);
 });
 
 Deno.test('codeEditorTemplate: 模板请求失败时保留原草稿', async () => {
-    const { options, events } = createOptions({
-        fetchTemplate: () => {
-            events.push('fetch');
-            return Promise.reject(new Error('template unavailable'));
-        },
-    });
+  const { options, events } = createOptions({
+    fetchTemplate: () => {
+      events.push('fetch');
+      return Promise.reject(new Error('template unavailable'));
+    },
+  });
 
-    await assertRejects(() => restoreCodeTemplate(options), Error, 'template unavailable');
-    assertEquals(events, ['fetch']);
+  await assertRejects(() => restoreCodeTemplate(options), Error, 'template unavailable');
+  assertEquals(events, ['fetch']);
 });

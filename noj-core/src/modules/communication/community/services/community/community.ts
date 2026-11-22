@@ -13,61 +13,61 @@
  * - community-moderation.ts    举报/处罚/预设
  */
 export {
-    assertCommunityEnabled,
-    assertCommunityWritable,
-    getCommunityConfig,
+  assertCommunityEnabled,
+  assertCommunityWritable,
+  getCommunityConfig,
 } from "./community-config.ts";
 export { createBoard, listBoards, updateBoard } from "./community-boards.ts";
 export {
-    assertNotContestSilenced,
-    featureForType,
-    hasAcceptedSolution,
-    notGatedContestContent,
-    publicationStatus,
-    resolveProblemId,
+  assertNotContestSilenced,
+  featureForType,
+  hasAcceptedSolution,
+  notGatedContestContent,
+  publicationStatus,
+  resolveProblemId,
 } from "./community-post-common.ts";
 export {
-    createPost,
-    getPost,
-    resolvePostId,
-    setPostOfficial,
-    updatePost,
+  createPost,
+  getPost,
+  resolvePostId,
+  setPostOfficial,
+  updatePost,
 } from "./community-post-crud.ts";
 export { countPostsByType, listPosts } from "./community-post-list.ts";
 export {
-    changePostStatus,
-    togglePostFlag,
+  changePostStatus,
+  togglePostFlag,
 } from "./community-post-moderation.ts";
 export {
-    changeCommentStatus,
-    createComment,
-    deleteComment,
-    listComments,
-    listPendingComments,
-    updateComment,
+  changeCommentStatus,
+  createComment,
+  deleteComment,
+  listComments,
+  listPendingComments,
+  updateComment,
 } from "./community-comments.ts";
 export {
-    getNotification,
-    getNotificationUnreadCount,
-    listNotifications,
-    markNotificationRead,
-    markNotificationsRead,
-    notificationVisibleWhere,
+  getNotification,
+  getNotificationUnreadCount,
+  listNotifications,
+  markNotificationRead,
+  markNotificationsRead,
+  notificationVisibleWhere,
 } from "./community-feed.ts";
 export {
-    applyCommunityPreset,
-    banUser,
-    createReport,
-    createSanction,
-    getLatestActiveBanId,
-    getReportBanScope,
-    getReportDetail,
-    getReportTarget,
-    listReports,
-    listSanctions,
-    listUserSanctions,
-    reopenReport,
-    resolveReport,
-    revokeSanction,
+  applyCommunityPreset,
+  banUser,
+  createReport,
+  createSanction,
+  getLatestActiveBanId,
+  getReportBanScope,
+  getReportDetail,
+  getReportTarget,
+  listReports,
+  listSanctions,
+  listUserSanctions,
+  reopenReport,
+  resolveReport,
+  revokeSanction,
 } from "./community-moderation.ts";
 export { parseQueryLimit } from "./query-limit.ts";

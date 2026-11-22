@@ -5,9 +5,9 @@
  * 此处处理 middleware 未覆盖的异步场景），从重复的页面样板中抽取。
  */
 export function useRequireLogin() {
-    const { isLoggedIn, loading } = useAuth();
-    const router = useRouter();
-    watch(loading, (val) => {
-        if (!val && !isLoggedIn.value) router.replace('/login');
-    }, { immediate: true });
+  const { isLoggedIn, loading } = useAuth();
+  const router = useRouter();
+  watch(loading, (val) => {
+    if (!val && !isLoggedIn.value) router.replace('/login');
+  }, { immediate: true });
 }

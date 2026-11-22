@@ -9,11 +9,11 @@ const AVATAR_FILE_NAME = /\.(png|jpe?g|webp)$/i;
 
 /** 返回可直接展示给用户的校验错误；返回 null 表示文件可以上传。 */
 export function getAvatarUploadError(
-    file: Pick<File, 'name' | 'type' | 'size'>,
+  file: Pick<File, 'name' | 'type' | 'size'>,
 ): string | null {
-    if (!AVATAR_FILE_NAME.test(file.name) || !AVATAR_MIME_TYPES.has(file.type)) {
-        return AVATAR_TYPE_ERROR;
-    }
-    if (file.size > MAX_AVATAR_SIZE_BYTES) return AVATAR_SIZE_ERROR;
-    return null;
+  if (!AVATAR_FILE_NAME.test(file.name) || !AVATAR_MIME_TYPES.has(file.type)) {
+    return AVATAR_TYPE_ERROR;
+  }
+  if (file.size > MAX_AVATAR_SIZE_BYTES) return AVATAR_SIZE_ERROR;
+  return null;
 }

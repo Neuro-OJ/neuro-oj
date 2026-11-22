@@ -27,34 +27,34 @@ export type MaintenanceModeReader = () => boolean;
  * @returns Hono 中间件
  */
 export function createMaintenanceMode(
-    isMaintenance: MaintenanceModeReader,
+  isMaintenance: MaintenanceModeReader,
 ): (c: Context, next: Next) => Promise<Response | void> {
-    return function maintenanceMode(
-        c: Context,
-        next: Next,
-    ): Promise<Response | void> {
-        if (!isMaintenance()) {
-            return next();
-        }
+  return function maintenanceMode(
+    c: Context,
+    next: Next,
+  ): Promise<Response | void> {
+    if (!isMaintenance()) {
+      return next();
+    }
 
-        const method = c.req.method.toUpperCase();
-        if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
-            return next();
-        }
+    const method = c.req.method.toUpperCase();
+    if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+      return next();
+    }
 
-        // 内部端点由服务凭据保护，维护模式下仍需可用（进入/查询排空状态）。
-        if (c.req.path.startsWith(INTERNAL_API_PATH_PREFIX)) {
-            return next();
-        }
+    // 内部端点由服务凭据保护，维护模式下仍需可用（进入/查询排空状态）。
+    if (c.req.path.startsWith(INTERNAL_API_PATH_PREFIX)) {
+      return next();
+    }
 
-        return Promise.resolve(
-            c.json(
-                {
-                    error: "系统维护中，请稍后再试",
-                    code: "MAINTENANCE",
-                },
-                503,
-            ),
-        );
-    };
+    return Promise.resolve(
+      c.json(
+        {
+          error: "系统维护中，请稍后再试",
+          code: "MAINTENANCE",
+        },
+        503,
+      ),
+    );
+  };
 }

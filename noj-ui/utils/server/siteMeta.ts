@@ -8,37 +8,37 @@
 import type { BuildInfo } from '../buildInfo.ts';
 
 export interface SiteMeta {
-    icp_number: string;
-    icp_url: string;
-    police_number: string;
-    police_url: string;
-    /** 个人信息处理者名称（PIPL 告知） */
-    operator_name: string;
-    /** 处理者联系方式（PIPL 告知） */
-    contact: string;
-    /** 部署补充说明（存储区域/保留期限/备份/第三方服务；PIPL 告知） */
-    deployment_notes: string;
-    /** 第三方服务清单（JSON 字符串） */
-    third_parties: string;
-    /** 后端构建身份（版本 / commit / 构建时间）；旧后端缺失时为 null */
-    build: BuildInfo | null;
+  icp_number: string;
+  icp_url: string;
+  police_number: string;
+  police_url: string;
+  /** 个人信息处理者名称（PIPL 告知） */
+  operator_name: string;
+  /** 处理者联系方式（PIPL 告知） */
+  contact: string;
+  /** 部署补充说明（存储区域/保留期限/备份/第三方服务；PIPL 告知） */
+  deployment_notes: string;
+  /** 第三方服务清单（JSON 字符串） */
+  third_parties: string;
+  /** 后端构建身份（版本 / commit / 构建时间）；旧后端缺失时为 null */
+  build: BuildInfo | null;
 }
 
 export const EMPTY_SITE_META: SiteMeta = {
-    icp_number: '',
-    icp_url: '',
-    police_number: '',
-    police_url: '',
-    operator_name: '',
-    contact: '',
-    deployment_notes: '',
-    third_parties: '',
-    build: null,
+  icp_number: '',
+  icp_url: '',
+  police_number: '',
+  police_url: '',
+  operator_name: '',
+  contact: '',
+  deployment_notes: '',
+  third_parties: '',
+  build: null,
 };
 
 export interface FilingLink {
-    label: string;
-    url: string;
+  label: string;
+  url: string;
 }
 
 /**
@@ -48,27 +48,27 @@ export interface FilingLink {
  * @returns 备案链接列表；无备案时为空数组（页脚不渲染）
  */
 export function buildFilingLinks(meta: SiteMeta): FilingLink[] {
-    const links: FilingLink[] = [];
-    if (meta.icp_number) {
-        links.push({
-            label: meta.icp_number,
-            url: meta.icp_url || 'https://beian.miit.gov.cn/',
-        });
-    }
-    if (meta.police_number) {
-        links.push({
-            label: meta.police_number,
-            url: meta.police_url || 'https://beian.mps.gov.cn/',
-        });
-    }
-    return links;
+  const links: FilingLink[] = [];
+  if (meta.icp_number) {
+    links.push({
+      label: meta.icp_number,
+      url: meta.icp_url || 'https://beian.miit.gov.cn/',
+    });
+  }
+  if (meta.police_number) {
+    links.push({
+      label: meta.police_number,
+      url: meta.police_url || 'https://beian.mps.gov.cn/',
+    });
+  }
+  return links;
 }
 
 /** 第三方服务条目。 */
 export interface ThirdParty {
-    name: string;
-    purpose?: string;
-    data?: string;
+  name: string;
+  purpose?: string;
+  data?: string;
 }
 
 /**
@@ -79,18 +79,18 @@ export interface ThirdParty {
  * @returns 归一化的第三方条目列表
  */
 export function buildThirdPartyList(raw: string): ThirdParty[] {
-    if (!raw || !raw.trim()) return [];
-    try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        return parsed
-            .filter((x) => x && typeof x === 'object' && typeof x.name === 'string' && x.name.trim() !== '')
-            .map((x) => ({
-                name: String(x.name),
-                purpose: x.purpose !== undefined && x.purpose !== null ? String(x.purpose) : undefined,
-                data: x.data !== undefined && x.data !== null ? String(x.data) : undefined,
-            }));
-    } catch {
-        return [];
-    }
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x) => x && typeof x === 'object' && typeof x.name === 'string' && x.name.trim() !== '')
+      .map((x) => ({
+        name: String(x.name),
+        purpose: x.purpose !== undefined && x.purpose !== null ? String(x.purpose) : undefined,
+        data: x.data !== undefined && x.data !== null ? String(x.data) : undefined,
+      }));
+  } catch {
+    return [];
+  }
 }

@@ -4,15 +4,15 @@ import { users } from "../../../../../shared/db/schema.ts";
 
 /** 密码与会话版本始终在同一条 UPDATE 中变更，撤销全部旧会话。 */
 export function passwordUpdate(
-    passwordHash: string,
-    mustChangePassword: boolean,
+  passwordHash: string,
+  mustChangePassword: boolean,
 ) {
-    return {
-        password_hash: passwordHash,
-        session_version: sql`${users.session_version} + 1`,
-        must_change_password: mustChangePassword,
-        updated_at: new Date().toISOString(),
-    };
+  return {
+    password_hash: passwordHash,
+    session_version: sql`${users.session_version} + 1`,
+    must_change_password: mustChangePassword,
+    updated_at: new Date().toISOString(),
+  };
 }
 
 /**
@@ -40,7 +40,7 @@ export const TEMPORARY_PASSWORD_SALT_ROUNDS = Math.min(SALT_ROUNDS, 10);
  * @returns bcrypt 哈希字符串
  */
 export function hashTemporaryPassword(plain: string): Promise<string> {
-    return bcrypt.hash(plain, TEMPORARY_PASSWORD_SALT_ROUNDS);
+  return bcrypt.hash(plain, TEMPORARY_PASSWORD_SALT_ROUNDS);
 }
 
 /**
@@ -49,7 +49,7 @@ export function hashTemporaryPassword(plain: string): Promise<string> {
  * @returns bcrypt 哈希字符串
  */
 export function hashPassword(plain: string): Promise<string> {
-    return bcrypt.hash(plain, SALT_ROUNDS);
+  return bcrypt.hash(plain, SALT_ROUNDS);
 }
 
 /**
@@ -59,8 +59,8 @@ export function hashPassword(plain: string): Promise<string> {
  * @returns 是否匹配
  */
 export function comparePassword(
-    plain: string,
-    hash: string,
+  plain: string,
+  hash: string,
 ): Promise<boolean> {
-    return bcrypt.compare(plain, hash);
+  return bcrypt.compare(plain, hash);
 }

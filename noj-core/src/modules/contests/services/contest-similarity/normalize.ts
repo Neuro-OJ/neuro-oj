@@ -6,7 +6,7 @@ import type { LanguageProfile } from "./lexicon.ts";
 
 /** 判断 token 是否为标识符（首字符为字母/下划线/$）。 */
 function isIdentifierToken(token: string): boolean {
-    return /^[\p{L}_$]/u.test(token);
+  return /^[\p{L}_$]/u.test(token);
 }
 
 /**
@@ -14,70 +14,67 @@ function isIdentifierToken(token: string): boolean {
  * 处理反斜杠转义；遇到换行视为未闭合字符串，停在换行处（保留行结构）。
  */
 function skipQuoted(source: string, start: number, quote: string): number {
-    let i = start + 1;
-    while (i < source.length) {
-        const ch = source[i];
-        if (ch === "\\") {
-            i += 2;
-            continue;
-        }
-        if (ch === quote) return i + 1;
-        if (ch === "\n") return i;
-        i++;
+  let i = start + 1;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === "\\") {
+      i += 2;
+      continue;
     }
-    return source.length;
+    if (ch === quote) return i + 1;
+    if (ch === "\n") return i;
+    i++;
+  }
+  return source.length;
 }
 
 function stripCommentsAndLiterals(
-    source: string,
-    profile: LanguageProfile,
+  source: string,
+  profile: LanguageProfile,
 ): string {
-    let out = "";
-    let i = 0;
-    while (i < source.length) {
-        const lineComment = profile.lineComments.find((marker) =>
-            source.startsWith(marker, i)
-        );
-        if (lineComment) {
-            const end = source.indexOf("\n", i);
-            if (end === -1) break;
-            i = end;
-            continue;
-        }
-        const blockComment = profile.blockComments.find(([open]) =>
-            source.startsWith(open, i)
-        );
-        if (blockComment) {
-            const end = source.indexOf(
-                blockComment[1],
-                i + blockComment[0].length,
-            );
-            i = end === -1 ? source.length : end + blockComment[1].length;
-            out += " ";
-            continue;
-        }
-        const tripleQuote = profile.tripleQuotes.find((quote) =>
-            source.startsWith(quote, i)
-        );
-        if (tripleQuote) {
-            // 三引号字符串按文档字符串处理：整体剥除且不留占位符。理由：Python 中
-            // 它绝大多数是文档字符串，新增/删除文档字符串不该拉低相似度；若留占位符，
-            // 反而会给 token 流插入一个额外 token，凭空制造差异。
-            const end = source.indexOf(tripleQuote, i + tripleQuote.length);
-            i = end === -1 ? source.length : end + tripleQuote.length;
-            out += " ";
-            continue;
-        }
-        const ch = source[i]!;
-        if (ch === '"' || ch === "'" || ch === "`") {
-            i = skipQuoted(source, i, ch);
-            out += ` ${STRING_TOKEN} `;
-            continue;
-        }
-        out += ch;
-        i++;
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const lineComment = profile.lineComments.find((marker) =>
+      source.startsWith(marker, i)
+    );
+    if (lineComment) {
+      const end = source.indexOf("\n", i);
+      if (end === -1) break;
+      i = end;
+      continue;
     }
-    return out;
+    const blockComment = profile.blockComments.find(([open]) =>
+      source.startsWith(open, i)
+    );
+    if (blockComment) {
+      const end = source.indexOf(blockComment[1], i + blockComment[0].length);
+      i = end === -1 ? source.length : end + blockComment[1].length;
+      out += " ";
+      continue;
+    }
+    const tripleQuote = profile.tripleQuotes.find((quote) =>
+      source.startsWith(quote, i)
+    );
+    if (tripleQuote) {
+      // 三引号字符串按文档字符串处理：整体剥除且不留占位符。理由：Python 中
+      // 它绝大多数是文档字符串，新增/删除文档字符串不该拉低相似度；若留占位符，
+      // 反而会给 token 流插入一个额外 token，凭空制造差异。
+      const end = source.indexOf(tripleQuote, i + tripleQuote.length);
+      i = end === -1 ? source.length : end + tripleQuote.length;
+      out += " ";
+      continue;
+    }
+    const ch = source[i]!;
+    if (ch === '"' || ch === "'" || ch === "`") {
+      i = skipQuoted(source, i, ch);
+      out += ` ${STRING_TOKEN} `;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 /**
@@ -87,10 +84,10 @@ function stripCommentsAndLiterals(
  * 空格习惯无关，天然对 `a==b` 与 `a == b` 这类格式差异免疫。
  */
 function tokenize(source: string): string[] {
-    const matches = source.match(
-        /0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[\p{L}_$][\p{L}\p{N}_$]*|[^\s]/gu,
-    );
-    return matches ?? [];
+  const matches = source.match(
+    /0[xX][0-9a-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[\p{L}_$][\p{L}\p{N}_$]*|[^\s]/gu,
+  );
+  return matches ?? [];
 }
 
 /**
@@ -115,21 +112,21 @@ function tokenize(source: string): string[] {
  * 位置化改写，并把该边界记在这里供后续调优（例如引入局部对齐）时参考。
  */
 function canonicalizeIdentifiers(
-    tokens: readonly string[],
-    keywords: ReadonlySet<string>,
+  tokens: readonly string[],
+  keywords: ReadonlySet<string>,
 ): string[] {
-    const mapping = new Map<string, string>();
-    let nextIndex = 0;
-    return tokens.map((token) => {
-        if (!isIdentifierToken(token) || keywords.has(token)) return token;
-        let canonical = mapping.get(token);
-        if (!canonical) {
-            nextIndex += 1;
-            canonical = `v${nextIndex}`;
-            mapping.set(token, canonical);
-        }
-        return canonical;
-    });
+  const mapping = new Map<string, string>();
+  let nextIndex = 0;
+  return tokens.map((token) => {
+    if (!isIdentifierToken(token) || keywords.has(token)) return token;
+    let canonical = mapping.get(token);
+    if (!canonical) {
+      nextIndex += 1;
+      canonical = `v${nextIndex}`;
+      mapping.set(token, canonical);
+    }
+    return canonical;
+  });
 }
 
 /**
@@ -150,12 +147,12 @@ function canonicalizeIdentifiers(
  * @returns 规范 token 序列；空/仅注释/`null` 输入返回空数组。
  */
 export function normalizeCode(
-    code: string | null | undefined,
-    language: string | null | undefined,
+  code: string | null | undefined,
+  language: string | null | undefined,
 ): string[] {
-    const raw = (code ?? "").slice(0, DEFAULT_MAX_RAW_CODE_CHARS);
-    if (!raw.trim()) return [];
-    const profile = resolveProfile(language);
-    const stripped = stripCommentsAndLiterals(raw, profile);
-    return canonicalizeIdentifiers(tokenize(stripped), profile.keywords);
+  const raw = (code ?? "").slice(0, DEFAULT_MAX_RAW_CODE_CHARS);
+  if (!raw.trim()) return [];
+  const profile = resolveProfile(language);
+  const stripped = stripCommentsAndLiterals(raw, profile);
+  return canonicalizeIdentifiers(tokenize(stripped), profile.keywords);
 }

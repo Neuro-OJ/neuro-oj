@@ -16,78 +16,78 @@ import { assertEquals, assertRejects } from 'jsr:@std/assert@^1';
 import { submitRegistration } from '../../utils/auth/registerFlow.ts';
 
 Deno.test('submitRegistration: 邮件发送成功时跳转 sent=1', async () => {
-    const calls: string[] = [];
-    const result = await submitRegistration(
-        {
-            register: () => {
-                calls.push('register');
-                return Promise.resolve(true);
-            },
-            login: () => {
-                calls.push('login');
-                return Promise.resolve({});
-            },
-        },
-        'alice',
-        'alice@example.com',
-        'Passw0rd-X',
-        true,
-    );
-    assertEquals(calls, ['register', 'login']);
-    assertEquals(result, {
-        status: 'verified',
-        destination: '/verify-email?registered=1&sent=1',
-    });
+  const calls: string[] = [];
+  const result = await submitRegistration(
+    {
+      register: () => {
+        calls.push('register');
+        return Promise.resolve(true);
+      },
+      login: () => {
+        calls.push('login');
+        return Promise.resolve({});
+      },
+    },
+    'alice',
+    'alice@example.com',
+    'Passw0rd-X',
+    true,
+  );
+  assertEquals(calls, ['register', 'login']);
+  assertEquals(result, {
+    status: 'verified',
+    destination: '/verify-email?registered=1&sent=1',
+  });
 });
 
 Deno.test('submitRegistration: 注册成功但邮件未发出时跳转 sent=0', async () => {
-    const result = await submitRegistration(
-        {
-            register: () => Promise.resolve(false),
-            login: () => Promise.resolve({}),
-        },
-        'alice',
-        'alice@example.com',
-        'Passw0rd-X',
-        true,
-    );
-    assertEquals(result, {
-        status: 'resend_needed',
-        destination: '/verify-email?registered=1&sent=0',
-    });
+  const result = await submitRegistration(
+    {
+      register: () => Promise.resolve(false),
+      login: () => Promise.resolve({}),
+    },
+    'alice',
+    'alice@example.com',
+    'Passw0rd-X',
+    true,
+  );
+  assertEquals(result, {
+    status: 'resend_needed',
+    destination: '/verify-email?registered=1&sent=0',
+  });
 });
 
 Deno.test('submitRegistration: 自动登录失败时引导手动登录', async () => {
-    const result = await submitRegistration(
+  const result = await submitRegistration(
+    {
+      register: () => Promise.resolve(true),
+      login: () => Promise.reject(new Error('bad credentials')),
+    },
+    'alice',
+    'alice@example.com',
+    'Passw0rd-X',
+    true,
+  );
+  assertEquals(result, {
+    status: 'login_failed',
+    destination: '/login?registered=1',
+  });
+});
+
+Deno.test('submitRegistration: 注册接口失败时错误向调用方传播', async () => {
+  await assertRejects(
+    () =>
+      submitRegistration(
         {
-            register: () => Promise.resolve(true),
-            login: () => Promise.reject(new Error('bad credentials')),
+          register: () => Promise.reject(new Error('用户名已存在')),
+          login: () => Promise.resolve({}),
         },
         'alice',
         'alice@example.com',
         'Passw0rd-X',
         true,
-    );
-    assertEquals(result, {
-        status: 'login_failed',
-        destination: '/login?registered=1',
-    });
-});
-
-Deno.test('submitRegistration: 注册接口失败时错误向调用方传播', async () => {
-    await assertRejects(
-        () =>
-            submitRegistration(
-                {
-                    register: () => Promise.reject(new Error('用户名已存在')),
-                    login: () => Promise.resolve({}),
-                },
-                'alice',
-                'alice@example.com',
-                'Passw0rd-X',
-                true,
-            ),
-        Error,
-        '用户名已存在',
-    );
+      ),
+    Error,
+    '用户名已存在',
+  );
 });

@@ -13,66 +13,60 @@
 
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
-    findQuotaEnvDrift,
-    GATEWAY_CONFIG_DEFINITIONS,
-    QUOTA_ENV_PREFIX,
-    quotaEnvKeys,
+  findQuotaEnvDrift,
+  GATEWAY_CONFIG_DEFINITIONS,
+  QUOTA_ENV_PREFIX,
+  quotaEnvKeys,
 } from "../src/config-registry.ts";
 import { QUOTA_ENV_KEYS } from "../src/limits.ts";
 
 Deno.test("config-registry: limits.ts 实际读取的配额 env 与声明完全一致", () => {
-    // 同时钉住两侧集合本身，避免「两边同时为空」的假通过
-    assertEquals(QUOTA_ENV_KEYS.length, 24);
-    const drift = findQuotaEnvDrift();
-    assertEquals(
-        drift.missing,
-        [],
-        `以下配额 env 被 limits.ts 读取但未在声明中列出：${
-            drift.missing.join(", ")
-        }`,
-    );
-    assertEquals(
-        drift.unexpected,
-        [],
-        `以下配额 env 已声明但 limits.ts 不会读取：${
-            drift.unexpected.join(", ")
-        }`,
-    );
+  // 同时钉住两侧集合本身，避免「两边同时为空」的假通过
+  assertEquals(QUOTA_ENV_KEYS.length, 24);
+  const drift = findQuotaEnvDrift();
+  assertEquals(
+    drift.missing,
+    [],
+    `以下配额 env 被 limits.ts 读取但未在声明中列出：${
+      drift.missing.join(", ")
+    }`,
+  );
+  assertEquals(
+    drift.unexpected,
+    [],
+    `以下配额 env 已声明但 limits.ts 不会读取：${drift.unexpected.join(", ")}`,
+  );
 });
 
 Deno.test("config-registry: 配额键覆盖 4 scope × 2 window × 3 field = 24 个", () => {
-    const keys = quotaEnvKeys();
-    assertEquals(keys.length, 24);
-    // day 与 month 窗口都必须在内（month 变体曾是漏登记的部分）
-    assertEquals(keys.filter((k) => k.includes("_DAY_")).length, 12);
-    assertEquals(keys.filter((k) => k.includes("_MONTH_")).length, 12);
-    // 键名形状与 limits.ts 的模板拼接逐字一致
-    for (const key of keys) {
-        assertEquals(key.startsWith(QUOTA_ENV_PREFIX), true);
-    }
-    assertEquals(
-        keys.includes("NOJ_LLM_DEFAULT_PROBLEM_MONTH_COST"),
-        true,
-        "problem/month 的 cost 变体必须在声明中（历史漏登记项）",
-    );
+  const keys = quotaEnvKeys();
+  assertEquals(keys.length, 24);
+  // day 与 month 窗口都必须在内（month 变体曾是漏登记的部分）
+  assertEquals(keys.filter((k) => k.includes("_DAY_")).length, 12);
+  assertEquals(keys.filter((k) => k.includes("_MONTH_")).length, 12);
+  // 键名形状与 limits.ts 的模板拼接逐字一致
+  for (const key of keys) {
+    assertEquals(key.startsWith(QUOTA_ENV_PREFIX), true);
+  }
+  assertEquals(
+    keys.includes("NOJ_LLM_DEFAULT_PROBLEM_MONTH_COST"),
+    true,
+    "problem/month 的 cost 变体必须在声明中（历史漏登记项）",
+  );
 });
 
 Deno.test("config-registry: 安全相关键被显式声明且标记敏感级别", () => {
-    const byKey = new Map(GATEWAY_CONFIG_DEFINITIONS.map((d) => [d.key, d]));
+  const byKey = new Map(GATEWAY_CONFIG_DEFINITIONS.map((d) => [d.key, d]));
 
-    // 密钥类必须标 isSecret，避免在文档/后台明文展示
-    for (
-        const key of [
-            "NOJ_LLM_SERVICE_TOKEN",
-            "NOJ_LLM_STORE_KEY",
-            "DATABASE_URL",
-        ]
-    ) {
-        assertEquals(byKey.get(key)?.isSecret, true, `${key} 应标为敏感`);
-    }
+  // 密钥类必须标 isSecret，避免在文档/后台明文展示
+  for (
+    const key of ["NOJ_LLM_SERVICE_TOKEN", "NOJ_LLM_STORE_KEY", "DATABASE_URL"]
+  ) {
+    assertEquals(byKey.get(key)?.isSecret, true, `${key} 应标为敏感`);
+  }
 });
 
 Deno.test("config-registry: 声明键名唯一（避免重复登记互相覆盖）", () => {
-    const keys = GATEWAY_CONFIG_DEFINITIONS.map((d) => d.key);
-    assertEquals(new Set(keys).size, keys.length);
+  const keys = GATEWAY_CONFIG_DEFINITIONS.map((d) => d.key);
+  assertEquals(new Set(keys).size, keys.length);
 });

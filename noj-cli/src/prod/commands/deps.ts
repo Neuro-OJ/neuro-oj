@@ -13,17 +13,17 @@ import type { ProdCliDeps } from "./types.ts";
 
 /** 装配公共依赖（缺省值即生产路径）。 */
 export function prodDeps(deps: ProdCliDeps): {
-    runner: CommandRunner;
-    io: PromptIO;
-    isTty: () => boolean;
-    processEnv: Record<string, string>;
+  runner: CommandRunner;
+  io: PromptIO;
+  isTty: () => boolean;
+  processEnv: Record<string, string>;
 } {
-    return {
-        runner: deps.runner ?? realRunner(),
-        io: deps.io ?? realIO(),
-        isTty: deps.isTty ?? (() => Deno.stdin.isTerminal()),
-        processEnv: deps.processEnv ?? Deno.env.toObject(),
-    };
+  return {
+    runner: deps.runner ?? realRunner(),
+    io: deps.io ?? realIO(),
+    isTty: deps.isTty ?? (() => Deno.stdin.isTerminal()),
+    processEnv: deps.processEnv ?? Deno.env.toObject(),
+  };
 }
 
 /**
@@ -36,16 +36,16 @@ export function prodDeps(deps: ProdCliDeps): {
  * 优先级与 `backupPassphrasePath` 一致。
  */
 export function resolveBackupPassphrase(
-    args: string[],
-    opts: { env?: Record<string, string>; configured?: string } = {},
+  args: string[],
+  opts: { env?: Record<string, string>; configured?: string } = {},
 ): string | undefined {
-    const flag = flagValue(args, "--passphrase-file");
-    if (flag !== undefined && flag !== "") return flag;
-    const explicit = (opts.env ?? {})["NOJ_BACKUP_PASSPHRASE_FILE"];
-    if (explicit !== undefined && explicit !== "") return explicit;
-    const configured = opts.configured;
-    if (configured !== undefined && configured !== "") return configured;
-    return undefined;
+  const flag = flagValue(args, "--passphrase-file");
+  if (flag !== undefined && flag !== "") return flag;
+  const explicit = (opts.env ?? {})["NOJ_BACKUP_PASSPHRASE_FILE"];
+  if (explicit !== undefined && explicit !== "") return explicit;
+  const configured = opts.configured;
+  if (configured !== undefined && configured !== "") return configured;
+  return undefined;
 }
 
 /**
@@ -56,14 +56,14 @@ export function resolveBackupPassphrase(
  * 由各命令自己的前置校验决定。
  */
 export async function readConfiguredPassphrase(
-    dir: string,
+  dir: string,
 ): Promise<string | undefined> {
-    try {
-        const env = await readEnvValuesOrEmpty(join(dir, PROD_ENV_FILE));
-        return env["NOJ_BACKUP_PASSPHRASE_FILE"];
-    } catch {
-        return undefined;
-    }
+  try {
+    const env = await readEnvValuesOrEmpty(join(dir, PROD_ENV_FILE));
+    return env["NOJ_BACKUP_PASSPHRASE_FILE"];
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -72,32 +72,32 @@ export async function readConfiguredPassphrase(
  * 用于 `NOJ_BACKUP_RETENTION_DAYS` / `NOJ_BACKUP_MIN_FREE_MB` 的缺省。
  */
 export function envNumber(name: string): number | undefined {
-    const raw = Deno.env.get(name);
-    if (raw === undefined || raw === "") return undefined;
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 0 ? n : undefined;
+  const raw = Deno.env.get(name);
+  if (raw === undefined || raw === "") return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
 /** 读一个数值旗标（非法值报用法错误）。 */
 export function numberFlag(
-    args: string[],
-    name: string,
+  args: string[],
+  name: string,
 ): number | undefined {
-    const raw = flagValue(args, name);
-    if (raw === undefined) return undefined;
-    const n = Number(raw);
-    if (!Number.isInteger(n) || n < 0) {
-        throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
-    }
-    return n;
+  const raw = flagValue(args, name);
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) {
+    throw new UsageError(`${name} 必须是非负整数，收到 "${raw}"`);
+  }
+  return n;
 }
 
 /** 把 `RenderIO` 从注入的 out/err 构造出来（未注入即缺省，由 render 层直写进程流）。 */
 export function renderIOOf(
-    deps: ProdCliDeps,
+  deps: ProdCliDeps,
 ): import("../../output/render.ts").RenderIO {
-    const io: import("../../output/render.ts").RenderIO = {};
-    if (deps.out !== undefined) io.stdout = deps.out;
-    if (deps.err !== undefined) io.stderr = deps.err;
-    return io;
+  const io: import("../../output/render.ts").RenderIO = {};
+  if (deps.out !== undefined) io.stdout = deps.out;
+  if (deps.err !== undefined) io.stderr = deps.err;
+  return io;
 }

@@ -15,10 +15,10 @@ export const PATH_LINE = 'export PATH="$HOME/.local/bin:$PATH"';
 
 /** PATH 注册结果。 */
 export interface PathRegistration {
-    /** 实际创建（或已存在且正确）的软链接路径；未注册时为 null。 */
-    path: string | null;
-    /** 用户可见的告警（未覆盖、无法注册、源码运行模式等）。 */
-    warnings: string[];
+  /** 实际创建（或已存在且正确）的软链接路径；未注册时为 null。 */
+  path: string | null;
+  /** 用户可见的告警（未覆盖、无法注册、源码运行模式等）。 */
+  warnings: string[];
 }
 
 /** `link_command` 的三态：ok=已就绪 / refuse=拒绝覆盖 / cannot=无法创建。 */
@@ -26,12 +26,12 @@ type LinkStatus = "ok" | "refuse" | "cannot";
 
 /** 该路径是否为可执行普通文件。 */
 async function isExecutableFile(path: string): Promise<boolean> {
-    try {
-        const st = await Deno.stat(path);
-        return st.isFile && ((st.mode ?? 0) & 0o111) !== 0;
-    } catch {
-        return false;
-    }
+  try {
+    const st = await Deno.stat(path);
+    return st.isFile && ((st.mode ?? 0) & 0o111) !== 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -42,32 +42,32 @@ async function isExecutableFile(path: string): Promise<boolean> {
  * - `mkdir -p` 或 `ln -s` 失败 → `cannot`（调用方据此回落用户目录）。
  */
 async function linkCommand(
-    binDir: string,
-    target: string,
+  binDir: string,
+  target: string,
 ): Promise<LinkStatus> {
-    const link = join(binDir, "noj-cli");
-    let st: Deno.FileInfo | null = null;
-    try {
-        st = await Deno.lstat(link);
-    } catch {
-        st = null;
-    }
-    if (st !== null && st.isSymlink) {
-        const existing = await Deno.readLink(link).catch(() => "");
-        return existing === target ? "ok" : "refuse";
-    }
-    if (st !== null) return "refuse";
-    try {
-        await Deno.mkdir(binDir, { recursive: true });
-    } catch {
-        return "cannot";
-    }
-    try {
-        await Deno.symlink(target, link);
-    } catch {
-        return "cannot";
-    }
-    return "ok";
+  const link = join(binDir, "noj-cli");
+  let st: Deno.FileInfo | null = null;
+  try {
+    st = await Deno.lstat(link);
+  } catch {
+    st = null;
+  }
+  if (st !== null && st.isSymlink) {
+    const existing = await Deno.readLink(link).catch(() => "");
+    return existing === target ? "ok" : "refuse";
+  }
+  if (st !== null) return "refuse";
+  try {
+    await Deno.mkdir(binDir, { recursive: true });
+  } catch {
+    return "cannot";
+  }
+  try {
+    await Deno.symlink(target, link);
+  } catch {
+    return "cannot";
+  }
+  return "ok";
 }
 
 /**
@@ -76,25 +76,25 @@ async function linkCommand(
  * `grep -Fqx` 等价：整行比较，已存在则不重复追加。返回是否成功。
  */
 async function addUserPath(userHome: string): Promise<boolean> {
-    if (userHome === "") return false;
-    const profile = join(userHome, ".profile");
-    let existing = "";
-    try {
-        existing = await Deno.readTextFile(profile);
-    } catch {
-        existing = "";
-    }
-    if (existing.split("\n").some((line) => line === PATH_LINE)) return true;
-    try {
-        await Deno.writeTextFile(
-            profile,
-            `\n# Neuro OJ command\n${PATH_LINE}\n`,
-            { append: true, create: true },
-        );
-    } catch {
-        return false;
-    }
-    return true;
+  if (userHome === "") return false;
+  const profile = join(userHome, ".profile");
+  let existing = "";
+  try {
+    existing = await Deno.readTextFile(profile);
+  } catch {
+    existing = "";
+  }
+  if (existing.split("\n").some((line) => line === PATH_LINE)) return true;
+  try {
+    await Deno.writeTextFile(
+      profile,
+      `\n# Neuro OJ command\n${PATH_LINE}\n`,
+      { append: true, create: true },
+    );
+  } catch {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -128,34 +128,34 @@ async function addUserPath(userHome: string): Promise<boolean> {
  * @returns 写入的绝对路径；源码运行模式下返回 null。
  */
 export async function installCliBinary(opts: {
-    /** 安装目录。 */
-    dir: string;
-    /** 运行中的可执行文件路径；缺省 `Deno.execPath()`。 */
-    executable?: string;
+  /** 安装目录。 */
+  dir: string;
+  /** 运行中的可执行文件路径；缺省 `Deno.execPath()`。 */
+  executable?: string;
 }): Promise<string | null> {
-    const executable = opts.executable ?? Deno.execPath();
-    // 源码运行模式：`deno run src/cli.ts` 的 execPath 是 deno 本身。
-    // 复制它进安装目录会得到一个"能跑 deno 但跑不了本 CLI"的文件。
-    const base = executable.split(/[\\/]/).pop() ?? "";
-    if (base === "deno" || base.startsWith("deno.")) return null;
+  const executable = opts.executable ?? Deno.execPath();
+  // 源码运行模式：`deno run src/cli.ts` 的 execPath 是 deno 本身。
+  // 复制它进安装目录会得到一个"能跑 deno 但跑不了本 CLI"的文件。
+  const base = executable.split(/[\\/]/).pop() ?? "";
+  if (base === "deno" || base.startsWith("deno.")) return null;
 
-    const binDir = join(opts.dir, "bin");
-    await Deno.mkdir(binDir, { recursive: true });
-    const target = join(binDir, "noj-cli");
-    const staged = await Deno.makeTempFile({
-        dir: binDir,
-        prefix: ".noj-cli.",
-    });
-    try {
-        await Deno.copyFile(executable, staged);
-        await Deno.chmod(staged, 0o755);
-        // 原子替换：同目录 rename，目标要么是旧的完整文件、要么是新的完整文件。
-        await Deno.rename(staged, target);
-    } catch (err) {
-        await Deno.remove(staged).catch(() => {});
-        throw err;
-    }
-    return target;
+  const binDir = join(opts.dir, "bin");
+  await Deno.mkdir(binDir, { recursive: true });
+  const target = join(binDir, "noj-cli");
+  const staged = await Deno.makeTempFile({
+    dir: binDir,
+    prefix: ".noj-cli.",
+  });
+  try {
+    await Deno.copyFile(executable, staged);
+    await Deno.chmod(staged, 0o755);
+    // 原子替换：同目录 rename，目标要么是旧的完整文件、要么是新的完整文件。
+    await Deno.rename(staged, target);
+  } catch (err) {
+    await Deno.remove(staged).catch(() => {});
+    throw err;
+  }
+  return target;
 }
 
 /**
@@ -166,57 +166,52 @@ export async function installCliBinary(opts: {
  * 两个目录都存在同名且指向他处的命令时**拒绝覆盖**并告警（不静默成功）。
  */
 export async function registerCommand(
-    opts: {
-        cliBinary: string;
-        binDir: string;
-        userHome: string;
-        warn: (message: string) => void;
-    },
+  opts: {
+    cliBinary: string;
+    binDir: string;
+    userHome: string;
+    warn: (message: string) => void;
+  },
 ): Promise<PathRegistration> {
-    const warnings: string[] = [];
-    const warn = (message: string): void => {
-        warnings.push(message);
-        opts.warn(message);
-    };
+  const warnings: string[] = [];
+  const warn = (message: string): void => {
+    warnings.push(message);
+    opts.warn(message);
+  };
 
-    if (!(await isExecutableFile(opts.cliBinary))) {
-        warn(
-            "当前为源码运行模式，未注册 PATH；安装版 CLI 位于 " +
-                opts.cliBinary,
-        );
-        return { path: null, warnings };
-    }
-
-    const global = await linkCommand(opts.binDir, opts.cliBinary);
-    if (global === "ok") {
-        return { path: join(opts.binDir, "noj-cli"), warnings };
-    }
-    if (global === "refuse") {
-        warn(`未覆盖已有命令：${join(opts.binDir, "noj-cli")}`);
-        return { path: null, warnings };
-    }
-
-    if (opts.userHome !== "") {
-        const userBin = join(opts.userHome, ".local/bin");
-        const user = await linkCommand(userBin, opts.cliBinary);
-        if (user === "ok") {
-            const link = join(userBin, "noj-cli");
-            if (await addUserPath(opts.userHome)) {
-                return { path: link, warnings };
-            }
-            warn(
-                `已创建用户命令：${link}，但无法自动更新 PATH，请手动将其加入 PATH`,
-            );
-            return { path: link, warnings };
-        }
-        if (user === "refuse") {
-            warn(`未覆盖已有命令：${join(userBin, "noj-cli")}`);
-            return { path: null, warnings };
-        }
-    }
-
-    warn(`无法注册 noj-cli 到 PATH；部署已完成，可直接运行 ${opts.cliBinary}`);
+  if (!(await isExecutableFile(opts.cliBinary))) {
+    warn("当前为源码运行模式，未注册 PATH；安装版 CLI 位于 " + opts.cliBinary);
     return { path: null, warnings };
+  }
+
+  const global = await linkCommand(opts.binDir, opts.cliBinary);
+  if (global === "ok") {
+    return { path: join(opts.binDir, "noj-cli"), warnings };
+  }
+  if (global === "refuse") {
+    warn(`未覆盖已有命令：${join(opts.binDir, "noj-cli")}`);
+    return { path: null, warnings };
+  }
+
+  if (opts.userHome !== "") {
+    const userBin = join(opts.userHome, ".local/bin");
+    const user = await linkCommand(userBin, opts.cliBinary);
+    if (user === "ok") {
+      const link = join(userBin, "noj-cli");
+      if (await addUserPath(opts.userHome)) {
+        return { path: link, warnings };
+      }
+      warn(`已创建用户命令：${link}，但无法自动更新 PATH，请手动将其加入 PATH`);
+      return { path: link, warnings };
+    }
+    if (user === "refuse") {
+      warn(`未覆盖已有命令：${join(userBin, "noj-cli")}`);
+      return { path: null, warnings };
+    }
+  }
+
+  warn(`无法注册 noj-cli 到 PATH；部署已完成，可直接运行 ${opts.cliBinary}`);
+  return { path: null, warnings };
 }
 
 // ---------------- 注销 ----------------
@@ -236,23 +231,23 @@ export async function registerCommand(
  * 不是软链、目标是空串、或解析结果不属于本安装目录 → false。
  */
 export async function symlinkPointsToInstall(
-    commandPath: string,
-    dir: string,
+  commandPath: string,
+  dir: string,
 ): Promise<boolean> {
-    let st: Deno.FileInfo | null = null;
-    try {
-        st = await Deno.lstat(commandPath);
-    } catch {
-        st = null;
-    }
-    if (st === null || !st.isSymlink) return false;
-    const target = await Deno.readLink(commandPath).catch(() => "");
-    if (target === "") return false;
-    const resolved = target.startsWith("/")
-        ? target
-        : resolve(dirname(commandPath), target);
-    const expected = [join(dir, "bin/noj-cli"), join(dir, "noj")];
-    return expected.includes(resolved);
+  let st: Deno.FileInfo | null = null;
+  try {
+    st = await Deno.lstat(commandPath);
+  } catch {
+    st = null;
+  }
+  if (st === null || !st.isSymlink) return false;
+  const target = await Deno.readLink(commandPath).catch(() => "");
+  if (target === "") return false;
+  const resolved = target.startsWith("/")
+    ? target
+    : resolve(dirname(commandPath), target);
+  const expected = [join(dir, "bin/noj-cli"), join(dir, "noj")];
+  return expected.includes(resolved);
 }
 
 /**
@@ -266,33 +261,33 @@ export async function symlinkPointsToInstall(
  * 转成退出码 1；返回的是**确实已移除**的路径列表。一个都没移除时调用方告警（本函数返回空数组，不写输出）。
  */
 export async function unregisterCommand(opts: {
-    dir: string;
-    binDir?: string;
-    userHome?: string;
-    remove?: (path: string) => Promise<void>;
+  dir: string;
+  binDir?: string;
+  userHome?: string;
+  remove?: (path: string) => Promise<void>;
 }): Promise<string[]> {
-    const candidates: string[] = [];
-    if (opts.binDir !== undefined && opts.binDir !== "") {
-        candidates.push(join(opts.binDir, "noj-cli"), join(opts.binDir, "noj"));
-    }
-    candidates.push("/usr/local/bin/noj-cli", "/usr/local/bin/noj");
-    if (opts.userHome !== undefined && opts.userHome !== "") {
-        candidates.push(
-            join(opts.userHome, ".local/bin/noj-cli"),
-            join(opts.userHome, ".local/bin/noj"),
-        );
-    }
+  const candidates: string[] = [];
+  if (opts.binDir !== undefined && opts.binDir !== "") {
+    candidates.push(join(opts.binDir, "noj-cli"), join(opts.binDir, "noj"));
+  }
+  candidates.push("/usr/local/bin/noj-cli", "/usr/local/bin/noj");
+  if (opts.userHome !== undefined && opts.userHome !== "") {
+    candidates.push(
+      join(opts.userHome, ".local/bin/noj-cli"),
+      join(opts.userHome, ".local/bin/noj"),
+    );
+  }
 
-    const remove = opts.remove ?? ((path: string) => Deno.remove(path));
-    const removed: string[] = [];
-    for (const commandPath of candidates) {
-        if (!(await symlinkPointsToInstall(commandPath, opts.dir))) continue;
-        try {
-            await remove(commandPath);
-        } catch {
-            throw new Error("无法移除 PATH 命令软链接：" + commandPath);
-        }
-        removed.push(commandPath);
+  const remove = opts.remove ?? ((path: string) => Deno.remove(path));
+  const removed: string[] = [];
+  for (const commandPath of candidates) {
+    if (!(await symlinkPointsToInstall(commandPath, opts.dir))) continue;
+    try {
+      await remove(commandPath);
+    } catch {
+      throw new Error("无法移除 PATH 命令软链接：" + commandPath);
     }
-    return removed;
+    removed.push(commandPath);
+  }
+  return removed;
 }

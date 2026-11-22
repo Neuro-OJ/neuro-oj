@@ -10,32 +10,30 @@ import type { KaggleRankingRow } from "../types/contests.ts";
 
 /** 解析 `threshold` 查询参数：缺省时返回 undefined，由服务层套用默认阈值。 */
 export function parseSimilarityThreshold(
-    raw: string | undefined,
+  raw: string | undefined,
 ): number | undefined {
-    const text = raw?.trim();
-    if (!text) return undefined;
-    const value = Number(text);
-    if (!Number.isFinite(value) || value <= 0 || value > 1) {
-        throw new BadRequestError("threshold 必须为大于 0 且不超过 1 的小数");
-    }
-    return value;
+  const text = raw?.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new BadRequestError("threshold 必须为大于 0 且不超过 1 的小数");
+  }
+  return value;
 }
 
 /** 解析 `limit` 查询参数：缺省时返回 undefined，由服务层套用默认上限。 */
 export function parseSimilarityLimit(
-    raw: string | undefined,
+  raw: string | undefined,
 ): number | undefined {
-    const text = raw?.trim();
-    if (!text) return undefined;
-    const value = Number(text);
-    if (
-        !Number.isInteger(value) || value < 1 || value > MAX_SIMILAR_PAIR_LIMIT
-    ) {
-        throw new BadRequestError(
-            `limit 必须为 1 到 ${MAX_SIMILAR_PAIR_LIMIT} 之间的整数`,
-        );
-    }
-    return value;
+  const text = raw?.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isInteger(value) || value < 1 || value > MAX_SIMILAR_PAIR_LIMIT) {
+    throw new BadRequestError(
+      `limit 必须为 1 到 ${MAX_SIMILAR_PAIR_LIMIT} 之间的整数`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -48,38 +46,36 @@ export function parseSimilarityLimit(
  * 展示分数（`scoreFromDb`），使 JSON 与 CSV、以及页面榜单三者一致。
  */
 export function buildRankingSnapshotJson(
-    contestId: string,
-    snapshot: {
-        version: number;
-        note: string;
-        created_by: string | null;
-        created_at: string;
-        rows: unknown;
-    },
+  contestId: string,
+  snapshot: {
+    version: number;
+    note: string;
+    created_by: string | null;
+    created_at: string;
+    rows: unknown;
+  },
 ) {
-    const rows = Array.isArray(snapshot.rows)
-        ? (snapshot.rows as KaggleRankingRow[]).map((row) => ({
-            ...row,
-            total_score: scoreFromDb(row.total_score),
-            problem_scores: (row.problem_scores ?? []).map((s) => ({
-                ...s,
-                best_score: s.best_score === null
-                    ? null
-                    : scoreFromDb(s.best_score),
-            })),
-        }))
-        : snapshot.rows;
-    return {
-        data: {
-            contest_id: contestId,
-            version: snapshot.version,
-            note: snapshot.note,
-            created_by: snapshot.created_by,
-            created_at: snapshot.created_at,
-            // 分数已换算为展示量纲（÷100）；rank/attempts 等计数值原样。
-            rows,
-        },
-    };
+  const rows = Array.isArray(snapshot.rows)
+    ? (snapshot.rows as KaggleRankingRow[]).map((row) => ({
+      ...row,
+      total_score: scoreFromDb(row.total_score),
+      problem_scores: (row.problem_scores ?? []).map((s) => ({
+        ...s,
+        best_score: s.best_score === null ? null : scoreFromDb(s.best_score),
+      })),
+    }))
+    : snapshot.rows;
+  return {
+    data: {
+      contest_id: contestId,
+      version: snapshot.version,
+      note: snapshot.note,
+      created_by: snapshot.created_by,
+      created_at: snapshot.created_at,
+      // 分数已换算为展示量纲（÷100）；rank/attempts 等计数值原样。
+      rows,
+    },
+  };
 }
 
 /**
@@ -99,57 +95,55 @@ export function buildRankingSnapshotJson(
  * 防止导出文件在 Excel 中被当作公式执行（CSV 注入）。
  */
 export function* buildRankingCsv(snapshot: {
-    version: number;
-    rows: unknown;
+  version: number;
+  rows: unknown;
 }): Generator<string> {
-    const rows = (snapshot.rows ?? []) as KaggleRankingRow[];
-    const header = [
-        "版本",
-        "排名",
-        "用户",
-        "总分",
-        "最后提交时间",
-        "题目标签",
-        "题目最好成绩",
-        "题目提交次数",
-        "该题最后得分时间",
-    ];
-    // 逐行 yield：配合 csvResponse 的流式写出，峰值内存与总行数无关。
-    yield header.join(",") + "\n";
-    for (const row of rows) {
-        const scores = row.problem_scores ?? [];
-        if (scores.length === 0) {
-            // 无题目明细时仍输出一行，避免该用户整行消失（总分本身是有效信息）
-            yield [
-                snapshot.version,
-                row.rank,
-                row.username,
-                scoreFromDb(row.total_score),
-                row.last_submission_at ?? "",
-                "",
-                "",
-                "",
-                "",
-            ].map(csvCell).join(",") + "\n";
-            continue;
-        }
-        // 每人每题一行：便于在表格软件中直接按题目透视，而不是把明细塞进一个 JSON 单元格
-        for (const score of scores) {
-            yield [
-                snapshot.version,
-                row.rank,
-                row.username,
-                scoreFromDb(row.total_score),
-                row.last_submission_at ?? "",
-                score.label,
-                score.best_score === null
-                    ? "待处理"
-                    : scoreFromDb(score.best_score),
-                score.attempts,
-                score.last_best_at ?? "",
-            ].map(csvCell).join(",") + "\n";
-        }
+  const rows = (snapshot.rows ?? []) as KaggleRankingRow[];
+  const header = [
+    "版本",
+    "排名",
+    "用户",
+    "总分",
+    "最后提交时间",
+    "题目标签",
+    "题目最好成绩",
+    "题目提交次数",
+    "该题最后得分时间",
+  ];
+  // 逐行 yield：配合 csvResponse 的流式写出，峰值内存与总行数无关。
+  yield header.join(",") + "\n";
+  for (const row of rows) {
+    const scores = row.problem_scores ?? [];
+    if (scores.length === 0) {
+      // 无题目明细时仍输出一行，避免该用户整行消失（总分本身是有效信息）
+      yield [
+        snapshot.version,
+        row.rank,
+        row.username,
+        scoreFromDb(row.total_score),
+        row.last_submission_at ?? "",
+        "",
+        "",
+        "",
+        "",
+      ].map(csvCell).join(",") + "\n";
+      continue;
     }
+    // 每人每题一行：便于在表格软件中直接按题目透视，而不是把明细塞进一个 JSON 单元格
+    for (const score of scores) {
+      yield [
+        snapshot.version,
+        row.rank,
+        row.username,
+        scoreFromDb(row.total_score),
+        row.last_submission_at ?? "",
+        score.label,
+        score.best_score === null ? "待处理" : scoreFromDb(score.best_score),
+        score.attempts,
+        score.last_best_at ?? "",
+      ].map(csvCell).join(",") + "\n";
+    }
+  }
 }
 
 /**
@@ -161,26 +155,26 @@ export function* buildRankingCsv(snapshot: {
  * @returns `version` 为 undefined 表示最新版
  */
 export function parseSnapshotFile(file: string | undefined): {
-    version: number | undefined;
-    format: "json" | "csv";
+  version: number | undefined;
+  format: "json" | "csv";
 } {
-    const matched = /^(latest|\d+)\.(json|csv)$/.exec(file ?? "");
-    if (!matched) {
-        throw new BadRequestError(
-            "导出路径必须形如 latest.json、latest.csv、<版本号>.json 或 <版本号>.csv",
-            "VALIDATION_ERROR",
-        );
-    }
-    const format = matched[2] as "json" | "csv";
-    if (matched[1] === "latest") return { version: undefined, format };
-    const version = Number(matched[1]);
-    if (!Number.isSafeInteger(version) || version < 1) {
-        throw new BadRequestError(
-            "版本号必须是不小于 1 的整数",
-            "VALIDATION_ERROR",
-        );
-    }
-    return { version, format };
+  const matched = /^(latest|\d+)\.(json|csv)$/.exec(file ?? "");
+  if (!matched) {
+    throw new BadRequestError(
+      "导出路径必须形如 latest.json、latest.csv、<版本号>.json 或 <版本号>.csv",
+      "VALIDATION_ERROR",
+    );
+  }
+  const format = matched[2] as "json" | "csv";
+  if (matched[1] === "latest") return { version: undefined, format };
+  const version = Number(matched[1]);
+  if (!Number.isSafeInteger(version) || version < 1) {
+    throw new BadRequestError(
+      "版本号必须是不小于 1 的整数",
+      "VALIDATION_ERROR",
+    );
+  }
+  return { version, format };
 }
 
 /**
@@ -194,28 +188,28 @@ export function parseSnapshotFile(file: string | undefined): {
  * 缓存策略：响应含全员成绩（个人数据），且随重测/新版本变化，明确禁止任何缓存。
  */
 export function csvResponse(
-    chunkIter: Iterable<string>,
-    filename: string,
+  chunkIter: Iterable<string>,
+  filename: string,
 ): Response {
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream<Uint8Array>({
-        start(controller) {
-            // BOM 必须先于任何内容，否则 Excel 会把中文识别成乱码
-            controller.enqueue(encoder.encode("\uFEFF"));
-            for (const chunk of chunkIter) {
-                controller.enqueue(encoder.encode(chunk));
-            }
-            controller.close();
-        },
-    });
-    return new Response(stream, {
-        headers: {
-            "Content-Type": "text/csv; charset=utf-8",
-            "Content-Disposition": `attachment; filename="${filename}"`,
-            // 全员成绩属个人数据且随时可变，禁止浏览器/代理缓存
-            "Cache-Control": "private, no-store",
-        },
-    });
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // BOM 必须先于任何内容，否则 Excel 会把中文识别成乱码
+      controller.enqueue(encoder.encode("\uFEFF"));
+      for (const chunk of chunkIter) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      // 全员成绩属个人数据且随时可变，禁止浏览器/代理缓存
+      "Cache-Control": "private, no-store",
+    },
+  });
 }
 
 /**
@@ -231,9 +225,9 @@ export function csvResponse(
  * 数值不参与前缀判定：`-0`、`-1` 这类负数是合法数据，不该被加上 `'`。
  */
 function csvCell(value: unknown): string {
-    if (typeof value === "number") return String(value);
-    let text = String(value ?? "");
-    // 前导空白也可能被表格软件忽略后仍按公式解析，故按「去掉前导空白后的首字符」判定
-    if (/^[\s]*[=+\-@\t\r]/.test(text)) text = `'${text}`;
-    return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  if (typeof value === "number") return String(value);
+  let text = String(value ?? "");
+  // 前导空白也可能被表格软件忽略后仍按公式解析，故按「去掉前导空白后的首字符」判定
+  if (/^[\s]*[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }

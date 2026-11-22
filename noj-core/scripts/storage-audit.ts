@@ -14,129 +14,123 @@ import { getDb } from "../src/shared/db/connection.ts";
 import { problems, submissions, users } from "../src/shared/db/schema.ts";
 import { initSystemSettings } from "../src/modules/platform/system/index.ts";
 import {
-    getStorageProvider,
-    getStorageProviderKind,
+  getStorageProvider,
+  getStorageProviderKind,
 } from "../src/modules/assets/storage/mod.ts";
 import {
-    buildStorageAuditReport,
-    renderStorageAuditPrometheus,
-    type StorageAuditReport,
-    type StorageReference,
-    type StorageReferenceKind,
+  buildStorageAuditReport,
+  renderStorageAuditPrometheus,
+  type StorageAuditReport,
+  type StorageReference,
+  type StorageReferenceKind,
 } from "../src/modules/assets/services/audit.ts";
 import { parseStorageUrl } from "../src/modules/assets/storage/types.ts";
 
 interface Options {
-    output?: string;
-    prometheusOutput?: string;
-    pretty: boolean;
+  output?: string;
+  prometheusOutput?: string;
+  pretty: boolean;
 }
 
 function parseArgs(args: string[]): Options {
-    const options: Options = { pretty: false };
-    for (let i = 0; i < args.length; i++) {
-        const arg = args[i];
-        if (arg === "--pretty") {
-            options.pretty = true;
-        } else if (arg === "--output" || arg === "--prometheus-output") {
-            const value = args[++i];
-            if (!value) throw new Error(`${arg} 需要路径参数`);
-            if (arg === "--output") options.output = value;
-            else options.prometheusOutput = value;
-        } else {
-            throw new Error(`未知参数: ${arg}`);
-        }
+  const options: Options = { pretty: false };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--pretty") {
+      options.pretty = true;
+    } else if (arg === "--output" || arg === "--prometheus-output") {
+      const value = args[++i];
+      if (!value) throw new Error(`${arg} 需要路径参数`);
+      if (arg === "--output") options.output = value;
+      else options.prometheusOutput = value;
+    } else {
+      throw new Error(`未知参数: ${arg}`);
     }
-    return options;
+  }
+  return options;
 }
 
 function addReference(
-    references: StorageReference[],
-    invalidReferences: StorageAuditReport["invalidReferences"],
-    kind: StorageReferenceKind,
-    recordId: string,
-    column: string,
-    url: string | null,
+  references: StorageReference[],
+  invalidReferences: StorageAuditReport["invalidReferences"],
+  kind: StorageReferenceKind,
+  recordId: string,
+  column: string,
+  url: string | null,
 ): void {
-    if (!url) return;
-    try {
-        const parsed = parseStorageUrl(url);
-        references.push({
-            kind,
-            recordId,
-            column,
-            url,
-            provider: parsed.provider,
-            key: parsed.key,
-        });
-    } catch (err) {
-        invalidReferences.push({
-            kind,
-            recordId,
-            column,
-            url,
-            reason: err instanceof Error ? err.message : String(err),
-        });
-    }
+  if (!url) return;
+  try {
+    const parsed = parseStorageUrl(url);
+    references.push({
+      kind,
+      recordId,
+      column,
+      url,
+      provider: parsed.provider,
+      key: parsed.key,
+    });
+  } catch (err) {
+    invalidReferences.push({
+      kind,
+      recordId,
+      column,
+      url,
+      reason: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 async function collectReferences(): Promise<{
-    references: StorageReference[];
-    invalidReferences: StorageAuditReport["invalidReferences"];
+  references: StorageReference[];
+  invalidReferences: StorageAuditReport["invalidReferences"];
 }> {
-    const db = getDb();
-    const [problemRows, submissionRows, userRows] = await Promise
-        .all([
-            db.select({
-                id: problems.id,
-                url: problems.support_package_storage_url,
-            })
-                .from(problems),
-            db.select({
-                id: submissions.id,
-                url: submissions.artifact_storage_url,
-            })
-                .from(submissions),
-            db.select({ id: users.id, url: users.avatar_url }).from(users),
-        ]);
-    const references: StorageReference[] = [];
-    const invalidReferences: StorageAuditReport["invalidReferences"] = [];
-    for (const row of problemRows) {
-        addReference(
-            references,
-            invalidReferences,
-            "support_package",
-            row.id,
-            "problems.support_package_storage_url",
-            row.url,
-        );
-    }
-    for (const row of submissionRows) {
-        addReference(
-            references,
-            invalidReferences,
-            "artifact_submission",
-            row.id,
-            "submissions.artifact_storage_url",
-            row.url,
-        );
-    }
-    for (const row of userRows) {
-        addReference(
-            references,
-            invalidReferences,
-            "avatar",
-            row.id,
-            "users.avatar_url",
-            row.url,
-        );
-    }
-    return { references, invalidReferences };
+  const db = getDb();
+  const [problemRows, submissionRows, userRows] = await Promise
+    .all([
+      db.select({ id: problems.id, url: problems.support_package_storage_url })
+        .from(problems),
+      db.select({ id: submissions.id, url: submissions.artifact_storage_url })
+        .from(submissions),
+      db.select({ id: users.id, url: users.avatar_url }).from(users),
+    ]);
+  const references: StorageReference[] = [];
+  const invalidReferences: StorageAuditReport["invalidReferences"] = [];
+  for (const row of problemRows) {
+    addReference(
+      references,
+      invalidReferences,
+      "support_package",
+      row.id,
+      "problems.support_package_storage_url",
+      row.url,
+    );
+  }
+  for (const row of submissionRows) {
+    addReference(
+      references,
+      invalidReferences,
+      "artifact_submission",
+      row.id,
+      "submissions.artifact_storage_url",
+      row.url,
+    );
+  }
+  for (const row of userRows) {
+    addReference(
+      references,
+      invalidReferences,
+      "avatar",
+      row.id,
+      "users.avatar_url",
+      row.url,
+    );
+  }
+  return { references, invalidReferences };
 }
 
 async function writeText(path: string, content: string): Promise<void> {
-    await Deno.mkdir(dirname(path), { recursive: true });
-    await Deno.writeTextFile(path, content);
+  await Deno.mkdir(dirname(path), { recursive: true });
+  await Deno.writeTextFile(path, content);
 }
 
 const options = parseArgs(Deno.args);
@@ -146,31 +140,31 @@ await initSystemSettings();
 const configuredProvider = getStorageProviderKind();
 const storage = await getStorageProvider();
 if (!storage.listObjects) {
-    throw new Error("当前 StorageProvider 不支持只读对象列举");
+  throw new Error("当前 StorageProvider 不支持只读对象列举");
 }
 const [{ references, invalidReferences }, objects] = await Promise.all([
-    collectReferences(),
-    storage.listObjects(),
+  collectReferences(),
+  storage.listObjects(),
 ]);
 const report = buildStorageAuditReport({
-    provider: configuredProvider,
-    objects,
-    references,
-    invalidReferences,
+  provider: configuredProvider,
+  objects,
+  references,
+  invalidReferences,
 });
 const json = JSON.stringify(report, null, options.pretty ? 2 : undefined) +
-    "\n";
+  "\n";
 if (options.output) await writeText(options.output, json);
 if (options.prometheusOutput) {
-    await writeText(
-        options.prometheusOutput,
-        renderStorageAuditPrometheus(report),
-    );
+  await writeText(
+    options.prometheusOutput,
+    renderStorageAuditPrometheus(report),
+  );
 }
 if (!options.output) await Deno.stdout.write(new TextEncoder().encode(json));
 if (options.output) {
-    console.log(`对象存储盘点报告已写入: ${options.output}`);
+  console.log(`对象存储盘点报告已写入: ${options.output}`);
 }
 if (options.prometheusOutput) {
-    console.log(`对象存储 Prometheus 指标已写入: ${options.prometheusOutput}`);
+  console.log(`对象存储 Prometheus 指标已写入: ${options.prometheusOutput}`);
 }

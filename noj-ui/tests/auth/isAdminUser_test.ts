@@ -7,17 +7,17 @@ import { assertEquals } from 'jsr:@std/assert@^1';
 import { isAdminUser } from '../../utils/auth/isAdminUser.ts';
 
 Deno.test('isAdminUser: 空值返回 false', () => {
-    assertEquals(isAdminUser(null), false);
-    assertEquals(isAdminUser(undefined), false);
+  assertEquals(isAdminUser(null), false);
+  assertEquals(isAdminUser(undefined), false);
 });
 
 Deno.test('isAdminUser: is_admin 字段优先', () => {
-    assertEquals(isAdminUser({ is_admin: true }), true);
-    assertEquals(isAdminUser({ is_admin: false }), false);
-    assertEquals(isAdminUser({ is_admin: false, role: 'admin' }), false);
+  assertEquals(isAdminUser({ is_admin: true }), true);
+  assertEquals(isAdminUser({ is_admin: false }), false);
+  assertEquals(isAdminUser({ is_admin: false, role: 'admin' }), false);
 });
 
 Deno.test('isAdminUser: 无 is_admin 时兼容 role 字段', () => {
-    assertEquals(isAdminUser({ role: 'admin' }), true);
-    assertEquals(isAdminUser({ role: 'user' }), false);
+  assertEquals(isAdminUser({ role: 'admin' }), true);
+  assertEquals(isAdminUser({ role: 'user' }), false);
 });

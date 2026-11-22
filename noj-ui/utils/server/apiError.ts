@@ -10,33 +10,33 @@
 import { translate, translateErrorCode } from '../i18n.ts';
 
 export interface ApiErrorInfo {
-    /** 展示给用户的具体错误原因（优先为后端 `error` 字段，否则为兜底文案） */
-    message: string;
-    /** 后端错误码（如 VALIDATION_ERROR、CONFLICT_ERROR），无则 undefined */
-    code?: string;
-    /** HTTP 状态码（网络/超时等无响应错误时为 undefined） */
-    status?: number;
-    /** 后端 request_id（用于与服务端日志关联），无则 undefined */
-    requestId?: string;
+  /** 展示给用户的具体错误原因（优先为后端 `error` 字段，否则为兜底文案） */
+  message: string;
+  /** 后端错误码（如 VALIDATION_ERROR、CONFLICT_ERROR），无则 undefined */
+  code?: string;
+  /** HTTP 状态码（网络/超时等无响应错误时为 undefined） */
+  status?: number;
+  /** 后端 request_id（用于与服务端日志关联），无则 undefined */
+  requestId?: string;
 }
 
 /** 判断是否为超时/中止错误（ofetch `timeout` 选项或 AbortController.abort 触发） */
 export function isTimeoutError(err: unknown): boolean {
-    if (!(err instanceof Error)) return false;
-    if (err.name === 'AbortError') return true;
-    const cause = (err as { cause?: unknown }).cause;
-    return cause instanceof Error && cause.name === 'AbortError';
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'AbortError') return true;
+  const cause = (err as { cause?: unknown }).cause;
+  return cause instanceof Error && cause.name === 'AbortError';
 }
 
 /** 判断是否为网络层错误（请求未到达后端，如 fetch failed / Failed to fetch） */
 export function isNetworkError(err: unknown): boolean {
-    if (!(err instanceof Error)) return false;
-    if (err instanceof TypeError) return true;
-    const cause = (err as { cause?: unknown }).cause;
-    if (cause instanceof TypeError) return true;
-    const msg = err.message ?? '';
-    return msg.includes('fetch failed') || msg.includes('Failed to fetch') ||
-        msg.includes('NetworkError');
+  if (!(err instanceof Error)) return false;
+  if (err instanceof TypeError) return true;
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause instanceof TypeError) return true;
+  const msg = err.message ?? '';
+  return msg.includes('fetch failed') || msg.includes('Failed to fetch') ||
+    msg.includes('NetworkError');
 }
 
 /**
@@ -47,10 +47,10 @@ export function isNetworkError(err: unknown): boolean {
  * `题目不存在`（防存在性探测），前端不应把它降级成 200。
  */
 export function isNotFoundError(err: unknown): boolean {
-    if (!err) return false;
-    const status = (err as { status?: unknown; statusCode?: unknown }).status ??
-        (err as { statusCode?: unknown }).statusCode;
-    return status === 404;
+  if (!err) return false;
+  const status = (err as { status?: unknown; statusCode?: unknown }).status ??
+    (err as { statusCode?: unknown }).statusCode;
+  return status === 404;
 }
 
 /**
@@ -64,12 +64,12 @@ export function isNotFoundError(err: unknown): boolean {
  * 确认新版本后再提交。
  */
 export function isVersionConflictError(err: unknown): boolean {
-    if (!err) return false;
-    const data = (err as { data?: unknown }).data;
-    const code = data && typeof data === 'object' ? (data as { code?: unknown }).code : undefined;
-    return code === 'VERSION_REQUIRED' ||
-        code === 'CONTEST_PROBLEM_VERSION_CHANGED' ||
-        code === 'PROBLEM_VERSION_NOT_FOUND';
+  if (!err) return false;
+  const data = (err as { data?: unknown }).data;
+  const code = data && typeof data === 'object' ? (data as { code?: unknown }).code : undefined;
+  return code === 'VERSION_REQUIRED' ||
+    code === 'CONTEST_PROBLEM_VERSION_CHANGED' ||
+    code === 'PROBLEM_VERSION_NOT_FOUND';
 }
 
 /**
@@ -83,40 +83,40 @@ export function isVersionConflictError(err: unknown): boolean {
  * 5. 未知错误 → 「操作失败，请稍后重试」
  */
 export function extractApiError(err: unknown): ApiErrorInfo {
-    const e = err as {
-        data?: unknown;
-        status?: number;
-        statusCode?: number;
-        response?: { status?: number };
-    } | null;
+  const e = err as {
+    data?: unknown;
+    status?: number;
+    statusCode?: number;
+    response?: { status?: number };
+  } | null;
 
-    const status = e?.status ?? e?.statusCode ?? e?.response?.status;
+  const status = e?.status ?? e?.statusCode ?? e?.response?.status;
 
-    // 1. 后端错误响应：优先使用后端给出的具体业务原因，缺失时按机器 code 映射中文文案。
-    const data = e?.data;
-    if (data !== null && typeof data === 'object') {
-        const d = data as Record<string, unknown>;
-        const code = typeof d.code === 'string' ? d.code : undefined;
-        const localized = translateErrorCode(code);
-        if (typeof d.error === 'string' && d.error.length > 0) {
-            return {
-                message: d.error,
-                code,
-                status,
-                requestId: typeof d.request_id === 'string' ? d.request_id : undefined,
-            };
-        }
-        if (localized) {
-            return { message: localized, code, status };
-        }
+  // 1. 后端错误响应：优先使用后端给出的具体业务原因，缺失时按机器 code 映射中文文案。
+  const data = e?.data;
+  if (data !== null && typeof data === 'object') {
+    const d = data as Record<string, unknown>;
+    const code = typeof d.code === 'string' ? d.code : undefined;
+    const localized = translateErrorCode(code);
+    if (typeof d.error === 'string' && d.error.length > 0) {
+      return {
+        message: d.error,
+        code,
+        status,
+        requestId: typeof d.request_id === 'string' ? d.request_id : undefined,
+      };
     }
+    if (localized) {
+      return { message: localized, code, status };
+    }
+  }
 
-    // 2. 超时
-    if (isTimeoutError(err)) return { message: translate('error.timeout'), status };
-    // 3. 网络错误
-    if (isNetworkError(err)) return { message: translate('error.network'), status };
-    // 4. 有状态码但响应体无 error 字段：给出结构化兜底而非裸状态码
-    if (typeof status === 'number') return { message: translate('error.http', { status }), status };
-    // 5. 未知错误
-    return { message: translate('error.unknown') };
+  // 2. 超时
+  if (isTimeoutError(err)) return { message: translate('error.timeout'), status };
+  // 3. 网络错误
+  if (isNetworkError(err)) return { message: translate('error.network'), status };
+  // 4. 有状态码但响应体无 error 字段：给出结构化兜底而非裸状态码
+  if (typeof status === 'number') return { message: translate('error.http', { status }), status };
+  // 5. 未知错误
+  return { message: translate('error.unknown') };
 }

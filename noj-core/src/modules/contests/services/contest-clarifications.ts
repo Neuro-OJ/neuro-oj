@@ -17,17 +17,17 @@
 import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
-    contestClarifications,
-    contestProblems,
-    users,
+  contestClarifications,
+  contestProblems,
+  users,
 } from "../../../shared/db/schema.ts";
 import { nowIso } from "../../../shared/base/dates.ts";
 import { findContestRow } from "./contest-row.ts";
 import {
-    BadRequestError,
-    ForbiddenError,
-    NotFoundError,
-    RateLimitedError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  RateLimitedError,
 } from "../../../shared/base/errors.ts";
 /**
  * 答疑访问结论（由路由层用 `loadDomainContest(...)` 统一算出）。
@@ -37,12 +37,12 @@ import {
  * 回复被 403。现在服务只消费这一份结论，不再查身份。
  */
 export interface ClarificationAccess {
-    /** 已认证用户 ID（匿名读取时为 undefined）。 */
-    readonly actorId?: string;
-    /** 当前域比赛的授权管理结论（`access.organizer`）。 */
-    readonly canManage: boolean;
-    /** 是否为该比赛的参赛者（`access.registered`）。 */
-    readonly isParticipant: boolean;
+  /** 已认证用户 ID（匿名读取时为 undefined）。 */
+  readonly actorId?: string;
+  /** 当前域比赛的授权管理结论（`access.organizer`）。 */
+  readonly canManage: boolean;
+  /** 是否为该比赛的参赛者（`access.registered`）。 */
+  readonly isParticipant: boolean;
 }
 import { computeContestStatus, isParticipant } from "./contests.ts";
 import { createNotification } from "../../communication/contracts/cross-module/community_services_notifications.ts";
@@ -55,43 +55,43 @@ const MAX_PAGE_SIZE = 100;
 
 /** 答疑发送者信息。 */
 export interface ClarificationSender {
-    id: string;
-    username: string;
-    avatar_url: string | null;
+  id: string;
+  username: string;
+  avatar_url: string | null;
 }
 
 /** 答疑回复响应结构。 */
 export interface ClarificationReplyResponse {
-    id: string;
-    content: string;
-    is_public: boolean;
-    created_at: string;
-    sender: ClarificationSender;
+  id: string;
+  content: string;
+  is_public: boolean;
+  created_at: string;
+  sender: ClarificationSender;
 }
 
 /** 答疑响应结构（根提问 + 其下回复线程）。 */
 export interface ClarificationResponse {
-    id: string;
-    contest_id: string;
-    problem_id: string | null;
-    problem_label: string | null;
-    content: string;
-    is_public: boolean;
-    created_at: string;
-    sender: ClarificationSender;
-    replies: ClarificationReplyResponse[];
+  id: string;
+  contest_id: string;
+  problem_id: string | null;
+  problem_label: string | null;
+  content: string;
+  is_public: boolean;
+  created_at: string;
+  sender: ClarificationSender;
+  replies: ClarificationReplyResponse[];
 }
 
 /** 答疑列表查询参数（分页）。 */
 export interface ListClarificationsParams {
-    page?: number;
-    perPage?: number;
+  page?: number;
+  perPage?: number;
 }
 
 /** 答疑列表查询结果（分页数据与总数）。 */
 export interface ListClarificationsResult {
-    data: ClarificationResponse[];
-    total: number;
+  data: ClarificationResponse[];
+  total: number;
 }
 
 type ClarificationRow = typeof contestClarifications.$inferSelect;
@@ -105,16 +105,16 @@ type ClarificationRow = typeof contestClarifications.$inferSelect;
  * @throws {BadRequestError} 内容为空或超过长度限制时
  */
 function validateContent(content: string | undefined, label: string): string {
-    const value = content?.trim() ?? "";
-    if (!value) {
-        throw new BadRequestError(`${label}不能为空`);
-    }
-    if (value.length > MAX_CONTENT_LENGTH) {
-        throw new BadRequestError(
-            `${label}超过长度限制（${MAX_CONTENT_LENGTH} 字符）`,
-        );
-    }
-    return value;
+  const value = content?.trim() ?? "";
+  if (!value) {
+    throw new BadRequestError(`${label}不能为空`);
+  }
+  if (value.length > MAX_CONTENT_LENGTH) {
+    throw new BadRequestError(
+      `${label}超过长度限制（${MAX_CONTENT_LENGTH} 字符）`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -125,60 +125,60 @@ function validateContent(content: string | undefined, label: string): string {
  * @throws {BadRequestError} 题目不属于该竞赛时
  */
 async function assertProblemBelongsToContest(
-    contestId: string,
-    problemId: string,
+  contestId: string,
+  problemId: string,
 ): Promise<void> {
-    const db = getDb();
-    const [row] = await db.select({ problem_id: contestProblems.problem_id })
-        .from(contestProblems).where(
-            and(
-                eq(contestProblems.contest_id, contestId),
-                eq(contestProblems.problem_id, problemId),
-            ),
-        ).limit(1);
-    if (!row) {
-        throw new BadRequestError("题目不属于该竞赛");
-    }
+  const db = getDb();
+  const [row] = await db.select({ problem_id: contestProblems.problem_id })
+    .from(contestProblems).where(
+      and(
+        eq(contestProblems.contest_id, contestId),
+        eq(contestProblems.problem_id, problemId),
+      ),
+    ).limit(1);
+  if (!row) {
+    throw new BadRequestError("题目不属于该竞赛");
+  }
 }
 
 /** 批量查询用户（id → username），供线程组装使用。 */
 async function getSenders(
-    ids: string[],
+  ids: string[],
 ): Promise<Map<string, ClarificationSender>> {
-    if (ids.length === 0) return new Map();
-    const db = getDb();
-    const rows = await db.select({
-        id: users.id,
-        username: users.username,
-        avatar_url: users.avatar_url,
-    }).from(
-        users,
-    ).where(inArray(users.id, ids));
-    return new Map(
-        rows.map((row) => [
-            row.id,
-            { id: row.id, username: row.username, avatar_url: row.avatar_url },
-        ]),
-    );
+  if (ids.length === 0) return new Map();
+  const db = getDb();
+  const rows = await db.select({
+    id: users.id,
+    username: users.username,
+    avatar_url: users.avatar_url,
+  }).from(
+    users,
+  ).where(inArray(users.id, ids));
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      { id: row.id, username: row.username, avatar_url: row.avatar_url },
+    ]),
+  );
 }
 
 /** 批量查询竞赛题目标签（problem_id → label）。 */
 async function getProblemLabels(
-    contestId: string,
-    problemIds: string[],
+  contestId: string,
+  problemIds: string[],
 ): Promise<Map<string, string>> {
-    if (problemIds.length === 0) return new Map();
-    const db = getDb();
-    const rows = await db.select({
-        problem_id: contestProblems.problem_id,
-        label: contestProblems.label,
-    }).from(contestProblems).where(
-        and(
-            eq(contestProblems.contest_id, contestId),
-            inArray(contestProblems.problem_id, problemIds),
-        ),
-    );
-    return new Map(rows.map((row) => [row.problem_id, row.label]));
+  if (problemIds.length === 0) return new Map();
+  const db = getDb();
+  const rows = await db.select({
+    problem_id: contestProblems.problem_id,
+    label: contestProblems.label,
+  }).from(contestProblems).where(
+    and(
+      eq(contestProblems.contest_id, contestId),
+      inArray(contestProblems.problem_id, problemIds),
+    ),
+  );
+  return new Map(rows.map((row) => [row.problem_id, row.label]));
 }
 
 /**
@@ -190,64 +190,64 @@ async function getProblemLabels(
  * {@link replyToClarification}）。
  */
 export async function createClarification(
-    contestId: string,
-    userId: string,
-    input: { content?: string; problem_id?: string },
+  contestId: string,
+  userId: string,
+  input: { content?: string; problem_id?: string },
 ): Promise<ClarificationResponse> {
-    const content = validateContent(input.content, "提问内容");
-    const contest = await findContestRow(contestId);
-    if (
-        computeContestStatus(contest.start_time, contest.end_time) !== "running"
-    ) {
-        throw new ForbiddenError("仅可在竞赛进行期间提问");
-    }
-    if (!await isParticipant(contestId, userId)) {
-        throw new ForbiddenError("仅参赛者可提问");
-    }
-    const problemId = input.problem_id?.trim() || null;
-    if (problemId) {
-        await assertProblemBelongsToContest(contestId, problemId);
-    }
+  const content = validateContent(input.content, "提问内容");
+  const contest = await findContestRow(contestId);
+  if (
+    computeContestStatus(contest.start_time, contest.end_time) !== "running"
+  ) {
+    throw new ForbiddenError("仅可在竞赛进行期间提问");
+  }
+  if (!await isParticipant(contestId, userId)) {
+    throw new ForbiddenError("仅参赛者可提问");
+  }
+  const problemId = input.problem_id?.trim() || null;
+  if (problemId) {
+    await assertProblemBelongsToContest(contestId, problemId);
+  }
 
-    // FC-04: 答疑频控（5 次/分钟），防止高并发恶意刷答疑
-    const rateKey = `contest:${contestId}:clarification:${userId}`;
-    const rate = await checkRateLimit(rateKey, { windowSec: 60, max: 5 });
-    if (!rate.allowed) {
-        throw new RateLimitedError("提问过于频繁，请稍后再试", rate.retryAfter);
-    }
+  // FC-04: 答疑频控（5 次/分钟），防止高并发恶意刷答疑
+  const rateKey = `contest:${contestId}:clarification:${userId}`;
+  const rate = await checkRateLimit(rateKey, { windowSec: 60, max: 5 });
+  if (!rate.allowed) {
+    throw new RateLimitedError("提问过于频繁，请稍后再试", rate.retryAfter);
+  }
 
-    const db = getDb();
-    const id = crypto.randomUUID();
-    const createdAt = nowIso();
-    await db.insert(contestClarifications).values({
-        id,
-        contest_id: contestId,
-        problem_id: problemId,
-        sender_id: userId,
-        content,
-        reply_to_id: null,
-        // VULN-01：默认私密，必须由主办方显式公开（不做任何"默认公开"兜底）
-        is_public: false,
-        created_at: createdAt,
-    });
-    const [senders, labels] = await Promise.all([
-        getSenders([userId]),
-        problemId
-            ? getProblemLabels(contestId, [problemId])
-            : Promise.resolve(new Map<string, string>()),
-    ]);
-    return {
-        id,
-        contest_id: contestId,
-        problem_id: problemId,
-        problem_label: problemId ? labels.get(problemId) ?? null : null,
-        content,
-        is_public: false,
-        created_at: createdAt,
-        sender: senders.get(userId) ??
-            { id: userId, username: "未知用户", avatar_url: null },
-        replies: [],
-    };
+  const db = getDb();
+  const id = crypto.randomUUID();
+  const createdAt = nowIso();
+  await db.insert(contestClarifications).values({
+    id,
+    contest_id: contestId,
+    problem_id: problemId,
+    sender_id: userId,
+    content,
+    reply_to_id: null,
+    // VULN-01：默认私密，必须由主办方显式公开（不做任何"默认公开"兜底）
+    is_public: false,
+    created_at: createdAt,
+  });
+  const [senders, labels] = await Promise.all([
+    getSenders([userId]),
+    problemId
+      ? getProblemLabels(contestId, [problemId])
+      : Promise.resolve(new Map<string, string>()),
+  ]);
+  return {
+    id,
+    contest_id: contestId,
+    problem_id: problemId,
+    problem_label: problemId ? labels.get(problemId) ?? null : null,
+    content,
+    is_public: false,
+    created_at: createdAt,
+    sender: senders.get(userId) ??
+      { id: userId, username: "未知用户", avatar_url: null },
+    replies: [],
+  };
 }
 
 /**
@@ -260,87 +260,87 @@ export async function createClarification(
  * 显式选择；`is_public: false`（默认）时不会改变根提问的可见性。
  */
 export async function replyToClarification(
-    contestId: string,
-    clarId: string,
-    userId: string,
-    access: ClarificationAccess,
-    input: { content?: string; is_public?: boolean },
+  contestId: string,
+  clarId: string,
+  userId: string,
+  access: ClarificationAccess,
+  input: { content?: string; is_public?: boolean },
 ): Promise<ClarificationReplyResponse> {
-    const content = validateContent(input.content, "回复内容");
-    if (typeof input.is_public !== "boolean") {
-        throw new BadRequestError("is_public 必须为布尔值");
-    }
-    const contest = await findContestRow(contestId);
-    if (!access.canManage) {
-        throw new ForbiddenError("仅比赛组织者可回复");
-    }
+  const content = validateContent(input.content, "回复内容");
+  if (typeof input.is_public !== "boolean") {
+    throw new BadRequestError("is_public 必须为布尔值");
+  }
+  const contest = await findContestRow(contestId);
+  if (!access.canManage) {
+    throw new ForbiddenError("仅比赛组织者可回复");
+  }
 
-    const db = getDb();
-    const [root] = await db.select().from(contestClarifications).where(
-        and(
-            eq(contestClarifications.id, clarId),
-            eq(contestClarifications.contest_id, contestId),
-        ),
-    ).limit(1);
-    if (!root) {
-        throw new NotFoundError("提问不存在");
-    }
-    if (root.reply_to_id !== null) {
-        throw new BadRequestError("仅可回复提问本身，不支持回复的回复");
-    }
+  const db = getDb();
+  const [root] = await db.select().from(contestClarifications).where(
+    and(
+      eq(contestClarifications.id, clarId),
+      eq(contestClarifications.contest_id, contestId),
+    ),
+  ).limit(1);
+  if (!root) {
+    throw new NotFoundError("提问不存在");
+  }
+  if (root.reply_to_id !== null) {
+    throw new BadRequestError("仅可回复提问本身，不支持回复的回复");
+  }
 
-    const id = crypto.randomUUID();
-    const createdAt = nowIso();
-    await db.insert(contestClarifications).values({
-        id,
-        contest_id: contestId,
-        problem_id: null,
-        sender_id: userId,
-        content,
-        reply_to_id: clarId,
-        is_public: input.is_public,
-        created_at: createdAt,
-    });
+  const id = crypto.randomUUID();
+  const createdAt = nowIso();
+  await db.insert(contestClarifications).values({
+    id,
+    contest_id: contestId,
+    problem_id: null,
+    sender_id: userId,
+    content,
+    reply_to_id: clarId,
+    is_public: input.is_public,
+    created_at: createdAt,
+  });
 
-    // 公开回复 = 公告广播：把根提问一并转为公开，使全场能看到"问题 + 官方答复"。
-    // 私密回复不动根提问的可见性（提问者与主办方仍可见）。
-    if (input.is_public && !root.is_public) {
-        await db.update(contestClarifications)
-            .set({ is_public: true })
-            .where(eq(contestClarifications.id, clarId));
-    }
+  // 公开回复 = 公告广播：把根提问一并转为公开，使全场能看到"问题 + 官方答复"。
+  // 私密回复不动根提问的可见性（提问者与主办方仍可见）。
+  if (input.is_public && !root.is_public) {
+    await db.update(contestClarifications)
+      .set({ is_public: true })
+      .where(eq(contestClarifications.id, clarId));
+  }
 
-    // 通知提问者（回复者为提问者本人时由 createNotification 内部跳过）
-    const problemLabel = root.problem_id
-        ? (await getProblemLabels(contestId, [root.problem_id])).get(
-            root.problem_id,
-        ) ?? null
-        : null;
-    await createNotification(
-        root.sender_id,
-        userId,
-        "clarification",
-        null,
-        null,
-        {
-            contest_id: contestId,
-            clarification_id: clarId,
-            problem_label: problemLabel,
-            is_public: input.is_public,
-        },
-        undefined,
-        contest.domain_id ?? DEFAULT_DOMAIN_ID,
-    );
+  // 通知提问者（回复者为提问者本人时由 createNotification 内部跳过）
+  const problemLabel = root.problem_id
+    ? (await getProblemLabels(contestId, [root.problem_id])).get(
+      root.problem_id,
+    ) ?? null
+    : null;
+  await createNotification(
+    root.sender_id,
+    userId,
+    "clarification",
+    null,
+    null,
+    {
+      contest_id: contestId,
+      clarification_id: clarId,
+      problem_label: problemLabel,
+      is_public: input.is_public,
+    },
+    undefined,
+    contest.domain_id ?? DEFAULT_DOMAIN_ID,
+  );
 
-    const senders = await getSenders([userId]);
-    return {
-        id,
-        content,
-        is_public: input.is_public,
-        created_at: createdAt,
-        sender: senders.get(userId) ??
-            { id: userId, username: "未知用户", avatar_url: null },
-    };
+  const senders = await getSenders([userId]);
+  return {
+    id,
+    content,
+    is_public: input.is_public,
+    created_at: createdAt,
+    sender: senders.get(userId) ??
+      { id: userId, username: "未知用户", avatar_url: null },
+  };
 }
 
 /**
@@ -349,140 +349,140 @@ export async function replyToClarification(
  * admin/竞赛创建者见全部。分页基于提问数，回复跟随根提问返回。
  */
 export async function listClarifications(
-    contestId: string,
-    access: ClarificationAccess,
-    params: ListClarificationsParams = {},
+  contestId: string,
+  access: ClarificationAccess,
+  params: ListClarificationsParams = {},
 ): Promise<ListClarificationsResult> {
-    const page = params.page ?? 1;
-    const perPage = params.perPage ?? DEFAULT_PAGE_SIZE;
-    if (!Number.isInteger(page) || page < 1) {
-        throw new BadRequestError("page 必须为正整数");
-    }
-    if (!Number.isInteger(perPage) || perPage < 1 || perPage > MAX_PAGE_SIZE) {
-        throw new BadRequestError(`perPage 必须为 1-${MAX_PAGE_SIZE} 的整数`);
-    }
-    await findContestRow(contestId);
-    const userId = access.actorId;
-    const isManager = access.canManage;
-    const isPart = userId !== undefined && access.isParticipant;
+  const page = params.page ?? 1;
+  const perPage = params.perPage ?? DEFAULT_PAGE_SIZE;
+  if (!Number.isInteger(page) || page < 1) {
+    throw new BadRequestError("page 必须为正整数");
+  }
+  if (!Number.isInteger(perPage) || perPage < 1 || perPage > MAX_PAGE_SIZE) {
+    throw new BadRequestError(`perPage 必须为 1-${MAX_PAGE_SIZE} 的整数`);
+  }
+  await findContestRow(contestId);
+  const userId = access.actorId;
+  const isManager = access.canManage;
+  const isPart = userId !== undefined && access.isParticipant;
 
-    const db = getDb();
-    // 过滤可见提问（匿名/未参赛仅公开；参赛者公开 + 自己的）
-    const visibilityCondition = isManager
-        ? isNull(contestClarifications.reply_to_id)
-        : and(
-            isNull(contestClarifications.reply_to_id),
-            isPart
-                ? or(
-                    eq(contestClarifications.is_public, true),
-                    eq(contestClarifications.sender_id, userId!),
-                )
-                : eq(contestClarifications.is_public, true),
-        );
-
-    const [totalRow] = await db
-        .select({ count: count() })
-        .from(contestClarifications)
-        .where(and(
-            eq(contestClarifications.contest_id, contestId),
-            visibilityCondition,
-        ));
-    const total = Number(totalRow?.count ?? 0);
-    if (total === 0) {
-        return { data: [], total: 0 };
-    }
-
-    const pageQuestions = await db
-        .select()
-        .from(contestClarifications)
-        .where(and(
-            eq(contestClarifications.contest_id, contestId),
-            visibilityCondition,
-        ))
-        .orderBy(
-            asc(contestClarifications.created_at),
-            asc(contestClarifications.id),
+  const db = getDb();
+  // 过滤可见提问（匿名/未参赛仅公开；参赛者公开 + 自己的）
+  const visibilityCondition = isManager
+    ? isNull(contestClarifications.reply_to_id)
+    : and(
+      isNull(contestClarifications.reply_to_id),
+      isPart
+        ? or(
+          eq(contestClarifications.is_public, true),
+          eq(contestClarifications.sender_id, userId!),
         )
-        .limit(perPage)
-        .offset((page - 1) * perPage);
+        : eq(contestClarifications.is_public, true),
+    );
 
-    if (pageQuestions.length === 0) {
-        return { data: [], total };
-    }
+  const [totalRow] = await db
+    .select({ count: count() })
+    .from(contestClarifications)
+    .where(and(
+      eq(contestClarifications.contest_id, contestId),
+      visibilityCondition,
+    ));
+  const total = Number(totalRow?.count ?? 0);
+  if (total === 0) {
+    return { data: [], total: 0 };
+  }
 
-    // 回复可见性：admin 全部；否则公开，或根提问属于自己（私密回复仅提问者可见）
-    const questionIds = pageQuestions.map((row) => row.id);
-    const myQuestionIds = isPart
-        ? pageQuestions.filter((q) => q.sender_id === userId).map((q) => q.id)
-        : [];
-    const replyVisibility = isManager
-        ? sql`true`
-        : (myQuestionIds.length > 0
-            ? or(
-                eq(contestClarifications.is_public, true),
-                inArray(contestClarifications.reply_to_id, myQuestionIds),
-            )
-            : eq(contestClarifications.is_public, true));
+  const pageQuestions = await db
+    .select()
+    .from(contestClarifications)
+    .where(and(
+      eq(contestClarifications.contest_id, contestId),
+      visibilityCondition,
+    ))
+    .orderBy(
+      asc(contestClarifications.created_at),
+      asc(contestClarifications.id),
+    )
+    .limit(perPage)
+    .offset((page - 1) * perPage);
 
-    const replies = await db
-        .select()
-        .from(contestClarifications)
-        .where(and(
-            eq(contestClarifications.contest_id, contestId),
-            inArray(contestClarifications.reply_to_id, questionIds),
-            replyVisibility,
-        ))
-        .orderBy(
-            asc(contestClarifications.created_at),
-            asc(contestClarifications.id),
-        );
+  if (pageQuestions.length === 0) {
+    return { data: [], total };
+  }
 
-    const senderIds = [
-        ...new Set([
-            ...pageQuestions.map((row) => row.sender_id),
-            ...replies.map((row) => row.sender_id),
-        ]),
-    ];
-    const problemIds = [
-        ...new Set(
-            pageQuestions.map((row) => row.problem_id).filter(
-                (id): id is string => id !== null,
-            ),
-        ),
-    ];
-    const [senders, labels] = await Promise.all([
-        getSenders(senderIds),
-        getProblemLabels(contestId, problemIds),
-    ]);
+  // 回复可见性：admin 全部；否则公开，或根提问属于自己（私密回复仅提问者可见）
+  const questionIds = pageQuestions.map((row) => row.id);
+  const myQuestionIds = isPart
+    ? pageQuestions.filter((q) => q.sender_id === userId).map((q) => q.id)
+    : [];
+  const replyVisibility = isManager
+    ? sql`true`
+    : (myQuestionIds.length > 0
+      ? or(
+        eq(contestClarifications.is_public, true),
+        inArray(contestClarifications.reply_to_id, myQuestionIds),
+      )
+      : eq(contestClarifications.is_public, true));
 
-    const data = pageQuestions.map((question) => ({
-        id: question.id,
-        contest_id: question.contest_id,
-        problem_id: question.problem_id,
-        problem_label: question.problem_id
-            ? labels.get(question.problem_id) ?? null
-            : null,
-        content: question.content,
-        is_public: question.is_public,
-        created_at: question.created_at,
-        sender: senders.get(question.sender_id) ?? {
-            id: question.sender_id,
-            username: "未知用户",
-            avatar_url: null,
+  const replies = await db
+    .select()
+    .from(contestClarifications)
+    .where(and(
+      eq(contestClarifications.contest_id, contestId),
+      inArray(contestClarifications.reply_to_id, questionIds),
+      replyVisibility,
+    ))
+    .orderBy(
+      asc(contestClarifications.created_at),
+      asc(contestClarifications.id),
+    );
+
+  const senderIds = [
+    ...new Set([
+      ...pageQuestions.map((row) => row.sender_id),
+      ...replies.map((row) => row.sender_id),
+    ]),
+  ];
+  const problemIds = [
+    ...new Set(
+      pageQuestions.map((row) => row.problem_id).filter(
+        (id): id is string => id !== null,
+      ),
+    ),
+  ];
+  const [senders, labels] = await Promise.all([
+    getSenders(senderIds),
+    getProblemLabels(contestId, problemIds),
+  ]);
+
+  const data = pageQuestions.map((question) => ({
+    id: question.id,
+    contest_id: question.contest_id,
+    problem_id: question.problem_id,
+    problem_label: question.problem_id
+      ? labels.get(question.problem_id) ?? null
+      : null,
+    content: question.content,
+    is_public: question.is_public,
+    created_at: question.created_at,
+    sender: senders.get(question.sender_id) ?? {
+      id: question.sender_id,
+      username: "未知用户",
+      avatar_url: null,
+    },
+    replies: replies.filter((row) => row.reply_to_id === question.id).map(
+      (row) => ({
+        id: row.id,
+        content: row.content,
+        is_public: row.is_public,
+        created_at: row.created_at,
+        sender: senders.get(row.sender_id) ?? {
+          id: row.sender_id,
+          username: "未知用户",
+          avatar_url: null,
         },
-        replies: replies.filter((row) => row.reply_to_id === question.id).map(
-            (row) => ({
-                id: row.id,
-                content: row.content,
-                is_public: row.is_public,
-                created_at: row.created_at,
-                sender: senders.get(row.sender_id) ?? {
-                    id: row.sender_id,
-                    username: "未知用户",
-                    avatar_url: null,
-                },
-            }),
-        ),
-    }));
-    return { data, total };
+      }),
+    ),
+  }));
+  return { data, total };
 }

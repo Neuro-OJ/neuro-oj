@@ -8,19 +8,19 @@ import { backgroundTasks } from "../../src/shared/db/schema.ts";
  * PostgreSQL 后台任务，不再写 Redis 列表）。
  */
 export async function hasSearchIndexTask(
-    entityType: string,
-    entityId: string,
-    action: "upsert" | "delete",
+  entityType: string,
+  entityId: string,
+  action: "upsert" | "delete",
 ): Promise<boolean> {
-    const rows = await getDb().select({ id: backgroundTasks.id }).from(
-        backgroundTasks,
-    ).where(and(
-        eq(backgroundTasks.task_type, "search.index"),
-        eq(backgroundTasks.target_id, entityId),
-        sql`${backgroundTasks.payload}->>'entity_type' = ${entityType}`,
-        sql`${backgroundTasks.payload}->>'action' = ${action}`,
-    )).limit(1);
-    return rows.length > 0;
+  const rows = await getDb().select({ id: backgroundTasks.id }).from(
+    backgroundTasks,
+  ).where(and(
+    eq(backgroundTasks.task_type, "search.index"),
+    eq(backgroundTasks.target_id, entityId),
+    sql`${backgroundTasks.payload}->>'entity_type' = ${entityType}`,
+    sql`${backgroundTasks.payload}->>'action' = ${action}`,
+  )).limit(1);
+  return rows.length > 0;
 }
 
 /**
@@ -30,13 +30,13 @@ export async function hasSearchIndexTask(
  * 不受并行测试影响。
  */
 export async function assertSearchEventPublished(
-    entityType: string,
-    entityId: string,
-    action: "upsert" | "delete",
+  entityType: string,
+  entityId: string,
+  action: "upsert" | "delete",
 ): Promise<void> {
-    assertEquals(
-        await hasSearchIndexTask(entityType, entityId, action),
-        true,
-        `未找到搜索索引任务 ${entityType}:${entityId}:${action}`,
-    );
+  assertEquals(
+    await hasSearchIndexTask(entityType, entityId, action),
+    true,
+    `未找到搜索索引任务 ${entityType}:${entityId}:${action}`,
+  );
 }

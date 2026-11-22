@@ -29,5 +29,5 @@ export const CONTEST_HIDDEN_STRIPES_CLASS = 'contest-hidden-stripes';
  * @returns 需要斜纹底时返回样式类名，否则返回空串（便于直接绑定 `:class`）。
  */
 export function contestHiddenRowClass(hidden?: boolean | null): string {
-    return hidden === true ? CONTEST_HIDDEN_STRIPES_CLASS : '';
+  return hidden === true ? CONTEST_HIDDEN_STRIPES_CLASS : '';
 }

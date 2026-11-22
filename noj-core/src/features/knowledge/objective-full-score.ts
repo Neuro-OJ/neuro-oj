@@ -7,8 +7,8 @@
  */
 import { and, eq } from "drizzle-orm";
 import {
-    getPaperOrThrow,
-    listVersionQuestions,
+  getPaperOrThrow,
+  listVersionQuestions,
 } from "../../modules/problems/index.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import { problemVersions } from "../../shared/db/schema.ts";
@@ -18,27 +18,27 @@ export const OBJECTIVE_SCORE_UNIT = 100;
 
 /** 读取套卷作答版本的满分；无发布版本返回 null。 */
 export async function objectiveFullScore(
-    paperId: string,
+  paperId: string,
 ): Promise<number | null> {
-    let paper;
-    try {
-        paper = await getPaperOrThrow(paperId);
-    } catch {
-        return null;
-    }
-    if (!paper.is_objective) return null;
-    const versionId = paper.effective_version_mode === "exact"
-        ? paper.required_version_id
-        : paper.latest_version_id;
-    if (!versionId) return null;
-    const [version] = await getDb().select({ id: problemVersions.id }).from(
-        problemVersions,
-    ).where(and(
-        eq(problemVersions.id, versionId),
-        eq(problemVersions.problem_id, paper.id),
-    )).limit(1);
-    if (!version) return null;
-    const questions = await listVersionQuestions(version.id);
-    if (questions.length === 0) return null;
-    return questions.length * OBJECTIVE_SCORE_UNIT;
+  let paper;
+  try {
+    paper = await getPaperOrThrow(paperId);
+  } catch {
+    return null;
+  }
+  if (!paper.is_objective) return null;
+  const versionId = paper.effective_version_mode === "exact"
+    ? paper.required_version_id
+    : paper.latest_version_id;
+  if (!versionId) return null;
+  const [version] = await getDb().select({ id: problemVersions.id }).from(
+    problemVersions,
+  ).where(and(
+    eq(problemVersions.id, versionId),
+    eq(problemVersions.problem_id, paper.id),
+  )).limit(1);
+  if (!version) return null;
+  const questions = await listVersionQuestions(version.id);
+  if (questions.length === 0) return null;
+  return questions.length * OBJECTIVE_SCORE_UNIT;
 }

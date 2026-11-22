@@ -11,5 +11,5 @@ throw createError({ statusCode: 404, statusMessage: '页面不存在', fatal: tr
 </script>
 
 <template>
-    <div />
+  <div />
 </template>

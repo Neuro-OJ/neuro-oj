@@ -13,20 +13,20 @@ export type ContestPhase = 'pending' | 'running' | 'ended';
 
 /** 报名区应展示的状态。 */
 export type RegistrationState =
-    /** 未登录：引导登录后报名。 */
-    | { kind: 'login' }
-    /** 已结束：不再接受报名，仅可查看。 */
-    | { kind: 'ended' }
-    /** 已报名：展示参赛身份与进入赛题入口。 */
-    | { kind: 'registered'; canEnter: boolean }
-    /** 未报名：可按域访问权自助报名 */
-    | { kind: 'register' };
+  /** 未登录：引导登录后报名。 */
+  | { kind: 'login' }
+  /** 已结束：不再接受报名，仅可查看。 */
+  | { kind: 'ended' }
+  /** 已报名：展示参赛身份与进入赛题入口。 */
+  | { kind: 'registered'; canEnter: boolean }
+  /** 未报名：可按域访问权自助报名 */
+  | { kind: 'register' };
 
 export interface RegistrationInput {
-    isLoggedIn: boolean;
-    isRegistered: boolean;
-    status: ContestPhase;
-    canManage: boolean;
+  isLoggedIn: boolean;
+  isRegistered: boolean;
+  status: ContestPhase;
+  canManage: boolean;
 }
 
 /**
@@ -45,15 +45,15 @@ export interface RegistrationInput {
  * @returns 本地阶段
  */
 export function contestPhase(
-    contest: { start_time: string; end_time: string; status?: string } | null | undefined,
-    now: number,
+  contest: { start_time: string; end_time: string; status?: string } | null | undefined,
+  now: number,
 ): ContestPhase {
-    if (!contest) return 'pending';
-    if (contest.status === 'ended') return 'ended';
-    const start = Date.parse(contest.start_time), end = Date.parse(contest.end_time);
-    if (Number.isFinite(start) && now < start) return 'pending';
-    if (Number.isFinite(end) && now >= end) return 'ended';
-    return 'running';
+  if (!contest) return 'pending';
+  if (contest.status === 'ended') return 'ended';
+  const start = Date.parse(contest.start_time), end = Date.parse(contest.end_time);
+  if (Number.isFinite(start) && now < start) return 'pending';
+  if (Number.isFinite(end) && now >= end) return 'ended';
+  return 'running';
 }
 
 /**
@@ -63,15 +63,15 @@ export function contestPhase(
  * 报名是参赛行为，组织者是否参赛由自己的报名记录决定，页面不得替用户编造。
  */
 export function contestRegistrationState(
-    input: RegistrationInput,
+  input: RegistrationInput,
 ): RegistrationState {
-    if (input.status === 'ended') return { kind: 'ended' };
-    if (!input.isLoggedIn) return { kind: 'login' };
-    if (input.isRegistered) {
-        // 已报名即可进入赛题页；未开赛时后端会拒绝读取，页面据 `problemsState` 说明原因。
-        return { kind: 'registered', canEnter: true };
-    }
-    return { kind: 'register' };
+  if (input.status === 'ended') return { kind: 'ended' };
+  if (!input.isLoggedIn) return { kind: 'login' };
+  if (input.isRegistered) {
+    // 已报名即可进入赛题页；未开赛时后端会拒绝读取，页面据 `problemsState` 说明原因。
+    return { kind: 'registered', canEnter: true };
+  }
+  return { kind: 'register' };
 }
 
 /**
@@ -87,81 +87,81 @@ export function contestRegistrationState(
 export type ProblemsState = 'visible' | 'not-started' | 'not-registered';
 
 export function contestProblemsState(input: {
-    status: ContestPhase;
-    isRegistered: boolean;
-    canManage: boolean;
+  status: ContestPhase;
+  isRegistered: boolean;
+  canManage: boolean;
 }): ProblemsState {
-    if (input.canManage) return 'visible';
-    if (input.status === 'pending') return 'not-started';
-    if (input.status === 'ended') return 'visible';
-    return input.isRegistered ? 'visible' : 'not-registered';
+  if (input.canManage) return 'visible';
+  if (input.status === 'pending') return 'not-started';
+  if (input.status === 'ended') return 'visible';
+  return input.isRegistered ? 'visible' : 'not-registered';
 }
 
 /** 毫秒差 → 倒计时文案；已过期返回全零文本并把 `expired` 置真。 */
 export function contestCountdown(
-    target: string | null | undefined,
-    now: number,
+  target: string | null | undefined,
+  now: number,
 ): {
-    text: string;
-    expired: boolean;
+  text: string;
+  expired: boolean;
 } {
-    if (!target) return { text: '--:--:--', expired: true };
-    const end = Date.parse(target);
-    if (!Number.isFinite(end)) return { text: '--:--:--', expired: true };
-    const diff = Math.max(0, end - now);
-    const days = Math.floor(diff / 86_400_000);
-    const hours = Math.floor((diff % 86_400_000) / 3_600_000);
-    const minutes = Math.floor((diff % 3_600_000) / 60_000);
-    const seconds = Math.floor((diff % 60_000) / 1000);
-    const clock = [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
-    return {
-        text: days > 0 ? `${days} 天 ${clock}` : clock,
-        expired: diff === 0,
-    };
+  if (!target) return { text: '--:--:--', expired: true };
+  const end = Date.parse(target);
+  if (!Number.isFinite(end)) return { text: '--:--:--', expired: true };
+  const diff = Math.max(0, end - now);
+  const days = Math.floor(diff / 86_400_000);
+  const hours = Math.floor((diff % 86_400_000) / 3_600_000);
+  const minutes = Math.floor((diff % 3_600_000) / 60_000);
+  const seconds = Math.floor((diff % 60_000) / 1000);
+  const clock = [hours, minutes, seconds].map((value) => String(value).padStart(2, '0')).join(':');
+  return {
+    text: days > 0 ? `${days} 天 ${clock}` : clock,
+    expired: diff === 0,
+  };
 }
 
 /** 比赛时长文案（用于"共 X 天 Y 小时"的赛程说明）。 */
 export function contestDurationText(
-    start: string | null | undefined,
-    end: string | null | undefined,
+  start: string | null | undefined,
+  end: string | null | undefined,
 ): string | null {
-    if (!start || !end) return null;
-    const from = Date.parse(start), to = Date.parse(end);
-    if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
-    const minutes = Math.floor((to - from) / 60_000);
-    const days = Math.floor(minutes / 1440);
-    const hours = Math.floor((minutes % 1440) / 60);
-    const rest = minutes % 60;
-    if (days > 0) return hours > 0 ? `${days} 天 ${hours} 小时` : `${days} 天`;
-    if (hours > 0) {
-        return rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
-    }
-    return `${Math.max(1, rest)} 分钟`;
+  if (!start || !end) return null;
+  const from = Date.parse(start), to = Date.parse(end);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return null;
+  const minutes = Math.floor((to - from) / 60_000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const rest = minutes % 60;
+  if (days > 0) return hours > 0 ? `${days} 天 ${hours} 小时` : `${days} 天`;
+  if (hours > 0) {
+    return rest > 0 ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+  }
+  return `${Math.max(1, rest)} 分钟`;
 }
 
 /** 榜单可见性的人话说明（与后端 `ranking_visibility` 语义一一对应）。 */
 export function rankingVisibilityText(
-    visibility: 'public' | 'participants' | 'hidden',
+  visibility: 'public' | 'participants' | 'hidden',
 ): string {
-    switch (visibility) {
-        case 'hidden':
-            return '赛时与赛后都不公开榜单，仅组织者可见';
-        case 'participants':
-            return '仅参赛者（及组织者）可查看榜单';
-        default:
-            return '榜单对所有人公开';
-    }
+  switch (visibility) {
+    case 'hidden':
+      return '赛时与赛后都不公开榜单，仅组织者可见';
+    case 'participants':
+      return '仅参赛者（及组织者）可查看榜单';
+    default:
+      return '榜单对所有人公开';
+  }
 }
 
 /** 赛制判分口径说明（与 `DOMAIN_CONTEST_TYPES.description` 互补，聚焦"成绩怎么看"）。 */
 export function scoreboardScopeText(
-    type: string,
-    scope?: 'self' | 'full',
+  type: string,
+  scope?: 'self' | 'full',
 ): string {
-    if (type === 'kaggle') {
-        return scope === 'full' ? '实时显示全体选手分数' : '实时只显示本人成绩，赛后查看完整榜单';
-    }
-    if (type === 'oi') return '赛时隐藏成绩与判定，赛后统一公布';
-    if (type === 'acm') return '实时榜单，封榜期间不显示封榜后的判定';
-    return '实时显示判定的公开部分';
+  if (type === 'kaggle') {
+    return scope === 'full' ? '实时显示全体选手分数' : '实时只显示本人成绩，赛后查看完整榜单';
+  }
+  if (type === 'oi') return '赛时隐藏成绩与判定，赛后统一公布';
+  if (type === 'acm') return '实时榜单，封榜期间不显示封榜后的判定';
+  return '实时显示判定的公开部分';
 }

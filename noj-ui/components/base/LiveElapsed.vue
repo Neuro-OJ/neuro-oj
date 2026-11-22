@@ -10,25 +10,25 @@ const props = defineProps<{ startTime: string }>();
 const now = ref(Date.now());
 let timer: ReturnType<typeof setInterval> | null = null;
 onMounted(() => {
-    timer = setInterval(() => {
-        now.value = Date.now();
-    }, 100);
+  timer = setInterval(() => {
+    now.value = Date.now();
+  }, 100);
 });
 onUnmounted(() => {
-    if (timer) clearInterval(timer);
+  if (timer) clearInterval(timer);
 });
 
 function formatTimeMs(ms: number): string {
-    if (ms < 1000) return ms + 'ms';
-    return (ms / 1000).toFixed(3) + 's';
+  if (ms < 1000) return ms + 'ms';
+  return (ms / 1000).toFixed(3) + 's';
 }
 
 const elapsed = computed(() => {
-    const ms = Math.max(0, now.value - new Date(props.startTime).getTime());
-    return formatTimeMs(ms);
+  const ms = Math.max(0, now.value - new Date(props.startTime).getTime());
+  return formatTimeMs(ms);
 });
 </script>
 
 <template>
-    <span class="font-mono tabular-nums text-primary">{{ elapsed }}</span>
+  <span class="font-mono tabular-nums text-primary">{{ elapsed }}</span>
 </template>

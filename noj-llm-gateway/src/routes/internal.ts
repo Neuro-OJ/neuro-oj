@@ -8,12 +8,12 @@ import type { GatewayConfig } from "../config.ts";
 import type { RedisClient } from "../redis.ts";
 import { requireServiceToken } from "../auth.ts";
 import {
-    createProvider,
-    deleteProvider,
-    listProviders,
-    type ProviderInput,
-    testProviderConnection,
-    updateProvider,
+  createProvider,
+  deleteProvider,
+  listProviders,
+  type ProviderInput,
+  testProviderConnection,
+  updateProvider,
 } from "../providers.ts";
 import { fallbackQuota } from "../limits.ts";
 import { assertSafeBaseUrl, UPSTREAM_BLOCKED } from "../upstream-guard.ts";
@@ -21,21 +21,21 @@ import { reconcileAccounting } from "../accounting.ts";
 import { bootstrapAccountingBaseline } from "../accounting-baseline.ts";
 import { requireRevision } from "../revision.ts";
 import {
-    deleteDomainModelAlias,
-    listDomainModelAliases,
-    listDomainModelCapabilities,
-    ModelAuthorityError,
-    readDomainModelSettings,
-    resolveDomainModelSelection,
-    updateDomainModelSettings,
-    upsertDomainModelAlias,
+  deleteDomainModelAlias,
+  listDomainModelAliases,
+  listDomainModelCapabilities,
+  ModelAuthorityError,
+  readDomainModelSettings,
+  resolveDomainModelSelection,
+  updateDomainModelSettings,
+  upsertDomainModelAlias,
 } from "../model-authority.ts";
 import { createInternalPolicyRouter } from "./internal-policy.ts";
 
 export interface InternalDeps {
-    config: GatewayConfig;
-    db: Db;
-    redis?: RedisClient;
+  config: GatewayConfig;
+  db: Db;
+  redis?: RedisClient;
 }
 
 /**
@@ -48,484 +48,477 @@ export interface InternalDeps {
 const MAX_SAFE_PAGE = Number.MAX_SAFE_INTEGER;
 
 function modelAuthorityErrorResponse(
-    c: Context,
-    error: unknown,
+  c: Context,
+  error: unknown,
 ) {
-    if (!(error instanceof ModelAuthorityError)) throw error;
-    return c.json(
-        { error: error.code },
-        error.status as 400 | 404 | 409,
-    );
+  if (!(error instanceof ModelAuthorityError)) throw error;
+  return c.json(
+    { error: error.code },
+    error.status as 400 | 404 | 409,
+  );
 }
 
 /** 创建 core↔gateway 内部管理路由；所有端点均需服务间 Bearer Token。 */
 export function createInternalRouter(deps: InternalDeps): Hono {
-    const app = new Hono();
-    app.use("*", requireServiceToken(deps.config.serviceToken));
-    // 旧平台管理入口固定映射 main；新调用必须传显式使用域，body 不能覆盖归属。
-    const domain = (c: { req: { header(name: string): string | undefined } }) =>
-        c.req.header("X-Noj-Domain-Id") ??
-            "00000000-0000-4000-8000-000000000001";
+  const app = new Hono();
+  app.use("*", requireServiceToken(deps.config.serviceToken));
+  // 旧平台管理入口固定映射 main；新调用必须传显式使用域，body 不能覆盖归属。
+  const domain = (c: { req: { header(name: string): string | undefined } }) =>
+    c.req.header("X-Noj-Domain-Id") ??
+      "00000000-0000-4000-8000-000000000001";
 
-    // Provider 列表（Key 脱敏）
-    app.get("/internal/providers", async (c) => {
-        const providers = await listProviders(
-            deps.db,
-            deps.config.storeKey,
-            domain(c),
+  // Provider 列表（Key 脱敏）
+  app.get("/internal/providers", async (c) => {
+    const providers = await listProviders(
+      deps.db,
+      deps.config.storeKey,
+      domain(c),
+    );
+    return c.json({ data: providers });
+  });
+
+  // Provider 精简信息（不含加密 Key）
+  app.get("/internal/providers/:id", async (c) => {
+    const id = c.req.param("id");
+    const rows = await deps
+      .db`SELECT id, domain_id, revision, name, base_url, cost_per_1k_tokens, enabled, rpm_limit, tpm_limit, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
+      domain(c)
+    }`;
+    if (rows.length === 0) {
+      return c.json({ error: "provider_not_found" }, 404);
+    }
+    return c.json({ data: rows[0] });
+  });
+
+  // 新增 Provider
+  app.post("/internal/providers", async (c) => {
+    if (requireRevision(c) !== 0) {
+      return c.json({ error: "revision_conflict" }, 409);
+    }
+    const body = await c.req.json<ProviderInput>();
+    if (!body.name || !body.base_url || !body.api_key) {
+      return c.json({ error: "missing_required_fields" }, 400);
+    }
+    try {
+      // 出站地址校验（G-03）：禁止内网 / 回环 / 元数据地址与非 https（白名单除外）
+      assertSafeBaseUrl(body.base_url, deps.config.upstreamAllowedHosts);
+      const provider = await createProvider(
+        deps.db,
+        body,
+        deps.config.storeKey,
+        domain(c),
+      );
+      return c.json({ data: provider }, 201);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "provider_invalid";
+      return c.json({ error: code }, 400);
+    }
+  });
+
+  // 更新 Provider
+  app.put("/internal/providers/:id", async (c) => {
+    const revision = requireRevision(c);
+    const id = c.req.param("id");
+    const body = await c.req.json<Partial<ProviderInput>>();
+    try {
+      // BYOK 已全路径移除：不再有「用户自助 Provider」，`created_by` 归属列与
+      // 用户路由都已删除，因此这里既不读 `created_by`，也不传作用域参数
+      // （#541 引入的 `scope` 参数随 BYOK 一起消失）。
+      if (body.base_url !== undefined) {
+        assertSafeBaseUrl(
+          body.base_url,
+          deps.config.upstreamAllowedHosts,
         );
-        return c.json({ data: providers });
-    });
+      }
+      const provider = await updateProvider(
+        deps.db,
+        id,
+        body,
+        deps.config.storeKey,
+        domain(c),
+        revision,
+      );
+      return c.json({ data: provider });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "update_failed";
+      return c.json(
+        { error: message },
+        message === "provider_not_found"
+          ? 404
+          : message === "revision_conflict"
+          ? 409
+          : 400,
+      );
+    }
+  });
 
-    // Provider 精简信息（不含加密 Key）
-    app.get("/internal/providers/:id", async (c) => {
-        const id = c.req.param("id");
-        const rows = await deps
-            .db`SELECT id, domain_id, revision, name, base_url, cost_per_1k_tokens, enabled, rpm_limit, tpm_limit, created_at, updated_at FROM llm_providers WHERE id = ${id} AND domain_id = ${
-            domain(c)
-        }`;
-        if (rows.length === 0) {
-            return c.json({ error: "provider_not_found" }, 404);
-        }
-        return c.json({ data: rows[0] });
-    });
+  app.delete("/internal/providers/:id", async (c) => {
+    const revision = requireRevision(c);
+    try {
+      const deleted = await deleteProvider(
+        deps.db,
+        c.req.param("id"),
+        domain(c),
+        revision,
+      );
+      return deleted
+        ? c.body(null, 204)
+        : c.json({ error: "provider_not_found" }, 404);
+    } catch (error) {
+      if (
+        error instanceof Error && error.message === "revision_conflict"
+      ) {
+        return c.json({ error: "revision_conflict" }, 409);
+      }
+      throw error;
+    }
+  });
 
-    // 新增 Provider
-    app.post("/internal/providers", async (c) => {
-        if (requireRevision(c) !== 0) {
-            return c.json({ error: "revision_conflict" }, 409);
-        }
-        const body = await c.req.json<ProviderInput>();
-        if (!body.name || !body.base_url || !body.api_key) {
-            return c.json({ error: "missing_required_fields" }, 400);
-        }
-        try {
-            // 出站地址校验（G-03）：禁止内网 / 回环 / 元数据地址与非 https（白名单除外）
-            assertSafeBaseUrl(body.base_url, deps.config.upstreamAllowedHosts);
-            const provider = await createProvider(
-                deps.db,
-                body,
-                deps.config.storeKey,
-                domain(c),
-            );
-            return c.json({ data: provider }, 201);
-        } catch (err) {
-            const code = err instanceof Error
-                ? err.message
-                : "provider_invalid";
-            return c.json({ error: code }, 400);
-        }
-    });
+  app.post("/internal/providers/:id/test", async (c) => {
+    const body = await c.req.json<{ model?: string }>().catch(
+      () => ({} as { model?: string }),
+    );
+    try {
+      await testProviderConnection(
+        deps.db,
+        c.req.param("id"),
+        deps.config.storeKey,
+        body.model ?? "",
+        deps.config.upstreamAllowedHosts,
+        undefined,
+        domain(c),
+      );
+      return c.json({ data: { status: "ok" } });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "provider_error";
+      const status = code === "provider_not_found"
+        ? 404
+        : code === "model_required" || code === UPSTREAM_BLOCKED
+        ? 400
+        : 502;
+      return c.json({ error: code }, status);
+    }
+  });
 
-    // 更新 Provider
-    app.put("/internal/providers/:id", async (c) => {
-        const revision = requireRevision(c);
-        const id = c.req.param("id");
-        const body = await c.req.json<Partial<ProviderInput>>();
-        try {
-            // BYOK 已全路径移除：不再有「用户自助 Provider」，`created_by` 归属列与
-            // 用户路由都已删除，因此这里既不读 `created_by`，也不传作用域参数
-            // （#541 引入的 `scope` 参数随 BYOK 一起消失）。
-            if (body.base_url !== undefined) {
-                assertSafeBaseUrl(
-                    body.base_url,
-                    deps.config.upstreamAllowedHosts,
-                );
-            }
-            const provider = await updateProvider(
-                deps.db,
-                id,
-                body,
-                deps.config.storeKey,
-                domain(c),
-                revision,
-            );
-            return c.json({ data: provider });
-        } catch (err) {
-            const message = err instanceof Error
-                ? err.message
-                : "update_failed";
-            return c.json(
-                { error: message },
-                message === "provider_not_found"
-                    ? 404
-                    : message === "revision_conflict"
-                    ? 409
-                    : 400,
-            );
-        }
+  // Gateway 模型权威：Core 只通过这些端点读写执行域配置。
+  app.get("/internal/model-aliases", async (c) => {
+    return c.json({
+      data: await listDomainModelAliases(deps.db, domain(c)),
     });
+  });
+  app.put("/internal/model-aliases/:alias", async (c) => {
+    const revision = requireRevision(c);
+    const actorId = c.req.header("X-Noj-Actor-Id")?.trim() ?? "";
+    if (!actorId) return c.json({ error: "actor_required" }, 400);
+    try {
+      const body = await c.req.json<{
+        provider_id: string;
+        model: string;
+        description?: string;
+      }>();
+      return c.json({
+        data: await upsertDomainModelAlias(
+          deps.db,
+          domain(c),
+          c.req.param("alias"),
+          body,
+          revision,
+          actorId,
+        ),
+      }, revision === 0 ? 201 : 200);
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.delete("/internal/model-aliases/:alias", async (c) => {
+    const revision = requireRevision(c);
+    try {
+      const deleted = await deleteDomainModelAlias(
+        deps.db,
+        domain(c),
+        c.req.param("alias"),
+        revision,
+      );
+      return deleted
+        ? c.body(null, 204)
+        : c.json({ error: "alias_not_found" }, 404);
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.get("/internal/settings", async (c) => {
+    return c.json({
+      data: await readDomainModelSettings(deps.db, domain(c)),
+    });
+  });
+  app.put("/internal/settings", async (c) => {
+    const revision = requireRevision(c);
+    const actorId = c.req.header("X-Noj-Actor-Id")?.trim() ?? "";
+    if (!actorId) return c.json({ error: "actor_required" }, 400);
+    try {
+      const body = await c.req.json<{
+        provider_id: string | null;
+        model: string | null;
+      }>();
+      return c.json({
+        data: await updateDomainModelSettings(
+          deps.db,
+          domain(c),
+          body,
+          revision,
+          actorId,
+        ),
+      });
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.post("/internal/execution-config", async (c) => {
+    try {
+      const body = await c.req.json<{ aliases?: unknown }>();
+      if (!Array.isArray(body.aliases)) {
+        return c.json({ error: "invalid_aliases" }, 400);
+      }
+      return c.json({
+        data: await resolveDomainModelSelection(
+          deps.db,
+          domain(c),
+          body.aliases as string[],
+        ),
+      });
+    } catch (error) {
+      return modelAuthorityErrorResponse(c, error);
+    }
+  });
+  app.get("/internal/model-capabilities", async (c) => {
+    return c.json({
+      data: await listDomainModelCapabilities(deps.db, domain(c)),
+    });
+  });
 
-    app.delete("/internal/providers/:id", async (c) => {
-        const revision = requireRevision(c);
-        try {
-            const deleted = await deleteProvider(
-                deps.db,
-                c.req.param("id"),
-                domain(c),
-                revision,
-            );
-            return deleted
-                ? c.body(null, 204)
-                : c.json({ error: "provider_not_found" }, 404);
-        } catch (error) {
-            if (
-                error instanceof Error && error.message === "revision_conflict"
-            ) {
-                return c.json({ error: "revision_conflict" }, 409);
-            }
-            throw error;
-        }
-    });
+  // 用量查询（支持多条件筛选 + 分页）
+  app.get("/internal/usage", async (c) => {
+    const submissionId = c.req.query("submission_id");
+    const userId = c.req.query("user_id");
+    const problemId = c.req.query("problem_id");
+    const providerId = c.req.query("provider_id");
+    const status = c.req.query("status");
+    const startTime = c.req.query("start_time");
+    const endTime = c.req.query("end_time");
+    const rawLimit = Number(c.req.query("limit") ?? "100");
+    const limit = Number.isFinite(rawLimit)
+      ? Math.min(Math.max(1, Math.floor(rawLimit)), 1000)
+      : 100;
+    // **页码上界 + 参数化**（评审发现的同类漏网）：`page` 此前无上界且
+    // `OFFSET` 是字符串插值，`page=1e30` 会拼出 `OFFSET 1.0000000000000001e+33`
+    // → PG 报 `bigint out of range` → 500（管理员可达）。改参数化后既无注入面，
+    // 也让越界值由 PG 的类型系统拒绝而不是拼进 SQL 文本。
+    const rawPage = Number(c.req.query("page") ?? "1");
+    const page = Number.isFinite(rawPage) && rawPage >= 1
+      ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
+      : 1;
 
-    app.post("/internal/providers/:id/test", async (c) => {
-        const body = await c.req.json<{ model?: string }>().catch(
-            () => ({} as { model?: string }),
-        );
-        try {
-            await testProviderConnection(
-                deps.db,
-                c.req.param("id"),
-                deps.config.storeKey,
-                body.model ?? "",
-                deps.config.upstreamAllowedHosts,
-                undefined,
-                domain(c),
-            );
-            return c.json({ data: { status: "ok" } });
-        } catch (err) {
-            const code = err instanceof Error ? err.message : "provider_error";
-            const status = code === "provider_not_found"
-                ? 404
-                : code === "model_required" || code === UPSTREAM_BLOCKED
-                ? 400
-                : 502;
-            return c.json({ error: code }, status);
-        }
-    });
+    const conditions: string[] = ["domain_id = $1"];
+    const params: string[] = [domain(c)];
+    if (submissionId) {
+      params.push(submissionId);
+      conditions.push(`submission_id = $${params.length}`);
+    }
+    if (userId) {
+      params.push(userId);
+      conditions.push(`user_id = $${params.length}`);
+    }
+    if (problemId) {
+      params.push(problemId);
+      conditions.push(`problem_id = $${params.length}`);
+    }
+    if (providerId) {
+      params.push(providerId);
+      conditions.push(`provider_id = $${params.length}`);
+    }
+    if (status) {
+      params.push(status);
+      conditions.push(`status = $${params.length}`);
+    }
+    if (startTime) {
+      params.push(startTime);
+      conditions.push(`created_at >= $${params.length}`);
+    }
+    if (endTime) {
+      params.push(endTime);
+      conditions.push(`created_at <= $${params.length}`);
+    }
+    const where = conditions.length > 0
+      ? `WHERE ${conditions.join(" AND ")}`
+      : "";
+    // LIMIT/OFFSET 也走参数化（评审建议）：`limit` 已夹取到 ≤1000，但字符串
+    // 插值在后续改动下容易重新引入注入面。
+    //
+    // **注意 `$` 是字面量**（2026-09-23 复审，CI 回归）：两处占位符都必须写成
+    // `$${...}`（`$` + 插值出的序号）。此前 OFFSET 一处漏了 `$`，实际渲染成
+    // `LIMIT $2 OFFSET 2` —— 绑定数组多出一个未被引用的参数，PG 报
+    // `42P18 could not determine data type of parameter $3` → 用量查询 503
+    // （E2E 的 7.1/7.3 因此挂）。
+    //
+    // 另：值必须传**数字**而非字符串——postgres.js 对字符串参数按 unknown 发送，
+    // 在 `LIMIT/OFFSET` 位置无法推断类型。
+    const rows = await deps.db.unsafe(
+      `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT $${
+        params.length + 1
+      } OFFSET $${params.length + 2}`,
+      [...params, limit, (page - 1) * limit],
+    );
+    return c.json({ data: rows });
+  });
 
-    // Gateway 模型权威：Core 只通过这些端点读写执行域配置。
-    app.get("/internal/model-aliases", async (c) => {
-        return c.json({
-            data: await listDomainModelAliases(deps.db, domain(c)),
-        });
-    });
-    app.put("/internal/model-aliases/:alias", async (c) => {
-        const revision = requireRevision(c);
-        const actorId = c.req.header("X-Noj-Actor-Id")?.trim() ?? "";
-        if (!actorId) return c.json({ error: "actor_required" }, 400);
-        try {
-            const body = await c.req.json<{
-                provider_id: string;
-                model: string;
-                description?: string;
-            }>();
-            return c.json({
-                data: await upsertDomainModelAlias(
-                    deps.db,
-                    domain(c),
-                    c.req.param("alias"),
-                    body,
-                    revision,
-                    actorId,
-                ),
-            }, revision === 0 ? 201 : 200);
-        } catch (error) {
-            return modelAuthorityErrorResponse(c, error);
-        }
-    });
-    app.delete("/internal/model-aliases/:alias", async (c) => {
-        const revision = requireRevision(c);
-        try {
-            const deleted = await deleteDomainModelAlias(
-                deps.db,
-                domain(c),
-                c.req.param("alias"),
-                revision,
-            );
-            return deleted
-                ? c.body(null, 204)
-                : c.json({ error: "alias_not_found" }, 404);
-        } catch (error) {
-            return modelAuthorityErrorResponse(c, error);
-        }
-    });
-    app.get("/internal/settings", async (c) => {
-        return c.json({
-            data: await readDomainModelSettings(deps.db, domain(c)),
-        });
-    });
-    app.put("/internal/settings", async (c) => {
-        const revision = requireRevision(c);
-        const actorId = c.req.header("X-Noj-Actor-Id")?.trim() ?? "";
-        if (!actorId) return c.json({ error: "actor_required" }, 400);
-        try {
-            const body = await c.req.json<{
-                provider_id: string | null;
-                model: string | null;
-            }>();
-            return c.json({
-                data: await updateDomainModelSettings(
-                    deps.db,
-                    domain(c),
-                    body,
-                    revision,
-                    actorId,
-                ),
-            });
-        } catch (error) {
-            return modelAuthorityErrorResponse(c, error);
-        }
-    });
-    app.post("/internal/execution-config", async (c) => {
-        try {
-            const body = await c.req.json<{ aliases?: unknown }>();
-            if (!Array.isArray(body.aliases)) {
-                return c.json({ error: "invalid_aliases" }, 400);
-            }
-            return c.json({
-                data: await resolveDomainModelSelection(
-                    deps.db,
-                    domain(c),
-                    body.aliases as string[],
-                ),
-            });
-        } catch (error) {
-            return modelAuthorityErrorResponse(c, error);
-        }
-    });
-    app.get("/internal/model-capabilities", async (c) => {
-        return c.json({
-            data: await listDomainModelCapabilities(deps.db, domain(c)),
-        });
-    });
+  // 配额列表
+  app.get("/internal/quotas", async (c) => {
+    const quotaDomain = c.req.header("X-Noj-Instance-Quota") === "1"
+      ? ""
+      : domain(c);
+    const rows = await deps
+      .db`SELECT * FROM llm_quotas WHERE domain_id = ${quotaDomain} ORDER BY created_at DESC`;
+    return c.json({ data: rows });
+  });
 
-    // 用量查询（支持多条件筛选 + 分页）
-    app.get("/internal/usage", async (c) => {
-        const submissionId = c.req.query("submission_id");
-        const userId = c.req.query("user_id");
-        const problemId = c.req.query("problem_id");
-        const providerId = c.req.query("provider_id");
-        const status = c.req.query("status");
-        const startTime = c.req.query("start_time");
-        const endTime = c.req.query("end_time");
-        const rawLimit = Number(c.req.query("limit") ?? "100");
-        const limit = Number.isFinite(rawLimit)
-            ? Math.min(Math.max(1, Math.floor(rawLimit)), 1000)
-            : 100;
-        // **页码上界 + 参数化**（评审发现的同类漏网）：`page` 此前无上界且
-        // `OFFSET` 是字符串插值，`page=1e30` 会拼出 `OFFSET 1.0000000000000001e+33`
-        // → PG 报 `bigint out of range` → 500（管理员可达）。改参数化后既无注入面，
-        // 也让越界值由 PG 的类型系统拒绝而不是拼进 SQL 文本。
-        const rawPage = Number(c.req.query("page") ?? "1");
-        const page = Number.isFinite(rawPage) && rawPage >= 1
-            ? Math.min(Math.floor(rawPage), MAX_SAFE_PAGE)
-            : 1;
-
-        const conditions: string[] = ["domain_id = $1"];
-        const params: string[] = [domain(c)];
-        if (submissionId) {
-            params.push(submissionId);
-            conditions.push(`submission_id = $${params.length}`);
-        }
-        if (userId) {
-            params.push(userId);
-            conditions.push(`user_id = $${params.length}`);
-        }
-        if (problemId) {
-            params.push(problemId);
-            conditions.push(`problem_id = $${params.length}`);
-        }
-        if (providerId) {
-            params.push(providerId);
-            conditions.push(`provider_id = $${params.length}`);
-        }
-        if (status) {
-            params.push(status);
-            conditions.push(`status = $${params.length}`);
-        }
-        if (startTime) {
-            params.push(startTime);
-            conditions.push(`created_at >= $${params.length}`);
-        }
-        if (endTime) {
-            params.push(endTime);
-            conditions.push(`created_at <= $${params.length}`);
-        }
-        const where = conditions.length > 0
-            ? `WHERE ${conditions.join(" AND ")}`
-            : "";
-        // LIMIT/OFFSET 也走参数化（评审建议）：`limit` 已夹取到 ≤1000，但字符串
-        // 插值在后续改动下容易重新引入注入面。
-        //
-        // **注意 `$` 是字面量**（2026-09-23 复审，CI 回归）：两处占位符都必须写成
-        // `$${...}`（`$` + 插值出的序号）。此前 OFFSET 一处漏了 `$`，实际渲染成
-        // `LIMIT $2 OFFSET 2` —— 绑定数组多出一个未被引用的参数，PG 报
-        // `42P18 could not determine data type of parameter $3` → 用量查询 503
-        // （E2E 的 7.1/7.3 因此挂）。
-        //
-        // 另：值必须传**数字**而非字符串——postgres.js 对字符串参数按 unknown 发送，
-        // 在 `LIMIT/OFFSET` 位置无法推断类型。
-        const rows = await deps.db.unsafe(
-            `SELECT * FROM llm_usage ${where} ORDER BY created_at DESC LIMIT $${
-                params.length + 1
-            } OFFSET $${params.length + 2}`,
-            [...params, limit, (page - 1) * limit],
-        );
-        return c.json({ data: rows });
-    });
-
-    // 配额列表
-    app.get("/internal/quotas", async (c) => {
-        const quotaDomain = c.req.header("X-Noj-Instance-Quota") === "1"
-            ? ""
-            : domain(c);
-        const rows = await deps
-            .db`SELECT * FROM llm_quotas WHERE domain_id = ${quotaDomain} ORDER BY created_at DESC`;
-        return c.json({ data: rows });
-    });
-
-    // 新增或按 id 更新既有配额，禁止旧版本重新插入失效行。
-    app.post("/internal/quotas", async (c) => {
-        const revision = requireRevision(c);
-        const body = await c.req.json<{
-            id?: string;
-            scope_type: string;
-            scope_id?: string;
-            window_type?: string;
-            max_calls?: number | null;
-            max_tokens?: number | null;
-            max_cost?: number | null;
-        }>();
-        if (
-            !body.scope_type ||
-            !["user", "problem", "domain", "global", "user_problem"].includes(
-                body.scope_type,
-            )
-        ) {
-            return c.json({ error: "invalid_scope_type" }, 400);
-        }
-        if (
-            body.window_type !== undefined &&
-            !["day", "month"].includes(body.window_type)
-        ) {
-            return c.json({ error: "invalid_window_type" }, 400);
-        }
-        // 实例总量只由 core 平台治理端发送明确的 instance 标记。
-        if (
-            body.scope_type === "global" &&
-            c.req.header("X-Noj-Instance-Quota") !== "1"
-        ) {
-            return c.json({ error: "instance_quota_required" }, 403);
-        }
-        for (const value of [body.max_calls, body.max_tokens, body.max_cost]) {
-            if (
-                value !== undefined && value !== null &&
-                (!Number.isSafeInteger(value) || value < 0)
-            ) {
-                return c.json({ error: "invalid_quota" }, 400);
-            }
-        }
-        const quotaDomain = body.scope_type === "global" ? "" : domain(c);
-        const id = body.id ?? crypto.randomUUID();
-        const now = new Date().toISOString();
-        const scopeId =
-            body.scope_type === "domain" || body.scope_type === "global"
-                ? ""
-                : body.scope_id ?? "";
-        const windowType = body.window_type ?? "day";
-        const fallback = quotaDomain === "" ||
-                quotaDomain === "00000000-0000-4000-8000-000000000001"
-            ? fallbackQuota(body.scope_type, windowType)
-            : { max_calls: null, max_tokens: null, max_cost: null };
-        const maxCalls = body.max_calls !== undefined
-            ? body.max_calls
-            : fallback.max_calls;
-        const maxTokens = body.max_tokens !== undefined
-            ? body.max_tokens
-            : fallback.max_tokens;
-        const maxCost = body.max_cost !== undefined
-            ? body.max_cost
-            : fallback.max_cost;
-        if (!body.id) {
-            if (revision !== 0) {
-                return c.json({ error: "revision_conflict" }, 409);
-            }
-            const [saved] = await deps.db`
+  // 新增或按 id 更新既有配额，禁止旧版本重新插入失效行。
+  app.post("/internal/quotas", async (c) => {
+    const revision = requireRevision(c);
+    const body = await c.req.json<{
+      id?: string;
+      scope_type: string;
+      scope_id?: string;
+      window_type?: string;
+      max_calls?: number | null;
+      max_tokens?: number | null;
+      max_cost?: number | null;
+    }>();
+    if (
+      !body.scope_type ||
+      !["user", "problem", "domain", "global", "user_problem"].includes(
+        body.scope_type,
+      )
+    ) {
+      return c.json({ error: "invalid_scope_type" }, 400);
+    }
+    if (
+      body.window_type !== undefined &&
+      !["day", "month"].includes(body.window_type)
+    ) {
+      return c.json({ error: "invalid_window_type" }, 400);
+    }
+    // 实例总量只由 core 平台治理端发送明确的 instance 标记。
+    if (
+      body.scope_type === "global" &&
+      c.req.header("X-Noj-Instance-Quota") !== "1"
+    ) {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    for (const value of [body.max_calls, body.max_tokens, body.max_cost]) {
+      if (
+        value !== undefined && value !== null &&
+        (!Number.isSafeInteger(value) || value < 0)
+      ) {
+        return c.json({ error: "invalid_quota" }, 400);
+      }
+    }
+    const quotaDomain = body.scope_type === "global" ? "" : domain(c);
+    const id = body.id ?? crypto.randomUUID();
+    const now = new Date().toISOString();
+    const scopeId = body.scope_type === "domain" || body.scope_type === "global"
+      ? ""
+      : body.scope_id ?? "";
+    const windowType = body.window_type ?? "day";
+    const fallback = quotaDomain === "" ||
+        quotaDomain === "00000000-0000-4000-8000-000000000001"
+      ? fallbackQuota(body.scope_type, windowType)
+      : { max_calls: null, max_tokens: null, max_cost: null };
+    const maxCalls = body.max_calls !== undefined
+      ? body.max_calls
+      : fallback.max_calls;
+    const maxTokens = body.max_tokens !== undefined
+      ? body.max_tokens
+      : fallback.max_tokens;
+    const maxCost = body.max_cost !== undefined
+      ? body.max_cost
+      : fallback.max_cost;
+    if (!body.id) {
+      if (revision !== 0) {
+        return c.json({ error: "revision_conflict" }, 409);
+      }
+      const [saved] = await deps.db`
         INSERT INTO llm_quotas (id, domain_id, scope_type, scope_id, window_type, max_calls, max_tokens, max_cost, created_at, updated_at)
         VALUES (${id}, ${quotaDomain}, ${body.scope_type}, ${scopeId}, ${windowType}, ${maxCalls}, ${maxTokens}, ${maxCost}, ${now}, ${now})
         RETURNING id, revision`;
-            return c.json({ data: saved }, 201);
-        }
-        const [saved] = await deps.db`UPDATE llm_quotas SET
+      return c.json({ data: saved }, 201);
+    }
+    const [saved] = await deps.db`UPDATE llm_quotas SET
       scope_type=${body.scope_type}, scope_id=${scopeId}, window_type=${windowType},
       max_calls=${maxCalls}, max_tokens=${maxTokens}, max_cost=${maxCost}, updated_at=${now}, revision=revision+1
       WHERE id=${id} AND domain_id=${quotaDomain} AND revision=${revision} RETURNING id, revision`;
-        if (!saved) {
-            const existing = await deps
-                .db`SELECT id FROM llm_quotas WHERE id=${id} AND domain_id=${quotaDomain}`;
-            return c.json({
-                error: existing.length
-                    ? "revision_conflict"
-                    : "quota_not_found",
-            }, existing.length ? 409 : 404);
-        }
-        return c.json({ data: saved }, 201);
-    });
+    if (!saved) {
+      const existing = await deps
+        .db`SELECT id FROM llm_quotas WHERE id=${id} AND domain_id=${quotaDomain}`;
+      return c.json({
+        error: existing.length ? "revision_conflict" : "quota_not_found",
+      }, existing.length ? 409 : 404);
+    }
+    return c.json({ data: saved }, 201);
+  });
 
-    // 账本只返回状态和定位，绝不把其他域的计数快照或调用正文混入列表。
-    app.get("/internal/accounting", async (c) => {
-        const rows = await deps
-            .db`SELECT id,domain_id,attempt_id,state,settlement_result,created_at,updated_at
+  // 账本只返回状态和定位，绝不把其他域的计数快照或调用正文混入列表。
+  app.get("/internal/accounting", async (c) => {
+    const rows = await deps
+      .db`SELECT id,domain_id,attempt_id,state,settlement_result,created_at,updated_at
       FROM llm_call_ledger WHERE domain_id=${
-            domain(c)
-        } AND state IN ('pending','unknown','planned')
+      domain(c)
+    } AND state IN ('pending','unknown','planned')
       ORDER BY created_at,id LIMIT 100`;
-        return c.json({ data: rows });
-    });
-    app.post("/internal/accounting/reconcile", async (c) => {
-        if (c.req.header("X-Noj-Instance-Quota") !== "1") {
-            return c.json({ error: "instance_quota_required" }, 403);
-        }
-        if (!deps.redis) return c.json({ error: "redis_required" }, 503);
-        try {
-            return c.json({
-                data: await reconcileAccounting(deps.db, deps.redis),
-            });
-        } catch (error) {
-            const code = error instanceof Error &&
-                    error.message.startsWith("accounting_")
-                ? error.message
-                : "accounting_unavailable";
-            return c.json(
-                { error: code },
-                code === "accounting_unavailable" ? 503 : 409,
-            );
-        }
-    });
-    app.post("/internal/accounting/bootstrap", async (c) => {
-        if (c.req.header("X-Noj-Instance-Quota") !== "1") {
-            return c.json({ error: "instance_quota_required" }, 403);
-        }
-        if (!deps.redis) return c.json({ error: "redis_required" }, 503);
-        try {
-            return c.json({
-                data: await bootstrapAccountingBaseline(deps.db, deps.redis),
-            });
-        } catch (error) {
-            const code = error instanceof Error &&
-                    error.message.startsWith("accounting_")
-                ? error.message
-                : "accounting_unavailable";
-            return c.json(
-                { error: code },
-                code === "accounting_unavailable" ? 503 : 409,
-            );
-        }
-    });
+    return c.json({ data: rows });
+  });
+  app.post("/internal/accounting/reconcile", async (c) => {
+    if (c.req.header("X-Noj-Instance-Quota") !== "1") {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    if (!deps.redis) return c.json({ error: "redis_required" }, 503);
+    try {
+      return c.json({
+        data: await reconcileAccounting(deps.db, deps.redis),
+      });
+    } catch (error) {
+      const code = error instanceof Error &&
+          error.message.startsWith("accounting_")
+        ? error.message
+        : "accounting_unavailable";
+      return c.json(
+        { error: code },
+        code === "accounting_unavailable" ? 503 : 409,
+      );
+    }
+  });
+  app.post("/internal/accounting/bootstrap", async (c) => {
+    if (c.req.header("X-Noj-Instance-Quota") !== "1") {
+      return c.json({ error: "instance_quota_required" }, 403);
+    }
+    if (!deps.redis) return c.json({ error: "redis_required" }, 503);
+    try {
+      return c.json({
+        data: await bootstrapAccountingBaseline(deps.db, deps.redis),
+      });
+    } catch (error) {
+      const code = error instanceof Error &&
+          error.message.startsWith("accounting_")
+        ? error.message
+        : "accounting_unavailable";
+      return c.json(
+        { error: code },
+        code === "accounting_unavailable" ? 503 : 409,
+      );
+    }
+  });
 
-    // P5：实例政策成为 Gateway 本地权威；Core 不再是被查询的政策来源。
-    app.route("/", createInternalPolicyRouter({ db: deps.db }));
+  // P5：实例政策成为 Gateway 本地权威；Core 不再是被查询的政策来源。
+  app.route("/", createInternalPolicyRouter({ db: deps.db }));
 
-    return app;
+  return app;
 }

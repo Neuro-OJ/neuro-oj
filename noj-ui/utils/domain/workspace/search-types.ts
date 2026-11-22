@@ -5,33 +5,33 @@
  */
 
 export type SearchEntityType =
-    | 'problem'
-    | 'user'
-    | 'community_post'
-    | 'community_comment'
-    | 'contest'
-    | 'submission'
-    | 'announcement';
+  | 'problem'
+  | 'user'
+  | 'community_post'
+  | 'community_comment'
+  | 'contest'
+  | 'submission'
+  | 'announcement';
 
 export type SearchType = 'all' | SearchEntityType;
 
 export interface SearchItem {
-    entity_type: SearchEntityType;
-    entity_id: string;
-    title: string;
-    highlight: string;
-    rank: number;
-    metadata: Record<string, unknown>;
+  entity_type: SearchEntityType;
+  entity_id: string;
+  title: string;
+  highlight: string;
+  rank: number;
+  metadata: Record<string, unknown>;
 }
 
 export interface SearchState {
-    open: boolean;
-    query: string;
-    type: SearchType;
-    groups: Record<string, { items: SearchItem[]; has_more: boolean }>;
-    flatItems: SearchItem[];
-    hasMore: boolean;
-    page: number;
-    loading: boolean;
-    error: string | null;
+  open: boolean;
+  query: string;
+  type: SearchType;
+  groups: Record<string, { items: SearchItem[]; has_more: boolean }>;
+  flatItems: SearchItem[];
+  hasMore: boolean;
+  page: number;
+  loading: boolean;
+  error: string | null;
 }

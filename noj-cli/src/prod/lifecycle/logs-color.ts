@@ -18,11 +18,11 @@ import { type ColorMode, resolveColor } from "../../util/color.ts";
  * @param fileValue `.env.prod` 的值（`undefined` = 未设置）
  */
 export function mergeColorSource(
-    processValue: string | undefined,
-    fileValue: string | undefined,
+  processValue: string | undefined,
+  fileValue: string | undefined,
 ): string {
-    if (processValue !== undefined && processValue !== "") return processValue;
-    return fileValue ?? "";
+  if (processValue !== undefined && processValue !== "") return processValue;
+  return fileValue ?? "";
 }
 
 /**
@@ -45,12 +45,12 @@ export type LogsColorDecision = "no-color" | "force" | "inherit";
  * 混进来会让 `--color=never` 压过 `LOG_COLOR=always`。
  */
 export interface LogsColorOptions {
-    /** 已合并的 `LOG_COLOR` 原始值（未 trim）。 */
-    logColor?: string;
-    /** 已合并的 `NO_COLOR` 原始值（未 trim）。 */
-    noColor?: string;
-    /** `resolveColor` 探测的流；缺省 stdout。 */
-    stream?: "stdout" | "stderr";
+  /** 已合并的 `LOG_COLOR` 原始值（未 trim）。 */
+  logColor?: string;
+  /** 已合并的 `NO_COLOR` 原始值（未 trim）。 */
+  noColor?: string;
+  /** `resolveColor` 探测的流；缺省 stdout。 */
+  stream?: "stdout" | "stderr";
 }
 
 /**
@@ -68,27 +68,27 @@ export interface LogsColorOptions {
  * `--color=never` / `NO_COLOR` / 非 TTY 这三条既有规则不会在此漂移。
  */
 export function decideLogsColor(
-    options: LogsColorOptions = {},
+  options: LogsColorOptions = {},
 ): LogsColorDecision {
-    const logColor = (options.logColor ?? "").trim().toLowerCase();
+  const logColor = (options.logColor ?? "").trim().toLowerCase();
 
-    // 把「合并后的有效 LOG_COLOR / NO_COLOR」翻译成 resolveColor 接受的 mode 入参：
-    // - NO_COLOR 非空 **或** LOG_COLOR=never → `never`（分支 1；NO_COLOR 在前，
-    //   即使 LOG_COLOR=always 也关）；
-    // - LOG_COLOR=always → `always`（分支 2，强制）；
-    // - 其余 → `auto`（分支 3 的 TTY 探测；resolveColor 内部再读进程 LOG_COLOR
-    //   时与合并值一致，因为此时合并值本就来自进程环境或无法识别）。
-    let mode: ColorMode = "auto";
-    if ((options.noColor ?? "") !== "") mode = "never";
-    else if (logColor === "never") mode = "never";
-    else if (logColor === "always") mode = "always";
+  // 把「合并后的有效 LOG_COLOR / NO_COLOR」翻译成 resolveColor 接受的 mode 入参：
+  // - NO_COLOR 非空 **或** LOG_COLOR=never → `never`（分支 1；NO_COLOR 在前，
+  //   即使 LOG_COLOR=always 也关）；
+  // - LOG_COLOR=always → `always`（分支 2，强制）；
+  // - 其余 → `auto`（分支 3 的 TTY 探测；resolveColor 内部再读进程 LOG_COLOR
+  //   时与合并值一致，因为此时合并值本就来自进程环境或无法识别）。
+  let mode: ColorMode = "auto";
+  if ((options.noColor ?? "") !== "") mode = "never";
+  else if (logColor === "never") mode = "never";
+  else if (logColor === "always") mode = "always";
 
-    // **唯一着色判定源**：stdout 非 TTY（重定向）→ false → --no-color，这正是
-    // 「重定向不写 ANSI」的落点。
-    if (!resolveColor(mode, options.stream ?? "stdout")) return "no-color";
-    // 判为「开」时再区分语义：模式为 always（来自 LOG_COLOR=always）才是**强制**
-    // （全局 --ansi always）；auto + TTY 只是把决定权交回 compose 自身探测。
-    return mode === "always" ? "force" : "inherit";
+  // **唯一着色判定源**：stdout 非 TTY（重定向）→ false → --no-color，这正是
+  // 「重定向不写 ANSI」的落点。
+  if (!resolveColor(mode, options.stream ?? "stdout")) return "no-color";
+  // 判为「开」时再区分语义：模式为 always（来自 LOG_COLOR=always）才是**强制**
+  // （全局 --ansi always）；auto + TTY 只是把决定权交回 compose 自身探测。
+  return mode === "always" ? "force" : "inherit";
 }
 
 /**
@@ -105,23 +105,23 @@ export function decideLogsColor(
  * 由它保证，这里只做两处插入，不重排任何既有元素。
  */
 export function applyLogsColor(
-    args: string[],
-    decision: LogsColorDecision,
+  args: string[],
+  decision: LogsColorDecision,
 ): string[] {
-    const out = [...args];
-    const sub = out.indexOf("logs");
-    if (sub === -1) {
-        throw new Error("compose 参数缺少 logs 子命令：" + args.join(" "));
-    }
-    if (decision === "force") {
-        out.splice(sub, 0, "--ansi", "always");
-        return out;
-    }
-    if (decision === "no-color") {
-        // 跳过 logs 之后的旗标（--tail=200 / --follow），插在首个位置参数之前。
-        let at = sub + 1;
-        while (at < out.length && out[at]!.startsWith("--")) at++;
-        out.splice(at, 0, "--no-color");
-    }
+  const out = [...args];
+  const sub = out.indexOf("logs");
+  if (sub === -1) {
+    throw new Error("compose 参数缺少 logs 子命令：" + args.join(" "));
+  }
+  if (decision === "force") {
+    out.splice(sub, 0, "--ansi", "always");
     return out;
+  }
+  if (decision === "no-color") {
+    // 跳过 logs 之后的旗标（--tail=200 / --follow），插在首个位置参数之前。
+    let at = sub + 1;
+    while (at < out.length && out[at]!.startsWith("--")) at++;
+    out.splice(at, 0, "--no-color");
+  }
+  return out;
 }

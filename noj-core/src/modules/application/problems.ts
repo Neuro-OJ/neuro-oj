@@ -9,243 +9,234 @@
 import type { DraftObjectRef } from "../problems/services/versioning/draft.ts";
 import type { ProblemDraftContent } from "../problems/types/problem-content.ts";
 import {
-    assertProblemEditPermissionForActor,
-    createDomainProblemForActor,
-    createProblemForActor,
-    deleteProblemOwnedRowsTx,
-    finalizeDeletedProblem,
-    prepareProblemDeletionTx,
-    updateProblemForActor,
+  assertProblemEditPermissionForActor,
+  createDomainProblemForActor,
+  createProblemForActor,
+  deleteProblemOwnedRowsTx,
+  finalizeDeletedProblem,
+  prepareProblemDeletionTx,
+  updateProblemForActor,
 } from "../problems/services/problems/problems-crud.ts";
 import { deleteProblemEvaluationRowsTx } from "../evaluations/contracts/problem-deletion.ts";
 import {
-    importDomainProblemForActor,
-    setDomainProblemBindingPolicyForActorTx,
-    setDomainProblemBindingStateForActor,
+  importDomainProblemForActor,
+  setDomainProblemBindingPolicyForActorTx,
+  setDomainProblemBindingStateForActor,
 } from "../problems/services/workspace/problem-bindings.ts";
 import {
-    createDraftQuestion,
-    deleteDraftQuestion,
-    type ObjectiveQuestionInput,
-    updateDraftQuestion,
+  createDraftQuestion,
+  deleteDraftQuestion,
+  type ObjectiveQuestionInput,
+  updateDraftQuestion,
 } from "../problems/services/objective/versioning/objective-drafts.ts";
 import {
-    assertObjectivePaper,
-    assertPaperManageableForActor,
-    getPaperOrThrow,
+  assertObjectivePaper,
+  assertPaperManageableForActor,
+  getPaperOrThrow,
 } from "../problems/services/objective/objective-questions.ts";
 import {
-    loadProblemIdentity,
-    type ProblemDraftView,
-    saveProblemDraft,
+  loadProblemIdentity,
+  type ProblemDraftView,
+  saveProblemDraft,
 } from "../problems/services/versioning/draft.ts";
 import {
-    publishDomainProblemVersion,
-    saveDomainProblemDraft,
+  publishDomainProblemVersion,
+  saveDomainProblemDraft,
 } from "../problems/services/workspace/problem-edit.ts";
 import { importDomainProblemBundle } from "../problems/services/workspace/problem-bundle-import.ts";
 import { importDomainProblemDraftBundle } from "../problems/services/workspace/problem-bundle-edit.ts";
 import { loadEditableDomainProblem } from "../problems/services/workspace/problem-edit.ts";
 import {
-    saveOiDraft,
-    type SaveOiDraftResult,
+  saveOiDraft,
+  type SaveOiDraftResult,
 } from "../problems/services/versioning/oi-draft.ts";
 import type { ObjectiveQuestionSnapshot } from "../problems/types/problem-content.ts";
 import { publishProblemVersion } from "../problems/services/versioning/publish.ts";
 import {
-    importProblemBundleForActor,
-    publishImportedProblemForActor,
+  importProblemBundleForActor,
+  publishImportedProblemForActor,
 } from "../problems/services/problems/problem-bundle.ts";
 import {
-    deleteSupportPackageForActorTx,
-    finalizeDeletedSupportPackage,
+  deleteSupportPackageForActorTx,
+  finalizeDeletedSupportPackage,
 } from "../problems/services/support-package.ts";
 import type {
-    CreateProblemInput,
-    ProblemResponseWithTags,
-    UpdateProblemInput,
+  CreateProblemInput,
+  ProblemResponseWithTags,
+  UpdateProblemInput,
 } from "../problems/types/problems.ts";
 import type { EffectiveVersionPolicy } from "../../shared/versioning/types.ts";
 import type { DbTx } from "../../shared/db/executor.ts";
 import type { UserActor } from "../access/contracts/actor.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import {
-    bumpProjectionRevision,
-    globalScopeKey,
-    problemScopeKey,
-    recomputeProblemBindingProjections,
+  bumpProjectionRevision,
+  globalScopeKey,
+  problemScopeKey,
+  recomputeProblemBindingProjections,
 } from "../evaluations/services/versioning/projection.ts";
 
 export interface CreateProblemCommandOptions {
-    readonly allowServerDerivedFields: boolean;
-    readonly workspaceSlug?: string;
-    readonly initialDraft?: {
-        readonly content: ProblemDraftContent;
-        readonly objects: DraftObjectRef[];
-    };
+  readonly allowServerDerivedFields: boolean;
+  readonly workspaceSlug?: string;
+  readonly initialDraft?: {
+    readonly content: ProblemDraftContent;
+    readonly objects: DraftObjectRef[];
+  };
 }
 
 export interface UpdateProblemCommandOptions {
-    readonly allowServerDerivedFields: boolean;
-    readonly expectedUpdatedAt?: string;
+  readonly allowServerDerivedFields: boolean;
+  readonly expectedUpdatedAt?: string;
 }
 
 async function assertProblemCommandWritable(
-    actor: UserActor,
-    problemId: string,
+  actor: UserActor,
+  problemId: string,
 ): Promise<void> {
-    const identity = await loadProblemIdentity(problemId);
-    await assertProblemEditPermissionForActor(identity, actor);
+  const identity = await loadProblemIdentity(problemId);
+  await assertProblemEditPermissionForActor(identity, actor);
 }
 
 /** 创建题目；HTTP 写入必须经过这个显式 UserActor 入口。 */
 export function createProblemCommand(
-    actor: UserActor,
-    input: CreateProblemInput,
-    options: CreateProblemCommandOptions,
+  actor: UserActor,
+  input: CreateProblemInput,
+  options: CreateProblemCommandOptions,
 ): Promise<ProblemResponseWithTags> {
-    return createProblemForActor(actor, input, options);
+  return createProblemForActor(actor, input, options);
 }
 
 /** 在指定工作空间创建源题。 */
 export function createDomainProblemCommand(
-    actor: UserActor,
-    slug: string,
-    input: CreateProblemInput,
-    options: CreateProblemCommandOptions,
+  actor: UserActor,
+  slug: string,
+  input: CreateProblemInput,
+  options: CreateProblemCommandOptions,
 ) {
-    return createDomainProblemForActor(actor, slug, input, options);
+  return createDomainProblemForActor(actor, slug, input, options);
 }
 
 /** 更新题目；旧 userRole/Context 不得越过此边界。 */
 export function updateProblemCommand(
-    actor: UserActor,
-    problemId: string,
-    input: UpdateProblemInput,
-    options: UpdateProblemCommandOptions,
+  actor: UserActor,
+  problemId: string,
+  input: UpdateProblemInput,
+  options: UpdateProblemCommandOptions,
 ): Promise<ProblemResponseWithTags> {
-    return (async () => {
-        await assertProblemCommandWritable(actor, problemId);
-        return updateProblemForActor(actor, problemId, input, options);
-    })();
+  return (async () => {
+    await assertProblemCommandWritable(actor, problemId);
+    return updateProblemForActor(actor, problemId, input, options);
+  })();
 }
 
 /** 删除题目，并在同一 DbTx 内登记 evaluations 投影失效。 */
 export function deleteProblemCommand(
-    actor: UserActor,
-    problemId: string,
+  actor: UserActor,
+  problemId: string,
 ): Promise<void> {
-    return (async () => {
-        const deleted = await getDb().transaction(async (tx) => {
-            // 唯一外层事务，顺序固定：先完成 problems 的授权/锁/保留性检查，
-            // 再由 evaluations 清理评测行（self_tests 外键依赖绑定行），
-            // 最后删 problems 拥有行并登记投影 revision；任一步失败全部回滚。
-            const result = await prepareProblemDeletionTx(
-                problemId,
-                actor.userId,
-                tx,
-            );
-            await deleteProblemEvaluationRowsTx(tx, problemId);
-            await deleteProblemOwnedRowsTx(
-                problemId,
-                result.problem.domain_id,
-                tx,
-            );
-            await bumpProjectionRevision(tx, globalScopeKey());
-            await bumpProjectionRevision(tx, problemScopeKey(problemId));
-            return result;
-        });
-        await finalizeDeletedProblem(problemId, deleted, actor);
-    })();
+  return (async () => {
+    const deleted = await getDb().transaction(async (tx) => {
+      // 唯一外层事务，顺序固定：先完成 problems 的授权/锁/保留性检查，
+      // 再由 evaluations 清理评测行（self_tests 外键依赖绑定行），
+      // 最后删 problems 拥有行并登记投影 revision；任一步失败全部回滚。
+      const result = await prepareProblemDeletionTx(
+        problemId,
+        actor.userId,
+        tx,
+      );
+      await deleteProblemEvaluationRowsTx(tx, problemId);
+      await deleteProblemOwnedRowsTx(problemId, result.problem.domain_id, tx);
+      await bumpProjectionRevision(tx, globalScopeKey());
+      await bumpProjectionRevision(tx, problemScopeKey(problemId));
+      return result;
+    });
+    await finalizeDeletedProblem(problemId, deleted, actor);
+  })();
 }
 
 /** 删除题目支持包；草稿 revision 与 UserActor 都由应用命令显式绑定。 */
 export function deleteSupportPackageCommand(
-    actor: UserActor,
-    problemId: string,
-    expectedRevision: number,
+  actor: UserActor,
+  problemId: string,
+  expectedRevision: number,
 ): Promise<void> {
-    return (async () => {
-        const removed = await getDb().transaction((tx) =>
-            deleteSupportPackageForActorTx(
-                problemId,
-                actor,
-                expectedRevision,
-                tx,
-            )
-        );
-        await finalizeDeletedSupportPackage(problemId, removed);
-    })();
+  return (async () => {
+    const removed = await getDb().transaction((tx) =>
+      deleteSupportPackageForActorTx(problemId, actor, expectedRevision, tx)
+    );
+    await finalizeDeletedSupportPackage(problemId, removed);
+  })();
 }
 
 export interface PublishProblemVersionCommandInput {
-    readonly expectedRevision: number | null | undefined;
-    readonly changeNote?: string;
+  readonly expectedRevision: number | null | undefined;
+  readonly changeNote?: string;
 }
 
 /** 发布不可变题目版本；授权身份只来自 UserActor。 */
 export function publishProblemVersionCommand(
-    actor: UserActor,
-    problemId: string,
-    input: PublishProblemVersionCommandInput,
+  actor: UserActor,
+  problemId: string,
+  input: PublishProblemVersionCommandInput,
 ) {
-    return (async () => {
-        await assertProblemCommandWritable(actor, problemId);
-        return publishProblemVersion(problemId, {
-            expectedRevision: input.expectedRevision,
-            changeNote: input.changeNote,
-            actor,
-        });
-    })();
+  return (async () => {
+    await assertProblemCommandWritable(actor, problemId);
+    return publishProblemVersion(problemId, {
+      expectedRevision: input.expectedRevision,
+      changeNote: input.changeNote,
+      actor,
+    });
+  })();
 }
 
 /** 题包导入流程显式采用同一 UserActor；CLI 应使用独立 bootstrap 命令。 */
 export function publishImportedProblemCommand(
-    actor: UserActor,
-    problemId: string,
-    changeNote: string,
+  actor: UserActor,
+  problemId: string,
+  changeNote: string,
 ) {
-    return publishImportedProblemForActor(actor, problemId, changeNote);
+  return publishImportedProblemForActor(actor, problemId, changeNote);
 }
 
 /** 主题库题包导入；目标题和按题号更新都必须显式携带 revision。 */
 export function importProblemBundleCommand(
-    actor: UserActor,
-    file: { name: string; data: Uint8Array },
-    expectedRevision?: number | "current",
-    target?: { problemId: string; expectedRevision?: number | null },
+  actor: UserActor,
+  file: { name: string; data: Uint8Array },
+  expectedRevision?: number | "current",
+  target?: { problemId: string; expectedRevision?: number | null },
 ) {
-    return importProblemBundleForActor(file, actor, expectedRevision, target);
+  return importProblemBundleForActor(file, actor, expectedRevision, target);
 }
 
 export function importDomainProblemCommand(
-    actor: UserActor,
-    slug: string,
-    sourceReference: string,
-    versionId?: string,
+  actor: UserActor,
+  slug: string,
+  sourceReference: string,
+  versionId?: string,
 ) {
-    return importDomainProblemForActor(slug, sourceReference, actor, versionId);
+  return importDomainProblemForActor(slug, sourceReference, actor, versionId);
 }
 
 export function setDomainProblemBindingPolicyCommand(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    expectedRevision: number | null,
-    policy: EffectiveVersionPolicy,
-    reason: string,
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  expectedRevision: number | null,
+  policy: EffectiveVersionPolicy,
+  reason: string,
 ) {
-    return getDb().transaction((tx) =>
-        setDomainProblemBindingPolicyCommandTx(
-            actor,
-            slug,
-            reference,
-            expectedRevision,
-            policy,
-            reason,
-            tx,
-        )
-    );
+  return getDb().transaction((tx) =>
+    setDomainProblemBindingPolicyCommandTx(
+      actor,
+      slug,
+      reference,
+      expectedRevision,
+      policy,
+      reason,
+      tx,
+    )
+  );
 }
 
 /**
@@ -253,148 +244,148 @@ export function setDomainProblemBindingPolicyCommand(
  * `tx` 是必填参数，避免跨模块完整性依赖可省略 callback。
  */
 export async function setDomainProblemBindingPolicyCommandTx(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    expectedRevision: number | null,
-    policy: EffectiveVersionPolicy,
-    reason: string,
-    tx: DbTx,
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  expectedRevision: number | null,
+  policy: EffectiveVersionPolicy,
+  reason: string,
+  tx: DbTx,
 ) {
-    const updated = await setDomainProblemBindingPolicyForActorTx(
-        actor,
-        slug,
-        reference,
-        expectedRevision,
-        policy,
-        reason,
-        tx,
-    );
-    await recomputeProblemBindingProjections(tx, updated);
-    return updated;
+  const updated = await setDomainProblemBindingPolicyForActorTx(
+    actor,
+    slug,
+    reference,
+    expectedRevision,
+    policy,
+    reason,
+    tx,
+  );
+  await recomputeProblemBindingProjections(tx, updated);
+  return updated;
 }
 
 export function setDomainProblemBindingStateCommand(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    expectedRevision: number | null,
-    input: {
-        disabled: boolean;
-        visibility?: "public" | "members";
-        reason: string;
-    },
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  expectedRevision: number | null,
+  input: {
+    disabled: boolean;
+    visibility?: "public" | "members";
+    reason: string;
+  },
 ) {
-    return setDomainProblemBindingStateForActor(
-        actor,
-        slug,
-        reference,
-        expectedRevision,
-        input,
-    );
+  return setDomainProblemBindingStateForActor(
+    actor,
+    slug,
+    reference,
+    expectedRevision,
+    input,
+  );
 }
 
 /** 保存共享草稿；HTTP 适配层只负责解析 If-Match，业务只接收 UserActor。 */
 export function saveProblemDraftCommand(
-    actor: UserActor,
-    problemId: string,
-    input: {
-        readonly content: ProblemDraftContent;
-        readonly expectedRevision: number;
-    },
+  actor: UserActor,
+  problemId: string,
+  input: {
+    readonly content: ProblemDraftContent;
+    readonly expectedRevision: number;
+  },
 ): Promise<ProblemDraftView> {
-    return (async () => {
-        await assertProblemCommandWritable(actor, problemId);
-        return saveProblemDraft(problemId, {
-            content: input.content,
-            expectedRevision: input.expectedRevision,
-            actorId: actor.userId,
-            fromClient: true,
-        });
-    })();
+  return (async () => {
+    await assertProblemCommandWritable(actor, problemId);
+    return saveProblemDraft(problemId, {
+      content: input.content,
+      expectedRevision: input.expectedRevision,
+      actorId: actor.userId,
+      fromClient: true,
+    });
+  })();
 }
 
 /** 保存域源题草稿；域授权、revision 与内容写入由本地用例统一编排。 */
 export function saveDomainProblemDraftCommand(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    content: ProblemDraftContent,
-    expectedRevision: number,
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  content: ProblemDraftContent,
+  expectedRevision: number,
 ): ReturnType<typeof saveDomainProblemDraft> {
-    return saveDomainProblemDraft(
-        slug,
-        reference,
-        actor,
-        content,
-        expectedRevision,
-    );
+  return saveDomainProblemDraft(
+    slug,
+    reference,
+    actor,
+    content,
+    expectedRevision,
+  );
 }
 
 /** 发布域源题版本；HTTP 层不把 Hono Context 传入 problems 业务。 */
 export function publishDomainProblemVersionCommand(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    expectedRevision: number,
-    changeNote: string,
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  expectedRevision: number,
+  changeNote: string,
 ): ReturnType<typeof publishDomainProblemVersion> {
-    return publishDomainProblemVersion(
-        slug,
-        reference,
-        actor,
-        expectedRevision,
-        changeNote,
-    );
+  return publishDomainProblemVersion(
+    slug,
+    reference,
+    actor,
+    expectedRevision,
+    changeNote,
+  );
 }
 
 /** 导入新域题或按题号替换草稿；用户身份必须显式来自 UserActor。 */
 export function importDomainProblemBundleCommand(
-    actor: UserActor,
-    slug: string,
-    bytes: Uint8Array,
-    expectedRevision?: number | "current",
+  actor: UserActor,
+  slug: string,
+  bytes: Uint8Array,
+  expectedRevision?: number | "current",
 ) {
-    return importDomainProblemBundle(
-        slug,
-        actor,
-        bytes,
-        expectedRevision,
-    );
+  return importDomainProblemBundle(
+    slug,
+    actor,
+    bytes,
+    expectedRevision,
+  );
 }
 
 /** 替换已有域源题草稿题包；应用入口总是提供显式用户身份。 */
 export function importDomainProblemDraftBundleCommand(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    bytes: Uint8Array,
-    expectedRevision: number,
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  bytes: Uint8Array,
+  expectedRevision: number,
 ) {
-    return importDomainProblemDraftBundle(
-        slug,
-        reference,
-        actor,
-        bytes,
-        expectedRevision,
-    );
+  return importDomainProblemDraftBundle(
+    slug,
+    reference,
+    actor,
+    bytes,
+    expectedRevision,
+  );
 }
 
 /** OI 文件与配置必须由应用入口绑定同一 UserActor。 */
 export function saveOiDraftCommand(
-    actor: UserActor,
-    problemId: string,
-    input: Omit<Parameters<typeof saveOiDraft>[1], "actorId" | "authorize">,
-    entries?: Record<string, Uint8Array>,
+  actor: UserActor,
+  problemId: string,
+  input: Omit<Parameters<typeof saveOiDraft>[1], "actorId" | "authorize">,
+  entries?: Record<string, Uint8Array>,
 ): Promise<SaveOiDraftResult> {
-    return saveOiDraft(
-        problemId,
-        {
-            ...input,
-            actorId: actor.userId,
-        },
-        entries,
-    );
+  return saveOiDraft(
+    problemId,
+    {
+      ...input,
+      actorId: actor.userId,
+    },
+    entries,
+  );
 }
 
 /**
@@ -402,102 +393,97 @@ export function saveOiDraftCommand(
  * 也不能把 Hono Context 传入业务层。
  */
 export function saveDomainOiDraftCommand(
-    actor: UserActor,
-    slug: string,
-    reference: string,
-    problemId: string,
-    input: Omit<Parameters<typeof saveOiDraft>[1], "actorId" | "authorize">,
-    entries?: Record<string, Uint8Array>,
+  actor: UserActor,
+  slug: string,
+  reference: string,
+  problemId: string,
+  input: Omit<Parameters<typeof saveOiDraft>[1], "actorId" | "authorize">,
+  entries?: Record<string, Uint8Array>,
 ): Promise<SaveOiDraftResult> {
-    return saveOiDraft(
-        problemId,
-        {
-            ...input,
-            actorId: actor.userId,
-            authorize: async (tx) => {
-                await loadEditableDomainProblem(slug, reference, actor, {
-                    executor: tx,
-                    write: true,
-                });
-            },
-        },
-        entries,
-    );
+  return saveOiDraft(
+    problemId,
+    {
+      ...input,
+      actorId: actor.userId,
+      authorize: async (tx) => {
+        await loadEditableDomainProblem(slug, reference, actor, {
+          executor: tx,
+          write: true,
+        });
+      },
+    },
+    entries,
+  );
 }
 
 /** 创建客观题小题；题目内容归 problems，判题执行不在此命令中。 */
 export function createObjectiveQuestionCommand(
-    actor: UserActor,
-    problemId: string,
-    input: ObjectiveQuestionInput,
-    expectedRevision: number,
+  actor: UserActor,
+  problemId: string,
+  input: ObjectiveQuestionInput,
+  expectedRevision: number,
 ): Promise<ObjectiveQuestionSnapshot> {
-    return createObjectiveQuestionCommandChecked(
-        actor,
-        problemId,
-        input,
-        expectedRevision,
-    );
+  return createObjectiveQuestionCommandChecked(
+    actor,
+    problemId,
+    input,
+    expectedRevision,
+  );
 }
 
 async function assertObjectiveQuestionWrite(
-    actor: UserActor,
-    problemId: string,
+  actor: UserActor,
+  problemId: string,
 ): Promise<void> {
-    const paper = await getPaperOrThrow(problemId);
-    assertObjectivePaper(paper);
-    await assertPaperManageableForActor(paper, actor);
+  const paper = await getPaperOrThrow(problemId);
+  assertObjectivePaper(paper);
+  await assertPaperManageableForActor(paper, actor);
 }
 
 async function createObjectiveQuestionCommandChecked(
-    actor: UserActor,
-    problemId: string,
-    input: ObjectiveQuestionInput,
-    expectedRevision: number,
+  actor: UserActor,
+  problemId: string,
+  input: ObjectiveQuestionInput,
+  expectedRevision: number,
 ): Promise<ObjectiveQuestionSnapshot> {
-    await assertObjectiveQuestionWrite(actor, problemId);
-    return createDraftQuestion(
-        problemId,
-        input,
-        expectedRevision,
-        actor.userId,
-    );
+  await assertObjectiveQuestionWrite(actor, problemId);
+  return createDraftQuestion(
+    problemId,
+    input,
+    expectedRevision,
+    actor.userId,
+  );
 }
 
 /** 更新客观题小题；答案与解析仍只写共享草稿。 */
 export function updateObjectiveQuestionCommand(
-    actor: UserActor,
-    problemId: string,
-    key: string,
-    input: Partial<ObjectiveQuestionInput>,
-    expectedRevision: number,
+  actor: UserActor,
+  problemId: string,
+  key: string,
+  input: Partial<ObjectiveQuestionInput>,
+  expectedRevision: number,
 ): Promise<ObjectiveQuestionSnapshot> {
-    return (async () => {
-        await assertObjectiveQuestionWrite(actor, problemId);
-        return updateDraftQuestion(
-            problemId,
-            key,
-            input,
-            expectedRevision,
-            actor.userId,
-        );
-    })();
+  return (async () => {
+    await assertObjectiveQuestionWrite(actor, problemId);
+    return updateDraftQuestion(
+      problemId,
+      key,
+      input,
+      expectedRevision,
+      actor.userId,
+    );
+  })();
 }
 
 /** 删除客观题小题；删除也必须携带草稿 revision。 */
 export function deleteObjectiveQuestionCommand(
-    actor: UserActor,
-    problemId: string,
-    key: string,
-    expectedRevision: number,
+  actor: UserActor,
+  problemId: string,
+  key: string,
+  expectedRevision: number,
 ): Promise<void> {
-    return (async () => {
-        await assertObjectiveQuestionWrite(actor, problemId);
-        await deleteDraftQuestion(
-            problemId,
-            key,
-            expectedRevision,
-            actor.userId,
-        );
-    })();
+  return (async () => {
+    await assertObjectiveQuestionWrite(actor, problemId);
+    await deleteDraftQuestion(problemId, key, expectedRevision, actor.userId);
+  })();
 }

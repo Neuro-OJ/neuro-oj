@@ -14,21 +14,21 @@ import { replaySseEvents } from "./sse-events.ts";
  * 这里单独声明窄接口，避免路由依赖 runtime 的实现细节。
  */
 export interface SseRunContext {
-    run(operation: () => Promise<void> | void): Promise<void>;
+  run(operation: () => Promise<void> | void): Promise<void>;
 }
 
 /** 从 Last-Event-ID 头或 afterSeq 查询参数解析游标。 */
 export function lastEventId(
-    c: {
-        req: {
-            header(key: string): string | undefined;
-            query(key: string): string | undefined;
-        };
-    },
+  c: {
+    req: {
+      header(key: string): string | undefined;
+      query(key: string): string | undefined;
+    };
+  },
 ): number {
-    const raw = c.req.header("last-event-id") ?? c.req.query("afterSeq") ?? "0";
-    const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+  const raw = c.req.header("last-event-id") ?? c.req.query("afterSeq") ?? "0";
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
 /**
@@ -44,39 +44,39 @@ export function lastEventId(
  * @param run 可选的流级异步工作作用域；提供时整段转换与写入都在其内执行
  */
 export function subscribeToChannel(
-    onUnsubscribe: (fn: () => void) => void,
-    channel: string,
-    event: string,
-    // deno-lint-ignore no-explicit-any
-    stream: any,
-    closed: () => boolean,
-    close: () => void,
-    onMessage?: (message: string) => string | null | Promise<string | null>,
-    run?: SseRunContext["run"],
+  onUnsubscribe: (fn: () => void) => void,
+  channel: string,
+  event: string,
+  // deno-lint-ignore no-explicit-any
+  stream: any,
+  closed: () => boolean,
+  close: () => void,
+  onMessage?: (message: string) => string | null | Promise<string | null>,
+  run?: SseRunContext["run"],
 ): void {
-    onUnsubscribe(
-        onEvent(channel, (_channel, message) => {
-            if (closed()) return;
-            const deliver = async (): Promise<void> => {
-                // onMessage 内的权限查询/DB 读取与 writeSSE 同属一次异步工作：
-                // 由 run 追踪，拒绝也会被 run（或旧路径的 catch）观察到并关闭流。
-                const data = onMessage ? await onMessage(message) : message;
-                if (data === null || closed()) return;
-                await stream.writeSSE({ event, data });
-            };
-            if (run) {
-                try {
-                    // runtime 的 run 正常情况下会自行关流并观察失败；此 catch 只兜住
-                    // run 自身意外拒绝，避免 unhandled rejection。
-                    void run(deliver).catch(() => close());
-                } catch {
-                    close();
-                }
-            } else {
-                void deliver().catch(() => close());
-            }
-        }),
-    );
+  onUnsubscribe(
+    onEvent(channel, (_channel, message) => {
+      if (closed()) return;
+      const deliver = async (): Promise<void> => {
+        // onMessage 内的权限查询/DB 读取与 writeSSE 同属一次异步工作：
+        // 由 run 追踪，拒绝也会被 run（或旧路径的 catch）观察到并关闭流。
+        const data = onMessage ? await onMessage(message) : message;
+        if (data === null || closed()) return;
+        await stream.writeSSE({ event, data });
+      };
+      if (run) {
+        try {
+          // runtime 的 run 正常情况下会自行关流并观察失败；此 catch 只兜住
+          // run 自身意外拒绝，避免 unhandled rejection。
+          void run(deliver).catch(() => close());
+        } catch {
+          close();
+        }
+      } else {
+        void deliver().catch(() => close());
+      }
+    }),
+  );
 }
 
 /**
@@ -90,26 +90,26 @@ export function subscribeToChannel(
  * @param transform 可选的重放转换；返回 null 表示跳过该事件
  */
 export async function replayToStream(
-    c: Parameters<typeof lastEventId>[0],
-    // deno-lint-ignore no-explicit-any
-    stream: any,
-    closed: () => boolean,
-    channels: string[],
-    event: string,
-    transform?: (payload: object, seq: number) => object | string | null,
+  c: Parameters<typeof lastEventId>[0],
+  // deno-lint-ignore no-explicit-any
+  stream: any,
+  closed: () => boolean,
+  channels: string[],
+  event: string,
+  transform?: (payload: object, seq: number) => object | string | null,
 ): Promise<void> {
-    const after = lastEventId(c);
-    const missed = await replaySseEvents(channels, after, 200);
-    for (const ev of missed) {
-        if (closed()) return;
-        const data = transform
-            ? transform(ev.payload as object, ev.id)
-            : { ...(ev.payload as object), seq: ev.id };
-        if (data === null) continue;
-        await stream.writeSSE({
-            event,
-            id: String(ev.id),
-            data: typeof data === "string" ? data : JSON.stringify(data),
-        });
-    }
+  const after = lastEventId(c);
+  const missed = await replaySseEvents(channels, after, 200);
+  for (const ev of missed) {
+    if (closed()) return;
+    const data = transform
+      ? transform(ev.payload as object, ev.id)
+      : { ...(ev.payload as object), seq: ev.id };
+    if (data === null) continue;
+    await stream.writeSSE({
+      event,
+      id: String(ev.id),
+      data: typeof data === "string" ? data : JSON.stringify(data),
+    });
+  }
 }

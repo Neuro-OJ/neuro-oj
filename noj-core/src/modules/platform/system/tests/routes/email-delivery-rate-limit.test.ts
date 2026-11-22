@@ -3,37 +3,33 @@ import { Hono } from "hono";
 import emailDelivery from "../../routes/email-delivery.ts";
 import { AppError } from "../../../../../shared/base/errors.ts";
 import {
-    initRedisForTest,
-    jsonRequest,
+  initRedisForTest,
+  jsonRequest,
 } from "../../../../../../tests/helper.ts";
 
 await initRedisForTest();
 
 /** 与 src/app.ts 等价的 onError：AppError 走自身状态码，其余 500。 */
 function createTestApp() {
-    const app = new Hono();
-    app.onError((err, c) => {
-        if (err instanceof AppError) {
-            const response = c.json(
-                {
-                    error: err.message,
-                    code: err.code,
-                    request_id: crypto.randomUUID(),
-                },
-                err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
-            );
-            // 与 src/app.ts 一致：限流错误携带 Retry-After / X-RateLimit-* 响应头。
-            const extra = (err as { headers?: Record<string, string> }).headers;
-            for (const [k, v] of Object.entries(extra ?? {})) {
-                response.headers.set(k, v);
-            }
-            return response;
-        }
-        console.error("未处理的错误:", err);
-        return c.json({ error: "服务器内部错误" }, 500);
-    });
-    app.route("/api/v1", emailDelivery);
-    return app;
+  const app = new Hono();
+  app.onError((err, c) => {
+    if (err instanceof AppError) {
+      const response = c.json(
+        { error: err.message, code: err.code, request_id: crypto.randomUUID() },
+        err.statusCode as 400 | 401 | 403 | 404 | 409 | 429 | 500 | 503,
+      );
+      // 与 src/app.ts 一致：限流错误携带 Retry-After / X-RateLimit-* 响应头。
+      const extra = (err as { headers?: Record<string, string> }).headers;
+      for (const [k, v] of Object.entries(extra ?? {})) {
+        response.headers.set(k, v);
+      }
+      return response;
+    }
+    console.error("未处理的错误:", err);
+    return c.json({ error: "服务器内部错误" }, 500);
+  });
+  app.route("/api/v1", emailDelivery);
+  return app;
 }
 
 /**
@@ -47,40 +43,38 @@ function createTestApp() {
  * 键名（键由 `getClientIp` 与归一化规则决定，属实现细节，断言边界行为更可靠）。
  */
 Deno.test({
-    name:
-        "邮件回执限流 HTTP：按来源 IP 计数，窗口内最后一次放行、超额 429 带 Retry-After",
-    sanitizeResources: false,
-    sanitizeOps: false,
-    async fn() {
-        const previous = Deno.env.get("RATE_LIMIT_ENABLED");
-        const app = createTestApp();
-        const request = () =>
-            jsonRequest(app, "/api/v1/email-events/unknown-provider", {
-                method: "POST",
-                headers: { "X-Forwarded-For": "203.0.113.77" },
-            });
-        try {
-            Deno.env.set("RATE_LIMIT_ENABLED", "true");
-            for (let i = 0; i < 120; i++) {
-                const allowed = await request();
-                assertEquals(
-                    allowed.status,
-                    503,
-                    `第 ${
-                        i + 1
-                    } 次回执应在窗口内放行到业务处理（未配置 provider → 503）`,
-                );
-            }
-            const blocked = await request();
-            assertEquals(blocked.status, 429, "第 121 次回执应被限流");
-            assertEquals(
-                blocked.headers.get("retry-after") !== null,
-                true,
-                "限流响应需带 Retry-After",
-            );
-        } finally {
-            if (previous === undefined) Deno.env.delete("RATE_LIMIT_ENABLED");
-            else Deno.env.set("RATE_LIMIT_ENABLED", previous);
-        }
-    },
+  name:
+    "邮件回执限流 HTTP：按来源 IP 计数，窗口内最后一次放行、超额 429 带 Retry-After",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  async fn() {
+    const previous = Deno.env.get("RATE_LIMIT_ENABLED");
+    const app = createTestApp();
+    const request = () =>
+      jsonRequest(app, "/api/v1/email-events/unknown-provider", {
+        method: "POST",
+        headers: { "X-Forwarded-For": "203.0.113.77" },
+      });
+    try {
+      Deno.env.set("RATE_LIMIT_ENABLED", "true");
+      for (let i = 0; i < 120; i++) {
+        const allowed = await request();
+        assertEquals(
+          allowed.status,
+          503,
+          `第 ${i + 1} 次回执应在窗口内放行到业务处理（未配置 provider → 503）`,
+        );
+      }
+      const blocked = await request();
+      assertEquals(blocked.status, 429, "第 121 次回执应被限流");
+      assertEquals(
+        blocked.headers.get("retry-after") !== null,
+        true,
+        "限流响应需带 Retry-After",
+      );
+    } finally {
+      if (previous === undefined) Deno.env.delete("RATE_LIMIT_ENABLED");
+      else Deno.env.set("RATE_LIMIT_ENABLED", previous);
+    }
+  },
 });

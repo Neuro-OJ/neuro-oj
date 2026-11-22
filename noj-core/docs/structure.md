@@ -27,13 +27,13 @@ import { defineFeature } from "../../shared/feature.ts";
 import { domainTrainingsRouter } from "./routes.ts";
 
 export const feature = defineFeature({
-    // 小写 kebab-case，必须等于目录名，也是 test:domain 的目标名
-    name: "trainings",
-    // 挂到 /api/v1 下；具体路径在 router 内部声明
-    router: domainTrainingsRouter,
-    // tasks?: 后台任务处理器，key 必须以 "<name>." 开头
-    // workers?: 返回 ManagedTask 的常驻 worker 启动函数
-    // observability?: 指标 / 健康探针注册回调
+  // 小写 kebab-case，必须等于目录名，也是 test:domain 的目标名
+  name: "trainings",
+  // 挂到 /api/v1 下；具体路径在 router 内部声明
+  router: domainTrainingsRouter,
+  // tasks?: 后台任务处理器，key 必须以 "<name>." 开头
+  // workers?: 返回 ManagedTask 的常驻 worker 启动函数
+  // observability?: 指标 / 健康探针注册回调
 });
 ```
 

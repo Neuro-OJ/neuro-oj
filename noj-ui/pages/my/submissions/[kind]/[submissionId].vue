@@ -4,31 +4,31 @@ import { extractApiError } from '~/utils/server/apiError';
 definePageMeta({ middleware: 'auth' });
 const route = useRoute(), { user } = useAuth(), api = useOwnSubmissions();
 const kind = computed(() => String(route.params.kind) as OwnSubmissionKind),
-    id = computed(() => String(route.params.submissionId));
+  id = computed(() => String(route.params.submissionId));
 const { data, status, error, refresh } = await useAsyncData(
-    () => `own-submission:${user.value?.id}:${kind.value}:${id.value}`,
-    () => api.detail(kind.value, id.value),
+  () => `own-submission:${user.value?.id}:${kind.value}:${id.value}`,
+  () => api.detail(kind.value, id.value),
 );
 usePolling({
-    intervalMs: computed(() =>
-        data.value?.data.result_visibility !== 'hidden' &&
-            ['pending', 'judging'].includes(data.value?.data.status ?? '')
-            ? 2000
-            : null
-    ),
-    immediate: false,
-    fetcher: () => refresh(),
+  intervalMs: computed(() =>
+    data.value?.data.result_visibility !== 'hidden' &&
+      ['pending', 'judging'].includes(data.value?.data.status ?? '')
+      ? 2000
+      : null
+  ),
+  immediate: false,
+  fetcher: () => refresh(),
 });
 useSeoMeta({ title: '本人提交历史详情' });
 </script>
 <template>
-    <div class="mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-6">
-        <div class="flex items-center justify-end gap-3">
-            <UButton variant="outline" @click="refresh()">刷新结果</UButton>
-        </div>
-        <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
-            :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
-            <SubmissionOwnRecord v-if="data" :entry="data.data" offer-domain-actions />
-        </AsyncContent>
+  <div class="mx-auto max-w-5xl space-y-5 px-4 py-8 sm:px-6">
+    <div class="flex items-center justify-end gap-3">
+      <UButton variant="outline" @click="refresh()">刷新结果</UButton>
     </div>
+    <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : data ? 'data' : 'empty'"
+      :error="error ? extractApiError(error).message : undefined" @retry="refresh()">
+      <SubmissionOwnRecord v-if="data" :entry="data.data" offer-domain-actions />
+    </AsyncContent>
+  </div>
 </template>

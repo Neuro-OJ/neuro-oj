@@ -5,5 +5,5 @@ const { key } = useCommunityScope();
 const route = useRoute();
 </script>
 <template>
-    <CommunityIndex :key="`${key}:${route.path}`" />
+  <CommunityIndex :key="`${key}:${route.path}`" />
 </template>

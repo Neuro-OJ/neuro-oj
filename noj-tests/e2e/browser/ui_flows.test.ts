@@ -18,19 +18,19 @@
  */
 
 import {
-    api,
-    apiGet,
-    BASE_URL,
-    CODE_SAMPLES,
-    getAdminToken,
-    registerUser,
-    TEST_PASSWORD,
+  api,
+  apiGet,
+  BASE_URL,
+  CODE_SAMPLES,
+  getAdminToken,
+  registerUser,
+  TEST_PASSWORD,
 } from "../helper.ts";
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import { domainAnswerKey } from "../../../noj-ui/utils/domain/problem/domain-problems.ts";
 import {
-    buildProblemBundle,
-    problemBundleForm,
+  buildProblemBundle,
+  problemBundleForm,
 } from "../../fixtures/problem-bundle.ts";
 import { withBrowserJourney } from "./browser.ts";
 
@@ -48,55 +48,55 @@ let problemNumber = 0;
 
 /** 当前 main 域编辑者导入独立 v2 题包并显式发布，种子题的比赛保密不影响此旅程。 */
 async function prepareProblemFixture(): Promise<void> {
-    const email = `ui_editor_${ts}@test.com`;
-    const editor = await registerUser(`ui_editor_${ts}`, email, TEST_PASSWORD);
-    const admin = await getAdminToken();
-    const invitation = await api("POST", "/api/v1/domains/main/invitations", {
-        token: admin,
-        body: { email },
-    });
-    assertEquals(invitation.status, 201);
-    const joined = await api("POST", "/api/v1/domain-invitations/accept", {
-        token: editor,
-        body: {
-            token: (invitation.body as { data: { token: string } }).data.token,
+  const email = `ui_editor_${ts}@test.com`;
+  const editor = await registerUser(`ui_editor_${ts}`, email, TEST_PASSWORD);
+  const admin = await getAdminToken();
+  const invitation = await api("POST", "/api/v1/domains/main/invitations", {
+    token: admin,
+    body: { email },
+  });
+  assertEquals(invitation.status, 201);
+  const joined = await api("POST", "/api/v1/domain-invitations/accept", {
+    token: editor,
+    body: {
+      token: (invitation.body as { data: { token: string } }).data.token,
+    },
+  });
+  assertEquals(joined.status, 200);
+  const identity = await apiGet("/api/v1/auth/me", editor);
+  assertEquals(identity.status, 200);
+  const userId = (identity.body as { data: { id: string } }).data.id;
+  const granted = await api(
+    "PUT",
+    `/api/v1/domains/main/members/${userId}/role`,
+    {
+      token: admin,
+      body: { role: "educator" },
+    },
+  );
+  assertEquals(granted.status, 200);
+  const archive = buildProblemBundle({
+    "problem.json": JSON.stringify({
+      format_version: 2,
+      title: `uibrowser${ts} 独立加法题`,
+      difficulty: "easy",
+      judge_type: "dual",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          time_limit_ms: 10000,
+          memory_limit_mb: 512,
         },
-    });
-    assertEquals(joined.status, 200);
-    const identity = await apiGet("/api/v1/auth/me", editor);
-    assertEquals(identity.status, 200);
-    const userId = (identity.body as { data: { id: string } }).data.id;
-    const granted = await api(
-        "PUT",
-        `/api/v1/domains/main/members/${userId}/role`,
-        {
-            token: admin,
-            body: { role: "educator" },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 5000,
+          memory_limit_mb: 256,
         },
-    );
-    assertEquals(granted.status, 200);
-    const archive = buildProblemBundle({
-        "problem.json": JSON.stringify({
-            format_version: 2,
-            title: `uibrowser${ts} 独立加法题`,
-            difficulty: "easy",
-            judge_type: "dual",
-            runtime_config: {
-                evaluator: {
-                    image: "noj-evaluator-python",
-                    time_limit_ms: 10000,
-                    memory_limit_mb: 512,
-                },
-                solution: {
-                    image: "noj-solution-python",
-                    call_timeout_ms: 5000,
-                    memory_limit_mb: 256,
-                },
-            },
-        }),
-        "statement.md":
-            "# A+B\nsolve(input_str) 接受两个整数，返回它们的和。满分10分。",
-        "evaluate.py": `from noj_evaluator_sdk import SolutionRunner, result
+      },
+    }),
+    "statement.md":
+      "# A+B\nsolve(input_str) 接受两个整数，返回它们的和。满分10分。",
+    "evaluate.py": `from noj_evaluator_sdk import SolutionRunner, result
 runner = SolutionRunner()
 try:
     if runner.call("solve", "1 2") == "3":
@@ -106,30 +106,30 @@ try:
 finally:
     runner.close()
 `,
-    });
-    const form = problemBundleForm(archive, "browser.zip");
-    const imported = await fetch(
-        `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
-        {
-            method: "POST",
-            headers: { Authorization: `Bearer ${editor}` },
-            body: form,
-        },
-    );
-    const response = await imported.json();
-    assertEquals(imported.status, 201, JSON.stringify(response));
-    const problem = response.data as { number: number; draft_revision: number };
-    problemNumber = problem.number;
-    const published = await api(
-        "POST",
-        `/api/v1/domains/main/problems/${problem.number}/publish`,
-        {
-            token: editor,
-            headers: { "If-Match": String(problem.draft_revision) },
-            body: { change_note: "浏览器实际评测独立公开版本" },
-        },
-    );
-    assertEquals(published.status, 200, JSON.stringify(published.body));
+  });
+  const form = problemBundleForm(archive, "browser.zip");
+  const imported = await fetch(
+    `${BASE_URL}/api/v1/domains/main/problems/import-bundle`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${editor}` },
+      body: form,
+    },
+  );
+  const response = await imported.json();
+  assertEquals(imported.status, 201, JSON.stringify(response));
+  const problem = response.data as { number: number; draft_revision: number };
+  problemNumber = problem.number;
+  const published = await api(
+    "POST",
+    `/api/v1/domains/main/problems/${problem.number}/publish`,
+    {
+      token: editor,
+      headers: { "If-Match": String(problem.draft_revision) },
+      body: { change_note: "浏览器实际评测独立公开版本" },
+    },
+  );
+  assertEquals(published.status, 200, JSON.stringify(published.body));
 }
 
 // ── 当前用例的浏览器页面 ──────────────────────────
@@ -144,98 +144,88 @@ let activePage: import("npm:playwright@1.62.1").Page | null = null;
  * 失败诊断与清理（含 trace/截图）统一由 withBrowserJourney 负责。
  */
 async function inBrowser(
-    label: string,
-    actor: string,
-    fn: () => Promise<void>,
+  label: string,
+  actor: string,
+  fn: () => Promise<void>,
 ): Promise<void> {
-    await withBrowserJourney(label, async (journey) => {
-        activePage = (await journey.newSession(actor)).page;
-        try {
-            await fn();
-        } finally {
-            activePage = null;
-        }
-    });
+  await withBrowserJourney(label, async (journey) => {
+    activePage = (await journey.newSession(actor)).page;
+    try {
+      await fn();
+    } finally {
+      activePage = null;
+    }
+  });
 }
 
 // ── 页面操作辅助 ──────────────────────────────────
 
 function mustPage(): import("npm:playwright@1.62.1").Page {
-    if (!activePage) throw new Error("browser 未启动");
-    return activePage;
+  if (!activePage) throw new Error("browser 未启动");
+  return activePage;
 }
 
 async function goto(
-    path: string,
+  path: string,
 ): Promise<import("npm:playwright@1.62.1").Page> {
-    const p = mustPage();
-    await p.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
-    return p;
+  const p = mustPage();
+  await p.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
+  return p;
 }
 
 async function registerViaUI(
-    username: string,
-    email: string,
-    password: string,
+  username: string,
+  email: string,
+  password: string,
 ): Promise<void> {
-    const p = await goto("/register");
-    await p.getByPlaceholder("3-30 位字母、数字或下划线").fill(username);
-    await p.getByPlaceholder("请输入邮箱地址").fill(email);
-    await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
-        password,
-    );
-    await p.getByPlaceholder("再次输入密码").fill(password);
-    // PIPL 硬门槛：未勾选同意条款时注册按钮 disabled，须先勾选
-    await p.getByRole("checkbox", { name: "同意服务条款与隐私政策" }).check();
-    await p.getByRole("button", { name: "注册", exact: true }).click();
+  const p = await goto("/register");
+  await p.getByPlaceholder("3-30 位字母、数字或下划线").fill(username);
+  await p.getByPlaceholder("请输入邮箱地址").fill(email);
+  await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(password);
+  await p.getByPlaceholder("再次输入密码").fill(password);
+  // PIPL 硬门槛：未勾选同意条款时注册按钮 disabled，须先勾选
+  await p.getByRole("checkbox", { name: "同意服务条款与隐私政策" }).check();
+  await p.getByRole("button", { name: "注册", exact: true }).click();
 }
 
 async function loginViaUI(username: string, password: string): Promise<void> {
-    const p = await goto("/login");
-    await p.getByPlaceholder("请输入用户名或邮箱").fill(username);
-    await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
-        password,
-    );
-    await p.getByRole("button", { name: "登录", exact: true }).click();
-    // 登录成功后跳离 /login（首页或回跳目标）
-    await p.waitForURL((u) => !u.pathname.startsWith("/login"), {
-        timeout: 15_000,
-    });
-    // 读取同一浏览器账号的当前法律状态；需要重新同意时操作真实弹窗，不绕过记录端点。
-    const identity = await p.request.get(`${UI_URL}/api/v1/auth/me`);
-    assertEquals(identity.status(), 200);
-    const current = await identity.json() as {
-        data: {
-            legal?: Record<
-                string,
-                { needs_consent: boolean; is_material: boolean }
-            >;
-        };
+  const p = await goto("/login");
+  await p.getByPlaceholder("请输入用户名或邮箱").fill(username);
+  await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(password);
+  await p.getByRole("button", { name: "登录", exact: true }).click();
+  // 登录成功后跳离 /login（首页或回跳目标）
+  await p.waitForURL((u) => !u.pathname.startsWith("/login"), {
+    timeout: 15_000,
+  });
+  // 读取同一浏览器账号的当前法律状态；需要重新同意时操作真实弹窗，不绕过记录端点。
+  const identity = await p.request.get(`${UI_URL}/api/v1/auth/me`);
+  assertEquals(identity.status(), 200);
+  const current = await identity.json() as {
+    data: {
+      legal?: Record<string, { needs_consent: boolean; is_material: boolean }>;
     };
-    if (
-        Object.values(current.data.legal ?? {}).some((item) =>
-            item.needs_consent && item.is_material
-        )
-    ) {
-        const consent = p.getByRole("dialog", { name: "政策更新通知" });
-        await consent.waitFor({ state: "visible", timeout: 15_000 });
-        await consent.getByRole("button", {
-            name: "我已知悉并同意",
-            exact: true,
-        })
-            .click();
-        await consent.waitFor({ state: "hidden", timeout: 15_000 });
-    }
+  };
+  if (
+    Object.values(current.data.legal ?? {}).some((item) =>
+      item.needs_consent && item.is_material
+    )
+  ) {
+    const consent = p.getByRole("dialog", { name: "政策更新通知" });
+    await consent.waitFor({ state: "visible", timeout: 15_000 });
+    await consent.getByRole("button", { name: "我已知悉并同意", exact: true })
+      .click();
+    await consent.waitFor({ state: "hidden", timeout: 15_000 });
+  }
 }
 
 async function logoutViaUI(): Promise<void> {
-    const p = mustPage();
-    await p.locator('button[aria-label="用户菜单"]').click();
-    await p.getByRole("menuitem", { name: "登出" }).click();
-    // 统一 useDialog 确认弹窗
-    await p.getByRole("button", { name: "确认登出" }).click();
-    // 登出后回到未登录态（导航栏出现「登录」链接）
-    await p.locator('a[href^="/login"]').first().waitFor({ timeout: 15_000 });
+  const p = mustPage();
+  await p.locator('button[aria-label="用户菜单"]').click();
+  await p.getByRole("menuitem", { name: "登出" }).click();
+  // 统一 useDialog 确认弹窗
+  await p.getByRole("button", { name: "确认登出" }).click();
+  // 登出后回到未登录态（导航栏出现「登录」链接）
+  await p.locator('a[href^="/login"]').first().waitFor({ timeout: 15_000 });
 }
 
 /**
@@ -248,71 +238,69 @@ async function logoutViaUI(): Promise<void> {
  * 恢复路径与真实用户「刷新后继续上次代码」完全一致。
  */
 async function submitCodeViaUI(code: string): Promise<string> {
-    const p = mustPage();
-    const identity = await apiGet("/api/v1/auth/me", submitToken);
-    const detail = await apiGet(
-        `/api/v1/domains/main/problems/${problemNumber}`,
-        submitToken,
-    );
-    if (identity.status !== 200 || detail.status !== 200) {
-        throw new Error("无法读取当前作答身份或默认域题目");
-    }
-    const actor = (identity.body as { data: { id: string } }).data.id;
-    const problem = detail.body as {
-        reference: { problem_id: string };
-        version_id: string;
-        supported_languages: string[];
-    };
-    const key = domainAnswerKey(
-        actor,
-        "main",
-        problem.reference.problem_id,
-        problem.version_id,
-        problem.supported_languages[0],
-    );
-    await p.addInitScript(
-        ({ key, content }) => {
-            localStorage.setItem(
-                key,
-                JSON.stringify({ code: content, answers: {} }),
-            );
-        },
-        { key: `noj:draft:${key}`, content: code },
-    );
-    await goto(`/d/main/problems/${problemNumber}`);
-    // 题目页同时有页头 CTA 和正文 CTA；两者指向同一真实作答入口。
-    await p.getByRole("link", { name: "开始编码", exact: true }).first()
-        .click();
-    // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
-    await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
-    const created = p.waitForResponse((response) => {
-        const request = response.request();
-        return request.method() === "POST" &&
-            new URL(response.url()).pathname ===
-                "/api/v1/domains/main/submissions";
-    });
-    await p.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
-        name: "提交评测",
-        exact: true,
-    }).click();
-    const response = await created;
-    if (response.status() !== 201) {
-        throw new Error(`提交评测失败（HTTP ${response.status()}）`);
-    }
-    const body = await response.json() as { data?: { id?: string } };
-    const submissionId = body.data?.id;
-    if (!submissionId) throw new Error("提交评测响应缺少 submission id");
-    return submissionId;
+  const p = mustPage();
+  const identity = await apiGet("/api/v1/auth/me", submitToken);
+  const detail = await apiGet(
+    `/api/v1/domains/main/problems/${problemNumber}`,
+    submitToken,
+  );
+  if (identity.status !== 200 || detail.status !== 200) {
+    throw new Error("无法读取当前作答身份或默认域题目");
+  }
+  const actor = (identity.body as { data: { id: string } }).data.id;
+  const problem = detail.body as {
+    reference: { problem_id: string };
+    version_id: string;
+    supported_languages: string[];
+  };
+  const key = domainAnswerKey(
+    actor,
+    "main",
+    problem.reference.problem_id,
+    problem.version_id,
+    problem.supported_languages[0],
+  );
+  await p.addInitScript(
+    ({ key, content }) => {
+      localStorage.setItem(
+        key,
+        JSON.stringify({ code: content, answers: {} }),
+      );
+    },
+    { key: `noj:draft:${key}`, content: code },
+  );
+  await goto(`/d/main/problems/${problemNumber}`);
+  // 题目页同时有页头 CTA 和正文 CTA；两者指向同一真实作答入口。
+  await p.getByRole("link", { name: "开始编码", exact: true }).first().click();
+  // 编辑器就绪后提交（草稿在 onMounted 恢复为初始代码，优先于 starter 模板）
+  await p.locator(".monaco-editor").first().waitFor({ timeout: 30_000 });
+  const created = p.waitForResponse((response) => {
+    const request = response.request();
+    return request.method() === "POST" &&
+      new URL(response.url()).pathname === "/api/v1/domains/main/submissions";
+  });
+  await p.getByRole("toolbar", { name: "代码工具栏" }).getByRole("button", {
+    name: "提交评测",
+    exact: true,
+  }).click();
+  const response = await created;
+  if (response.status() !== 201) {
+    throw new Error(`提交评测失败（HTTP ${response.status()}）`);
+  }
+  const body = await response.json() as { data?: { id?: string } };
+  const submissionId = body.data?.id;
+  if (!submissionId) throw new Error("提交评测响应缺少 submission id");
+  return submissionId;
 }
 
 /** 从当前提交详情页的结果卡片读取得分；尚未获得终态时返回 null。 */
 async function verdictText(): Promise<string | null> {
-    const p = mustPage();
-    const scoreLabel = p.getByText("得分", { exact: true });
-    if (await scoreLabel.count() === 0) return null;
-    const text = (await scoreLabel.first().locator("..").textContent()) ?? "";
-    const match = text.match(/(\d+(?:\.\d+)?)\s*分/);
-    return match ? `${match[1]} 分` : null;
+  const p = mustPage();
+  const scoreLabel = p.getByText("得分", { exact: true });
+  if (await scoreLabel.count() === 0) return null;
+  const text = (await scoreLabel.first().locator("..").textContent()) ?? "";
+  const match = text.match(/(\d+(?:\.\d+)?)\s*分/);
+  return match ? `${match[1]} 分` : null;
 }
 
 /**
@@ -321,122 +309,120 @@ async function verdictText(): Promise<string | null> {
  * 轮询由前端完成，这里按 1s 间隔轮询 UI。
  */
 async function waitForVerdict(
-    submissionId: string,
-    timeoutMs = 180_000,
+  submissionId: string,
+  timeoutMs = 180_000,
 ): Promise<string> {
-    const p = mustPage();
-    await p.goto(
-        `${UI_URL}/d/main/submissions/${encodeURIComponent(submissionId)}`,
-        { waitUntil: "domcontentloaded" },
-    );
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        const text = await verdictText();
-        if (text !== null) return text;
-        await p.reload({ waitUntil: "domcontentloaded" });
-        await new Promise((r) => setTimeout(r, 1000));
-    }
-    throw new Error(
-        `等待评测结论超时（${timeoutMs}ms），submission=${submissionId}`,
-    );
+  const p = mustPage();
+  await p.goto(
+    `${UI_URL}/d/main/submissions/${encodeURIComponent(submissionId)}`,
+    { waitUntil: "domcontentloaded" },
+  );
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const text = await verdictText();
+    if (text !== null) return text;
+    await p.reload({ waitUntil: "domcontentloaded" });
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error(
+    `等待评测结论超时（${timeoutMs}ms），submission=${submissionId}`,
+  );
 }
 
 // ── 测试用例 ──────────────────────────────────────
 
 Deno.test("[ui/browser] 前置：浏览器会话启动", async () => {
-    if (!BROWSER_E2E) {
-        console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
-        return;
-    }
-    // 前置用例同样走真实 Chromium 启动，验证浏览器可用；用例结束即清理。
-    await inBrowser("ui-flows-setup", "setup", async () => {
-        const ui = await fetch(UI_URL);
-        if (!ui.ok) throw new Error(`noj-ui 未就绪 (${UI_URL} → ${ui.status})`);
-        await ui.body?.cancel();
-        await prepareProblemFixture();
-    });
+  if (!BROWSER_E2E) {
+    console.log("  ⏭ skip：NOJ_RUN_BROWSER_E2E 未启用");
+    return;
+  }
+  // 前置用例同样走真实 Chromium 启动，验证浏览器可用；用例结束即清理。
+  await inBrowser("ui-flows-setup", "setup", async () => {
+    const ui = await fetch(UI_URL);
+    if (!ui.ok) throw new Error(`noj-ui 未就绪 (${UI_URL} → ${ui.status})`);
+    await ui.body?.cancel();
+    await prepareProblemFixture();
+  });
 });
 
 Deno.test("[ui/browser] 1/4 注册 → 跳转邮箱验证页（sent=1）", async () => {
-    if (!BROWSER_E2E) return;
-    await inBrowser("ui-flows-register", "registrant", async () => {
-        await registerViaUI(USERNAME, EMAIL, TEST_PASSWORD);
-        const p = mustPage();
-        // 注册成功后自动登录并跳转 verify-email，携带 registered=1&sent=1
-        //（register.vue 的 sent 作用域修复正是本门禁的起点，见 issue #427）
-        await p.waitForURL(/\/verify-email\?registered=1&sent=1/, {
-            timeout: 20_000,
-        });
+  if (!BROWSER_E2E) return;
+  await inBrowser("ui-flows-register", "registrant", async () => {
+    await registerViaUI(USERNAME, EMAIL, TEST_PASSWORD);
+    const p = mustPage();
+    // 注册成功后自动登录并跳转 verify-email，携带 registered=1&sent=1
+    //（register.vue 的 sent 作用域修复正是本门禁的起点，见 issue #427）
+    await p.waitForURL(/\/verify-email\?registered=1&sent=1/, {
+      timeout: 20_000,
     });
+  });
 });
 
 Deno.test("[ui/browser] 2/4 登录 → 退出", async () => {
-    if (!BROWSER_E2E) return;
-    await inBrowser("ui-flows-login-logout", "ui-user", async () => {
-        await loginViaUI(USERNAME, TEST_PASSWORD);
-        await logoutViaUI();
-    });
+  if (!BROWSER_E2E) return;
+  await inBrowser("ui-flows-login-logout", "ui-user", async () => {
+    await loginViaUI(USERNAME, TEST_PASSWORD);
+    await logoutViaUI();
+  });
 });
 
 Deno.test("[ui/browser] 3/4 代码提交 → 评测结果（满分 10 分）", async () => {
-    if (!BROWSER_E2E) return;
-    await inBrowser("ui-flows-submit", "submitter", async () => {
-        // 门禁直接验证真实提交；judge 故障必须超时失败并保存诊断产物，不能跳过。
-        submitToken = await registerUser(
-            SUBMIT_USER,
-            `${SUBMIT_USER}@test.com`,
-            TEST_PASSWORD,
-        );
-        await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-        const submissionId = await submitCodeViaUI(CODE_SAMPLES.accepted);
-        const score = await waitForVerdict(submissionId);
-        // 独立题包满分 10 分，允许 UI 保留小数位。
-        if (Number.parseFloat(score) !== 10) {
-            throw new Error(`期望满分「10 分」，实际「${score}」`);
-        }
-    });
+  if (!BROWSER_E2E) return;
+  await inBrowser("ui-flows-submit", "submitter", async () => {
+    // 门禁直接验证真实提交；judge 故障必须超时失败并保存诊断产物，不能跳过。
+    submitToken = await registerUser(
+      SUBMIT_USER,
+      `${SUBMIT_USER}@test.com`,
+      TEST_PASSWORD,
+    );
+    await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
+    const submissionId = await submitCodeViaUI(CODE_SAMPLES.accepted);
+    const score = await waitForVerdict(submissionId);
+    // 独立题包满分 10 分，允许 UI 保留小数位。
+    if (Number.parseFloat(score) !== 10) {
+      throw new Error(`期望满分「10 分」，实际「${score}」`);
+    }
+  });
 });
 
 Deno.test("[ui/browser] 4/4 核心失败反馈（错误答案非满分 10 分）", async () => {
-    if (!BROWSER_E2E) return;
-    await inBrowser("ui-flows-wrong-answer", "submitter", async () => {
-        submitToken = await registerUser(
-            SUBMIT_USER,
-            `${SUBMIT_USER}@test.com`,
-            TEST_PASSWORD,
-        );
-        await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
-        const submissionId = await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
-        const score = await waitForVerdict(submissionId);
-        if (Number.parseFloat(score) === 10) {
-            throw new Error(`错误答案不应满分，实际「${score}」`);
-        }
-    });
+  if (!BROWSER_E2E) return;
+  await inBrowser("ui-flows-wrong-answer", "submitter", async () => {
+    submitToken = await registerUser(
+      SUBMIT_USER,
+      `${SUBMIT_USER}@test.com`,
+      TEST_PASSWORD,
+    );
+    await loginViaUI(SUBMIT_USER, TEST_PASSWORD);
+    const submissionId = await submitCodeViaUI(CODE_SAMPLES.wrongAnswer);
+    const score = await waitForVerdict(submissionId);
+    if (Number.parseFloat(score) === 10) {
+      throw new Error(`错误答案不应满分，实际「${score}」`);
+    }
+  });
 });
 
 Deno.test("[ui/browser] 5/5 登录失败显示错误提示", async () => {
-    if (!BROWSER_E2E) return;
-    await inBrowser("ui-flows-login-failure", "anonymous", async () => {
-        const p = await goto("/login");
-        await p.getByPlaceholder("请输入用户名或邮箱").fill(
-            "nonexistent@test.com",
-        );
-        await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
-            "WrongPass123",
-        );
-        await p.getByRole("button", { name: "登录", exact: true }).click();
-        // 登录失败后 ToastBanner 以 role=status 展示错误
-        await p.locator('[role="status"]').first().waitFor({ timeout: 10_000 });
-    });
+  if (!BROWSER_E2E) return;
+  await inBrowser("ui-flows-login-failure", "anonymous", async () => {
+    const p = await goto("/login");
+    await p.getByPlaceholder("请输入用户名或邮箱").fill("nonexistent@test.com");
+    await p.getByPlaceholder("至少 8 位，需包含大小写字母和数字").fill(
+      "WrongPass123",
+    );
+    await p.getByRole("button", { name: "登录", exact: true }).click();
+    // 登录失败后 ToastBanner 以 role=status 展示错误
+    await p.locator('[role="status"]').first().waitFor({ timeout: 10_000 });
+  });
 });
 
 Deno.test("[ui/browser] 6/6 不存在的题目呈现 404（不再退化为加载失败面板）", async () => {
-    if (!BROWSER_E2E) return;
-    await inBrowser("ui-flows-problem-404", "anonymous", async () => {
-        const p = await goto("/editor/NOEXIST");
-        // 2026-09-26：题目不存在（含"被公开赛保密而对当前用户不可见"，后端同返 404）
-        // 统一呈现为 404 状态；非 404 的加载失败仍走 EditorWorkspace 的错误面板。
-        await p.getByText("404", { exact: true }).waitFor({ timeout: 10_000 });
-        await p.getByText("题目不存在").waitFor({ timeout: 10_000 });
-    });
+  if (!BROWSER_E2E) return;
+  await inBrowser("ui-flows-problem-404", "anonymous", async () => {
+    const p = await goto("/editor/NOEXIST");
+    // 2026-09-26：题目不存在（含"被公开赛保密而对当前用户不可见"，后端同返 404）
+    // 统一呈现为 404 状态；非 404 的加载失败仍走 EditorWorkspace 的错误面板。
+    await p.getByText("404", { exact: true }).waitFor({ timeout: 10_000 });
+    await p.getByText("题目不存在").waitFor({ timeout: 10_000 });
+  });
 });

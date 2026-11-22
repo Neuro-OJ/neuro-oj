@@ -3,5 +3,5 @@ import CommunityNotificationDetail from '~/components/community/CommunityNotific
 definePageMeta({ middleware: 'auth' });
 </script>
 <template>
-    <CommunityNotificationDetail account />
+  <CommunityNotificationDetail account />
 </template>

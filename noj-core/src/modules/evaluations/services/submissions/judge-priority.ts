@@ -15,25 +15,22 @@ export type JudgeTaskSource = "submission" | "self_test" | "rejudge";
  * - submission 无竞赛或竞赛非进行中为 medium，属于进行中竞赛为 high。
  */
 export async function resolveJudgeTaskPriority(
-    contestId: string | null,
-    source: JudgeTaskSource,
+  contestId: string | null,
+  source: JudgeTaskSource,
 ): Promise<JudgeTaskPriority> {
-    if (source === "rejudge") return "low";
-    if (source === "self_test") return "medium";
-    if (!contestId) return "medium";
+  if (source === "rejudge") return "low";
+  if (source === "self_test") return "medium";
+  if (!contestId) return "medium";
 
-    const [contest] = await getDb()
-        .select({
-            start_time: contests.start_time,
-            end_time: contests.end_time,
-        })
-        .from(contests)
-        .where(eq(contests.id, contestId))
-        .limit(1);
-    if (!contest) return "medium";
+  const [contest] = await getDb()
+    .select({ start_time: contests.start_time, end_time: contests.end_time })
+    .from(contests)
+    .where(eq(contests.id, contestId))
+    .limit(1);
+  if (!contest) return "medium";
 
-    return computeContestStatus(contest.start_time, contest.end_time) ===
-            "running"
-        ? "high"
-        : "medium";
+  return computeContestStatus(contest.start_time, contest.end_time) ===
+      "running"
+    ? "high"
+    : "medium";
 }

@@ -14,14 +14,14 @@ export const DISMISS_KEY = 'noj:announcement-dismissed';
  * @param raw localStorage 原始字符串（可空）
  */
 export function parseDismissed(raw: string | null): Set<string> {
-    if (!raw) return new Set();
-    try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return new Set();
-        return new Set(parsed.filter((x): x is string => typeof x === 'string'));
-    } catch {
-        return new Set();
-    }
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === 'string'));
+  } catch {
+    return new Set();
+  }
 }
 
 /**
@@ -30,5 +30,5 @@ export function parseDismissed(raw: string | null): Set<string> {
  * @param ids 集合
  */
 export function serializeDismissed(ids: Set<string>): string {
-    return JSON.stringify([...ids]);
+  return JSON.stringify([...ids]);
 }

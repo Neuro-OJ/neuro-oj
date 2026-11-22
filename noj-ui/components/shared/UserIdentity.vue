@@ -30,8 +30,8 @@
 </template>
 
 <script setup lang="ts">
-import { NuxtLink } from '#components';
-import { userUrl } from '~/utils/publicIdentifiers';
+import { NuxtLink } from "#components";
+import { userUrl } from "~/utils/publicIdentifiers";
 
 interface IdentityUser {
     id: string;
@@ -39,32 +39,27 @@ interface IdentityUser {
     avatar_url?: string | null;
 }
 
-const props = withDefaults(
-    defineProps<{
-        user: IdentityUser;
-        showUsername?: boolean;
-        showAvatar?: boolean;
-        size?: 'sm' | 'md' | 'lg';
-        link?: boolean;
-        to?: string;
-        loadAvatarWhenUnknown?: boolean;
-    }>(),
-    {
-        showUsername: true,
-        showAvatar: true,
-        size: 'md',
-        link: true,
-        loadAvatarWhenUnknown: false,
-    },
-);
+const props = withDefaults(defineProps<{
+    user: IdentityUser;
+    showUsername?: boolean;
+    showAvatar?: boolean;
+    size?: 'sm' | 'md' | 'lg';
+    link?: boolean;
+    to?: string;
+    loadAvatarWhenUnknown?: boolean;
+}>(), {
+    showUsername: true,
+    showAvatar: true,
+    size: 'md',
+    link: true,
+    loadAvatarWhenUnknown: false,
+});
 
 // 图片加载失败 → 兜底切回首字母占位
 const imgFailed = ref(false);
 watch(
-    () => [props.user.id, props.user.avatar_url ?? ''],
-    () => {
-        imgFailed.value = false;
-    },
+    () => [props.user.id, props.user.avatar_url ?? ""],
+    () => { imgFailed.value = false; },
 );
 
 const SIZE_MAP = { sm: 24, md: 32, lg: 64 } as const;
@@ -72,13 +67,13 @@ const sizePx = computed(() => SIZE_MAP[props.size]);
 
 // 首字母（中文用户名取首个字符，其他取大写首字母）
 const initial = computed(() => {
-    const name = props.user.username ?? '?';
+    const name = props.user.username ?? "?";
     return name.charAt(0).toUpperCase();
 });
 
 // 按 username 哈希稳定配色（同一用户全站一致）
 const hue = computed(() => {
-    const name = props.user.username ?? '';
+    const name = props.user.username ?? "";
     let h = 0;
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
     return h;

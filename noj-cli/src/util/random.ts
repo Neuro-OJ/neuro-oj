@@ -12,7 +12,7 @@
  * 数据库口令、JWT 密钥、GPG 备份口令，弱随机会直接导致凭据可预测。
  */
 export function randomKey(bytes: number): string {
-    const buf = new Uint8Array(bytes);
-    crypto.getRandomValues(buf);
-    return [...buf].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  return [...buf].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

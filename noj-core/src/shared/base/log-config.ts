@@ -11,18 +11,18 @@
  */
 
 import {
-    configureSync,
-    getConsoleSink,
-    type LogRecord as LtRecord,
+  configureSync,
+  getConsoleSink,
+  type LogRecord as LtRecord,
 } from "@logtape/logtape";
 import { requestContextStorage } from "../observability/context.ts";
 import {
-    isProduction,
-    levelRank,
-    makeJsonFormatter,
-    makePrettyFormatter,
-    resolveLevel,
-    toCoreLevel,
+  isProduction,
+  levelRank,
+  makeJsonFormatter,
+  makePrettyFormatter,
+  resolveLevel,
+  toCoreLevel,
 } from "./log-format.ts";
 
 /** 着色策略的有效值。 */
@@ -45,28 +45,28 @@ const realEnv: EnvReader = (key) => Deno.env.get(key);
 
 /** 解析 LOG_COLOR（大小写不敏感），非法值按 auto 处理。 */
 export function describeColorPolicy(env: EnvReader = realEnv): ColorPolicy {
-    const raw = env("LOG_COLOR")?.trim().toLowerCase();
-    if (raw === "never") return "off";
-    if (raw === "always") return "on";
-    return "auto";
+  const raw = env("LOG_COLOR")?.trim().toLowerCase();
+  if (raw === "never") return "off";
+  if (raw === "always") return "on";
+  return "auto";
 }
 
 /** 解析输出格式（生产 json，否则 pretty）。 */
 export function resolveFormat(env: EnvReader = realEnv): "json" | "pretty" {
-    const raw = env("LOG_FORMAT")?.trim().toLowerCase();
-    if (raw === "json" || raw === "pretty") return raw;
-    return isProduction(env) ? "json" : "pretty";
+  const raw = env("LOG_FORMAT")?.trim().toLowerCase();
+  if (raw === "json" || raw === "pretty") return raw;
+  return isProduction(env) ? "json" : "pretty";
 }
 
 /** 按流探测 TTY。 */
 function isTty(stream: "stdout" | "stderr"): boolean {
-    try {
-        return stream === "stderr"
-            ? Deno.stderr.isTerminal()
-            : Deno.stdout.isTerminal();
-    } catch {
-        return false; // 无 TTY 支持的环境（部分嵌入运行时）保守关色
-    }
+  try {
+    return stream === "stderr"
+      ? Deno.stderr.isTerminal()
+      : Deno.stdout.isTerminal();
+  } catch {
+    return false; // 无 TTY 支持的环境（部分嵌入运行时）保守关色
+  }
 }
 
 /**
@@ -75,20 +75,20 @@ function isTty(stream: "stdout" | "stderr"): boolean {
  * `LOG_FORMAT=json` 优先于一切开关，专门防止 ANSI 转义码写进结构化日志流。
  */
 export function resolveColor(
-    stream: "stdout" | "stderr",
-    env: EnvReader = realEnv,
+  stream: "stdout" | "stderr",
+  env: EnvReader = realEnv,
 ): boolean {
-    if (resolveFormat(env) === "json") return false;
-    const noColor = env("NO_COLOR");
-    if (noColor !== undefined && noColor !== "") return false;
-    switch (describeColorPolicy(env)) {
-        case "off":
-            return false;
-        case "on":
-            return true;
-        default:
-            return isTty(stream);
-    }
+  if (resolveFormat(env) === "json") return false;
+  const noColor = env("NO_COLOR");
+  if (noColor !== undefined && noColor !== "") return false;
+  switch (describeColorPolicy(env)) {
+    case "off":
+      return false;
+    case "on":
+      return true;
+    default:
+      return isTty(stream);
+  }
 }
 
 /**
@@ -108,9 +108,9 @@ export const logContextStorage = requestContextStorage;
  * 保留"运行时改 env 即生效"的既有行为。
  */
 function makeLevelFilter(env?: EnvReader): (record: LtRecord) => boolean {
-    return (record: LtRecord): boolean =>
-        levelRank(toCoreLevel(record.level)) >=
-            levelRank(env ? resolveLevel(env) : resolveLevel());
+  return (record: LtRecord): boolean =>
+    levelRank(toCoreLevel(record.level)) >=
+      levelRank(env ? resolveLevel(env) : resolveLevel());
 }
 
 /**
@@ -133,63 +133,63 @@ function makeLevelFilter(env?: EnvReader): (record: LtRecord) => boolean {
  * @param env 可注入的 env 读取器（测试用；默认读进程环境）。
  */
 export function makeCoreFormatters(
-    env?: EnvReader,
+  env?: EnvReader,
 ): (stream: "stdout" | "stderr") => (record: LtRecord) => string {
-    const format = resolveFormat(env);
-    // 生产判定只在此处解析一次，随后**显式**传给渲染层；渲染层不再自行读全局
-    // env，避免「传了 production:true 却不脱敏」的静默失配（review P1）。
-    const production = env ? isProduction(env) : isProduction();
-    return (stream) => {
-        const color = env ? resolveColor(stream, env) : resolveColor(stream);
-        return format === "json"
-            ? makeJsonFormatter({ production })
-            : makePrettyFormatter({ color, production });
-    };
+  const format = resolveFormat(env);
+  // 生产判定只在此处解析一次，随后**显式**传给渲染层；渲染层不再自行读全局
+  // env，避免「传了 production:true 却不脱敏」的静默失配（review P1）。
+  const production = env ? isProduction(env) : isProduction();
+  return (stream) => {
+    const color = env ? resolveColor(stream, env) : resolveColor(stream);
+    return format === "json"
+      ? makeJsonFormatter({ production })
+      : makePrettyFormatter({ color, production });
+  };
 }
 
 export function setupLogging(
-    sink?: (record: LtRecord) => void,
-    env?: EnvReader,
+  sink?: (record: LtRecord) => void,
+  env?: EnvReader,
 ): void {
-    const makeFormatter = makeCoreFormatters(env);
-    const outFormatter = makeFormatter("stdout");
-    const errFormatter = makeFormatter("stderr");
+  const makeFormatter = makeCoreFormatters(env);
+  const outFormatter = makeFormatter("stdout");
+  const errFormatter = makeFormatter("stderr");
 
-    // 一条记录按级别选择 formatter：console sink 自身负责把 warn/error 送到
-    // stderr、其余送到 stdout（契约 §3 硬规则 1），因此这里只需按目标流
-    // 决定是否着色。
-    //
-    // 用 getConsoleSink 而非 getStreamSink：后者带异步 disposer，configureSync
-    // 会直接抛 ConfigError；且 getConsoleSink 同步写出，Deno.exit 下不丢日志。
-    const consoleSink = getConsoleSink({
-        formatter: (record: LtRecord) => {
-            const level = toCoreLevel(record.level);
-            const isErr = level === "warn" || level === "error";
-            return (isErr ? errFormatter : outFormatter)(record);
-        },
-    });
+  // 一条记录按级别选择 formatter：console sink 自身负责把 warn/error 送到
+  // stderr、其余送到 stdout（契约 §3 硬规则 1），因此这里只需按目标流
+  // 决定是否着色。
+  //
+  // 用 getConsoleSink 而非 getStreamSink：后者带异步 disposer，configureSync
+  // 会直接抛 ConfigError；且 getConsoleSink 同步写出，Deno.exit 下不丢日志。
+  const consoleSink = getConsoleSink({
+    formatter: (record: LtRecord) => {
+      const level = toCoreLevel(record.level);
+      const isErr = level === "warn" || level === "error";
+      return (isErr ? errFormatter : outFormatter)(record);
+    },
+  });
 
-    const target = sink ?? consoleSink;
+  const target = sink ?? consoleSink;
 
-    configureSync({
-        reset: true,
-        sinks: { target },
-        filters: { level: makeLevelFilter(env) },
-        contextLocalStorage: logContextStorage,
-        loggers: [
-            {
-                category: [],
-                sinks: ["target"],
-                filters: ["level"],
-                lowestLevel: "trace",
-            },
-            // meta logger 单独可见：LogTape 自身的失败（如 formatter 抛错）
-            // 只记在这里，不配就完全静默（实测的静默失败面）。
-            {
-                category: ["logtape", "meta"],
-                sinks: ["target"],
-                lowestLevel: "warning",
-            },
-        ],
-    });
+  configureSync({
+    reset: true,
+    sinks: { target },
+    filters: { level: makeLevelFilter(env) },
+    contextLocalStorage: logContextStorage,
+    loggers: [
+      {
+        category: [],
+        sinks: ["target"],
+        filters: ["level"],
+        lowestLevel: "trace",
+      },
+      // meta logger 单独可见：LogTape 自身的失败（如 formatter 抛错）
+      // 只记在这里，不配就完全静默（实测的静默失败面）。
+      {
+        category: ["logtape", "meta"],
+        sinks: ["target"],
+        lowestLevel: "warning",
+      },
+    ],
+  });
 }

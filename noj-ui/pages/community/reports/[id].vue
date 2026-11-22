@@ -5,5 +5,5 @@ const { key } = useCommunityScope(true);
 const route = useRoute();
 </script>
 <template>
-    <CommunityReportDetail :key="`${key}:${route.path}`" account />
+  <CommunityReportDetail :key="`${key}:${route.path}`" account />
 </template>

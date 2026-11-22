@@ -21,10 +21,10 @@ import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
  * 隐藏），因此本条件独立于 `communityNotificationVisibleWhere`。
  */
 export function contestNotificationVisibleWhere(
-    actorId: string,
-    platformAdmin: boolean,
+  actorId: string,
+  platformAdmin: boolean,
 ) {
-    return sql`${accountNotifications.type} = 'clarification'
+  return sql`${accountNotifications.type} = 'clarification'
     AND ${accountNotifications.assignment_id} IS NULL
     AND EXISTS (SELECT 1 FROM contests c
       JOIN domains d ON d.id = COALESCE(c.domain_id, ${DEFAULT_DOMAIN_ID})

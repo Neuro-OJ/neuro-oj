@@ -14,138 +14,134 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
 import { eq } from "drizzle-orm";
 import {
-    ConflictError,
-    ForbiddenError,
+  ConflictError,
+  ForbiddenError,
 } from "../../../../shared/base/errors.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
-    domainProblemBindings,
-    problems,
+  domainProblemBindings,
+  problems,
 } from "../../../../shared/db/schema.ts";
 import { assignmentFixture } from "../../../education/tests/_assignment-fixture.ts";
 import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
 import {
-    getStorageObject,
-    uploadStorageObjectWithReservation,
+  getStorageObject,
+  uploadStorageObjectWithReservation,
 } from "../../../assets/contracts/cross-module/services_registry.ts";
 import { getStorageProvider } from "../../../assets/storage/mod.ts";
 import {
-    commitDomainProblemCopy,
-    compensateProblemCopy,
-    prepareDomainProblemCopy,
-    type PreparedProblemCopy,
+  commitDomainProblemCopy,
+  compensateProblemCopy,
+  prepareDomainProblemCopy,
+  type PreparedProblemCopy,
 } from "../../services/workspace/problem-copy.ts";
 import { importDomainProblem } from "../../services/workspace/problem-bindings.ts";
 
 async function targetProblems(domainId: string) {
-    return await getDb().select().from(problems).where(
-        eq(problems.domain_id, domainId),
-    );
+  return await getDb().select().from(problems).where(
+    eq(problems.domain_id, domainId),
+  );
 }
 
 Deno.test("域复制失败：prepare 后撤销目标域发布权限，提交被拒且不产生副本", async () => {
-    const f = await assignmentFixture();
-    // 教师在学校是教学人员（可导出源题），先授予另一学校的教学人员角色。
-    await setMemberRole(f.other.slug, f.owner, f.teacher, "educator");
-    const prepared = await prepareDomainProblemCopy(
-        f.other.slug,
-        `${f.school.slug}:1001`,
-        f.teacher,
-    );
-    // 准备与提交之间被降为普通成员：提交阶段必须重查权限而不是信任预检。
-    await setMemberRole(f.other.slug, f.owner, f.teacher, "member");
-    await assertRejects(
-        () =>
-            getDb().transaction((tx) => commitDomainProblemCopy(tx, prepared)),
-        ForbiddenError,
-    );
-    await compensateProblemCopy(prepared);
-    assertEquals((await targetProblems(f.other.id)).length, 0);
-    assertEquals(
-        (await f.db.select().from(domainProblemBindings).where(
-            eq(domainProblemBindings.domain_id, f.other.id),
-        )).length,
-        0,
-    );
+  const f = await assignmentFixture();
+  // 教师在学校是教学人员（可导出源题），先授予另一学校的教学人员角色。
+  await setMemberRole(f.other.slug, f.owner, f.teacher, "educator");
+  const prepared = await prepareDomainProblemCopy(
+    f.other.slug,
+    `${f.school.slug}:1001`,
+    f.teacher,
+  );
+  // 准备与提交之间被降为普通成员：提交阶段必须重查权限而不是信任预检。
+  await setMemberRole(f.other.slug, f.owner, f.teacher, "member");
+  await assertRejects(
+    () => getDb().transaction((tx) => commitDomainProblemCopy(tx, prepared)),
+    ForbiddenError,
+  );
+  await compensateProblemCopy(prepared);
+  assertEquals((await targetProblems(f.other.id)).length, 0);
+  assertEquals(
+    (await f.db.select().from(domainProblemBindings).where(
+      eq(domainProblemBindings.domain_id, f.other.id),
+    )).length,
+    0,
+  );
 });
 
 Deno.test("域复制失败：源题身份变化抛 409，并补偿删除本次上传对象", async () => {
-    const f = await assignmentFixture();
-    const prepared = await prepareDomainProblemCopy(
-        f.other.slug,
-        `${f.school.slug}:1001`,
-        f.owner,
-    );
-    // 唯一字节：避免内容寻址去重命中已有对象，确保补偿删除可观测。
-    const uploaded = await uploadStorageObjectWithReservation({
-        key: `domain-copy-failure-${crypto.randomUUID()}`,
-        bytes: new TextEncoder().encode("package-bytes"),
-        contentType: "application/octet-stream",
-        domainId: f.other.id,
-    });
-    const changed: PreparedProblemCopy = {
-        ...prepared,
-        // 模拟源题被删除后同题号重建：id 与准备阶段不一致。
-        sourceId: crypto.randomUUID(),
-        objects: [{
-            role: "support_package",
-            path: "package.zip",
-            storage_url: uploaded.storageUrl,
-            sha256: "deadbeef",
-            size: 13,
-        }],
-    };
-    await assertRejects(
-        () => getDb().transaction((tx) => commitDomainProblemCopy(tx, changed)),
-        ConflictError,
-        "源题身份已变化",
-    );
-    await compensateProblemCopy(changed);
-    const provider = await getStorageProvider();
-    assertEquals((await provider.stat(uploaded.storageUrl)).exists, false);
-    assertEquals(
-        (await getStorageObject(uploaded.storageUrl))?.state,
-        "deleted",
-    );
-    assertEquals((await targetProblems(f.other.id)).length, 0);
+  const f = await assignmentFixture();
+  const prepared = await prepareDomainProblemCopy(
+    f.other.slug,
+    `${f.school.slug}:1001`,
+    f.owner,
+  );
+  // 唯一字节：避免内容寻址去重命中已有对象，确保补偿删除可观测。
+  const uploaded = await uploadStorageObjectWithReservation({
+    key: `domain-copy-failure-${crypto.randomUUID()}`,
+    bytes: new TextEncoder().encode("package-bytes"),
+    contentType: "application/octet-stream",
+    domainId: f.other.id,
+  });
+  const changed: PreparedProblemCopy = {
+    ...prepared,
+    // 模拟源题被删除后同题号重建：id 与准备阶段不一致。
+    sourceId: crypto.randomUUID(),
+    objects: [{
+      role: "support_package",
+      path: "package.zip",
+      storage_url: uploaded.storageUrl,
+      sha256: "deadbeef",
+      size: 13,
+    }],
+  };
+  await assertRejects(
+    () => getDb().transaction((tx) => commitDomainProblemCopy(tx, changed)),
+    ConflictError,
+    "源题身份已变化",
+  );
+  await compensateProblemCopy(changed);
+  const provider = await getStorageProvider();
+  assertEquals((await provider.stat(uploaded.storageUrl)).exists, false);
+  assertEquals((await getStorageObject(uploaded.storageUrl))?.state, "deleted");
+  assertEquals((await targetProblems(f.other.id)).length, 0);
 });
 
 Deno.test("域导入接线：提交失败时调用补偿并原样抛出", async () => {
-    const f = await assignmentFixture();
-    const prepared = await prepareDomainProblemCopy(
+  const f = await assignmentFixture();
+  const prepared = await prepareDomainProblemCopy(
+    f.other.slug,
+    `${f.school.slug}:1001`,
+    f.owner,
+  );
+  const failure = new Error("提交阶段失败");
+  const compensated: PreparedProblemCopy[] = [];
+
+  await assertRejects(
+    () =>
+      importDomainProblem(
         f.other.slug,
         `${f.school.slug}:1001`,
         f.owner,
-    );
-    const failure = new Error("提交阶段失败");
-    const compensated: PreparedProblemCopy[] = [];
+        undefined,
+        undefined,
+        {
+          commit: () => {
+            throw failure;
+          },
+          compensate: (copy) => {
+            compensated.push(copy);
+            return Promise.resolve();
+          },
+        },
+      ),
+    Error,
+    "提交阶段失败",
+  );
 
-    await assertRejects(
-        () =>
-            importDomainProblem(
-                f.other.slug,
-                `${f.school.slug}:1001`,
-                f.owner,
-                undefined,
-                undefined,
-                {
-                    commit: () => {
-                        throw failure;
-                    },
-                    compensate: (copy) => {
-                        compensated.push(copy);
-                        return Promise.resolve();
-                    },
-                },
-            ),
-        Error,
-        "提交阶段失败",
-    );
-
-    // 补偿必须拿到与提交相同的 prepared（同一份文件清单），且只调用一次。
-    assertEquals(compensated.length, 1);
-    assertEquals(compensated[0].sourceId, prepared.sourceId);
-    assertEquals(compensated[0].targetId, prepared.targetId);
-    assertEquals(compensated[0].objects, prepared.objects);
-    assertEquals((await targetProblems(f.other.id)).length, 0);
+  // 补偿必须拿到与提交相同的 prepared（同一份文件清单），且只调用一次。
+  assertEquals(compensated.length, 1);
+  assertEquals(compensated[0].sourceId, prepared.sourceId);
+  assertEquals(compensated[0].targetId, prepared.targetId);
+  assertEquals(compensated[0].objects, prepared.objects);
+  assertEquals((await targetProblems(f.other.id)).length, 0);
 });

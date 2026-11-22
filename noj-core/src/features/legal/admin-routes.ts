@@ -21,104 +21,104 @@ import { enforceRateLimit } from "../../modules/platform/index.ts";
 import { getClientIp } from "../../modules/platform/index.ts";
 import { requireUserActor } from "../../modules/access/contracts/actor.ts";
 import {
-    getCurrentDocument,
-    listVersions,
-    publishVersion,
+  getCurrentDocument,
+  listVersions,
+  publishVersion,
 } from "./documents.ts";
 import { isLegalKind } from "./types.ts";
 import type { LegalKind } from "./types.ts";
 import {
-    DATA_REQUEST_STATUSES,
-    type DataRequestStatus,
-    listAllDataRequests,
-    updateDataRequestStatus,
+  DATA_REQUEST_STATUSES,
+  type DataRequestStatus,
+  listAllDataRequests,
+  updateDataRequestStatus,
 } from "./data-requests.ts";
 
 const router = new Hono<AuthEnv>();
 
 /** 断言 kind 合法（路由层 400）。 */
 function requireKind(raw: string | undefined): LegalKind {
-    if (!raw || !isLegalKind(raw)) {
-        throw new ValidationError(`未知的法律文档类型：${raw}`);
-    }
-    return raw;
+  if (!raw || !isLegalKind(raw)) {
+    throw new ValidationError(`未知的法律文档类型：${raw}`);
+  }
+  return raw;
 }
 /** 当前版本 + 版本历史。 */
 router.get("/admin/legal/documents/:kind", authMiddleware, async (c) => {
-    await assertPermission(c, "legal:manage");
-    const kind = requireKind(c.req.param("kind"));
-    const current = await getCurrentDocument(kind);
-    const versions = await listVersions(kind);
-    return c.json({ data: { current, versions } });
+  await assertPermission(c, "legal:manage");
+  const kind = requireKind(c.req.param("kind"));
+  const current = await getCurrentDocument(kind);
+  const versions = await listVersions(kind);
+  return c.json({ data: { current, versions } });
 });
 
 /** 发布新版本。 */
 router.post(
-    "/admin/legal/documents/:kind/versions",
-    authMiddleware,
-    async (c) => {
-        await assertPermission(c, "legal:manage");
-        await enforceRateLimit(
-            `legal-publish:user:${c.get("userId") as string}`,
-            { windowSec: 60, max: 20 },
-        );
-        const kind = requireKind(c.req.param("kind"));
-        const body = await parseJsonBody<{
-            content?: string;
-            change_summary?: string | null;
-            is_material?: boolean;
-        }>(c);
+  "/admin/legal/documents/:kind/versions",
+  authMiddleware,
+  async (c) => {
+    await assertPermission(c, "legal:manage");
+    await enforceRateLimit(
+      `legal-publish:user:${c.get("userId") as string}`,
+      { windowSec: 60, max: 20 },
+    );
+    const kind = requireKind(c.req.param("kind"));
+    const body = await parseJsonBody<{
+      content?: string;
+      change_summary?: string | null;
+      is_material?: boolean;
+    }>(c);
 
-        const version = await publishVersion(
-            kind,
-            body.content ?? "",
-            body.change_summary ?? null,
-            body.is_material === true,
-            requireUserActor(c.get("actor")),
-            { ipAddress: getClientIp(c) },
-        );
-        return c.json({ data: { kind, version } }, 201);
-    },
+    const version = await publishVersion(
+      kind,
+      body.content ?? "",
+      body.change_summary ?? null,
+      body.is_material === true,
+      requireUserActor(c.get("actor")),
+      { ipAddress: getClientIp(c) },
+    );
+    return c.json({ data: { kind, version } }, 201);
+  },
 );
 
 /** 请求列表。 */
 router.get("/admin/legal/data-requests", authMiddleware, async (c) => {
-    await assertPermission(c, "legal:manage");
-    const status = c.req.query("status");
-    // 2026-09-25 评审：非法状态此前原样进 `eq()`，静默返回空列表——管理端把参数
-    // 拼错时会误判为"已清空"。读路径与写路径统一为 400。
-    if (status !== undefined && status !== "") {
-        if (!DATA_REQUEST_STATUSES.includes(status as DataRequestStatus)) {
-            throw new ValidationError(
-                `未知的请求状态：${status}（可选：${
-                    DATA_REQUEST_STATUSES.join(" / ")
-                }）`,
-            );
-        }
+  await assertPermission(c, "legal:manage");
+  const status = c.req.query("status");
+  // 2026-09-25 评审：非法状态此前原样进 `eq()`，静默返回空列表——管理端把参数
+  // 拼错时会误判为"已清空"。读路径与写路径统一为 400。
+  if (status !== undefined && status !== "") {
+    if (!DATA_REQUEST_STATUSES.includes(status as DataRequestStatus)) {
+      throw new ValidationError(
+        `未知的请求状态：${status}（可选：${
+          DATA_REQUEST_STATUSES.join(" / ")
+        }）`,
+      );
     }
-    const rows = await listAllDataRequests(status || undefined);
-    return c.json({ data: rows });
+  }
+  const rows = await listAllDataRequests(status || undefined);
+  return c.json({ data: rows });
 });
 
 /** 更新请求状态。 */
 router.patch("/admin/legal/data-requests/:id", authMiddleware, async (c) => {
-    await assertPermission(c, "legal:manage");
-    await enforceRateLimit(
-        `legal-request:user:${c.get("userId") as string}`,
-        { windowSec: 60, max: 30 },
-    );
-    const body = await parseJsonBody<{
-        status?: string;
-        resolution?: string | null;
-    }>(c);
-    await updateDataRequestStatus(
-        c.req.param("id") ?? "",
-        body.status ?? "",
-        requireUserActor(c.get("actor")),
-        body.resolution ?? null,
-        { ipAddress: getClientIp(c) },
-    );
-    return c.json({ data: { updated: true } });
+  await assertPermission(c, "legal:manage");
+  await enforceRateLimit(
+    `legal-request:user:${c.get("userId") as string}`,
+    { windowSec: 60, max: 30 },
+  );
+  const body = await parseJsonBody<{
+    status?: string;
+    resolution?: string | null;
+  }>(c);
+  await updateDataRequestStatus(
+    c.req.param("id") ?? "",
+    body.status ?? "",
+    requireUserActor(c.get("actor")),
+    body.resolution ?? null,
+    { ipAddress: getClientIp(c) },
+  );
+  return c.json({ data: { updated: true } });
 });
 
 export default router;

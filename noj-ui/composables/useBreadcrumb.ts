@@ -25,23 +25,23 @@ import { resolveBreadcrumb } from '~/utils/breadcrumb';
 
 /** 覆盖值按「路径 + 参数名」分键，避免不同路由之间串味。 */
 function overrideKey(path: string, param: string): string {
-    return `${path}::${param}`;
+  return `${path}::${param}`;
 }
 
 /** 当前路径的面包屑层级。 */
 export function useBreadcrumbItems() {
-    const route = useRoute();
-    const overrides = useState<Record<string, string>>('breadcrumb:overrides', () => ({}));
+  const route = useRoute();
+  const overrides = useState<Record<string, string>>('breadcrumb:overrides', () => ({}));
 
-    return computed<BreadcrumbItem[]>(() => {
-        const items = resolveBreadcrumb(route.path);
-        if (items.length === 0) return items;
-        return items.map((item): BreadcrumbItem => {
-            if (!item.param) return item;
-            const override = overrides.value[overrideKey(route.path, item.param)];
-            return override ? { ...item, label: override } : item;
-        });
+  return computed<BreadcrumbItem[]>(() => {
+    const items = resolveBreadcrumb(route.path);
+    if (items.length === 0) return items;
+    return items.map((item): BreadcrumbItem => {
+      if (!item.param) return item;
+      const override = overrides.value[overrideKey(route.path, item.param)];
+      return override ? { ...item, label: override } : item;
     });
+  });
 }
 
 /**
@@ -53,44 +53,44 @@ export function useBreadcrumbItems() {
  * 例：`useBreadcrumbParams({ id: () => problem.value?.title })`
  */
 export function useBreadcrumbParams(
-    getters: Record<string, () => string | null | undefined>,
+  getters: Record<string, () => string | null | undefined>,
 ) {
-    const route = useRoute();
-    const overrides = useState<Record<string, string>>('breadcrumb:overrides', () => ({}));
+  const route = useRoute();
+  const overrides = useState<Record<string, string>>('breadcrumb:overrides', () => ({}));
 
-    // 路由切换后旧路径的覆盖值不再需要，绑定到当前页面的生命周期内清理
-    const path = route.path;
-    const keys = Object.keys(getters).map((param) => overrideKey(path, param));
+  // 路由切换后旧路径的覆盖值不再需要，绑定到当前页面的生命周期内清理
+  const path = route.path;
+  const keys = Object.keys(getters).map((param) => overrideKey(path, param));
 
-    /** 读取各 getter 并写入覆盖值。**只允许在 setup 完成后调用**。 */
-    function prime() {
-        for (const [param, getter] of Object.entries(getters)) {
-            const value = getter()?.trim();
-            if (!value) continue;
-            const key = overrideKey(path, param);
-            if (overrides.value[key] === value) continue;
-            overrides.value = { ...overrides.value, [key]: value };
-        }
+  /** 读取各 getter 并写入覆盖值。**只允许在 setup 完成后调用**。 */
+  function prime() {
+    for (const [param, getter] of Object.entries(getters)) {
+      const value = getter()?.trim();
+      if (!value) continue;
+      const key = overrideKey(path, param);
+      if (overrides.value[key] === value) continue;
+      overrides.value = { ...overrides.value, [key]: value };
     }
+  }
 
-    // 仅在客户端、且 setup 完成后求值，从根本上避免 TDZ（见文件头说明）。
-    // 服务端不需要：覆盖值无法影响 SSR 首帧（布局早于页面 setup 渲染）。
-    if (import.meta.client) {
-        onMounted(prime);
-        watchEffect(prime, { flush: 'post' });
-    }
+  // 仅在客户端、且 setup 完成后求值，从根本上避免 TDZ（见文件头说明）。
+  // 服务端不需要：覆盖值无法影响 SSR 首帧（布局早于页面 setup 渲染）。
+  if (import.meta.client) {
+    onMounted(prime);
+    watchEffect(prime, { flush: 'post' });
+  }
 
-    onScopeDispose(() => {
-        const next = { ...overrides.value };
-        for (const key of keys) delete next[key];
-        overrides.value = next;
-    });
+  onScopeDispose(() => {
+    const next = { ...overrides.value };
+    for (const key of keys) delete next[key];
+    overrides.value = next;
+  });
 }
 
 /** 单动态层页面的便捷写法（等价于 `useBreadcrumbParams({ [param]: getter })`）。 */
 export function useBreadcrumbLabel(
-    getter: () => string | null | undefined,
-    param = 'id',
+  getter: () => string | null | undefined,
+  param = 'id',
 ) {
-    useBreadcrumbParams({ [param]: getter });
+  useBreadcrumbParams({ [param]: getter });
 }

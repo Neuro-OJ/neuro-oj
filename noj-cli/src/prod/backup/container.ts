@@ -54,17 +54,17 @@ export const SCHEMA_VERSION = 1;
 
 /** 容器内固定文件名（与 spec §3.1 的树逐字对应）。 */
 export const CONTAINER_FILES = {
-    manifest: "manifest.json",
-    checksums: "sha256sums.txt",
-    success: "SUCCESS",
-    postgresDump: "postgres.dump",
-    postgresGlobals: "postgres-globals.sql",
-    postgresRestoreList: "postgres.restore-list",
-    redisRdb: "redis.rdb",
-    redisPersistence: "redis-persistence.txt",
-    envProdGpg: "env.prod.gpg",
-    migrationStatus: "migration-status.txt",
-    minioDir: "minio",
+  manifest: "manifest.json",
+  checksums: "sha256sums.txt",
+  success: "SUCCESS",
+  postgresDump: "postgres.dump",
+  postgresGlobals: "postgres-globals.sql",
+  postgresRestoreList: "postgres.restore-list",
+  redisRdb: "redis.rdb",
+  redisPersistence: "redis-persistence.txt",
+  envProdGpg: "env.prod.gpg",
+  migrationStatus: "migration-status.txt",
+  minioDir: "minio",
 } as const;
 
 /** `SUCCESS` 哨兵的内容。 */
@@ -91,34 +91,34 @@ export const CHECKSUM_SUFFIX = ".sha256";
  * `zstd_level` / `sha256` / `files`）。
  */
 export interface BackupManifest {
-    /** 容器格式版本。 */
-    schema_version: number;
-    /** payload 布局（恒为 `"prod-raw"`）。 */
-    payload_layout: string;
-    /** 创建时间（UTC，`%Y-%m-%dT%H:%M:%SZ`）。 */
-    created_at: string;
-    /** 是否整包加密（`--no-encrypt` 时为 false）。 */
-    encrypted: boolean;
-    /** zstd 压缩级别（复现打包参数）。 */
-    zstd_level: number;
-    /** staging 内的文件清单（容器内相对路径，已排序）。 */
-    files: string[];
-    /** PostgreSQL 数据库名。 */
-    postgres_database: string;
-    /** Redis 策略说明。 */
-    redis_policy: string;
-    /** 对象存储说明。 */
-    object_storage: string;
-    /** PostgreSQL 备份模式。 */
-    postgres_backup_mode: string;
-    /** 增量策略说明。 */
-    incremental_policy: string;
-    /** RPO 说明。 */
-    rpo: string;
-    /** RTO 说明。 */
-    rto: string;
-    /** 保留天数。 */
-    retention_days: number;
+  /** 容器格式版本。 */
+  schema_version: number;
+  /** payload 布局（恒为 `"prod-raw"`）。 */
+  payload_layout: string;
+  /** 创建时间（UTC，`%Y-%m-%dT%H:%M:%SZ`）。 */
+  created_at: string;
+  /** 是否整包加密（`--no-encrypt` 时为 false）。 */
+  encrypted: boolean;
+  /** zstd 压缩级别（复现打包参数）。 */
+  zstd_level: number;
+  /** staging 内的文件清单（容器内相对路径，已排序）。 */
+  files: string[];
+  /** PostgreSQL 数据库名。 */
+  postgres_database: string;
+  /** Redis 策略说明。 */
+  redis_policy: string;
+  /** 对象存储说明。 */
+  object_storage: string;
+  /** PostgreSQL 备份模式。 */
+  postgres_backup_mode: string;
+  /** 增量策略说明。 */
+  incremental_policy: string;
+  /** RPO 说明。 */
+  rpo: string;
+  /** RTO 说明。 */
+  rto: string;
+  /** 保留天数。 */
+  retention_days: number;
 }
 
 /**
@@ -127,13 +127,13 @@ export interface BackupManifest {
  * 抽成常量而不是散在调用点：drill 与文档都会引用同一套措辞。
  */
 export const MANIFEST_DEFAULTS = {
-    redis_policy: "RDB snapshot; judge queue is recoverable transient data",
-    object_storage: "MinIO/S3 mirror",
-    postgres_backup_mode: "logical-full",
-    incremental_policy:
-        "MinIO mirror is incremental; PostgreSQL WAL/PITR requires external infrastructure",
-    rpo: "snapshot interval configured by scheduler",
-    rto: "restore duration depends on database and object volume",
+  redis_policy: "RDB snapshot; judge queue is recoverable transient data",
+  object_storage: "MinIO/S3 mirror",
+  postgres_backup_mode: "logical-full",
+  incremental_policy:
+    "MinIO mirror is incremental; PostgreSQL WAL/PITR requires external infrastructure",
+  rpo: "snapshot interval configured by scheduler",
+  rto: "restore duration depends on database and object volume",
 } as const;
 
 /** 默认保留天数（`NOJ_BACKUP_RETENTION_DAYS` 缺省 30）。 */
@@ -144,46 +144,46 @@ export const DEFAULT_ZSTD_LEVEL = 15;
 
 /** 容器创建/解包的阶段名（用于错误定位与测试断言）。 */
 export type ContainerStage =
-    | "staging"
-    | "postgres"
-    | "redis"
-    | "minio"
-    | "env"
-    | "checksums"
-    | "archive"
-    | "encrypt"
-    | "commit";
+  | "staging"
+  | "postgres"
+  | "redis"
+  | "minio"
+  | "env"
+  | "checksums"
+  | "archive"
+  | "encrypt"
+  | "commit";
 
 /** 容器操作失败时抛出的错误（带阶段，便于可操作诊断）。 */
 export class ContainerError extends Error {
-    constructor(readonly stage: ContainerStage, message: string) {
-        super(`备份容器${stageLabel(stage)}失败：${message}`);
-        this.name = "ContainerError";
-    }
+  constructor(readonly stage: ContainerStage, message: string) {
+    super(`备份容器${stageLabel(stage)}失败：${message}`);
+    this.name = "ContainerError";
+  }
 }
 
 /** 阶段的中文标签（用于错误文案）。 */
 function stageLabel(stage: ContainerStage): string {
-    switch (stage) {
-        case "staging":
-            return "暂存";
-        case "postgres":
-            return "PostgreSQL";
-        case "redis":
-            return "Redis";
-        case "minio":
-            return "MinIO/S3";
-        case "env":
-            return "环境文件加密";
-        case "checksums":
-            return "校验和";
-        case "archive":
-            return "打包";
-        case "encrypt":
-            return "加密";
-        case "commit":
-            return "提交";
-    }
+  switch (stage) {
+    case "staging":
+      return "暂存";
+    case "postgres":
+      return "PostgreSQL";
+    case "redis":
+      return "Redis";
+    case "minio":
+      return "MinIO/S3";
+    case "env":
+      return "环境文件加密";
+    case "checksums":
+      return "校验和";
+    case "archive":
+      return "打包";
+    case "encrypt":
+      return "加密";
+    case "commit":
+      return "提交";
+  }
 }
 
 // ---------------- 分文件实现（本门面原样重导，对外导出集合不变） ----------------
@@ -191,36 +191,36 @@ function stageLabel(stage: ContainerStage): string {
 export { fileSha256HexStreaming } from "./sha256.ts";
 
 export {
-    type ChecksumEntry,
-    parseChecksums,
-    renderChecksums,
+  type ChecksumEntry,
+  parseChecksums,
+  renderChecksums,
 } from "./container-checksums.ts";
 
 export {
-    allocateContainerPath,
-    containerFileName,
-    listFiles,
-    tempContainerPath,
-    utcTimestamp,
+  allocateContainerPath,
+  containerFileName,
+  listFiles,
+  tempContainerPath,
+  utcTimestamp,
 } from "./container-paths.ts";
 
 export {
-    type ContainerPayloadOps,
-    createContainer,
-    type CreateContainerOptions,
-    type CreateContainerResult,
+  type ContainerPayloadOps,
+  createContainer,
+  type CreateContainerOptions,
+  type CreateContainerResult,
 } from "./container-create.ts";
 
 export {
-    readManifest,
-    unpackContainer,
-    type UnpackContainerOptions,
-    type UnpackContainerResult,
+  readManifest,
+  unpackContainer,
+  type UnpackContainerOptions,
+  type UnpackContainerResult,
 } from "./container-unpack.ts";
 
 export {
-    verifyContainer,
-    type VerifyContainerOptions,
-    type VerifyContainerResult,
-    type VerifyIssue,
+  verifyContainer,
+  type VerifyContainerOptions,
+  type VerifyContainerResult,
+  type VerifyIssue,
 } from "./container-verify.ts";

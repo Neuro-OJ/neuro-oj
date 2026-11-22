@@ -7,20 +7,20 @@ type ClassroomAccess = Awaited<ReturnType<typeof loadClassroom>>;
 
 /** 同学只读权限要求当前仍在班内，不沿用离班后的本人历史读取权限。 */
 export function assertClassroomPeer(access: ClassroomAccess) {
-    if (access.classMembership?.role !== "student") {
-        throw new ForbiddenError(
-            "仅当前同班学生可查看",
-            "CLASSROOM_PERMISSION_DENIED",
-        );
-    }
+  if (access.classMembership?.role !== "student") {
+    throw new ForbiddenError(
+      "仅当前同班学生可查看",
+      "CLASSROOM_PERMISSION_DENIED",
+    );
+  }
 }
 
 /** 只匹配当前同班且账号、域身份均有效的学生。 */
 export function activeClassmateCondition(
-    access: ClassroomAccess,
-    userId = sql`s.user_id`,
+  access: ClassroomAccess,
+  userId = sql`s.user_id`,
 ) {
-    return sql`EXISTS (SELECT 1 FROM classroom_memberships peer
+  return sql`EXISTS (SELECT 1 FROM classroom_memberships peer
     JOIN domain_memberships dm ON dm.domain_id=peer.domain_id AND dm.user_id=peer.user_id
     JOIN users u ON u.id=peer.user_id
     WHERE peer.domain_id=${access.domain.id} AND peer.classroom_id=${access.classroom.id}
@@ -30,13 +30,10 @@ export function activeClassmateCondition(
 
 /** 代码必须来自已结束的共同作业，不能借同题或已知提交 ID 读取其他练习。 */
 export function peerSubmissionCondition(access: ClassroomAccess) {
-    if (access.classMembership?.role !== "student") return sql`false`;
-    return sql`NOT ${
-        unendedPublicContestForProblem(
-            sql`s.problem_id`,
-            sql`${access.domain.id}`,
-        )
-    } AND ${activeClassmateCondition(access)} AND EXISTS (
+  if (access.classMembership?.role !== "student") return sql`false`;
+  return sql`NOT ${
+    unendedPublicContestForProblem(sql`s.problem_id`, sql`${access.domain.id}`)
+  } AND ${activeClassmateCondition(access)} AND EXISTS (
     SELECT 1 FROM assignments a
     JOIN assignment_items i ON i.assignment_id=a.id
     JOIN assignment_recipients r ON r.assignment_id=a.id AND r.user_id=s.user_id
@@ -55,10 +52,10 @@ export function peerSubmissionCondition(access: ClassroomAccess) {
 
 /** 无截止时间的作业持续进行，只有显式结束或归档后开放同学代码。 */
 export function assignmentHasEnded(assignment: {
-    deadline_at: string | null;
-    ended_at: string | null;
-    archived_at: string | null;
+  deadline_at: string | null;
+  ended_at: string | null;
+  archived_at: string | null;
 }) {
-    return [assignment.deadline_at, assignment.ended_at, assignment.archived_at]
-        .some((at) => at !== null && Date.parse(at) <= Date.now());
+  return [assignment.deadline_at, assignment.ended_at, assignment.archived_at]
+    .some((at) => at !== null && Date.parse(at) <= Date.now());
 }

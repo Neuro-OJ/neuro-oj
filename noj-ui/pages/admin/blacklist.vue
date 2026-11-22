@@ -5,8 +5,8 @@ import { extractApiError } from '~/utils/server/apiError';
 import type { AdminColumn } from '~/components/admin/AdminTable.vue';
 
 definePageMeta({
-    layout: 'admin',
-    middleware: 'admin',
+  layout: 'admin',
+  middleware: 'admin',
 });
 
 const { isLoggedIn } = useAuth();
@@ -16,26 +16,26 @@ useRequireLogin();
 
 // ─── 类型 ────
 interface IpBan {
-    id: string;
-    ip_or_cidr: string;
-    reason: string;
-    expires_at: string | null;
-    created_at: string;
-    updated_at: string;
-    created_by: string | null;
+  id: string;
+  ip_or_cidr: string;
+  reason: string;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
 }
 
 const { api } = useApi();
 
 // ─── 数据加载（useAdminList：分页 + 搜索防抖，后端支持 page/per_page/keyword）───
 const { items, totalPages, loading: tableLoading, error: tableError, currentPage, searchInput, load, onPageChange } =
-    useAdminList<IpBan>({
-        path: '/api/v1/admin/identity/blacklist',
-        fetchOptions: { dataField: 'data', totalField: 'pagination.total' },
-    });
+  useAdminList<IpBan>({
+    path: '/api/v1/admin/identity/blacklist',
+    fetchOptions: { dataField: 'data', totalField: 'pagination.total' },
+  });
 
 watch(isLoggedIn, (val) => {
-    if (val) load();
+  if (val) load();
 }, { immediate: true });
 
 // ─── 新增弹窗 ────
@@ -45,34 +45,34 @@ const form = reactive({ ip_or_cidr: '', reason: '', expires_at: '' });
 const saving = ref(false);
 
 function openCreate() {
-    form.ip_or_cidr = '';
-    form.reason = '';
-    form.expires_at = '';
-    formError.value = '';
-    showForm.value = true;
+  form.ip_or_cidr = '';
+  form.reason = '';
+  form.expires_at = '';
+  formError.value = '';
+  showForm.value = true;
 }
 
 async function handleSave() {
-    if (!form.ip_or_cidr.trim()) {
-        formError.value = '请填写 IP 或 CIDR';
-        return;
-    }
-    saving.value = true;
-    formError.value = '';
-    try {
-        await api.post('/api/v1/admin/identity/blacklist', {
-            ip_or_cidr: form.ip_or_cidr.trim(),
-            reason: form.reason.trim(),
-            expires_at: form.expires_at.trim() || null,
-        });
-        showForm.value = false;
-        toast.success('已添加黑名单条目');
-        await load();
-    } catch (err: unknown) {
-        formError.value = extractApiError(err).message;
-    } finally {
-        saving.value = false;
-    }
+  if (!form.ip_or_cidr.trim()) {
+    formError.value = '请填写 IP 或 CIDR';
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    await api.post('/api/v1/admin/identity/blacklist', {
+      ip_or_cidr: form.ip_or_cidr.trim(),
+      reason: form.reason.trim(),
+      expires_at: form.expires_at.trim() || null,
+    });
+    showForm.value = false;
+    toast.success('已添加黑名单条目');
+    await load();
+  } catch (err: unknown) {
+    formError.value = extractApiError(err).message;
+  } finally {
+    saving.value = false;
+  }
 }
 
 // ─── 删除确认 ────
@@ -82,145 +82,145 @@ const { dialog } = useDialog();
 const { toast } = useToast();
 
 async function confirmDelete(item: IpBan) {
-    const ok = await dialog({
-        title: '确认删除黑名单条目？',
-        text: `将删除 ${item.ip_or_cidr}。此操作不可撤销。`,
-        danger: true,
-        confirmText: '确认删除',
+  const ok = await dialog({
+    title: '确认删除黑名单条目？',
+    text: `将删除 ${item.ip_or_cidr}。此操作不可撤销。`,
+    danger: true,
+    confirmText: '确认删除',
+  });
+  if (!ok) return;
+  deleteTarget.value = item;
+  deleting.value = true;
+  try {
+    // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
+    await api.delete(`/api/v1/admin/identity/blacklist/${item.id}`, {
+      silent: true,
+      headers: { 'If-Match': `"${item.updated_at}"` },
     });
-    if (!ok) return;
-    deleteTarget.value = item;
-    deleting.value = true;
-    try {
-        // silent: 错误由下方 catch 内联处理（toast.error），避免 useApi 默认 toast 双弹
-        await api.delete(`/api/v1/admin/identity/blacklist/${item.id}`, {
-            silent: true,
-            headers: { 'If-Match': `"${item.updated_at}"` },
-        });
-        toast.success(`已删除 ${item.ip_or_cidr}`);
-        await load();
-    } catch (err: unknown) {
-        toast.error(extractApiError(err).message);
-    } finally {
-        deleting.value = false;
-        deleteTarget.value = null;
-    }
+    toast.success(`已删除 ${item.ip_or_cidr}`);
+    await load();
+  } catch (err: unknown) {
+    toast.error(extractApiError(err).message);
+  } finally {
+    deleting.value = false;
+    deleteTarget.value = null;
+  }
 }
 
 function formatExpires(value: string | null) {
-    if (!value) return '永久';
-    return new Date(value).toLocaleString('zh-CN');
+  if (!value) return '永久';
+  return new Date(value).toLocaleString('zh-CN');
 }
 
 const columns: AdminColumn[] = [
-    { key: 'ip_or_cidr', label: 'IP / CIDR' },
-    { key: 'reason', label: '原因' },
-    { key: 'expires_at', label: '过期时间' },
-    { key: 'created_at', label: '创建时间' },
-    { key: 'actions', label: '操作' },
+  { key: 'ip_or_cidr', label: 'IP / CIDR' },
+  { key: 'reason', label: '原因' },
+  { key: 'expires_at', label: '过期时间' },
+  { key: 'created_at', label: '创建时间' },
+  { key: 'actions', label: '操作' },
 ];
 </script>
 
 <template>
-    <div class="flex flex-col gap-4">
-        <AdminPageHeader title="IP 黑名单管理" description="拦截恶意 IP / CIDR 范围；命中后返 403 IP_BLACKLISTED" />
+  <div class="flex flex-col gap-4">
+    <AdminPageHeader title="IP 黑名单管理" description="拦截恶意 IP / CIDR 范围；命中后返 403 IP_BLACKLISTED" />
 
-        <!-- 顶部操作栏 -->
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="flex items-center gap-2">
-                <input
-                    type="text"
-                    placeholder="搜索 IP 或 CIDR"
-                    class="px-3 py-1.5 text-sm border border-border rounded outline-none focus:border-primary"
-                    @input="searchInput(($event.target as HTMLInputElement).value)"
-                />
-            </div>
-            <UButton color="primary" size="md" @click="openCreate">
+    <!-- 顶部操作栏 -->
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <input
+          type="text"
+          placeholder="搜索 IP 或 CIDR"
+          class="px-3 py-1.5 text-sm border border-border rounded outline-none focus:border-primary"
+          @input="searchInput(($event.target as HTMLInputElement).value)"
+        />
+      </div>
+      <UButton color="primary" size="md" @click="openCreate">
         <UIcon name="i-lucide-plus" class="size-3.5" />
         新增黑名单
       </UButton>
-        </div>
+    </div>
 
-        <AdminTable
-            :columns="columns"
-            :items="items as unknown as Record<string, unknown>[]"
-            :loading="tableLoading"
-            :error="tableError ?? undefined"
-            :total-pages="totalPages"
-            :current-page="currentPage"
-            @update:page="onPageChange"
-        >
-            <template #cell="{ row, column }">
-                <template v-if="column.key === 'ip_or_cidr'">
-                    <code
-                        class="font-mono text-13px font-semibold text-text">{{ (row as unknown as IpBan).ip_or_cidr }}</code>
-                </template>
-                <template v-else-if="column.key === 'reason'">
-                    <span class="text-text-secondary">{{ (row as unknown as IpBan).reason || '—' }}</span>
-                </template>
-                <template v-else-if="column.key === 'expires_at'">
-                    <span
-                        class="text-text-secondary text-13px">{{ formatExpires((row as unknown as IpBan).expires_at) }}</span>
-                </template>
-                <template v-else-if="column.key === 'created_at'">
-                    <span
-                        class="text-text-secondary text-13px">{{ new Date((row as unknown as IpBan).created_at).toLocaleString('zh-CN') }}</span>
-                </template>
-            </template>
-            <template #actions="{ row }">
-                <div class="flex items-center justify-end">
-                    <button
-                        class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-error-text bg-white border-[1.5px] border-border rounded cursor-pointer transition-all hover:border-error-text disabled:opacity-50 disabled:cursor-not-allowed"
-                        :disabled="deleting"
-                        title="删除"
-                        @click="confirmDelete(row as unknown as IpBan)"
-                    >
+    <AdminTable
+      :columns="columns"
+      :items="items as unknown as Record<string, unknown>[]"
+      :loading="tableLoading"
+      :error="tableError ?? undefined"
+      :total-pages="totalPages"
+      :current-page="currentPage"
+      @update:page="onPageChange"
+    >
+      <template #cell="{ row, column }">
+        <template v-if="column.key === 'ip_or_cidr'">
+          <code
+            class="font-mono text-13px font-semibold text-text">{{ (row as unknown as IpBan).ip_or_cidr }}</code>
+        </template>
+        <template v-else-if="column.key === 'reason'">
+          <span class="text-text-secondary">{{ (row as unknown as IpBan).reason || '—' }}</span>
+        </template>
+        <template v-else-if="column.key === 'expires_at'">
+          <span
+            class="text-text-secondary text-13px">{{ formatExpires((row as unknown as IpBan).expires_at) }}</span>
+        </template>
+        <template v-else-if="column.key === 'created_at'">
+          <span
+            class="text-text-secondary text-13px">{{ new Date((row as unknown as IpBan).created_at).toLocaleString('zh-CN') }}</span>
+        </template>
+      </template>
+      <template #actions="{ row }">
+        <div class="flex items-center justify-end">
+          <button
+            class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-error-text bg-white border-[1.5px] border-border rounded cursor-pointer transition-all hover:border-error-text disabled:opacity-50 disabled:cursor-not-allowed"
+            :disabled="deleting"
+            title="删除"
+            @click="confirmDelete(row as unknown as IpBan)"
+          >
             <UIcon name="i-lucide-trash-2" class="size-3" />
             删除
           </button>
-                </div>
-            </template>
-        </AdminTable>
+        </div>
+      </template>
+    </AdminTable>
 
-        <!-- 新增黑名单抽屉 (Slideover) -->
-        <AdminEditPanel
-            :open="showForm"
-            title="新增 IP 封禁规则"
-            :loading="saving"
-            save-text="确认添加封禁"
-            @close="showForm = false"
-            @save="handleSave"
-        >
-            <div class="flex flex-col gap-3">
-                <div>
-                    <label class="block text-xs font-semibold text-text mb-1">
+    <!-- 新增黑名单抽屉 (Slideover) -->
+    <AdminEditPanel
+      :open="showForm"
+      title="新增 IP 封禁规则"
+      :loading="saving"
+      save-text="确认添加封禁"
+      @close="showForm = false"
+      @save="handleSave"
+    >
+      <div class="flex flex-col gap-3">
+        <div>
+          <label class="block text-xs font-semibold text-text mb-1">
             IP / CIDR 地址段 <span class="text-error-text">*</span>
           </label>
-                    <input
-                        v-model="form.ip_or_cidr"
-                        placeholder="例如: 1.2.3.4 或 10.0.0.0/8"
-                        class="w-full px-3 py-2 text-sm font-mono border border-border rounded outline-none focus:border-primary transition-colors"
-                    />
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-text mb-1">封禁原因</label>
-                    <input
-                        v-model="form.reason"
-                        placeholder="可选，例如：频繁恶意刷评测"
-                        class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
-                    />
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-text mb-1">过期解封时间</label>
-                    <input
-                        v-model="form.expires_at"
-                        type="datetime-local"
-                        class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
-                    />
-                    <p class="mt-1 text-[11px] text-text-muted">留空表示永久封禁，直到管理员手动解除</p>
-                </div>
-                <p v-if="formError" class="text-xs text-error-text">{{ formError }}</p>
-            </div>
-        </AdminEditPanel>
-    </div>
+          <input
+            v-model="form.ip_or_cidr"
+            placeholder="例如: 1.2.3.4 或 10.0.0.0/8"
+            class="w-full px-3 py-2 text-sm font-mono border border-border rounded outline-none focus:border-primary transition-colors"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-text mb-1">封禁原因</label>
+          <input
+            v-model="form.reason"
+            placeholder="可选，例如：频繁恶意刷评测"
+            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
+          />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-text mb-1">过期解封时间</label>
+          <input
+            v-model="form.expires_at"
+            type="datetime-local"
+            class="w-full px-3 py-2 text-sm border border-border rounded outline-none focus:border-primary transition-colors"
+          />
+          <p class="mt-1 text-[11px] text-text-muted">留空表示永久封禁，直到管理员手动解除</p>
+        </div>
+        <p v-if="formError" class="text-xs text-error-text">{{ formError }}</p>
+      </div>
+    </AdminEditPanel>
+  </div>
 </template>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'admin', middleware: 'admin' });
+definePageMeta({ layout: 'admin', middleware: 'admin', });
 useRequireLogin();
 </script>
 <template>
-    <AnnouncementManager />
+  <AnnouncementManager />
 </template>

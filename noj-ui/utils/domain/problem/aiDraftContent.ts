@@ -9,32 +9,32 @@
 import type { SubmissionMode } from './problemView.ts';
 
 const SUBMISSION_MODES: readonly SubmissionMode[] = [
-    'code',
-    'artifact',
-    'prediction',
-    'ui',
+  'code',
+  'artifact',
+  'prediction',
+  'ui',
 ];
 
 /** 从草稿内容中读出的透传字段；缺失或类型不对时为 `undefined`（保持表单原值）。 */
 export interface AiDraftPassthrough {
-    submission_mode?: SubmissionMode;
-    template_content?: string;
+  submission_mode?: SubmissionMode;
+  template_content?: string;
 }
 
 /** 读取草稿内容里的提交模式与脚本模板。 */
 export function readAiDraftPassthrough(
-    content: Record<string, unknown>,
+  content: Record<string, unknown>,
 ): AiDraftPassthrough {
-    const result: AiDraftPassthrough = {};
-    const mode = content.submission_mode;
-    if (
-        typeof mode === 'string' &&
-        (SUBMISSION_MODES as readonly string[]).includes(mode)
-    ) {
-        result.submission_mode = mode as SubmissionMode;
-    }
-    if (typeof content.template_content === 'string') {
-        result.template_content = content.template_content;
-    }
-    return result;
+  const result: AiDraftPassthrough = {};
+  const mode = content.submission_mode;
+  if (
+    typeof mode === 'string' &&
+    (SUBMISSION_MODES as readonly string[]).includes(mode)
+  ) {
+    result.submission_mode = mode as SubmissionMode;
+  }
+  if (typeof content.template_content === 'string') {
+    result.template_content = content.template_content;
+  }
+  return result;
 }

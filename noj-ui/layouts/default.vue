@@ -15,72 +15,72 @@ const pendingConsents = computed(() => user.value ? collectPendingConsents(user.
 const slug = useNavigationDomain();
 
 function onGlobalKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        void navigateTo(workspacePath(slug.value, 'search'));
-    }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    void navigateTo(workspacePath(slug.value, 'search'));
+  }
 }
 
 onMounted(() => {
-    window.addEventListener('keydown', onGlobalKeydown);
+  window.addEventListener('keydown', onGlobalKeydown);
 });
 
 onUnmounted(() => {
-    window.removeEventListener('keydown', onGlobalKeydown);
+  window.removeEventListener('keydown', onGlobalKeydown);
 });
 </script>
 <template>
-    <div class="flex flex-col min-h-screen w-full overflow-x-hidden bg-bg-page bg-tech-grid">
-        <a href="#main"
-            class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
+  <div class="flex flex-col min-h-screen w-full overflow-x-hidden bg-bg-page bg-tech-grid">
+    <a href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
             跳转到主要内容
         </a>
-        <Navbar />
-        <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
-        <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
-        <EmailVerificationBanner />
-        <div class="flex flex-1 min-h-[calc(100vh-var(--header-h))] w-full pt-(--header-h)">
-            <main id="main" class="flex-1 min-w-0 w-full">
-                <!-- 面包屑（#512）：未注册路径不渲染，因此 admin/auth 页零影响 -->
-                <BreadcrumbNav />
-                <slot />
-            </main>
-        </div>
-        <FooterBar />
-        <LegalConsentModal v-if="pendingConsents.length > 0" :pending="pendingConsents" />
+    <Navbar />
+    <BanBanner v-if="ipBanned" type="ip" :ip-info="ipBanInfo" />
+    <BanBanner v-if="userBanned" type="user" :user-info="userBanInfo" />
+    <EmailVerificationBanner />
+    <div class="flex flex-1 min-h-[calc(100vh-var(--header-h))] w-full pt-(--header-h)">
+      <main id="main" class="flex-1 min-w-0 w-full">
+        <!-- 面包屑（#512）：未注册路径不渲染，因此 admin/auth 页零影响 -->
+        <BreadcrumbNav />
+        <slot />
+      </main>
     </div>
+    <FooterBar />
+    <LegalConsentModal v-if="pendingConsents.length > 0" :pending="pendingConsents" />
+  </div>
 </template>
 
 <style>
 /* 动画关键帧 —— Tailwind animate-* 无法覆盖的自定义动画 */
 @keyframes gradientShift {
-    0% {
-        background-position: 0% 50%;
-    }
-    50% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0% 50%;
-    }
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 @keyframes glow {
-    from {
-        text-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
-    }
-    to {
-        text-shadow: 0 0 20px rgba(59, 130, 246, 0.7);
-    }
+  from {
+    text-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
+  }
+  to {
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.7);
+  }
 }
 
 @keyframes float {
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-    50% {
-        transform: translateY(-10px);
-    }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
 }
 </style>

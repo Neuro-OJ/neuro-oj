@@ -12,49 +12,49 @@ import type { ClassroomInvitationBoundary } from "../access/invitations.ts";
 import type { MemberRemovalBoundary } from "../access/members.ts";
 import { retireDomainEducationMemberships } from "../education/services/account-lifecycle.ts";
 import {
-    assertClassroomInvitationIssuer,
-    joinInvitedClassroom,
+  assertClassroomInvitationIssuer,
+  joinInvitedClassroom,
 } from "../education/services/invitations.ts";
 import { recordSourceDomainEducationChange } from "../problems/services/workspace/education-events.ts";
 
 /** 成员移除必须同步结束相关班级任职，且与域成员事实共用同一 DbTx。 */
 export const accessMemberRemovalBoundary: MemberRemovalBoundary = {
-    onMemberRemovedTx: async (tx, domainId, userId) => {
-        await retireDomainEducationMemberships(tx, domainId, userId);
-    },
+  onMemberRemovedTx: async (tx, domainId, userId) => {
+    await retireDomainEducationMemberships(tx, domainId, userId);
+  },
 };
 
 /** 访问策略/状态变化必须登记题目共享的失效事实。 */
 export const accessDomainChangeBoundary: DomainChangeBoundary = {
-    onAccessPolicyChangedTx: async (tx, domainId) => {
-        await recordSourceDomainEducationChange(tx, domainId);
-    },
+  onAccessPolicyChangedTx: async (tx, domainId) => {
+    await recordSourceDomainEducationChange(tx, domainId);
+  },
 };
 
 /** 班级邀请的权限核验与教学成员写入必须复用同一个 DbTx。 */
 export function accessClassroomInvitationBoundary(): ClassroomInvitationBoundary {
-    return {
-        assertIssuerTx: async (
-            tx: DbTx,
-            slug: string,
-            classroomId: string,
-            actor: UserActor,
-        ) => {
-            const classroom = await assertClassroomInvitationIssuer(
-                slug,
-                classroomId,
-                actor.userId,
-                tx,
-            );
-            return { classroomName: classroom.name };
-        },
-        joinTx: async (
-            tx: DbTx,
-            domainId: string,
-            classroomId: string,
-            actor: UserActor,
-        ) => {
-            await joinInvitedClassroom(tx, domainId, classroomId, actor.userId);
-        },
-    };
+  return {
+    assertIssuerTx: async (
+      tx: DbTx,
+      slug: string,
+      classroomId: string,
+      actor: UserActor,
+    ) => {
+      const classroom = await assertClassroomInvitationIssuer(
+        slug,
+        classroomId,
+        actor.userId,
+        tx,
+      );
+      return { classroomName: classroom.name };
+    },
+    joinTx: async (
+      tx: DbTx,
+      domainId: string,
+      classroomId: string,
+      actor: UserActor,
+    ) => {
+      await joinInvitedClassroom(tx, domainId, classroomId, actor.userId);
+    },
+  };
 }

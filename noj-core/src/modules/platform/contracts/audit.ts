@@ -15,18 +15,18 @@ import type { AuditAction } from "../types/audit-log.ts";
 
 /** 审计写入所需的请求元数据；缺 IP 时保留空串而不是伪造来源。 */
 export interface AuditWriteMeta {
-    readonly ipAddress?: string;
-    readonly requestId?: string;
+  readonly ipAddress?: string;
+  readonly requestId?: string;
 }
 
 export interface AuditLogEntryInput {
-    readonly actor: Actor;
-    readonly action: AuditAction;
-    readonly target?: { type: string; id: string };
-    readonly detail?: Record<string, unknown>;
-    readonly meta?: AuditWriteMeta;
-    /** 记录时刻；缺省取当前时间。显式传入便于重放与测试。 */
-    readonly createdAt?: string;
+  readonly actor: Actor;
+  readonly action: AuditAction;
+  readonly target?: { type: string; id: string };
+  readonly detail?: Record<string, unknown>;
+  readonly meta?: AuditWriteMeta;
+  /** 记录时刻；缺省取当前时间。显式传入便于重放与测试。 */
+  readonly createdAt?: string;
 }
 
 /**
@@ -37,33 +37,29 @@ export interface AuditLogEntryInput {
  * - `actor.kind === "guest"` 不会产生用户外键，也没有系统目的，视为调用错误。
  */
 export async function appendAuditLogTx(
-    tx: DbTx,
-    input: AuditLogEntryInput,
+  tx: DbTx,
+  input: AuditLogEntryInput,
 ): Promise<void> {
-    const { actor } = input;
-    if (actor.kind === "guest") {
-        throw new TypeError(
-            "审计写入需要已认证用户或显式系统身份，guest 不可写审计",
-        );
-    }
-    const targetType = input.target?.type ?? null;
-    const targetId = input.target?.id ?? null;
-    await tx.insert(auditLogs).values({
-        id: crypto.randomUUID(),
-        admin_id: actor.kind === "user" ? actor.userId : null,
-        action: input.action,
-        target_type: targetType,
-        target_id: targetId,
-        ip_address: input.meta?.ipAddress ?? "",
-        detail: {
-            ...(input.detail ?? {}),
-            ...(actor.kind === "system"
-                ? { system_purpose: actor.purpose }
-                : {}),
-            ...(input.meta?.requestId
-                ? { request_id: input.meta.requestId }
-                : {}),
-        },
-        created_at: input.createdAt ?? new Date().toISOString(),
-    });
+  const { actor } = input;
+  if (actor.kind === "guest") {
+    throw new TypeError(
+      "审计写入需要已认证用户或显式系统身份，guest 不可写审计",
+    );
+  }
+  const targetType = input.target?.type ?? null;
+  const targetId = input.target?.id ?? null;
+  await tx.insert(auditLogs).values({
+    id: crypto.randomUUID(),
+    admin_id: actor.kind === "user" ? actor.userId : null,
+    action: input.action,
+    target_type: targetType,
+    target_id: targetId,
+    ip_address: input.meta?.ipAddress ?? "",
+    detail: {
+      ...(input.detail ?? {}),
+      ...(actor.kind === "system" ? { system_purpose: actor.purpose } : {}),
+      ...(input.meta?.requestId ? { request_id: input.meta.requestId } : {}),
+    },
+    created_at: input.createdAt ?? new Date().toISOString(),
+  });
 }

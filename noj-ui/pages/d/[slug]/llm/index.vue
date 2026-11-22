@@ -7,5 +7,5 @@ await navigateTo(workspacePath(slug, 'settings/llm'), { replace: true });
 </script>
 
 <template>
-    <div />
+  <div />
 </template>

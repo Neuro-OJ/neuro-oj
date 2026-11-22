@@ -8,10 +8,10 @@
 import { main } from "./test-launcher.ts";
 
 if (import.meta.main) {
-    try {
-        Deno.exit(await main(["parallel", ...Deno.args]));
-    } catch (error) {
-        console.error(`[test-parallel] 失败：${String(error)}`);
-        Deno.exit(1);
-    }
+  try {
+    Deno.exit(await main(["parallel", ...Deno.args]));
+  } catch (error) {
+    console.error(`[test-parallel] 失败：${String(error)}`);
+    Deno.exit(1);
+  }
 }

@@ -9,13 +9,13 @@ import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import type { Executor } from "../../../../shared/db/executor.ts";
 import {
-    evaluationAttempts,
-    llmTokenRevocations,
+  evaluationAttempts,
+  llmTokenRevocations,
 } from "../../../../shared/db/schema.ts";
 import { getRedis } from "../../../../shared/mq/connection.ts";
 
 function nowIso(): string {
-    return new Date().toISOString();
+  return new Date().toISOString();
 }
 
 /** 与 Gateway 共享的 Redis 世代恢复屏障，不是业务事实源。 */
@@ -23,50 +23,49 @@ export const TOKEN_REVOCATIONS_READY_KEY = "llm:revocations:ready:v1";
 
 /** 从持久 outbox 重建尚可能有效的吊销，覆盖 done 行和旧 Redis 快照。 */
 export async function restoreAttemptTokenRevocations(
-    batchSize = 100,
+  batchSize = 100,
 ): Promise<void> {
-    if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
-        throw new RangeError("吊销恢复批量必须为正整数");
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+    throw new RangeError("吊销恢复批量必须为正整数");
+  }
+  const redis = getRedis();
+  const serverId = async () => {
+    if (!redis.info) throw new Error("Redis 不支持进程身份读取");
+    const info = await redis.info("server");
+    const id = info.split("\n").find((line) => line.startsWith("run_id:"))
+      ?.slice(7).trim();
+    if (!id) throw new Error("Redis 进程身份不可用");
+    return id;
+  };
+  const epoch = await serverId();
+  let cursor: string | undefined;
+  for (;;) {
+    const rows = await getDb().select().from(llmTokenRevocations).where(and(
+      sql`${llmTokenRevocations.created_at}::timestamptz + ${llmTokenRevocations.ttl_seconds} * interval '1 second' > now()`,
+      cursor ? gt(llmTokenRevocations.id, cursor) : undefined,
+    )).orderBy(asc(llmTokenRevocations.id)).limit(batchSize);
+    for (const row of rows) {
+      // 不刷新原始有效期：恢复不能把已过期 token 的吊销无限延长。
+      const remaining = Math.ceil(
+        (Date.parse(row.created_at) + row.ttl_seconds * 1000 - Date.now()) /
+          1000,
+      );
+      if (remaining <= 0) continue;
+      if (
+        !await writeRevocationMarkers({
+          attemptId: row.attempt_id,
+          submissionId: row.submission_id,
+          ttlSeconds: remaining,
+        })
+      ) {
+        throw new Error("吊销投影恢复失败");
+      }
     }
-    const redis = getRedis();
-    const serverId = async () => {
-        if (!redis.info) throw new Error("Redis 不支持进程身份读取");
-        const info = await redis.info("server");
-        const id = info.split("\n").find((line) => line.startsWith("run_id:"))
-            ?.slice(7).trim();
-        if (!id) throw new Error("Redis 进程身份不可用");
-        return id;
-    };
-    const epoch = await serverId();
-    let cursor: string | undefined;
-    for (;;) {
-        const rows = await getDb().select().from(llmTokenRevocations).where(and(
-            sql`${llmTokenRevocations.created_at}::timestamptz + ${llmTokenRevocations.ttl_seconds} * interval '1 second' > now()`,
-            cursor ? gt(llmTokenRevocations.id, cursor) : undefined,
-        )).orderBy(asc(llmTokenRevocations.id)).limit(batchSize);
-        for (const row of rows) {
-            // 不刷新原始有效期：恢复不能把已过期 token 的吊销无限延长。
-            const remaining = Math.ceil(
-                (Date.parse(row.created_at) + row.ttl_seconds * 1000 -
-                    Date.now()) /
-                    1000,
-            );
-            if (remaining <= 0) continue;
-            if (
-                !await writeRevocationMarkers({
-                    attemptId: row.attempt_id,
-                    submissionId: row.submission_id,
-                    ttlSeconds: remaining,
-                })
-            ) {
-                throw new Error("吊销投影恢复失败");
-            }
-        }
-        if (rows.length < batchSize) break;
-        cursor = rows.at(-1)!.id;
-    }
-    if (await serverId() !== epoch) throw new Error("Redis 在吊销恢复期间重启");
-    await redis.set(TOKEN_REVOCATIONS_READY_KEY, epoch);
+    if (rows.length < batchSize) break;
+    cursor = rows.at(-1)!.id;
+  }
+  if (await serverId() !== epoch) throw new Error("Redis 在吊销恢复期间重启");
+  await redis.set(TOKEN_REVOCATIONS_READY_KEY, epoch);
 }
 
 /**
@@ -89,44 +88,44 @@ export const LLM_REVOCATION_TTL_MARGIN_SECONDS = 300;
  * 终态之后继续可用。快照缺失时退回 1h 下限。
  */
 export function resolveAttemptTokenTtlSeconds(taskSnapshot: unknown): number {
-    const runtime =
-        (taskSnapshot as { runtime_config?: unknown } | null | undefined)
-            ?.runtime_config as
-                | { evaluator?: { time_limit_ms?: unknown } }
-                | undefined;
-    const timeLimitMs = runtime?.evaluator?.time_limit_ms;
-    const issuedTtl = typeof timeLimitMs === "number" &&
-            Number.isFinite(timeLimitMs) && timeLimitMs > 0
-        ? Math.max(60, Math.ceil((timeLimitMs * 4) / 1000))
-        : 0;
-    return Math.max(LLM_REVOCATION_MIN_TTL_SECONDS, issuedTtl) +
-        LLM_REVOCATION_TTL_MARGIN_SECONDS;
+  const runtime =
+    (taskSnapshot as { runtime_config?: unknown } | null | undefined)
+      ?.runtime_config as
+        | { evaluator?: { time_limit_ms?: unknown } }
+        | undefined;
+  const timeLimitMs = runtime?.evaluator?.time_limit_ms;
+  const issuedTtl = typeof timeLimitMs === "number" &&
+      Number.isFinite(timeLimitMs) && timeLimitMs > 0
+    ? Math.max(60, Math.ceil((timeLimitMs * 4) / 1000))
+    : 0;
+  return Math.max(LLM_REVOCATION_MIN_TTL_SECONDS, issuedTtl) +
+    LLM_REVOCATION_TTL_MARGIN_SECONDS;
 }
 
 /** 吊销后处理结果（供测试与日志断言）。 */
 export interface AttemptRevocationOutcome {
-    /** 是否成功写入 Redis 吊销标记（Redis 不可用/异常时为 false）。 */
-    applied: boolean;
-    /** 实际写入的标记 TTL（秒）。 */
-    ttl_seconds: number;
-    attempt_id: string | null;
+  /** 是否成功写入 Redis 吊销标记（Redis 不可用/异常时为 false）。 */
+  applied: boolean;
+  /** 实际写入的标记 TTL（秒）。 */
+  ttl_seconds: number;
+  attempt_id: string | null;
 }
 
 /** 读取尝试的冻结快照（用于推导 token TTL）；尝试不存在或查询失败返回 null。 */
 async function loadAttemptTaskSnapshot(
-    attemptId: string | null | undefined,
+  attemptId: string | null | undefined,
 ): Promise<unknown> {
-    if (!attemptId) return null;
-    try {
-        const [row] = await getDb().select({
-            snapshot: evaluationAttempts.task_snapshot,
-        }).from(evaluationAttempts).where(
-            eq(evaluationAttempts.id, attemptId),
-        ).limit(1);
-        return row?.snapshot ?? null;
-    } catch {
-        return null;
-    }
+  if (!attemptId) return null;
+  try {
+    const [row] = await getDb().select({
+      snapshot: evaluationAttempts.task_snapshot,
+    }).from(evaluationAttempts).where(
+      eq(evaluationAttempts.id, attemptId),
+    ).limit(1);
+    return row?.snapshot ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -151,24 +150,24 @@ async function loadAttemptTaskSnapshot(
  * @param input.taskSnapshot 冻结快照；缺省时按 attemptId 查库
  */
 export async function revokeAttemptLlmTokens(input: {
-    attemptId: string | null;
-    submissionId?: string | null;
-    taskSnapshot?: unknown;
+  attemptId: string | null;
+  submissionId?: string | null;
+  taskSnapshot?: unknown;
 }): Promise<AttemptRevocationOutcome> {
-    const snapshot = input.taskSnapshot === undefined
-        ? await loadAttemptTaskSnapshot(input.attemptId)
-        : input.taskSnapshot;
-    const ttlSeconds = resolveAttemptTokenTtlSeconds(snapshot);
-    const applied = await writeRevocationMarkers({
-        attemptId: input.attemptId,
-        submissionId: input.submissionId ?? null,
-        ttlSeconds,
-    });
-    return {
-        applied,
-        ttl_seconds: ttlSeconds,
-        attempt_id: input.attemptId,
-    };
+  const snapshot = input.taskSnapshot === undefined
+    ? await loadAttemptTaskSnapshot(input.attemptId)
+    : input.taskSnapshot;
+  const ttlSeconds = resolveAttemptTokenTtlSeconds(snapshot);
+  const applied = await writeRevocationMarkers({
+    attemptId: input.attemptId,
+    submissionId: input.submissionId ?? null,
+    ttlSeconds,
+  });
+  return {
+    applied,
+    ttl_seconds: ttlSeconds,
+    attempt_id: input.attemptId,
+  };
 }
 
 /**
@@ -178,47 +177,47 @@ export async function revokeAttemptLlmTokens(input: {
  * 重新推导（快照可能已被替换或清理）。
  */
 export async function writeRevocationMarkers(input: {
-    attemptId: string | null;
-    submissionId?: string | null;
-    ttlSeconds: number;
+  attemptId: string | null;
+  submissionId?: string | null;
+  ttlSeconds: number;
 }): Promise<boolean> {
-    if (!input.attemptId && !input.submissionId) return false;
-    const ttlSeconds = Number.isFinite(input.ttlSeconds) && input.ttlSeconds > 0
-        ? Math.floor(input.ttlSeconds)
-        : LLM_REVOCATION_MIN_TTL_SECONDS;
-    try {
-        const redis = getRedis();
-        if (redis.status !== "ready") return false;
-        if (input.attemptId) {
-            await redis.set(
-                `llm:attempt:revoked:${input.attemptId}`,
-                "1",
-                "EX",
-                ttlSeconds,
-            );
-        }
-        if (input.submissionId) {
-            // 旧协议 token 仅带 submission 维度，继续写旧键保证同样被吊销。
-            await redis.set(
-                `llm:token:revoked:${input.submissionId}`,
-                "1",
-                "EX",
-                ttlSeconds,
-            );
-        }
-        return true;
-    } catch {
-        // 吊销失败不能影响已提交的业务终态；由 outbox 补偿与日志兜底观测
-        return false;
+  if (!input.attemptId && !input.submissionId) return false;
+  const ttlSeconds = Number.isFinite(input.ttlSeconds) && input.ttlSeconds > 0
+    ? Math.floor(input.ttlSeconds)
+    : LLM_REVOCATION_MIN_TTL_SECONDS;
+  try {
+    const redis = getRedis();
+    if (redis.status !== "ready") return false;
+    if (input.attemptId) {
+      await redis.set(
+        `llm:attempt:revoked:${input.attemptId}`,
+        "1",
+        "EX",
+        ttlSeconds,
+      );
     }
+    if (input.submissionId) {
+      // 旧协议 token 仅带 submission 维度，继续写旧键保证同样被吊销。
+      await redis.set(
+        `llm:token:revoked:${input.submissionId}`,
+        "1",
+        "EX",
+        ttlSeconds,
+      );
+    }
+    return true;
+  } catch {
+    // 吊销失败不能影响已提交的业务终态；由 outbox 补偿与日志兜底观测
+    return false;
+  }
 }
 
 /** 终态吊销 outbox 的行读模型。 */
 export interface PendingTokenRevocation {
-    id: string;
-    attempt_id: string;
-    submission_id: string | null;
-    ttl_seconds: number;
+  id: string;
+  attempt_id: string;
+  submission_id: string | null;
+  ttl_seconds: number;
 }
 
 /**
@@ -231,31 +230,31 @@ export interface PendingTokenRevocation {
  * 幂等：同一尝试已有 `pending`/`done` 行时直接返回（不重复插入）。
  */
 export async function enqueueAttemptTokenRevocation(
-    executor: Executor,
-    input: {
-        attemptId: string;
-        submissionId?: string | null;
-        /** 登记时冻结的 TTL（覆盖该尝试已签发 token 的剩余有效期）。 */
-        ttlSeconds: number;
-    },
+  executor: Executor,
+  input: {
+    attemptId: string;
+    submissionId?: string | null;
+    /** 登记时冻结的 TTL（覆盖该尝试已签发 token 的剩余有效期）。 */
+    ttlSeconds: number;
+  },
 ): Promise<void> {
-    const [existing] = await executor.select({ id: llmTokenRevocations.id })
-        .from(llmTokenRevocations).where(
-            and(
-                eq(llmTokenRevocations.attempt_id, input.attemptId),
-                inArray(llmTokenRevocations.state, ["pending", "done"]),
-            ),
-        ).limit(1);
-    if (existing) return;
-    await executor.insert(llmTokenRevocations).values({
-        id: crypto.randomUUID(),
-        attempt_id: input.attemptId,
-        submission_id: input.submissionId ?? null,
-        ttl_seconds: Math.floor(input.ttlSeconds),
-        state: "pending",
-        attempts: 0,
-        created_at: nowIso(),
-    });
+  const [existing] = await executor.select({ id: llmTokenRevocations.id })
+    .from(llmTokenRevocations).where(
+      and(
+        eq(llmTokenRevocations.attempt_id, input.attemptId),
+        inArray(llmTokenRevocations.state, ["pending", "done"]),
+      ),
+    ).limit(1);
+  if (existing) return;
+  await executor.insert(llmTokenRevocations).values({
+    id: crypto.randomUUID(),
+    attempt_id: input.attemptId,
+    submission_id: input.submissionId ?? null,
+    ttl_seconds: Math.floor(input.ttlSeconds),
+    state: "pending",
+    attempts: 0,
+    created_at: nowIso(),
+  });
 }
 
 /**
@@ -265,48 +264,48 @@ export async function enqueueAttemptTokenRevocation(
  * 交给后台消费者重试。返回是否已完成。
  */
 export async function attemptTokenRevocationNow(
-    attemptId: string,
+  attemptId: string,
 ): Promise<boolean> {
-    const db = getDb();
-    const rows = await db.select().from(llmTokenRevocations).where(
-        and(
-            eq(llmTokenRevocations.attempt_id, attemptId),
-            eq(llmTokenRevocations.state, "pending"),
-        ),
-    );
-    if (rows.length === 0) return true;
-    let allDone = true;
-    for (const row of rows) {
-        if (await completeTokenRevocationRow(row)) continue;
-        allDone = false;
-        await db.update(llmTokenRevocations).set({
-            attempts: sql`${llmTokenRevocations.attempts} + 1`,
-        }).where(eq(llmTokenRevocations.id, row.id));
-    }
-    return allDone;
+  const db = getDb();
+  const rows = await db.select().from(llmTokenRevocations).where(
+    and(
+      eq(llmTokenRevocations.attempt_id, attemptId),
+      eq(llmTokenRevocations.state, "pending"),
+    ),
+  );
+  if (rows.length === 0) return true;
+  let allDone = true;
+  for (const row of rows) {
+    if (await completeTokenRevocationRow(row)) continue;
+    allDone = false;
+    await db.update(llmTokenRevocations).set({
+      attempts: sql`${llmTokenRevocations.attempts} + 1`,
+    }).where(eq(llmTokenRevocations.id, row.id));
+  }
+  return allDone;
 }
 
 /** 执行单行吊销并标记 done（Redis 未成功写入时返回 false）。 */
 async function completeTokenRevocationRow(
-    row: PendingTokenRevocation,
+  row: PendingTokenRevocation,
 ): Promise<boolean> {
-    const applied = await writeRevocationMarkers({
-        attemptId: row.attempt_id,
-        submissionId: row.submission_id,
-        ttlSeconds: row.ttl_seconds,
-    });
-    if (!applied) return false;
-    const rows = await getDb().update(llmTokenRevocations).set({
-        state: "done",
-        done_at: nowIso(),
-        attempts: sql`${llmTokenRevocations.attempts} + 1`,
-    }).where(
-        and(
-            eq(llmTokenRevocations.id, row.id),
-            eq(llmTokenRevocations.state, "pending"),
-        ),
-    ).returning({ id: llmTokenRevocations.id });
-    return rows.length > 0;
+  const applied = await writeRevocationMarkers({
+    attemptId: row.attempt_id,
+    submissionId: row.submission_id,
+    ttlSeconds: row.ttl_seconds,
+  });
+  if (!applied) return false;
+  const rows = await getDb().update(llmTokenRevocations).set({
+    state: "done",
+    done_at: nowIso(),
+    attempts: sql`${llmTokenRevocations.attempts} + 1`,
+  }).where(
+    and(
+      eq(llmTokenRevocations.id, row.id),
+      eq(llmTokenRevocations.state, "pending"),
+    ),
+  ).returning({ id: llmTokenRevocations.id });
+  return rows.length > 0;
 }
 
 /**
@@ -316,23 +315,23 @@ async function completeTokenRevocationRow(
  * 按 `created_at` 升序处理，单轮上限 `limit`（默认 100）。
  */
 export async function runPendingTokenRevocations(
-    limit = 100,
+  limit = 100,
 ): Promise<{ processed: number; completed: number }> {
-    const db = getDb();
-    const rows = await db.select().from(llmTokenRevocations).where(
-        eq(llmTokenRevocations.state, "pending"),
-    ).orderBy(asc(llmTokenRevocations.created_at)).limit(Math.max(1, limit));
-    let completed = 0;
-    for (const row of rows) {
-        if (await completeTokenRevocationRow(row)) {
-            completed += 1;
-            continue;
-        }
-        await db.update(llmTokenRevocations).set({
-            attempts: sql`${llmTokenRevocations.attempts} + 1`,
-        }).where(eq(llmTokenRevocations.id, row.id));
+  const db = getDb();
+  const rows = await db.select().from(llmTokenRevocations).where(
+    eq(llmTokenRevocations.state, "pending"),
+  ).orderBy(asc(llmTokenRevocations.created_at)).limit(Math.max(1, limit));
+  let completed = 0;
+  for (const row of rows) {
+    if (await completeTokenRevocationRow(row)) {
+      completed += 1;
+      continue;
     }
-    // 周期重建也修复单个标记丢失；业务终态始终由 PostgreSQL outbox 证明。
-    await restoreAttemptTokenRevocations(limit);
-    return { processed: rows.length, completed };
+    await db.update(llmTokenRevocations).set({
+      attempts: sql`${llmTokenRevocations.attempts} + 1`,
+    }).where(eq(llmTokenRevocations.id, row.id));
+  }
+  // 周期重建也修复单个标记丢失；业务终态始终由 PostgreSQL outbox 证明。
+  await restoreAttemptTokenRevocations(limit);
+  return { processed: rows.length, completed };
 }

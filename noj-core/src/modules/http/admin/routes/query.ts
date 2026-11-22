@@ -15,8 +15,8 @@ const router = new Hono<AuthEnv>();
  * GET /api/v1/admin/dashboard/stats
  */
 router.get("/dashboard/stats", async (c) => {
-    const stats = await getDashboardStats();
-    return c.json({ data: stats });
+  const stats = await getDashboardStats();
+  return c.json({ data: stats });
 });
 
 export default router;

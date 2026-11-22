@@ -8,20 +8,20 @@
  */
 
 export interface RegisterFlowDeps {
-    register: (
-        username: string,
-        email: string,
-        password: string,
-        acceptedLegal: boolean,
-    ) => Promise<boolean>;
-    login: (username: string, password: string) => Promise<unknown>;
+  register: (
+    username: string,
+    email: string,
+    password: string,
+    acceptedLegal: boolean,
+  ) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<unknown>;
 }
 
 export type RegisterFlowResult = {
-    /** verified=邮件已发送；resend_needed=注册成功但邮件未发出；login_failed=自动登录失败 */
-    status: 'verified' | 'resend_needed' | 'login_failed';
-    /** 前端应执行 router.replace 的目标路径 */
-    destination: string;
+  /** verified=邮件已发送；resend_needed=注册成功但邮件未发出；login_failed=自动登录失败 */
+  status: 'verified' | 'resend_needed' | 'login_failed';
+  /** 前端应执行 router.replace 的目标路径 */
+  destination: string;
 };
 
 /**
@@ -30,24 +30,24 @@ export type RegisterFlowResult = {
  * @returns 注册成功时的跳转结果；注册接口失败时返回 null（错误由调用方捕获提示）。
  */
 export async function submitRegistration(
-    deps: RegisterFlowDeps,
-    username: string,
-    email: string,
-    password: string,
-    acceptedLegal: boolean,
+  deps: RegisterFlowDeps,
+  username: string,
+  email: string,
+  password: string,
+  acceptedLegal: boolean,
 ): Promise<RegisterFlowResult | null> {
-    // 注册接口失败时错误向调用方传播，由页面统一提示
-    const sent = await deps.register(username, email, password, acceptedLegal);
+  // 注册接口失败时错误向调用方传播，由页面统一提示
+  const sent = await deps.register(username, email, password, acceptedLegal);
 
-    try {
-        await deps.login(username, password);
-    } catch {
-        // 注册成功但登录失败 → 引导用户手动登录
-        return { status: 'login_failed', destination: '/login?registered=1' };
-    }
+  try {
+    await deps.login(username, password);
+  } catch {
+    // 注册成功但登录失败 → 引导用户手动登录
+    return { status: 'login_failed', destination: '/login?registered=1' };
+  }
 
-    return {
-        status: sent ? 'verified' : 'resend_needed',
-        destination: `/verify-email?registered=1&sent=${sent ? '1' : '0'}`,
-    };
+  return {
+    status: sent ? 'verified' : 'resend_needed',
+    destination: `/verify-email?registered=1&sent=${sent ? '1' : '0'}`,
+  };
 }

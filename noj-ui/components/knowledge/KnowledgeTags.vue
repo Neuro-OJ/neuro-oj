@@ -13,37 +13,37 @@ const classified = computed(() => props.view?.state === 'classified' && !!props.
 
 /** 知识点页地址；未传域时返回 null（只读展示）。 */
 function nodeTo(nodeId: string): string | null {
-    return props.domain ? `/d/${encodeURIComponent(props.domain)}/knowledge/${encodeURIComponent(nodeId)}` : null;
+  return props.domain ? `/d/${encodeURIComponent(props.domain)}/knowledge/${encodeURIComponent(nodeId)}` : null;
 }
 </script>
 
 <template>
-    <div v-if="classified && view" class="space-y-1.5 rounded-md border border-border bg-bg-sunken px-3 py-2">
-        <div class="flex flex-wrap items-center gap-1.5">
-            <span class="text-[11px] font-semibold tracking-wider text-text-muted">知识点</span>
-            <template v-if="view.primary">
-                <NuxtLink
-                    v-if="nodeTo(view.primary.node_id)"
-                    :to="nodeTo(view.primary.node_id)!"
-                    class="no-underline transition-opacity hover:opacity-80"
-                    :title="`查看知识点：${view.primary.name}`"
-                >
-                    <UBadge color="primary" variant="subtle" size="sm">{{ view.primary.name }}</UBadge>
-                </NuxtLink>
-                <UBadge v-else color="primary" variant="subtle" size="sm">{{ view.primary.name }}</UBadge>
-            </template>
-            <template v-for="entry in view.secondary" :key="entry.node_id">
-                <NuxtLink
-                    v-if="nodeTo(entry.node_id)"
-                    :to="nodeTo(entry.node_id)!"
-                    class="no-underline transition-opacity hover:opacity-80"
-                    :title="`查看知识点：${entry.name}`"
-                >
-                    <UBadge color="neutral" variant="subtle" size="sm">{{ entry.name }}</UBadge>
-                </NuxtLink>
-                <UBadge v-else color="neutral" variant="subtle" size="sm">{{ entry.name }}</UBadge>
-            </template>
-            <UBadge v-if="view.pending" color="warning" variant="subtle" size="sm" icon="i-lucide-clock">待确认</UBadge>
-        </div>
+  <div v-if="classified && view" class="space-y-1.5 rounded-md border border-border bg-bg-sunken px-3 py-2">
+    <div class="flex flex-wrap items-center gap-1.5">
+      <span class="text-[11px] font-semibold tracking-wider text-text-muted">知识点</span>
+      <template v-if="view.primary">
+        <NuxtLink
+          v-if="nodeTo(view.primary.node_id)"
+          :to="nodeTo(view.primary.node_id)!"
+          class="no-underline transition-opacity hover:opacity-80"
+          :title="`查看知识点：${view.primary.name}`"
+        >
+          <UBadge color="primary" variant="subtle" size="sm">{{ view.primary.name }}</UBadge>
+        </NuxtLink>
+        <UBadge v-else color="primary" variant="subtle" size="sm">{{ view.primary.name }}</UBadge>
+      </template>
+      <template v-for="entry in view.secondary" :key="entry.node_id">
+        <NuxtLink
+          v-if="nodeTo(entry.node_id)"
+          :to="nodeTo(entry.node_id)!"
+          class="no-underline transition-opacity hover:opacity-80"
+          :title="`查看知识点：${entry.name}`"
+        >
+          <UBadge color="neutral" variant="subtle" size="sm">{{ entry.name }}</UBadge>
+        </NuxtLink>
+        <UBadge v-else color="neutral" variant="subtle" size="sm">{{ entry.name }}</UBadge>
+      </template>
+      <UBadge v-if="view.pending" color="warning" variant="subtle" size="sm" icon="i-lucide-clock">待确认</UBadge>
     </div>
+  </div>
 </template>

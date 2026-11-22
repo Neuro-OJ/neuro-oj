@@ -24,42 +24,42 @@ import { CompletionsCommand } from "@cliffy/command/completions";
 import { runMigrations } from "../src/shared/db/migrate.ts";
 import { Secret } from "jsr:@cliffy/prompt@^1.2.1";
 import {
-    ensureRootUser,
-    initializeFirstAdmin,
-    sealExistingSiteAdminInitialization,
+  ensureRootUser,
+  initializeFirstAdmin,
+  sealExistingSiteAdminInitialization,
 } from "../src/modules/access/identity/index.ts";
 import { createSystemActor } from "../src/shared/access/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
 import { initProblem } from "./problems-init.ts";
 import {
-    isProblemTemplateName,
-    PROBLEM_TEMPLATE_NAMES,
+  isProblemTemplateName,
+  PROBLEM_TEMPLATE_NAMES,
 } from "./problem-templates.ts";
 import { runMaintain } from "./maintain.ts";
 import {
-    ensureAdminFromEnv,
-    ensureBootstrapAdmin,
-    ensureE2EPwChangeUser,
-    seedJudgeImages,
-    seedTags,
+  ensureAdminFromEnv,
+  ensureBootstrapAdmin,
+  ensureE2EPwChangeUser,
+  seedJudgeImages,
+  seedTags,
 } from "../src/modules/platform/system/index.ts";
 import { seedDomainLlmDefaults } from "../src/modules/platform/gateway/index.ts";
 import {
-    backfillDefaultCatalog,
-    importDomainProblemBundle,
-    publishDomainProblemVersion,
+  backfillDefaultCatalog,
+  importDomainProblemBundle,
+  publishDomainProblemVersion,
 } from "../src/modules/problems/index.ts";
 import { ensureDefaultWorkspace } from "../src/modules/access/domains.ts";
 import { reindexAll } from "../src/modules/read-models/search/index.ts";
 import { getBuildInfo } from "../src/shared/base/build-info.ts";
 import {
-    importPack,
-    type ImportPackResult,
-    resolveOfficialPackDir,
+  importPack,
+  type ImportPackResult,
+  resolveOfficialPackDir,
 } from "../src/features/knowledge/index.ts";
 
 const PROJECT_ROOT = Deno.env.get("NOJ_PROJECT_ROOT") ??
-    join(import.meta.dirname ?? ".", "..");
+  join(import.meta.dirname ?? ".", "..");
 const SRC_DIR = join(PROJECT_ROOT, "data", "problems-src");
 const OUT_DIR = join(PROJECT_ROOT, "data", "packages");
 
@@ -78,63 +78,63 @@ let requestedExitCode = 0;
  * 参考实现仍必须排除（见 `submission*`）。
  */
 async function buildProblemPackage(id: string): Promise<void> {
-    const srcDir = join(SRC_DIR, id);
-    const outFile = join(OUT_DIR, `${id}.zip`);
+  const srcDir = join(SRC_DIR, id);
+  const outFile = join(OUT_DIR, `${id}.zip`);
 
-    // 确保产物目录存在：`data/packages/` 是 gitignored 的构建产物目录，
-    // 全新检出时并不存在（其 .gitkeep 也未被跟踪）。此前 buildAllPackages 会
-    // 建它，但单题 `--id` 路径不建，导致出题人按 README 第一条命令就失败。
-    await Deno.mkdir(OUT_DIR, { recursive: true });
+  // 确保产物目录存在：`data/packages/` 是 gitignored 的构建产物目录，
+  // 全新检出时并不存在（其 .gitkeep 也未被跟踪）。此前 buildAllPackages 会
+  // 建它，但单题 `--id` 路径不建，导致出题人按 README 第一条命令就失败。
+  await Deno.mkdir(OUT_DIR, { recursive: true });
 
-    // 先删除旧产物：zip -r 对已存在文件是"更新"语义，会保留源中已删除的旧条目
-    try {
-        await Deno.remove(outFile);
-    } catch {
-        // 首次构建，文件不存在
-    }
+  // 先删除旧产物：zip -r 对已存在文件是"更新"语义，会保留源中已删除的旧条目
+  try {
+    await Deno.remove(outFile);
+  } catch {
+    // 首次构建，文件不存在
+  }
 
-    const cmd = new Deno.Command("zip", {
-        args: [
-            "-r",
-            outFile,
-            ".",
-            "-x",
-            "submission*",
-            "-x",
-            "*__pycache__*",
-            "-x",
-            ".git/*",
-            "-x",
-            ".agents/*",
-            "-x",
-            ".claude/*",
-        ],
-        cwd: srcDir,
-    });
+  const cmd = new Deno.Command("zip", {
+    args: [
+      "-r",
+      outFile,
+      ".",
+      "-x",
+      "submission*",
+      "-x",
+      "*__pycache__*",
+      "-x",
+      ".git/*",
+      "-x",
+      ".agents/*",
+      "-x",
+      ".claude/*",
+    ],
+    cwd: srcDir,
+  });
 
-    const { code, stderr } = await cmd.output();
-    if (code !== 0) {
-        throw new Error(
-            `打包失败 (${id}): ${new TextDecoder().decode(stderr)}`,
-        );
-    }
-    console.log(`  已构建: ${outFile}`);
+  const { code, stderr } = await cmd.output();
+  if (code !== 0) {
+    throw new Error(
+      `打包失败 (${id}): ${new TextDecoder().decode(stderr)}`,
+    );
+  }
+  console.log(`  已构建: ${outFile}`);
 }
 
 /** 构建全部题目包（problems-src 下所有目录）。 */
 async function buildAllPackages(): Promise<void> {
-    await Deno.mkdir(OUT_DIR, { recursive: true });
-    const ids: string[] = [];
-    for await (const entry of Deno.readDir(SRC_DIR)) {
-        if (entry.isDirectory) ids.push(entry.name);
-    }
-    if (ids.length === 0) {
-        console.log(`  源目录为空: ${SRC_DIR}，跳过构建`);
-        return;
-    }
-    for (const id of ids) {
-        await buildProblemPackage(id);
-    }
+  await Deno.mkdir(OUT_DIR, { recursive: true });
+  const ids: string[] = [];
+  for await (const entry of Deno.readDir(SRC_DIR)) {
+    if (entry.isDirectory) ids.push(entry.name);
+  }
+  if (ids.length === 0) {
+    console.log(`  源目录为空: ${SRC_DIR}，跳过构建`);
+    return;
+  }
+  for (const id of ids) {
+    await buildProblemPackage(id);
+  }
 }
 
 /**
@@ -145,59 +145,57 @@ async function buildAllPackages(): Promise<void> {
  * 草稿，普通访问者读不到、也无法按版本提交——生产演练与开发初始化必须发布。
  */
 async function importProblemPackages(
-    dir: string,
-    options: { publish?: boolean; domain?: string } = {},
+  dir: string,
+  options: { publish?: boolean; domain?: string } = {},
 ): Promise<void> {
-    let imported = 0;
-    const slug = options.domain ?? "main";
-    const [workspace] = await getDb().select({ actorId: domains.owner_id })
-        .from(domains).where(eq(domains.slug, slug));
-    if (!workspace) throw new Error(`目标工作空间不存在：${slug}`);
-    try {
-        for await (const entry of Deno.readDir(dir)) {
-            if (!entry.isFile || !entry.name.toLowerCase().endsWith(".zip")) {
-                continue;
-            }
-            const data = await Deno.readFile(join(dir, entry.name));
-            // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
-            const problem = await importDomainProblemBundle(
-                slug,
-                userActorFromAuthenticatedId(workspace.actorId),
-                data,
-                "current",
-            );
-            for (const warning of problem.warnings) {
-                console.warn(`  ${entry.name}: ${warning}`);
-            }
-            if (options.publish) {
-                const published = await publishDomainProblemVersion(
-                    slug,
-                    String(problem.number),
-                    userActorFromAuthenticatedId(workspace.actorId),
-                    problem.draft_revision,
-                    "题目包导入",
-                );
-                console.log(
-                    `  已导入并发布: ${entry.name} → V${published.version}` +
-                        (published.unchanged
-                            ? "（内容未变，复用既有版本）"
-                            : ""),
-                );
-            } else {
-                console.log(`  已导入: ${entry.name}（未发布，仅草稿）`);
-            }
-            imported++;
-        }
-    } catch (err) {
-        if (err instanceof Deno.errors.NotFound) {
-            console.log(`  目录不存在: ${dir}，跳过导入`);
-            return;
-        }
-        throw err;
+  let imported = 0;
+  const slug = options.domain ?? "main";
+  const [workspace] = await getDb().select({ actorId: domains.owner_id })
+    .from(domains).where(eq(domains.slug, slug));
+  if (!workspace) throw new Error(`目标工作空间不存在：${slug}`);
+  try {
+    for await (const entry of Deno.readDir(dir)) {
+      if (!entry.isFile || !entry.name.toLowerCase().endsWith(".zip")) {
+        continue;
+      }
+      const data = await Deno.readFile(join(dir, entry.name));
+      // 运维导入读取当前编辑基线；真正写入仍按捕获的 revision 校验并发。
+      const problem = await importDomainProblemBundle(
+        slug,
+        userActorFromAuthenticatedId(workspace.actorId),
+        data,
+        "current",
+      );
+      for (const warning of problem.warnings) {
+        console.warn(`  ${entry.name}: ${warning}`);
+      }
+      if (options.publish) {
+        const published = await publishDomainProblemVersion(
+          slug,
+          String(problem.number),
+          userActorFromAuthenticatedId(workspace.actorId),
+          problem.draft_revision,
+          "题目包导入",
+        );
+        console.log(
+          `  已导入并发布: ${entry.name} → V${published.version}` +
+            (published.unchanged ? "（内容未变，复用既有版本）" : ""),
+        );
+      } else {
+        console.log(`  已导入: ${entry.name}（未发布，仅草稿）`);
+      }
+      imported++;
     }
-    if (imported === 0) {
-        console.log(`  目录中没有找到统一题目包: ${dir}`);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      console.log(`  目录不存在: ${dir}，跳过导入`);
+      return;
     }
+    throw err;
+  }
+  if (imported === 0) {
+    console.log(`  目录中没有找到统一题目包: ${dir}`);
+  }
 }
 
 /**
@@ -207,412 +205,412 @@ async function importProblemPackages(
  * 发布，校验失败说明发布物损坏，不应静默跳过。
  */
 async function runKnowledgeImport(
-    packDir = resolveOfficialPackDir(),
+  packDir = resolveOfficialPackDir(),
 ): Promise<ImportPackResult> {
-    const stats = await importPack(packDir);
-    return stats;
+  const stats = await importPack(packDir);
+  return stats;
 }
 
 /** 一行导入统计。 */
 function formatKnowledgeStats(stats: ImportPackResult): string {
-    const parts = [
-        `包 ${stats.packId}@${stats.version}`,
-        `领域 ${stats.areas}`,
-        `节点 ${stats.nodes}`,
-        `边 ${stats.edges}`,
-        `新增节点 ${stats.nodes_inserted}`,
-        `更新节点 ${stats.nodes_updated}`,
-        `废弃节点 ${stats.nodes_deprecated}`,
-    ];
-    return parts.join("，");
+  const parts = [
+    `包 ${stats.packId}@${stats.version}`,
+    `领域 ${stats.areas}`,
+    `节点 ${stats.nodes}`,
+    `边 ${stats.edges}`,
+    `新增节点 ${stats.nodes_inserted}`,
+    `更新节点 ${stats.nodes_updated}`,
+    `废弃节点 ${stats.nodes_deprecated}`,
+  ];
+  return parts.join("，");
 }
 
 /** 系统基础数据：root + 默认工作空间 + LLM 默认项 + 镜像白名单 + 标签（幂等）。 */
 async function runInitSystem(): Promise<void> {
-    console.log("初始化系统基础数据...");
-    await ensureRootUser();
-    await sealExistingSiteAdminInitialization();
-    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
-    await seedDomainLlmDefaults();
-    console.log("初始化评测镜像白名单...");
-    await seedJudgeImages();
-    console.log("初始化种子标签...");
-    await seedTags();
-    console.log("导入知识图谱官方内容包...");
-    console.log(`  ${formatKnowledgeStats(await runKnowledgeImport())}`);
-    // 注：LLM 默认配额由 noj-llm-gateway 启动时幂等 seed
-    // 注：题目-标签关联由 problems import 按 manifest.tags 完成
-    console.log("系统基础数据初始化完成");
+  console.log("初始化系统基础数据...");
+  await ensureRootUser();
+  await sealExistingSiteAdminInitialization();
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+  await seedDomainLlmDefaults();
+  console.log("初始化评测镜像白名单...");
+  await seedJudgeImages();
+  console.log("初始化种子标签...");
+  await seedTags();
+  console.log("导入知识图谱官方内容包...");
+  console.log(`  ${formatKnowledgeStats(await runKnowledgeImport())}`);
+  // 注：LLM 默认配额由 noj-llm-gateway 启动时幂等 seed
+  // 注：题目-标签关联由 problems import 按 manifest.tags 完成
+  console.log("系统基础数据初始化完成");
 }
 
 /** 管理员引导：ADMIN_EMAIL/ADMIN_PASS（env 或 CLI 参数）+ 兜底。 */
 async function runBootstrapAdmin(
-    opts: { email?: string; password?: string; credentialsFile?: string },
+  opts: { email?: string; password?: string; credentialsFile?: string },
 ): Promise<void> {
-    if (opts.email) Deno.env.set("ADMIN_EMAIL", opts.email);
-    if (opts.password) Deno.env.set("ADMIN_PASS", opts.password);
-    console.log("检查管理员...");
-    await ensureAdminFromEnv();
-    await ensureBootstrapAdmin({ credentialsFile: opts.credentialsFile });
-    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+  if (opts.email) Deno.env.set("ADMIN_EMAIL", opts.email);
+  if (opts.password) Deno.env.set("ADMIN_PASS", opts.password);
+  console.log("检查管理员...");
+  await ensureAdminFromEnv();
+  await ensureBootstrapAdmin({ credentialsFile: opts.credentialsFile });
+  await ensureDefaultWorkspace(createSystemActor("bootstrap"));
 }
 
 /** 开发环境一键初始化（含 dev 专用数据：E2E 守卫用户）。 */
 async function runDevSetup(): Promise<void> {
-    console.log("=".repeat(48));
-    console.log("dev-setup：开发环境一键初始化");
-    console.log("=".repeat(48));
+  console.log("=".repeat(48));
+  console.log("dev-setup：开发环境一键初始化");
+  console.log("=".repeat(48));
 
-    console.log("\n[1/5] 数据库迁移");
-    await runMigrations();
+  console.log("\n[1/5] 数据库迁移");
+  await runMigrations();
 
-    console.log("\n[2/5] 系统基础数据");
-    await runInitSystem();
+  console.log("\n[2/5] 系统基础数据");
+  await runInitSystem();
 
-    console.log("\n[3/5] 管理员引导");
-    await runBootstrapAdmin({});
+  console.log("\n[3/5] 管理员引导");
+  await runBootstrapAdmin({});
 
-    console.log("\n[4/5] 构建题目包");
-    await buildAllPackages();
+  console.log("\n[4/5] 构建题目包");
+  await buildAllPackages();
 
-    console.log("\n[5/5] 导入题目包（显式发布）+ dev 专用数据");
-    // 开发初始化必须发布：否则题目只有草稿，提交/自测会因缺少已发布版本而拒绝
-    await importProblemPackages(OUT_DIR, { publish: true });
-    await ensureE2EPwChangeUser();
+  console.log("\n[5/5] 导入题目包（显式发布）+ dev 专用数据");
+  // 开发初始化必须发布：否则题目只有草稿，提交/自测会因缺少已发布版本而拒绝
+  await importProblemPackages(OUT_DIR, { publish: true });
+  await ensureE2EPwChangeUser();
 
-    console.log("\ndev-setup 完成");
+  console.log("\ndev-setup 完成");
 }
 
 // ── 子命令定义（Cliffy 嵌套：命令实例挂载）────────────────
 
 const dbCmd = new Command()
-    .description("数据库操作")
-    .command("check-upgrade", "只读检查既有数据库能否升级到本版本")
-    .action(async () => {
-        const { assertDatabaseSupportsAuthorizationSwitch } = await import(
-            "../src/shared/db/migration-switch.ts"
-        );
-        await assertDatabaseSupportsAuthorizationSwitch();
-        console.log("数据库兼容性检查通过");
-    })
-    .command("migrate", "执行数据库迁移")
-    .action(() => {
-        return runMigrations();
-    })
-    .command(
-        "catalog-backfill",
-        "默认域资源归属和题库绑定回填（需先完成迁移与旧 U 数据处理）",
-    )
-    .action(async () => {
-        await ensureRootUser();
-        await ensureDefaultWorkspace(createSystemActor("bootstrap"));
-        console.log(JSON.stringify(await backfillDefaultCatalog()));
-    })
-    .command(
-        "execution-backfill",
-        "历史执行记录的使用域和绑定回填（先完成题库回填）",
-    )
-    .action(async () => {
-        const { backfillExecutionWorkspaces } = await import(
-            "../src/modules/evaluations/index.ts"
-        );
-        console.log(JSON.stringify(await backfillExecutionWorkspaces()));
-    })
-    .command(
-        "upgrade-v010",
-        "从只读 v0.10.6 源库逻辑迁移历史数据至全新空 v0.11 目标库",
-    )
-    .option(
-        "--source-url <url:string>",
-        "只读 v0.10.6 源库 URL（推荐改用 NOJ_UPGRADE_SOURCE_URL，避免口令进入进程列表）",
-    )
-    .option(
-        "--target-url <url:string>",
-        "只执行过 v0.11 schema 迁移的空目标库 URL（推荐 NOJ_UPGRADE_TARGET_URL）",
-    )
-    .option(
-        "--gateway-url <url:string>",
-        "独立部署的 Gateway 库 URL（推荐 NOJ_UPGRADE_GATEWAY_URL）",
-    )
-    .option(
-        "--private-problems <policy:string>",
-        "已发布私有题处置：disable（禁用绑定待复核）或 expose（接受公开）",
-    )
-    .option(
-        "--restricted-contests <policy:string>",
-        "非公开/邀请/口令比赛处置：expose（接受在 main 域公开）",
-    )
-    .option("--dry-run", "只做只读预检、映射与行数统计，不写入目标库")
-    .option("--json", "输出单个 JSON 文档")
-    .action(async (opts: {
-        sourceUrl?: string;
-        targetUrl?: string;
-        gatewayUrl?: string;
-        privateProblems?: string;
-        restrictedContests?: string;
-        dryRun?: boolean;
-        json?: boolean;
-    }) => {
-        const { executeUpgradeCli } = await import("./upgrade-from-v010.ts");
-        requestedExitCode = await executeUpgradeCli({
-            sourceUrl: opts.sourceUrl,
-            targetUrl: opts.targetUrl,
-            gatewayUrl: opts.gatewayUrl,
-            privateProblems: opts.privateProblems,
-            restrictedContests: opts.restrictedContests,
-            dryRun: opts.dryRun,
-            json: opts.json,
-        });
+  .description("数据库操作")
+  .command("check-upgrade", "只读检查既有数据库能否升级到本版本")
+  .action(async () => {
+    const { assertDatabaseSupportsAuthorizationSwitch } = await import(
+      "../src/shared/db/migration-switch.ts"
+    );
+    await assertDatabaseSupportsAuthorizationSwitch();
+    console.log("数据库兼容性检查通过");
+  })
+  .command("migrate", "执行数据库迁移")
+  .action(() => {
+    return runMigrations();
+  })
+  .command(
+    "catalog-backfill",
+    "默认域资源归属和题库绑定回填（需先完成迁移与旧 U 数据处理）",
+  )
+  .action(async () => {
+    await ensureRootUser();
+    await ensureDefaultWorkspace(createSystemActor("bootstrap"));
+    console.log(JSON.stringify(await backfillDefaultCatalog()));
+  })
+  .command(
+    "execution-backfill",
+    "历史执行记录的使用域和绑定回填（先完成题库回填）",
+  )
+  .action(async () => {
+    const { backfillExecutionWorkspaces } = await import(
+      "../src/modules/evaluations/index.ts"
+    );
+    console.log(JSON.stringify(await backfillExecutionWorkspaces()));
+  })
+  .command(
+    "upgrade-v010",
+    "从只读 v0.10.6 源库逻辑迁移历史数据至全新空 v0.11 目标库",
+  )
+  .option(
+    "--source-url <url:string>",
+    "只读 v0.10.6 源库 URL（推荐改用 NOJ_UPGRADE_SOURCE_URL，避免口令进入进程列表）",
+  )
+  .option(
+    "--target-url <url:string>",
+    "只执行过 v0.11 schema 迁移的空目标库 URL（推荐 NOJ_UPGRADE_TARGET_URL）",
+  )
+  .option(
+    "--gateway-url <url:string>",
+    "独立部署的 Gateway 库 URL（推荐 NOJ_UPGRADE_GATEWAY_URL）",
+  )
+  .option(
+    "--private-problems <policy:string>",
+    "已发布私有题处置：disable（禁用绑定待复核）或 expose（接受公开）",
+  )
+  .option(
+    "--restricted-contests <policy:string>",
+    "非公开/邀请/口令比赛处置：expose（接受在 main 域公开）",
+  )
+  .option("--dry-run", "只做只读预检、映射与行数统计，不写入目标库")
+  .option("--json", "输出单个 JSON 文档")
+  .action(async (opts: {
+    sourceUrl?: string;
+    targetUrl?: string;
+    gatewayUrl?: string;
+    privateProblems?: string;
+    restrictedContests?: string;
+    dryRun?: boolean;
+    json?: boolean;
+  }) => {
+    const { executeUpgradeCli } = await import("./upgrade-from-v010.ts");
+    requestedExitCode = await executeUpgradeCli({
+      sourceUrl: opts.sourceUrl,
+      targetUrl: opts.targetUrl,
+      gatewayUrl: opts.gatewayUrl,
+      privateProblems: opts.privateProblems,
+      restrictedContests: opts.restrictedContests,
+      dryRun: opts.dryRun,
+      json: opts.json,
     });
+  });
 
 const initCmd = new Command()
-    .description("系统初始化")
-    .command("system", "初始化系统基础数据（root + RBAC + 镜像白名单 + 标签）")
-    .action(() => {
-        return runInitSystem();
-    });
+  .description("系统初始化")
+  .command("system", "初始化系统基础数据（root + RBAC + 镜像白名单 + 标签）")
+  .action(() => {
+    return runInitSystem();
+  });
 
 const bootstrapCmd = new Command()
-    .description("管理员引导")
-    .command(
-        "first-admin",
-        "仅空站可执行的一次性管理员初始化（服务器本机授权）",
-    )
-    .option("--username <username:string>", "管理员用户名", { required: true })
-    .option("--email <email:string>", "管理员邮箱", { required: true })
-    .action(async (opts: { username: string; email: string }) => {
-        if (!Deno.stdin.isTerminal()) {
-            throw new Error("请在交互终端执行首次初始化，以隐藏输入管理员密码");
-        }
-        const password = await Secret.prompt(
-            "管理员密码（至少 8 位，含大小写字母和数字）",
-        );
-        const confirmation = await Secret.prompt("再次输入密码");
-        if (password !== confirmation) throw new Error("两次密码不一致");
-        await initializeFirstAdmin(
-            { ...opts, password },
-            createSystemActor("bootstrap"),
-        );
-        console.log(
-            "首个管理员已创建，初始化入口已永久关闭；首次登录须修改密码。",
-        );
-    })
-    .command(
-        "admin",
-        "维护/开发用管理员引导（可提升已有用户，不用于首次初始化）",
-    )
-    .option("--email <email:string>", "管理员邮箱")
-    .option("--password <password:string>", "管理员密码")
-    .option(
-        "--credentials-file <path:string>",
-        "一次性凭据落盘路径（默认启动目录 .data/bootstrap-admin.txt；只读根文件系统请指向挂载的可写目录）",
-    )
-    .action(
-        (opts: {
-            email?: string;
-            password?: string;
-            credentialsFile?: string;
-        }) => {
-            return runBootstrapAdmin(opts);
-        },
+  .description("管理员引导")
+  .command(
+    "first-admin",
+    "仅空站可执行的一次性管理员初始化（服务器本机授权）",
+  )
+  .option("--username <username:string>", "管理员用户名", { required: true })
+  .option("--email <email:string>", "管理员邮箱", { required: true })
+  .action(async (opts: { username: string; email: string }) => {
+    if (!Deno.stdin.isTerminal()) {
+      throw new Error("请在交互终端执行首次初始化，以隐藏输入管理员密码");
+    }
+    const password = await Secret.prompt(
+      "管理员密码（至少 8 位，含大小写字母和数字）",
     );
+    const confirmation = await Secret.prompt("再次输入密码");
+    if (password !== confirmation) throw new Error("两次密码不一致");
+    await initializeFirstAdmin(
+      { ...opts, password },
+      createSystemActor("bootstrap"),
+    );
+    console.log(
+      "首个管理员已创建，初始化入口已永久关闭；首次登录须修改密码。",
+    );
+  })
+  .command(
+    "admin",
+    "维护/开发用管理员引导（可提升已有用户，不用于首次初始化）",
+  )
+  .option("--email <email:string>", "管理员邮箱")
+  .option("--password <password:string>", "管理员密码")
+  .option(
+    "--credentials-file <path:string>",
+    "一次性凭据落盘路径（默认启动目录 .data/bootstrap-admin.txt；只读根文件系统请指向挂载的可写目录）",
+  )
+  .action(
+    (opts: {
+      email?: string;
+      password?: string;
+      credentialsFile?: string;
+    }) => {
+      return runBootstrapAdmin(opts);
+    },
+  );
 
 const problemsCmd = new Command()
-    .description("题目包操作")
-    // #514：命令名统一到单数；`problems` 为别名，避免破坏既有脚本与文档。
-    .alias("problems")
-    .command("init", "生成新题目的最小可评测骨架（脚手架）")
-    .arguments("<slug:string>")
-    .option("--title <title:string>", "题目标题（缺省用 slug）")
-    .option("--difficulty <difficulty:string>", "难度：easy / medium / hard", {
-        default: "medium",
-    })
-    .option("--dir <dir:string>", "输出根目录（缺省 data/problems-src）")
-    .option(
-        "--template <template:string>",
-        `可验题模板：${
-            PROBLEM_TEMPLATE_NAMES.join(" / ")
-        }（含参考解答，可直接 noj-cli problem test）`,
-    )
-    .action(
-        async (
-            opts: {
-                title?: string;
-                difficulty?: string;
-                dir?: string;
-                template?: string;
-            },
-            slug: string,
-        ) => {
-            if (
-                opts.template !== undefined &&
-                !isProblemTemplateName(opts.template)
-            ) {
-                throw new ValidationError(
-                    `--template 仅支持 ${PROBLEM_TEMPLATE_NAMES.join("/")}`,
-                );
-            }
-            const result = await initProblem({
-                slug,
-                title: opts.title,
-                difficulty: opts.difficulty as
-                    | "easy"
-                    | "medium"
-                    | "hard"
-                    | undefined,
-                root: opts.dir,
-                template: opts.template,
-            });
-            console.log(`已生成题目骨架：${result.dir}`);
-            for (const file of result.files) {
-                console.log(`  + ${file}`);
-            }
-            console.log(
-                opts.template !== undefined
-                    ? `\n下一步：运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
-                        `再按 README.md 的改造步骤改成你的题目`
-                    : `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
-                        `deno task problems:build --id ${slug}`,
-            );
-            if (opts.dir) {
-                console.log(
-                    `注意：已用 --dir 指定输出根目录，请自行 cd 到该根目录再执行 build/import。`,
-                );
-            }
-        },
-    )
-    .command("build", "从 data/problems-src 构建统一题目包")
-    .option("--id <id:string>", "仅构建指定题目 id")
-    .action(async (opts: { id?: string }) => {
-        if (opts.id) {
-            await buildProblemPackage(opts.id);
-        } else {
-            await buildAllPackages();
-        }
-    })
-    .command("import", "批量导入统一题目包（幂等 upsert）")
-    .option("--dir <dir:string>", "题目包目录", { default: OUT_DIR })
-    .option("--domain <slug:string>", "导入目标工作空间", { default: "main" })
-    .option(
-        "--publish",
-        "导入后显式发布为题目版本（不加则只写草稿，普通用户不可见）",
-    )
-    .action((opts: { dir: string; domain: string; publish?: boolean }) => {
-        return importProblemPackages(opts.dir, {
-            domain: opts.domain,
-            publish: opts.publish === true,
-        });
+  .description("题目包操作")
+  // #514：命令名统一到单数；`problems` 为别名，避免破坏既有脚本与文档。
+  .alias("problems")
+  .command("init", "生成新题目的最小可评测骨架（脚手架）")
+  .arguments("<slug:string>")
+  .option("--title <title:string>", "题目标题（缺省用 slug）")
+  .option("--difficulty <difficulty:string>", "难度：easy / medium / hard", {
+    default: "medium",
+  })
+  .option("--dir <dir:string>", "输出根目录（缺省 data/problems-src）")
+  .option(
+    "--template <template:string>",
+    `可验题模板：${
+      PROBLEM_TEMPLATE_NAMES.join(" / ")
+    }（含参考解答，可直接 noj-cli problem test）`,
+  )
+  .action(
+    async (
+      opts: {
+        title?: string;
+        difficulty?: string;
+        dir?: string;
+        template?: string;
+      },
+      slug: string,
+    ) => {
+      if (
+        opts.template !== undefined &&
+        !isProblemTemplateName(opts.template)
+      ) {
+        throw new ValidationError(
+          `--template 仅支持 ${PROBLEM_TEMPLATE_NAMES.join("/")}`,
+        );
+      }
+      const result = await initProblem({
+        slug,
+        title: opts.title,
+        difficulty: opts.difficulty as
+          | "easy"
+          | "medium"
+          | "hard"
+          | undefined,
+        root: opts.dir,
+        template: opts.template,
+      });
+      console.log(`已生成题目骨架：${result.dir}`);
+      for (const file of result.files) {
+        console.log(`  + ${file}`);
+      }
+      console.log(
+        opts.template !== undefined
+          ? `\n下一步：运行 noj-cli problem test ${result.dir} 确认模板可验题，` +
+            `再按 README.md 的改造步骤改成你的题目`
+          : `\n下一步：按 README.md 的待办清单补齐题面/判分/用例，然后运行 ` +
+            `deno task problems:build --id ${slug}`,
+      );
+      if (opts.dir) {
+        console.log(
+          `注意：已用 --dir 指定输出根目录，请自行 cd 到该根目录再执行 build/import。`,
+        );
+      }
+    },
+  )
+  .command("build", "从 data/problems-src 构建统一题目包")
+  .option("--id <id:string>", "仅构建指定题目 id")
+  .action(async (opts: { id?: string }) => {
+    if (opts.id) {
+      await buildProblemPackage(opts.id);
+    } else {
+      await buildAllPackages();
+    }
+  })
+  .command("import", "批量导入统一题目包（幂等 upsert）")
+  .option("--dir <dir:string>", "题目包目录", { default: OUT_DIR })
+  .option("--domain <slug:string>", "导入目标工作空间", { default: "main" })
+  .option(
+    "--publish",
+    "导入后显式发布为题目版本（不加则只写草稿，普通用户不可见）",
+  )
+  .action((opts: { dir: string; domain: string; publish?: boolean }) => {
+    return importProblemPackages(opts.dir, {
+      domain: opts.domain,
+      publish: opts.publish === true,
     });
+  });
 
 const knowledgeCmd = new Command()
-    .description("知识图谱操作")
-    .command("import", "导入知识图谱内容包（幂等；缺省官方包）")
-    .option("--pack <dir:string>", "内容包目录", {
-        default: resolveOfficialPackDir(),
-    })
-    .action(async (opts: { pack: string }) => {
-        console.log(formatKnowledgeStats(await runKnowledgeImport(opts.pack)));
-    });
+  .description("知识图谱操作")
+  .command("import", "导入知识图谱内容包（幂等；缺省官方包）")
+  .option("--pack <dir:string>", "内容包目录", {
+    default: resolveOfficialPackDir(),
+  })
+  .action(async (opts: { pack: string }) => {
+    console.log(formatKnowledgeStats(await runKnowledgeImport(opts.pack)));
+  });
 
 const searchCmd = new Command()
-    .description("搜索索引操作")
-    .command("reindex", "全量重建搜索索引")
-    .action(async () => {
-        console.log("开始全量重建搜索索引...");
-        const counts = await reindexAll();
-        console.log("重建完成", counts);
-    });
+  .description("搜索索引操作")
+  .command("reindex", "全量重建搜索索引")
+  .action(async () => {
+    console.log("开始全量重建搜索索引...");
+    const counts = await reindexAll();
+    console.log("重建完成", counts);
+  });
 
 // maintain 子命令：--url/--json 由 noj-cli 透传；Cliffy 中 .command() 之后的
 // option/action 注册到该子命令，因此每个子命令都要显式声明自己的选项。
 const maintainCmd = new Command()
-    .description("维护/排空操作（容器内通过 Core 内部 API 执行）")
-    .command("status", "查询维护与排空状态")
-    .option(
-        "--url <url:string>",
-        "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
-    )
-    .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
-    .action(async (opts: { url?: string; json?: boolean }) => {
-        requestedExitCode = await runMaintain("status", {
-            url: opts.url,
-            json: opts.json,
-        });
-    })
-    .command("enter", "进入维护模式（幂等）")
-    .option(
-        "--url <url:string>",
-        "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
-    )
-    .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
-    .action(async (opts: { url?: string; json?: boolean }) => {
-        requestedExitCode = await runMaintain("enter", {
-            url: opts.url,
-            json: opts.json,
-        });
-    })
-    .command("exit", "退出维护模式（幂等）")
-    .option(
-        "--url <url:string>",
-        "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
-    )
-    .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
-    .action(async (opts: { url?: string; json?: boolean }) => {
-        requestedExitCode = await runMaintain("exit", {
-            url: opts.url,
-            json: opts.json,
-        });
-    })
-    .command("wait", "等待排空完成（轮询 status）")
-    .option(
-        "--url <url:string>",
-        "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
-    )
-    .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
-    .option("--timeout <seconds:number>", "等待排空超时秒数", { default: 1800 })
-    .option("--interval <seconds:number>", "轮询间隔秒数", { default: 5 })
-    .action(
-        async (opts: {
-            url?: string;
-            json?: boolean;
-            timeout: number;
-            interval: number;
-        }) => {
-            requestedExitCode = await runMaintain("wait", {
-                url: opts.url,
-                json: opts.json,
-                timeoutSeconds: opts.timeout,
-                intervalSeconds: opts.interval,
-            });
-        },
-    );
+  .description("维护/排空操作（容器内通过 Core 内部 API 执行）")
+  .command("status", "查询维护与排空状态")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    requestedExitCode = await runMaintain("status", {
+      url: opts.url,
+      json: opts.json,
+    });
+  })
+  .command("enter", "进入维护模式（幂等）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    requestedExitCode = await runMaintain("enter", {
+      url: opts.url,
+      json: opts.json,
+    });
+  })
+  .command("exit", "退出维护模式（幂等）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .action(async (opts: { url?: string; json?: boolean }) => {
+    requestedExitCode = await runMaintain("exit", {
+      url: opts.url,
+      json: opts.json,
+    });
+  })
+  .command("wait", "等待排空完成（轮询 status）")
+  .option(
+    "--url <url:string>",
+    "Core 内部 API 地址（默认 env NOJ_CORE_INTERNAL_URL 或 http://core:8000）",
+  )
+  .option("--json", "输出单个 JSON 文档（noj-cli 集成用）")
+  .option("--timeout <seconds:number>", "等待排空超时秒数", { default: 1800 })
+  .option("--interval <seconds:number>", "轮询间隔秒数", { default: 5 })
+  .action(
+    async (opts: {
+      url?: string;
+      json?: boolean;
+      timeout: number;
+      interval: number;
+    }) => {
+      requestedExitCode = await runMaintain("wait", {
+        url: opts.url,
+        json: opts.json,
+        timeoutSeconds: opts.timeout,
+        intervalSeconds: opts.interval,
+      });
+    },
+  );
 
 try {
-    await new Command()
-        .name("noj")
-        .description("Neuro OJ 管理 CLI（迁移、初始化、管理员、题目包）")
-        .version(getBuildInfo().version)
-        .command("db", dbCmd)
-        .command("init", initCmd)
-        .command("bootstrap", bootstrapCmd)
-        // #514：命令名统一到单数 `problem`；`problems` 保留为别名过渡，
-        // 避免破坏既有脚本（deno task problems:build 等仍可用）。
-        .command("problem", problemsCmd)
-        .command("knowledge", knowledgeCmd)
-        .command("search", searchCmd)
-        .command("maintain", maintainCmd)
-        .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")
-        .action(() => {
-            return runDevSetup();
-        })
-        .command("help", new HelpCommand().global())
-        .command("completions", new CompletionsCommand())
-        .parse(Deno.args);
+  await new Command()
+    .name("noj")
+    .description("Neuro OJ 管理 CLI（迁移、初始化、管理员、题目包）")
+    .version(getBuildInfo().version)
+    .command("db", dbCmd)
+    .command("init", initCmd)
+    .command("bootstrap", bootstrapCmd)
+    // #514：命令名统一到单数 `problem`；`problems` 保留为别名过渡，
+    // 避免破坏既有脚本（deno task problems:build 等仍可用）。
+    .command("problem", problemsCmd)
+    .command("knowledge", knowledgeCmd)
+    .command("search", searchCmd)
+    .command("maintain", maintainCmd)
+    .command("dev-setup", "开发环境一键初始化（含 dev 专用数据）")
+    .action(() => {
+      return runDevSetup();
+    })
+    .command("help", new HelpCommand().global())
+    .command("completions", new CompletionsCommand())
+    .parse(Deno.args);
 } catch (err) {
-    // 错误不得被吞：先打印并记录非零退出码，待数据库/Redis 关闭后再退出。
-    requestedExitCode = 1;
-    const msg = err instanceof Error ? err.message : String(err);
-    if (msg) console.error(`noj: ${msg}`);
+  // 错误不得被吞：先打印并记录非零退出码，待数据库/Redis 关闭后再退出。
+  requestedExitCode = 1;
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg) console.error(`noj: ${msg}`);
 }
 
 // 所有命令都经过同一清理边界。显式 init/migrate 中途失败时，已创建的连接不能
@@ -620,24 +618,24 @@ try {
 // 但不覆盖命令本身的错误。
 const cleanupErrors: unknown[] = [];
 try {
-    await closeRedisForShutdown();
+  await closeRedisForShutdown();
 } catch (error) {
-    cleanupErrors.push(error);
+  cleanupErrors.push(error);
 }
 try {
-    await closeDbForShutdown();
+  await closeDbForShutdown();
 } catch (error) {
-    cleanupErrors.push(error);
+  cleanupErrors.push(error);
 }
 if (cleanupErrors.length > 0) {
-    requestedExitCode = 1;
-    for (const error of cleanupErrors) {
-        console.error(
-            `noj: 命令结束时资源清理失败：${
-                error instanceof Error ? error.message : String(error)
-            }`,
-        );
-    }
+  requestedExitCode = 1;
+  for (const error of cleanupErrors) {
+    console.error(
+      `noj: 命令结束时资源清理失败：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 // 强制退出：postgres.js/Redis 连接会阻止进程自然终止，但此时已完成显式清理。

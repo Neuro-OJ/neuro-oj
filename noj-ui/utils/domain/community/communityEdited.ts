@@ -6,6 +6,6 @@
  * 返回 true 时前端展示「已编辑」标签。
  */
 export function isCommunityEdited(createdAt: string, updatedAt: string): boolean {
-    if (!createdAt || !updatedAt) return false;
-    return updatedAt !== createdAt;
+  if (!createdAt || !updatedAt) return false;
+  return updatedAt !== createdAt;
 }

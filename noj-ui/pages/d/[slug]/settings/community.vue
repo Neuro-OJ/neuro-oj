@@ -6,7 +6,7 @@ useSeoMeta({ title: '社区设置 - 域设置' });
 </script>
 
 <template>
-    <WorkspaceSettingsShell>
-        <CommunityManage :key="key" />
-    </WorkspaceSettingsShell>
+  <WorkspaceSettingsShell>
+    <CommunityManage :key="key" />
+  </WorkspaceSettingsShell>
 </template>

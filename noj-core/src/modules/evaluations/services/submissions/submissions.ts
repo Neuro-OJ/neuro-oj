@@ -14,32 +14,32 @@
  */
 
 export {
-    createSubmission,
-    deleteSubmission,
-    getSubmission,
-    // CRUD
-    listSubmissions,
-    resolveSubmissionId,
+  createSubmission,
+  deleteSubmission,
+  getSubmission,
+  // CRUD
+  listSubmissions,
+  resolveSubmissionId,
 } from "./submissions-crud.ts";
 
 export { createArtifactSubmission } from "./artifact-submissions.ts";
 
 export {
-    createPredictionSubmission,
-    type PredictionSubmissionInput,
+  createPredictionSubmission,
+  type PredictionSubmissionInput,
 } from "./prediction-submissions.ts";
 
 export { resolveProblemSubmissionMode } from "./problem-mode.ts";
 
 export {
-    saveEvaluationResult,
-    saveEvaluationResultTx,
-    updateSubmissionStatus,
+  saveEvaluationResult,
+  saveEvaluationResultTx,
+  updateSubmissionStatus,
 } from "./submissions-result.ts";
 
 export {
-    rejudgeProblemSubmissions,
-    rejudgeSubmission,
+  rejudgeProblemSubmissions,
+  rejudgeSubmission,
 } from "./submissions-rejudge.ts";
 
 /**
@@ -49,11 +49,11 @@ export {
  * sse、mq 等模块复用，保持向后兼容。
  */
 export type {
-    ListSubmissionsParams,
-    ListSubmissionsResult,
-    SubmissionDetail,
-    SubmissionInput,
-    SubmissionListItem,
-    SubmissionResponse,
-    TodayStats,
+  ListSubmissionsParams,
+  ListSubmissionsResult,
+  SubmissionDetail,
+  SubmissionInput,
+  SubmissionListItem,
+  SubmissionResponse,
+  TodayStats,
 } from "./submissions-types.ts";
