@@ -19,7 +19,7 @@ import { deleteProblemFixtures } from "../../../../../tests/helper.ts";
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals, assertRejects } from "jsr:@std/assert@^1";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import {
   createRawClient,
@@ -27,8 +27,8 @@ import {
 } from "../../../../../tests/helper/pg-raw-connection.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
+  backgroundTasks,
   domainProblemBindings,
-  educationOutbox,
   evaluationAttempts,
   problemBindingHistory,
   problems,
@@ -144,7 +144,10 @@ async function seedProblem(id: string, number: number): Promise<string> {
 }
 
 async function cleanupProblem(id: string): Promise<void> {
-  await db.delete(educationOutbox).where(eq(educationOutbox.problem_id, id));
+  await db.delete(backgroundTasks).where(and(
+    eq(backgroundTasks.task_type, "education.recompute"),
+    sql`${backgroundTasks.payload}->>'problem_id' = ${id}`,
+  ));
   await db.delete(submissionVersionResults).where(
     eq(submissionVersionResults.problem_id, id),
   );

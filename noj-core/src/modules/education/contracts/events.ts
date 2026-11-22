@@ -1,9 +1,9 @@
 /**
  * education 对外暴露的教学事实登记窄事务合同。
  *
- * 教学失效与重算依据（`education_outbox` + 教学事实 revision）归 education 所有。
- * problems、evaluations 等业务模块只能在**自己的业务事务**里调用本文件的函数
- * 登记事实，不能直接写 `education_outbox`，也不能自行决定教学投影的刷新节奏。
+ * 教学失效与重算依据（`education.recompute` 后台任务 + 教学事实 revision）归
+ * education 所有。problems、evaluations 等业务模块只能在**自己的业务事务**里调用
+ * 本文件的函数登记事实，不能直接写教学任务，也不能自行决定教学投影的刷新节奏。
  *
  * 三个函数都：
  * - 第一个参数是真实 `DbTx`，不自开根事务、不读默认连接；

@@ -4,7 +4,7 @@ import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
 import { educationRouter } from "../../routes/index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test("教学互动 API：反馈、求助、通知认证及跨域错误，消息点击重新授权", async () => {

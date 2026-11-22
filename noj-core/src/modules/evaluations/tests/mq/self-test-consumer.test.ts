@@ -7,12 +7,12 @@ import {
   v2ResultForTest,
 } from "../_versioning-fixtures.ts";
 import { assertEquals, assertExists } from "jsr:@std/assert@^1";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import { resetDbForTest } from "../../../../../tests/helpers/db.ts";
 
 import {
-  educationOutbox,
+  backgroundTasks,
   evaluationAttempts,
   problems,
   selfTests,
@@ -415,9 +415,10 @@ Deno.test({
     await db.delete(selfTests).where(
       eq(selfTests.id, RECOVERABLE_SELF_TEST_ID),
     );
-    await db.delete(educationOutbox).where(
-      inArray(educationOutbox.problem_id, [PROBLEM_ID, BAD_PROBLEM_ID]),
-    );
+    await db.delete(backgroundTasks).where(and(
+      eq(backgroundTasks.task_type, "education.recompute"),
+      sql`${backgroundTasks.payload}->>'problem_id' IN (${PROBLEM_ID}, ${BAD_PROBLEM_ID})`,
+    ));
     await deleteProblemFixtures(eq(problems.id, PROBLEM_ID));
     await deleteProblemFixtures(eq(problems.id, BAD_PROBLEM_ID));
     await db.delete(users).where(eq(users.id, USER_ID));

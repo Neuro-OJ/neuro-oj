@@ -22,8 +22,9 @@ import {
   createAssignment,
   exportAssignmentMatrixCsv,
   publishAssignment,
-  startEducationWorker,
 } from "../../index.ts";
+import { startTaskWorker } from "../../../../shared/tasks/worker.ts";
+import { educationOnlyHandlers } from "../_education-tasks.ts";
 import { educationRouter } from "../../routes/index.ts";
 import { recomputeAssignmentProgress } from "../../services/progress-materializer.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
@@ -262,7 +263,11 @@ Deno.test({
         domain_problem_binding_id: changed.source.bindingId,
       });
     });
-    const worker = startEducationWorker();
+    const worker = startTaskWorker({
+      workerId: "education-matrix-bench",
+      handlers: educationOnlyHandlers(),
+      pollIntervalMs: 20,
+    });
     try {
       const readCells = () =>
         f.db.select().from(assignmentProgress).where(and(

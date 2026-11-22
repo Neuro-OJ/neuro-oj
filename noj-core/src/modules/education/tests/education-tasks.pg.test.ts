@@ -1,8 +1,9 @@
 /**
  * 教学事件 → 通用后台任务（真实 PG）。
  *
- * - outbox 行与 `education.recompute` 任务同事务提交或回滚；
- * - 分页结果重新入队，完成后不重复处理。
+ * - 教学事件即 `education.recompute` 任务，与业务事实同事务提交或回滚；
+ * - 分页结果重新入队，完成后不重复处理；
+ * - 补算请求未完成时合并，完成后可再次触发。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import { sql } from "drizzle-orm";
@@ -14,11 +15,14 @@ import {
   classrooms,
   domainMemberships,
   domains,
-  educationOutbox,
   users,
 } from "../../../shared/db/schema.ts";
-import { recordEducationEvent } from "../contracts/facts.ts";
-import { handleEducationTask } from "../../application/education-handlers.ts";
+import {
+  EDUCATION_TASK_PAYLOAD_VERSION,
+  enqueueEducationRefreshTx,
+  recordEducationEvent,
+} from "../contracts/facts.ts";
+import { processEducationTask } from "../services/progress-worker.ts";
 import {
   claimTasks,
   completeTaskTx,
@@ -84,7 +88,7 @@ async function seedEducation(): Promise<{
   return { domainId, assignmentId, classroomId, userId };
 }
 
-Deno.test("education facts[真实 PG]: outbox 与通用任务同事务提交或回滚", async () => {
+Deno.test("education facts[真实 PG]: 教学事件任务与业务事实同事务提交或回滚", async () => {
   await reset();
   const f = await seedEducation();
   try {
@@ -99,7 +103,6 @@ Deno.test("education facts[真实 PG]: outbox 与通用任务同事务提交或�
   } catch {
     // 预期回滚
   }
-  assertEquals((await db.select().from(educationOutbox)).length, 0);
   assertEquals((await db.select().from(backgroundTasks)).length, 0);
 
   await db.transaction((tx) =>
@@ -109,13 +112,13 @@ Deno.test("education facts[真实 PG]: outbox 与通用任务同事务提交或�
       event_type: "assignment.refresh",
     })
   );
-  assertEquals((await db.select().from(educationOutbox)).length, 1);
   const [task] = await db.select().from(backgroundTasks);
   assertEquals(task.task_type, "education.recompute");
-  assertEquals(
-    task.payload.outbox_id,
-    (await db.select().from(educationOutbox))[0].id,
-  );
+  assertEquals(task.payload_version, EDUCATION_TASK_PAYLOAD_VERSION);
+  assertEquals(task.target_id, f.assignmentId);
+  assertEquals(task.payload.domain_id, f.domainId);
+  assertEquals(task.payload.event_type, "assignment.refresh");
+  assertEquals(task.dedupe_key, `event:${task.payload.event_id}`);
 });
 
 Deno.test("education background task[真实 PG]: 分页结果重新入队，完成后不重复处理", async () => {
@@ -130,7 +133,7 @@ Deno.test("education background task[真实 PG]: 分页结果重新入队，完�
   );
 
   const [first] = await claimTasks("education-test-1", 1, 60_000, db);
-  const firstResult = await handleEducationTask(
+  const firstResult = await processEducationTask(
     first,
     new AbortController().signal,
   );
@@ -147,7 +150,7 @@ Deno.test("education background task[真实 PG]: 分页结果重新入队，完�
   );
 
   const [second] = await claimTasks("education-test-2", 1, 60_000, db);
-  const secondResult = await handleEducationTask(
+  const secondResult = await processEducationTask(
     second,
     new AbortController().signal,
   );
@@ -160,7 +163,34 @@ Deno.test("education background task[真实 PG]: 分页结果重新入队，完�
     ),
     true,
   );
-  const [outbox] = await db.select().from(educationOutbox);
-  assertEquals(outbox.processed_at !== null, true);
   assertEquals((await getTaskById(first.id, db))?.status, "succeeded");
+});
+
+Deno.test("education refresh[真实 PG]: 未完成的补算请求合并，完成后再次请求复活同一任务", async () => {
+  await reset();
+  const f = await seedEducation();
+  const refresh = () =>
+    db.transaction((tx) =>
+      enqueueEducationRefreshTx(tx, f.domainId, f.assignmentId, f.userId)
+    );
+  await refresh();
+  await refresh();
+  const pending = await db.select().from(backgroundTasks);
+  assertEquals(pending.length, 1);
+  assertEquals(pending[0].status, "pending");
+
+  const [task] = await claimTasks("education-refresh", 1, 60_000, db);
+  await refresh();
+  assertEquals((await getTaskById(task.id, db))?.status, "leased");
+  assertEquals(
+    await db.transaction((tx) => completeTaskTx(tx, task.id, task.leaseToken)),
+    true,
+  );
+
+  await refresh();
+  const revived = await db.select().from(backgroundTasks);
+  assertEquals(revived.length, 1);
+  assertEquals(revived[0].id, task.id);
+  assertEquals(revived[0].status, "pending");
+  assertEquals(revived[0].finished_at, null);
 });

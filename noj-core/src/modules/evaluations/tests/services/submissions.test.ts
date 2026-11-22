@@ -26,9 +26,9 @@ import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 
 import {
   auditLogs,
+  backgroundTasks,
   contestParticipants,
   contests,
-  educationOutbox,
   evaluationAttempts,
   problems,
   sseEvents,
@@ -43,7 +43,7 @@ import {
   NotFoundError,
   RateLimitedError,
 } from "../../../../shared/base/errors.ts";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { enterTestContext } from "../../../platform/system/index.ts";
 import {
   type LogRecord,
@@ -876,9 +876,10 @@ Deno.test({
     } finally {
       // 清理
       await db.delete(submissions).where(eq(submissions.id, subId));
-      await db.delete(educationOutbox).where(
-        eq(educationOutbox.user_id, userId),
-      );
+      await db.delete(backgroundTasks).where(and(
+        eq(backgroundTasks.task_type, "education.recompute"),
+        sql`${backgroundTasks.payload}->>'user_id' = ${userId}`,
+      ));
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -968,9 +969,10 @@ Deno.test({
       assertExists(ignoredLog, "应记录旧结果被丢弃的日志");
     } finally {
       await db.delete(submissions).where(eq(submissions.id, subId));
-      await db.delete(educationOutbox).where(
-        eq(educationOutbox.user_id, userId),
-      );
+      await db.delete(backgroundTasks).where(and(
+        eq(backgroundTasks.task_type, "education.recompute"),
+        sql`${backgroundTasks.payload}->>'user_id' = ${userId}`,
+      ));
       await db.delete(users).where(eq(users.id, userId));
     }
   },
@@ -1089,9 +1091,10 @@ Deno.test({
       assertEquals(submissionRow.active_attempt_id, null);
     } finally {
       await db.delete(submissions).where(eq(submissions.id, subId));
-      await db.delete(educationOutbox).where(
-        eq(educationOutbox.user_id, userId),
-      );
+      await db.delete(backgroundTasks).where(and(
+        eq(backgroundTasks.task_type, "education.recompute"),
+        sql`${backgroundTasks.payload}->>'user_id' = ${userId}`,
+      ));
       await db.delete(users).where(eq(users.id, userId));
     }
   },

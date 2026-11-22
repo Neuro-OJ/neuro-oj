@@ -4,7 +4,7 @@ import {
   readAccountNotifications,
 } from "../../communication/contracts/account-notifications.ts";
 import { createAccountNotificationTx } from "../../communication/contracts/account-notifications.ts";
-import { and, eq, isNull, type SQL, sql } from "drizzle-orm";
+import { and, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
@@ -14,14 +14,19 @@ import {
   assignments,
   domains,
   educationNotificationEmails,
-  educationOutbox,
 } from "../../../shared/db/schema.ts";
 import type { EducationNoticeType } from "../../../shared/education-types.ts";
 import { loadWorkspace } from "../../access/contracts/cross-module/workspace_services_access.ts";
 import { getAssignmentFeedback } from "./feedback.ts";
 import { getAssignmentHelp } from "./help.ts";
 import { loadInteractionAccess } from "./interaction-access.ts";
-import type { ClaimedEducationEvent } from "./progress-worker.ts";
+import type { EducationStep } from "./progress-worker.ts";
+import type { EducationTaskPayload } from "../contracts/facts.ts";
+import type { ClaimedTask } from "../../../shared/tasks/contracts.ts";
+import {
+  lockLeasedTaskTx,
+  updateLeasedTaskPayloadTx,
+} from "../../../shared/tasks/repository.ts";
 import {
   Channels,
   publishSseEventAfterTx,
@@ -66,9 +71,12 @@ async function canReceive(
 }
 
 /** 每个领取只投递一页，租约及数据库唯一键保证重试、重启不产生重复通知。 */
-export async function processEducationNotice(event: ClaimedEducationEvent) {
+export async function processEducationNotice(
+  task: ClaimedTask,
+  event: EducationTaskPayload,
+): Promise<EducationStep> {
   if (!event.assignment_id) throw new Error("教学通知缺少任务定位");
-  const type = event.payload.notice_type as EducationNoticeType;
+  const type = event.data.notice_type as EducationNoticeType;
   if (
     ![
       "assignment",
@@ -84,15 +92,9 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
       { channel: string; eventId: number; payload: Record<string, unknown> }
     > = [];
     const now = new Date().toISOString();
-    const [current] = await tx.select().from(educationOutbox).where(
-      and(
-        eq(educationOutbox.id, event.id),
-        eq(educationOutbox.lease_token, event.lease_token!),
-        sql`${educationOutbox.leased_until} > ${now}`,
-        isNull(educationOutbox.processed_at),
-      ),
-    ).for("update");
-    if (!current) return { processed: false, updates };
+    if (!(await lockLeasedTaskTx(tx, task.id, task.leaseToken))) {
+      return { step: { done: true, skipped: "lease_lost" } as const, updates };
+    }
     const [resource] = await tx.select({
       assignment: assignments,
       slug: domains.slug,
@@ -107,7 +109,7 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         ),
       );
     if (!resource) throw new Error("教学通知任务定位无效");
-    const after = current.payload._notice_after as string | undefined;
+    const after = event.data._notice_after as string | undefined;
     const staff = (type === "help" || type === "help_reply") && !event.user_id;
     const lifecycle =
       ["assignment", "assignment_changed", "resource_unavailable"].includes(
@@ -142,7 +144,7 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
           event.assignment_id!,
           user_id,
           type,
-          current.payload,
+          event.data,
           tx,
         ))
       ) continue;
@@ -151,11 +153,11 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         domain_id: event.domain_id,
         assignment_id: event.assignment_id!,
         recipient_id: user_id,
-        event_id: event.id,
+        event_id: event.event_id,
         type,
-        feedback_id: (current.payload.feedback_id as string | null) ?? null,
-        help_id: (current.payload.help_id as string | null) ?? null,
-        reply_id: (current.payload.reply_id as string | null) ?? null,
+        feedback_id: (event.data.feedback_id as string | null) ?? null,
+        help_id: (event.data.help_id as string | null) ?? null,
+        reply_id: (event.data.reply_id as string | null) ?? null,
         created_at: now,
       });
       if (inserted) {
@@ -174,30 +176,25 @@ export async function processEducationNotice(event: ClaimedEducationEvent) {
         updates.push({ channel, eventId, payload });
       }
     }
-    const complete = targets.length < 50 || !!event.user_id;
-    await tx.update(educationOutbox).set({
-      processed_at: complete ? now : null,
-      lease_token: null,
-      leased_until: null,
-      payload: {
-        ...current.payload,
-        _notice_after: targets.at(-1)?.user_id ?? after,
-      },
-      available_at: now,
-      last_error: null,
-      attempts: 0,
-    }).where(
-      and(
-        eq(educationOutbox.id, event.id),
-        eq(educationOutbox.lease_token, event.lease_token!),
-      ),
-    );
-    return { processed: true, updates };
+    if (targets.length < 50 || !!event.user_id) {
+      return { step: { done: true } as const, updates };
+    }
+    // 游标与本页通知同事务推进：提交后即使 worker 未能 reschedule，重试也从下一页继续。
+    const next: EducationTaskPayload = {
+      ...event,
+      data: { ...event.data, _notice_after: targets.at(-1)!.user_id },
+    };
+    if (
+      !(await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next))
+    ) {
+      throw new Error("教学通知租约在投递过程中失效");
+    }
+    return { step: { done: false, payload: next } as const, updates };
   });
   for (const update of delivered.updates) {
     publishSseEventAfterTx(update.channel, update.payload, update.eventId);
   }
-  return delivered.processed;
+  return delivered.step;
 }
 
 function visibleNotifications(

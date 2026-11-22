@@ -94,6 +94,114 @@ export async function enqueueTaskTx(
 }
 
 /**
+ * 登记「合并型」任务：同去重键已有未完成任务（pending / leased）时合并到它；
+ * 既有任务已终结（succeeded / failed）时原地复活为 pending 并换上新 payload。
+ *
+ * 用于「读到陈旧投影请求补算」这类请求：同一目标同时只需一条待处理任务，
+ * 但处理完成后的新请求必须能再次触发。
+ */
+export async function enqueueOrReviveTaskTx(
+  tx: DbTx,
+  input: EnqueueTaskInput,
+): Promise<EnqueueTaskResult> {
+  const nowMs = await databaseNowMs(tx);
+  const now = new Date(nowMs).toISOString();
+  const availableAt = input.availableAt ?? now;
+  if (Number.isNaN(Date.parse(availableAt))) {
+    throw new RangeError("任务可领取时刻必须是 ISO 8601 时间");
+  }
+  const id = newTaskId();
+  const rows = await tx.insert(backgroundTasks).values({
+    id,
+    task_type: input.taskType,
+    target_kind: input.targetKind,
+    target_id: input.targetId,
+    dedupe_key: input.dedupeKey ?? "",
+    payload_version: input.payloadVersion ?? 1,
+    payload: input.payload ?? {},
+    status: "pending",
+    available_at: availableAt,
+    created_at: now,
+    updated_at: now,
+  }).onConflictDoUpdate({
+    target: [
+      backgroundTasks.task_type,
+      backgroundTasks.target_kind,
+      backgroundTasks.target_id,
+      backgroundTasks.dedupe_key,
+    ],
+    set: {
+      status: "pending",
+      payload_version: input.payloadVersion ?? 1,
+      payload: input.payload ?? {},
+      available_at: availableAt,
+      failure_count: 0,
+      lease_token: null,
+      lease_owner: null,
+      lease_expiry: null,
+      last_result: null,
+      last_error: null,
+      finished_at: null,
+      updated_at: now,
+    },
+    setWhere: inArray(backgroundTasks.status, ["succeeded", "failed"]),
+  }).returning({ id: backgroundTasks.id });
+  if (rows.length > 0) {
+    return { taskId: rows[0].id, created: rows[0].id === id };
+  }
+  const [existing] = await tx.select({ id: backgroundTasks.id }).from(
+    backgroundTasks,
+  ).where(and(
+    eq(backgroundTasks.task_type, input.taskType),
+    eq(backgroundTasks.target_kind, input.targetKind),
+    eq(backgroundTasks.target_id, input.targetId),
+    eq(backgroundTasks.dedupe_key, input.dedupeKey ?? ""),
+  )).limit(1);
+  if (!existing) throw new Error("任务去重键命中但既有任务不可见");
+  return { taskId: existing.id, created: false };
+}
+
+/**
+ * 当前持有人在业务事务内锁定自己的租约行；租约已失效返回 false。
+ *
+ * handler 需要把业务写入与「仍持有租约」绑定在同一事务时使用（例如按页投递
+ * 通知并同时推进 payload 游标）。
+ */
+export async function lockLeasedTaskTx(
+  tx: DbTx,
+  taskId: string,
+  token: string,
+): Promise<boolean> {
+  const rows = await tx.select({ id: backgroundTasks.id }).from(
+    backgroundTasks,
+  ).where(and(
+    eq(backgroundTasks.id, taskId),
+    eq(backgroundTasks.status, "leased"),
+    eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
+  )).for("update");
+  return rows.length > 0;
+}
+
+/** 当前持有人在事务内更新任务 payload（游标等可恢复依据）；租约失效返回 false。 */
+export async function updateLeasedTaskPayloadTx(
+  tx: DbTx,
+  taskId: string,
+  token: string,
+  payload: TaskPayload,
+): Promise<boolean> {
+  const rows = await tx.update(backgroundTasks).set({
+    payload: payload as Record<string, unknown>,
+  }).where(and(
+    eq(backgroundTasks.id, taskId),
+    eq(backgroundTasks.status, "leased"),
+    eq(backgroundTasks.lease_token, token),
+    sql`${backgroundTasks.lease_expiry}::timestamptz > clock_timestamp()`,
+  )).returning({ id: backgroundTasks.id });
+  return rows.length > 0;
+}
+
+/**
  * 原子领取任务：`FOR UPDATE SKIP LOCKED`，可回收过期租约。
  *
  * 过期租约先回到 `pending`（并保留失败计数），随后与普通 pending 一起参与领取；
@@ -104,6 +212,8 @@ export async function claimTasks(
   limit = TASK_DEFAULT_CLAIM_LIMIT,
   leaseDurationMs = TASK_DEFAULT_LEASE_MS,
   db: DbRoot = getDb(),
+  /** 只领取这些类型；缺省领取全部类型（测试按模块排空任务时使用）。 */
+  taskTypes?: readonly AnyTaskType[],
 ): Promise<ClaimedTask[]> {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new RangeError("领取数量必须是正整数");
@@ -138,6 +248,9 @@ export async function claimTasks(
     ).where(and(
       eq(backgroundTasks.status, "pending"),
       lte(backgroundTasks.available_at, now),
+      taskTypes
+        ? inArray(backgroundTasks.task_type, [...taskTypes])
+        : undefined,
     )).orderBy(asc(backgroundTasks.available_at), asc(backgroundTasks.id))
       .limit(limit).for("update", { skipLocked: true });
 

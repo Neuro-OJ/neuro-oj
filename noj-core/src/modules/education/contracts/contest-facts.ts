@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { DbTx } from "../../../shared/db/executor.ts";
-import { backgroundTasks, educationOutbox } from "../../../shared/db/schema.ts";
+import { backgroundTasks } from "../../../shared/db/schema.ts";
 import { unwrapRows } from "../../../shared/base/sql-rows.ts";
-import { recordEducationEvent } from "./facts.ts";
+import { EDUCATION_TASK_TYPE, recordEducationEvent } from "./facts.ts";
 
 /** 比赛时间调整重排未消费的到期事件，并使已派生的本域题目进度重新计算。 */
 export async function rescheduleContestEducation(
@@ -10,25 +10,13 @@ export async function rescheduleContestEducation(
   contestId: string,
   endTime: string,
 ) {
-  const delayed = await tx.update(educationOutbox).set({
-    available_at: endTime,
-  }).where(
-    and(
-      isNull(educationOutbox.processed_at),
-      sql`${educationOutbox.payload}->>'contest_id' = ${contestId}`,
-      sql`${educationOutbox.payload}->>'_invalidate_on_claim' = 'true'`,
-    ),
-  ).returning({ id: educationOutbox.id });
-  if (delayed.length) {
-    await tx.update(backgroundTasks).set({ available_at: endTime }).where(and(
-      eq(backgroundTasks.task_type, "education.recompute"),
-      inArray(
-        backgroundTasks.dedupe_key,
-        delayed.map((row) => `outbox:${row.id}`),
-      ),
-      eq(backgroundTasks.status, "pending"),
-    ));
-  }
+  // 仅重排尚未领取的到期失效事件；已领取的事件已经按当时的结束时间完成失效。
+  await tx.update(backgroundTasks).set({ available_at: endTime }).where(and(
+    eq(backgroundTasks.task_type, EDUCATION_TASK_TYPE),
+    eq(backgroundTasks.status, "pending"),
+    sql`${backgroundTasks.payload}->'data'->>'contest_id' = ${contestId}`,
+    sql`${backgroundTasks.payload}->'data'->>'_invalidate_on_claim' = 'true'`,
+  ));
   const rows = unwrapRows<{ domain_id: string; problem_id: string }>(
     await tx.execute(sql`
     SELECT DISTINCT domain_id, problem_id FROM (

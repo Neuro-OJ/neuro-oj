@@ -14,8 +14,8 @@
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 319 | ignore |
 | noj-cli/src/prod/e2e/roundtrip_test.ts | 354 | ignore |
 | noj-core/src/modules/access/identity/tests/routes/tfa.test.ts | 21 | env-guard |
-| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 34 | env-guard |
-| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 36 | env-guard |
+| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 35 | env-guard |
+| noj-core/src/modules/education/tests/perf/matrix-bench.test.ts | 37 | env-guard |
 | noj-core/src/modules/platform/tests/services/system-settings-invalidation.test.ts | 132 | env-guard |
 | noj-core/src/modules/read-models/search/tests/perf/search_bench.test.ts | 16 | ignore |
 | noj-core/tests/helper.ts | 163 | env-guard |
@@ -192,7 +192,7 @@
 | noj-tests/e2e/contest/rankings.test.ts | 41 | early-return |
 | noj-tests/e2e/contest/rankings.test.ts | 56 | early-return |
 | noj-tests/e2e/cross-domain/assignment_all_problem_kinds.test.ts | 341 | ignore |
-| noj-tests/e2e/cross-domain/education_outbox_recovery.test.ts | 93 | ignore |
+| noj-tests/e2e/cross-domain/education_task_recovery.test.ts | 97 | ignore |
 | noj-tests/e2e/cross-domain/network_capability.test.ts | 244 | early-return |
 | noj-tests/e2e/cross-domain/network_capability.test.ts | 256 | early-return |
 | noj-tests/e2e/cross-domain/network_capability.test.ts | 262 | early-return |

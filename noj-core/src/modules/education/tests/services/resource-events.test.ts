@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import {
   assignmentItems,
   domainProblemBindings,
-  educationOutbox,
   problems,
   problemVersions,
 } from "../../../../shared/db/schema.ts";
@@ -20,7 +19,10 @@ import {
 } from "../../../problems/index.ts";
 import { userActorFromAuthenticatedId } from "../../../access/index.ts";
 import { setMemberRole } from "../../../../../tests/helpers/workspace-actors.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import {
+  listEducationTasks,
+  processEducationBatch,
+} from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 import { insertDomainProblemCopy } from "../../../../shared/testing/domain-problem-copy.ts";
 
@@ -116,8 +118,8 @@ Deno.test("真实发布：源版本发布自动记录 any 作答切换，其他�
   assertEquals(bindings.find((b) => b.domain_id === f.school.id)?.revision, 1);
   assertEquals(bindings.find((b) => b.domain_id === f.other.id)?.revision, 0);
   assertEquals(
-    (await f.db.select().from(educationOutbox)).filter((e) =>
-      e.event_type === "problem.changed"
+    (await listEducationTasks(f.db)).filter((e) =>
+      e.event.event_type === "problem.changed"
     ).length,
     1,
   );

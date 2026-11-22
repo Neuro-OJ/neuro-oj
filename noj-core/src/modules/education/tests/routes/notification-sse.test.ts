@@ -13,7 +13,7 @@ import {
 import { signToken } from "../../../access/identity/index.ts";
 import { removeDomainMember } from "../../../../../tests/helpers/workspace-actors.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import { educationNotificationSse } from "../../routes/notification-sse.ts";
 import { recordSseEvent } from "../../../../shared/sse/sse-events.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";

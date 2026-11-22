@@ -4,7 +4,6 @@ import { eq } from "drizzle-orm";
 import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   assignmentItems,
-  educationOutbox,
   evaluationAttempts,
   submissions,
   submissionVersionResults,
@@ -16,7 +15,10 @@ import {
   getMyAssignmentProgress,
   publishAssignment,
 } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import {
+  listEducationTasks,
+  processEducationBatch,
+} from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 async function fixture() {
@@ -199,8 +201,8 @@ Deno.test("矩阵：过期口径明确更新中，并发补算合并，学生同
     matrices.every((m) => m.updating && m.rows[0].cells[0].score === null),
     true,
   );
-  const refreshes = await f.db.select().from(educationOutbox).where(
-    eq(educationOutbox.event_type, "assignment.refresh"),
+  const refreshes = (await listEducationTasks(f.db)).filter((t) =>
+    t.event.event_type === "assignment.refresh" && t.status === "pending"
   );
   assertEquals(refreshes.length, 1);
   assertEquals(

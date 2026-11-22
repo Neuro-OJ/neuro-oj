@@ -141,7 +141,7 @@ groups:
           severity: warning
         annotations:
           summary: 教学投影事实长时间未完成
-          description: education_outbox 中最老未处理事实已超过 5 分钟，教学学情可能暂时落后。
+          description: 最老的已到期教学事件任务（education.recompute）等待已超过 5 分钟，教学学情可能暂时落后。
           runbook: deploy/monitoring/runbooks/background-tasks.md
 
       # ---- 近期错误率（滑动窗口，替代进程累计比例）----

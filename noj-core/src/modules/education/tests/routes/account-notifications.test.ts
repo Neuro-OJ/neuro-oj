@@ -5,7 +5,7 @@ import { accountNotifications, domains } from "../../../../shared/db/schema.ts";
 import { signToken } from "../../../access/identity/index.ts";
 import { initRedisForTest, jsonRequest } from "../../../../../tests/helper.ts";
 import { createAssignment, publishAssignment } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test("统一通知：教学与账号消息共用分页、未读和已读，失效域不计数且无法点击", async () => {

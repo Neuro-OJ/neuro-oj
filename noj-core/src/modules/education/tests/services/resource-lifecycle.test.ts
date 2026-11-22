@@ -27,7 +27,7 @@ import {
   publishAssignment,
   setClassroomMember,
 } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 Deno.test("资源下架：副本独立下架，保留学生代码及成绩；恢复沿用原绑定", async () => {
