@@ -87,14 +87,13 @@ export async function processEducationNotice(
       "help_reply",
     ].includes(type)
   ) throw new Error("教学通知类型非法");
+  // 处理本页期间不持有任务行锁，避免挡住 worker 续租；只在提交前复核租约。
+  // 并发接手时通知由 (event_id, recipient_id) 唯一约束去重，不会重复投递。
   const delivered = await getDb().transaction(async (tx) => {
     const updates: Array<
       { channel: string; eventId: number; payload: Record<string, unknown> }
     > = [];
     const now = new Date().toISOString();
-    if (!(await lockLeasedTaskTx(tx, task.id, task.leaseToken))) {
-      return { step: { done: true, skipped: "lease_lost" } as const, updates };
-    }
     const [resource] = await tx.select({
       assignment: assignments,
       slug: domains.slug,
@@ -177,6 +176,9 @@ export async function processEducationNotice(
       }
     }
     if (targets.length < 50 || !!event.user_id) {
+      if (!(await lockLeasedTaskTx(tx, task.id, task.leaseToken))) {
+        throw new NoticeLeaseLost();
+      }
       return { step: { done: true } as const, updates };
     }
     // 游标与本页通知同事务推进：提交后即使 worker 未能 reschedule，重试也从下一页继续。
@@ -186,16 +188,21 @@ export async function processEducationNotice(
     };
     if (
       !(await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next))
-    ) {
-      throw new Error("教学通知租约在投递过程中失效");
-    }
+    ) throw new NoticeLeaseLost();
     return { step: { done: false, payload: next } as const, updates };
+  }).catch((error) => {
+    if (error instanceof NoticeLeaseLost) return null;
+    throw error;
   });
+  if (!delivered) return { done: true, skipped: "lease_lost" };
   for (const update of delivered.updates) {
     publishSseEventAfterTx(update.channel, update.payload, update.eventId);
   }
   return delivered.step;
 }
+
+/** 提交前发现租约已失效：回滚本页，交给接手的 worker 重做。 */
+class NoticeLeaseLost extends Error {}
 
 function visibleNotifications(
   governs: boolean | SQL,

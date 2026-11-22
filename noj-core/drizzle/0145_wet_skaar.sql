@@ -31,6 +31,22 @@ WHERE t."task_type" = 'education.recompute'
   AND t."payload"->>'outbox_id' = o."id"
   AND o."processed_at" IS NULL
   AND t."status" IN ('pending', 'leased', 'failed');--> statement-breakpoint
+-- 3b. 未完成的刷新改用新去重键，升级后同一任务 + 学生的新请求与之合并。
+-- 旧唯一索引 education_outbox_pending_refresh_unique 保证每个任务 + 学生至多一条。
+UPDATE "background_tasks" t SET
+  "dedupe_key" = 'refresh:' || COALESCE(t."payload"->>'user_id', '')
+WHERE t."task_type" = 'education.recompute'
+  AND t."payload_version" = 2
+  AND t."payload"->>'event_type' = 'assignment.refresh'
+  AND t."dedupe_key" LIKE 'outbox:%'
+  AND t."status" IN ('pending', 'leased', 'failed')
+  AND NOT EXISTS (
+    SELECT 1 FROM "background_tasks" x
+    WHERE x."task_type" = t."task_type"
+      AND x."target_kind" = t."target_kind"
+      AND x."target_id" = t."target_id"
+      AND x."dedupe_key" = 'refresh:' || COALESCE(t."payload"->>'user_id', '')
+  );--> statement-breakpoint
 -- 4. 其余 v1 任务对应的 outbox 已处理完：直接收尾，避免新 handler 拒绝旧 payload。
 UPDATE "background_tasks" SET
   "status" = 'succeeded',

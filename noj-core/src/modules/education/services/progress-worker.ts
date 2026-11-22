@@ -9,10 +9,7 @@ import type {
   TaskHandler,
   TaskRescheduleResult,
 } from "../../../shared/tasks/contracts.ts";
-import {
-  lockLeasedTaskTx,
-  updateLeasedTaskPayloadTx,
-} from "../../../shared/tasks/repository.ts";
+import { updateLeasedTaskPayloadTx } from "../../../shared/tasks/repository.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
 import {
   EDUCATION_TASK_PAYLOAD_VERSION,
@@ -20,7 +17,11 @@ import {
   invalidateEducationEvent,
 } from "../contracts/facts.ts";
 import { processEducationNotice } from "./notifications.ts";
-import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import {
+  Channels,
+  publishSseEventAfterTx,
+} from "../../../shared/sse/event-bus.ts";
+import { recordSseEvent } from "../../../shared/sse/sse-events.ts";
 
 /** 一次领取处理一页；`payload` 为下一页的可恢复依据，`done` 表示事件已处理完。 */
 export type EducationStep =
@@ -49,7 +50,7 @@ function readEducationPayload(task: ClaimedTask): EducationTaskPayload {
 /**
  * 到期事件（比赛结束后才公开的成绩）在首次领取时递增事实版本。
  *
- * 失效与清除标记在同一事务内、以租约为条件完成，重复领取不会重复失效。
+ * 清除标记与失效在同一事务内、以租约为条件完成，重复领取不会重复失效。
  */
 async function invalidateOnClaim(
   task: ClaimedTask,
@@ -61,7 +62,11 @@ async function invalidateOnClaim(
     data: { ...payload.data, _invalidate_on_claim: false },
   };
   const held = await getDb().transaction(async (tx) => {
-    if (!(await lockLeasedTaskTx(tx, task.id, task.leaseToken))) return false;
+    // 先以租约为条件清除标记（同时锁住任务行），再递增版本：两者同一事务提交，
+    // 之后即使租约到期，接手者也只会看到已清除的标记，不会重复失效。
+    if (
+      !(await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next))
+    ) return false;
     await invalidateEducationEvent(tx, {
       domain_id: payload.domain_id,
       event_type: "submission.changed",
@@ -70,13 +75,14 @@ async function invalidateOnClaim(
       assignment_id: payload.assignment_id ?? undefined,
       classroom_id: payload.classroom_id ?? undefined,
     });
-    return await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next);
+    return true;
   });
   return held ? next : null;
 }
 
 /** 每次只处理一个任务的一页学生，持久游标让大量名单也可在重启后继续。 */
 async function recomputeEducationPage(
+  task: ClaimedTask,
   payload: EducationTaskPayload,
 ): Promise<EducationStep> {
   const db = getDb(),
@@ -119,21 +125,29 @@ async function recomputeEducationPage(
     assignment.id,
     students.map((s) => s.user_id),
   );
-  await publishSseEvent(Channels.education(payload.domain_id), {
-    type: "education:sync",
-    domain_id: payload.domain_id,
-    assignment_id: assignment.id,
-  });
-  const next: EducationCursor = students.length < 50
+  const cursorNext: EducationCursor = students.length < 50
     ? { assignment_after: assignment.id }
     : { assignment_id: assignment.id, student_after: students.at(-1)!.user_id };
-  return {
-    done: false,
-    payload: {
-      ...payload,
-      data: { ...payload.data, _education_cursor: next },
-    },
+  const next: EducationTaskPayload = {
+    ...payload,
+    data: { ...payload.data, _education_cursor: cursorNext },
   };
+  // 游标以租约为条件持久化后才广播：失去租约时接手者重做本页，但不会重复推送。
+  const channel = Channels.education(payload.domain_id),
+    sync = {
+      type: "education:sync",
+      domain_id: payload.domain_id,
+      assignment_id: assignment.id,
+    };
+  const eventId = await db.transaction(async (tx) => {
+    if (
+      !(await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next))
+    ) return null;
+    return await recordSseEvent(channel, sync, tx);
+  });
+  if (eventId === null) return { done: true, skipped: "lease_lost" };
+  publishSseEventAfterTx(channel, sync, eventId);
+  return { done: false, payload: next };
 }
 
 /**
@@ -149,7 +163,7 @@ export async function processEducationStep(
   if (payload.event_type === "notification") {
     return await processEducationNotice(task, payload);
   }
-  return await recomputeEducationPage(payload);
+  return await recomputeEducationPage(task, payload);
 }
 
 /**

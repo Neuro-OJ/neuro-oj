@@ -23,21 +23,34 @@ outbox 不能直接删除，因为它还承担：
   自包含：`event_id`、`domain_id`、`event_type`、`user_id`、`problem_id`、
   `classroom_id`、`assignment_id`，以及 `data`（原 outbox payload：附加信息、
   游标、到期失效标记）。去重键 `event:<event_id>`。
-- 处理器 `processEducationTask`（`education/services/progress-worker.ts`）直接注册
+- 处理器
+  `processEducationTask`（`education/services/progress-worker.ts`）直接注册
   到通用 worker；每次领取处理一页，未完成时返回 reschedule，由 worker 以租约为
   条件写回新 payload。删除 `application/education-handlers.ts` 适配层。
-- 通知投递在同一事务内用 `lockLeasedTaskTx` 复核租约，并用
-  `updateLeasedTaskPayloadTx` 推进 `_notice_after`；幂等键改为 payload 的
-  `event_id`，`notifications.event_id` 不再有外键。
-- `_invalidate_on_claim` 在首次处理时于同一事务内失效并清除标记，以租约为条件。
+- 通知投递处理一页期间不持有任务行锁（否则挡住续租，慢页会因租约到期整页回滚），
+  只在提交前复核租约：非末页用 `updateLeasedTaskPayloadTx` 推进
+  `_notice_after`， 末页用 `lockLeasedTaskTx`；租约已失效则整页回滚并返回
+  `lease_lost`。并发接手 由 `(event_id, recipient_id)` 唯一约束去重。幂等键改为
+  payload 的 `event_id`， `notifications.event_id` 不再有外键。
+- `_invalidate_on_claim`：先以租约为条件清除标记（同时锁住任务行），再递增投影
+  版本，同一事务提交；之后租约即使到期，接手者也不会重复失效。
+- 重算页的 `education:sync`
+  与游标在同一受租约保护的事务内持久化（`recordSseEvent`），
+  提交后再广播；失去租约时不推送。
 - `assignment.refresh` 用新的 `enqueueOrReviveTaskTx`：去重键
   `refresh:<user_id>`，已有 pending / leased 任务时合并，已终结的任务原地复活。
 - `claimTasks` 增加可选的任务类型过滤，测试据此只排空教学任务
   （`education/tests/_education-tasks.ts`）。
 - 教学投影观测改为统计已到期未完成的 `education.recompute` 任务。
 - 迁移 `0145`：先补登记缺任务的未处理 outbox 行，把未完成的 v1 任务改写为 v2
-  payload（`event_id` 沿用原 outbox id），其余 v1 任务收尾为 succeeded，再删除
-  外键与 `education_outbox` 表。
+  payload（`event_id` 沿用原 outbox id），未完成的刷新改用 `refresh:<user_id>`
+  去重键（升级后新请求与之合并），其余 v1 任务收尾为 succeeded，再删除外键与
+  `education_outbox` 表。存量语义由
+  `tests/db/issue726_education_task_migration_test.ts` 覆盖。
+- 处理器暂留
+  `modules/education`：它依赖教学模块内部的学情物化与通知服务，单独迁到
+  `features/` 需要并存一个 `features/education` 并从旧模块导出内部服务；教学模块
+  整体迁移时一起搬。
 
 ## Alternatives considered
 
@@ -55,5 +68,5 @@ outbox 不能直接删除，因为它还承担：
   任务因原地复活不会随读取次数增长。
 - 旧教学批量 worker 与相应测试（慢邮件与学情共用循环）一并删除；邮件投递循环
   `startEducationEmailWorker` 不受影响。
-- E2E `education_outbox_recovery.test.ts` 改名为 `education_task_recovery.test.ts`，
-  直接重放 v2 任务验证重启恢复。
+- E2E `education_outbox_recovery.test.ts` 改名为
+  `education_task_recovery.test.ts`， 直接重放 v2 任务验证重启恢复。

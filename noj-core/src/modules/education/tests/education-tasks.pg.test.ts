@@ -5,31 +5,41 @@
  * - 分页结果重新入队，完成后不重复处理；
  * - 补算请求未完成时合并，完成后可再次触发。
  */
-import { assertEquals } from "jsr:@std/assert@^1";
-import { sql } from "drizzle-orm";
+import { assert, assertEquals } from "jsr:@std/assert@^1";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
+import { unwrapRows } from "../../../shared/base/sql-rows.ts";
 import { resetDbForTest } from "../../../../tests/helpers/db.ts";
 import {
+  assignmentRecipients,
   assignments,
   backgroundTasks,
+  classroomMemberships,
   classrooms,
   domainMemberships,
   domains,
+  queryProjectionRevisions,
   users,
 } from "../../../shared/db/schema.ts";
 import {
   EDUCATION_TASK_PAYLOAD_VERSION,
+  educationRevisionScope,
   enqueueEducationRefreshTx,
   recordEducationEvent,
+  recordEducationNotice,
 } from "../contracts/facts.ts";
 import { processEducationTask } from "../services/progress-worker.ts";
 import {
   claimTasks,
   completeTaskTx,
   getTaskById,
+  renewTaskLease,
   rescheduleTaskTx,
 } from "../../../shared/tasks/repository.ts";
-import { isTaskRescheduleResult } from "../../../shared/tasks/contracts.ts";
+import {
+  type ClaimedTask,
+  isTaskRescheduleResult,
+} from "../../../shared/tasks/contracts.ts";
 
 const db = getDb();
 const now = new Date().toISOString();
@@ -193,4 +203,195 @@ Deno.test("education refresh[真实 PG]: 未完成的补算请求合并，完成
   assertEquals(revived[0].id, task.id);
   assertEquals(revived[0].status, "pending");
   assertEquals(revived[0].finished_at, null);
+});
+
+async function domainRevision(domainId: string): Promise<number> {
+  const [row] = await db.select({
+    revision: queryProjectionRevisions.data_revision,
+  })
+    .from(queryProjectionRevisions)
+    .where(
+      eq(queryProjectionRevisions.scope_key, educationRevisionScope(domainId)),
+    );
+  return row?.revision ?? 0;
+}
+
+async function expireLease(taskId: string): Promise<void> {
+  await db.update(backgroundTasks).set({
+    lease_expiry: "2020-01-01T00:00:00.000Z",
+  }).where(eq(backgroundTasks.id, taskId));
+}
+
+async function claimOne(leaseMs = 60_000): Promise<ClaimedTask> {
+  const [task] = await claimTasks("education-test", 1, leaseMs, db, [
+    "education.recompute",
+  ]);
+  assert(task, "应领取到教学任务");
+  return task;
+}
+
+Deno.test("education delayed[真实 PG]: 失去租约不失效，重新领取后只失效一次", async () => {
+  await reset();
+  const f = await seedEducation();
+  await db.transaction((tx) =>
+    recordEducationEvent(tx, {
+      domain_id: f.domainId,
+      assignment_id: f.assignmentId,
+      event_type: "submission.changed",
+    }, { availableAt: "2099-01-01T00:00:00.000Z" })
+  );
+  await db.update(backgroundTasks).set({ available_at: now });
+  const before = await domainRevision(f.domainId);
+
+  const stale = await claimOne();
+  await expireLease(stale.id);
+  const lost = await processEducationTask(stale, new AbortController().signal);
+  assertEquals((lost as Record<string, unknown>).skipped, "lease_lost");
+  assertEquals(await domainRevision(f.domainId), before);
+
+  const fresh = await claimOne();
+  const result = await processEducationTask(
+    fresh,
+    new AbortController().signal,
+  );
+  assertEquals(await domainRevision(f.domainId), before + 1);
+  const stored = await getTaskById(fresh.id, db);
+  assertEquals(
+    (stored?.payload.data as Record<string, unknown>)._invalidate_on_claim,
+    false,
+  );
+  // 同一租约内重复执行（如 worker 重放）不会再次失效。
+  if (isTaskRescheduleResult(result)) {
+    await processEducationTask(
+      { ...fresh, payload: stored!.payload },
+      new AbortController().signal,
+    );
+  }
+  assertEquals(await domainRevision(f.domainId), before + 1);
+});
+
+Deno.test("education sync[真实 PG]: 失去租约时不持久化游标也不推送 education:sync", async () => {
+  await reset();
+  const f = await seedEducation();
+  await db.transaction((tx) =>
+    recordEducationEvent(tx, {
+      domain_id: f.domainId,
+      assignment_id: f.assignmentId,
+      event_type: "assignment.refresh",
+    })
+  );
+  const countSync = async () =>
+    unwrapRows<{ n: number }>(
+      await db.execute(
+        sql`SELECT count(*)::int AS n FROM sse_events WHERE payload->>'type' = 'education:sync'`,
+      ) as never,
+    )[0].n;
+  const before = await countSync();
+
+  const stale = await claimOne();
+  await expireLease(stale.id);
+  const lost = await processEducationTask(stale, new AbortController().signal);
+  assertEquals((lost as Record<string, unknown>).skipped, "lease_lost");
+  assertEquals(await countSync(), before);
+  assertEquals(
+    (await getTaskById(stale.id, db))?.payload.data,
+    stale.payload.data,
+  );
+
+  const fresh = await claimOne();
+  const step = await processEducationTask(fresh, new AbortController().signal);
+  assert(isTaskRescheduleResult(step), "首页处理后应重新调度下一页");
+  assertEquals(await countSync(), before + 1);
+  const cursor = ((await getTaskById(fresh.id, db))?.payload.data as Record<
+    string,
+    unknown
+  >)._education_cursor;
+  assertEquals(cursor, { assignment_after: f.assignmentId });
+});
+
+Deno.test("education notice[真实 PG]: 满页处理超过租期时续租不被挡住，游标照常推进", async () => {
+  await reset();
+  const f = await seedEducation();
+  const recipients = Array.from({ length: 50 }, (_, i) => ({
+    id: `issue726-r-${String(i).padStart(2, "0")}-${
+      crypto.randomUUID().slice(0, 6)
+    }`,
+  }));
+  await db.insert(users).values(recipients.map((r) => ({
+    id: r.id,
+    username: r.id,
+    email: `${r.id}@example.test`,
+    password_hash: "x",
+    created_at: now,
+    updated_at: now,
+  })));
+  await db.insert(domainMemberships).values(recipients.map((r) => ({
+    id: crypto.randomUUID(),
+    domain_id: f.domainId,
+    user_id: r.id,
+    status: "active" as const,
+    joined_at: now,
+  })));
+  await db.insert(classroomMemberships).values(recipients.map((r) => ({
+    id: crypto.randomUUID(),
+    domain_id: f.domainId,
+    classroom_id: f.classroomId,
+    user_id: r.id,
+    role: "student" as const,
+    joined_at: now,
+    appointed_at: now,
+  })));
+  await db.insert(assignmentRecipients).values(recipients.map((r) => ({
+    id: crypto.randomUUID(),
+    domain_id: f.domainId,
+    classroom_id: f.classroomId,
+    assignment_id: f.assignmentId,
+    user_id: r.id,
+    added_by: "initial" as const,
+    joined_at: now,
+  })));
+  await db.transaction((tx) =>
+    recordEducationNotice(tx, {
+      domain_id: f.domainId,
+      assignment_id: f.assignmentId,
+      type: "assignment_changed",
+    })
+  );
+
+  const leaseMs = 300;
+  const task = await claimOne(leaseMs);
+  // 另一连接短暂锁住收件人表，让本页处理时间确定地超过租期。
+  let locked!: () => void;
+  const lockReady = new Promise<void>((resolve) => (locked = resolve));
+  const locker = db.transaction(async (tx) => {
+    await tx.execute(
+      sql`LOCK TABLE assignment_recipients IN ACCESS EXCLUSIVE MODE`,
+    );
+    locked();
+    await new Promise((resolve) => setTimeout(resolve, leaseMs * 3));
+  });
+  await lockReady;
+  let renewing = true, renewals = 0;
+  const renewer = (async () => {
+    while (renewing) {
+      if (await renewTaskLease(task.id, task.leaseToken, leaseMs, db)) {
+        renewals++;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  })();
+  try {
+    const step = await processEducationTask(task, new AbortController().signal);
+    assert(isTaskRescheduleResult(step), "满页应推进游标并重新调度");
+  } finally {
+    renewing = false;
+    await renewer;
+    await locker;
+  }
+  assert(renewals >= 3, `处理期间续租应持续成功，实际 ${renewals} 次`);
+  const data = (await getTaskById(task.id, db))?.payload.data as Record<
+    string,
+    unknown
+  >;
+  assertEquals(typeof data._notice_after, "string");
 });
