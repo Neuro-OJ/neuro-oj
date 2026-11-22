@@ -11,12 +11,9 @@
  * - 领取与续租是运行时操作，使用根连接（`claimTasks` / `renewTaskLease`）。
  */
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
-import { getDb } from "../../../shared/db/connection.ts";
-import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
-import {
-  type BackgroundTaskRow,
-  backgroundTasks,
-} from "../../../shared/db/schema.ts";
+import { getDb } from "../db/connection.ts";
+import type { DbRoot, DbTx } from "../db/executor.ts";
+import { type BackgroundTaskRow, backgroundTasks } from "../db/schema.ts";
 import {
   type AnyTaskType,
   type ClaimedTask,

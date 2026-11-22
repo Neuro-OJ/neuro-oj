@@ -21,14 +21,14 @@ import { domains } from "../src/shared/db/schema.ts";
 import { Command, ValidationError } from "@cliffy/command";
 import { HelpCommand } from "@cliffy/command/help";
 import { CompletionsCommand } from "@cliffy/command/completions";
-import { runMigrations } from "./../src/shared/db/migrate.ts";
+import { runMigrations } from "../src/shared/db/migrate.ts";
 import { Secret } from "jsr:@cliffy/prompt@^1.2.1";
 import {
   ensureRootUser,
   initializeFirstAdmin,
   sealExistingSiteAdminInitialization,
 } from "../src/modules/access/identity/index.ts";
-import { createSystemActor } from "../src/modules/runtime/system-actors.ts";
+import { createSystemActor } from "../src/shared/access/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../src/modules/access/contracts/actor.ts";
 import { initProblem } from "./problems-init.ts";
 import {
@@ -51,7 +51,7 @@ import {
 } from "../src/modules/problems/index.ts";
 import { ensureDefaultWorkspace } from "../src/modules/access/domains.ts";
 import { reindexAll } from "../src/modules/read-models/search/index.ts";
-import { getBuildInfo } from "./../src/shared/base/build-info.ts";
+import { getBuildInfo } from "../src/shared/base/build-info.ts";
 import {
   importPack,
   type ImportPackResult,

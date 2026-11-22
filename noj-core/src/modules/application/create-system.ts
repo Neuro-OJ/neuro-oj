@@ -21,7 +21,7 @@ import {
   startEducationEmailWorker,
   startEducationPublishingWorker,
 } from "../education/services/worker-lifecycle.ts";
-import { startTaskWorker } from "../runtime/tasks/worker.ts";
+import { startTaskWorker } from "../../shared/tasks/worker.ts";
 import { createBackgroundHandlers } from "./background-handlers.ts";
 import { FEATURES } from "../../features.ts";
 import { startSearchTaskRetentionTask } from "./search-tasks.ts";

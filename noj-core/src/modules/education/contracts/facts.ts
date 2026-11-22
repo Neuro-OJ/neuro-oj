@@ -5,8 +5,8 @@ import {
 } from "../../../shared/db/schema.ts";
 import { sql } from "drizzle-orm";
 import type { EducationNoticeType } from "../../../shared/education-types.ts";
-import { enqueueTaskTx } from "../../runtime/tasks/repository.ts";
-import type { EnqueueTaskResult } from "../../runtime/tasks/contracts.ts";
+import { enqueueTaskTx } from "../../../shared/tasks/repository.ts";
+import type { EnqueueTaskResult } from "../../../shared/tasks/contracts.ts";
 
 /**
  * outbox 行的通用任务映射。

@@ -7,8 +7,8 @@ import {
   defineFeature,
 } from "../../src/shared/feature.ts";
 import { createBackgroundHandlers } from "../../src/modules/application/background-handlers.ts";
-import { TASK_TYPES } from "../../src/modules/runtime/tasks/contracts.ts";
-import type { TaskHandler } from "../../src/modules/runtime/tasks/contracts.ts";
+import { TASK_TYPES } from "../../src/shared/tasks/contracts.ts";
+import type { TaskHandler } from "../../src/shared/tasks/contracts.ts";
 
 const noopHandler: TaskHandler = () => Promise.resolve();
 

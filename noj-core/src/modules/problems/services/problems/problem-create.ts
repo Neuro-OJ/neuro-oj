@@ -55,7 +55,7 @@ import {
 } from "../workspace/problem-create.ts";
 import { DEFAULT_DOMAIN_SLUG } from "../../../../shared/workspace/types.ts";
 import { ensureDefaultWorkspaceOn } from "../../../access/domains.ts";
-import { createSystemActor } from "../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../shared/access/system-actors.ts";
 
 /**
  * 创建题目。

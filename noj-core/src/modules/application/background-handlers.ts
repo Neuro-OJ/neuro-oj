@@ -11,8 +11,8 @@ import type {
   TaskHandler,
   TaskHandlerMap,
   TaskType,
-} from "../runtime/tasks/contracts.ts";
-import { TASK_TYPES } from "../runtime/tasks/contracts.ts";
+} from "../../shared/tasks/contracts.ts";
+import { TASK_TYPES } from "../../shared/tasks/contracts.ts";
 import {
   collectFeatureTasks,
   type FeatureDefinition,

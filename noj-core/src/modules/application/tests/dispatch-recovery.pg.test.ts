@@ -16,7 +16,7 @@ import {
   enqueueTaskTx,
   failTaskTx,
   getTaskById,
-} from "../../runtime/index.ts";
+} from "../../../shared/tasks/repository.ts";
 import { missingTaskHandlers } from "../background-handlers.ts";
 
 async function reset(): Promise<void> {

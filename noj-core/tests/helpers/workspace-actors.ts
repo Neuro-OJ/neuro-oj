@@ -5,7 +5,7 @@
  * 简短调用形状（字符串用户 ID → `UserActor`），不得被 `src/` 或 `scripts/` 导入。
  */
 import type { DbTx, Executor } from "../../src/shared/db/executor.ts";
-import { createSystemActor } from "../../src/modules/runtime/system-actors.ts";
+import { createSystemActor } from "../../src/shared/access/system-actors.ts";
 import { userActorFromAuthenticatedId } from "../../src/modules/access/contracts/actor.ts";
 import {
   addDomainMemberTx,

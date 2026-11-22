@@ -2,7 +2,7 @@ import { type Context, Hono } from "hono";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { effectiveDomainConfiguration } from "../../../../shared/workspace/capabilities.ts";
 import { ensureDefaultWorkspace } from "../../../access/domains.ts";
-import { createSystemActor } from "../../../runtime/system-actors.ts";
+import { createSystemActor } from "../../../../shared/access/system-actors.ts";
 import { getInstanceResourcePolicy } from "../../../platform/contracts/resource-policy.ts";
 import { loadWorkspace } from "../../../access/contracts/cross-module/workspace_services_access.ts";
 import { checkPermission } from "../../../access/contracts/cross-module/identity_services_security_permissions.ts";

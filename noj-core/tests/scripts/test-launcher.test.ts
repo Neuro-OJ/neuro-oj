@@ -123,8 +123,8 @@ Deno.test("test-launcher: mode/domain/shard 参数发现明确", () => {
   );
   assertEquals(
     TARGET_MODULE_NAMES.length,
-    12,
-    "metadata 必须保留 12 个目标模块",
+    11,
+    "metadata 必须保留 11 个目标模块（runtime 已迁入 shared）",
   );
   assertEquals(
     LEGACY_DOMAIN_NAMES.length,
