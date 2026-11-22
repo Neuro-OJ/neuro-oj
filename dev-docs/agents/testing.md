@@ -78,6 +78,12 @@ cd noj-core && deno task db:generate
 - [ ] 新环境变量已登记注册表并加入对应模块 `.env.example`
 - [ ] 中文提交描述符合 Conventional Commits，GPG 签名可用
 - [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
+- [ ] 移动 `noj-ui` 下任何目录（`utils/`、`components/`、`tests/`）后，已全仓 `rg` 过旧路径，
+      并**先 `cd noj-tests`** 再对浏览器用例做类型检查（`deno check e2e/browser/*.test.ts`，或
+      `deno task test:browser` 的类型检查阶段）——从仓库根直接跑会找不到 `deno.json`；
+      **跨模块引用不在 `noj-ui` 的检查范围内**。
+      2026-11 同一个 PR 因此两次挂掉 E2E Browser（`TS2307`：`noj-tests` 仍指向旧的扁平
+      `utils/` 路径）。
 
 ## 6. CI 校验
 
