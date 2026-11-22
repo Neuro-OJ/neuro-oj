@@ -104,6 +104,22 @@ Deno.test("作业求助：只关联本人同域提交，目录与回复不向同
     (await listAssignmentHelp(f.school.slug, f.task.id, f.teacher)).total,
     2,
   );
+  const itemFiltered = await listAssignmentHelp(
+    f.school.slug,
+    f.task.id,
+    f.teacher,
+    { itemId: help.item_id! },
+  );
+  assertEquals(itemFiltered.total, 1);
+  assertEquals(itemFiltered.data.map((row) => row.id), [help.id]);
+  const unassignedFiltered = await listAssignmentHelp(
+    f.school.slug,
+    f.task.id,
+    f.teacher,
+    { itemId: null },
+  );
+  assertEquals(unassignedFiltered.total, 1);
+  assertEquals(unassignedFiltered.data[0].item_id, null);
   await assertRejects(
     () => getAssignmentHelp(f.school.slug, f.task.id, help.id, f.assistant),
     NotFoundError,
@@ -167,6 +183,13 @@ Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本
   );
   assertEquals(detail.state, "resolved");
   assertEquals(detail.replies.length, 1);
+  assertEquals(detail.answered_by_coach, true);
+  assertEquals(detail.replies[0].is_coach, true);
+  assertEquals(typeof detail.author_name, "string");
+  const listed = await listAssignmentHelp(f.school.slug, f.task.id, f.teacher);
+  assertEquals(listed.data[0].reply_count, 1);
+  assertEquals(listed.data[0].answered_by_coach, true);
+  assertEquals(listed.data[0].author_name, detail.author_name);
   await assertRejects(
     () =>
       setAssignmentHelpState(
@@ -207,6 +230,8 @@ Deno.test("作业求助：独立助教能力、幂等回复及状态前置版本
   );
   assertEquals(detail.state, "open");
   assertEquals(detail.handled_by, null);
+  assertEquals(detail.replies[1].is_coach, false);
+  assertEquals(detail.reply_count, 2);
   await assertRejects(
     () =>
       setAssignmentHelpState(

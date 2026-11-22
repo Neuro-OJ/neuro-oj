@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ProblemSample } from "~/utils/domain/problem/oiWorkspace"
 import { extractStatementSamples } from "~/utils/domain/problem/oiWorkspace"
+import MarkdownEditor from "~/components/shared/MarkdownEditor.vue"
 const samples = defineModel<ProblemSample[]>({ required: true })
 const statement = defineModel<string>("statement", {default:""})
 const extracted = ref<ReturnType<typeof extractStatementSamples> | null>(null)
@@ -23,7 +24,15 @@ function add() { samples.value = [...samples.value, { id: `sample_${crypto.rando
     <div v-for="(sample, index) in samples" :key="sample.id" class="space-y-3 rounded-md border border-border p-3">
       <div class="flex items-center justify-between"><span class="text-sm font-medium">样例 {{ index + 1 }}</span><UButton size="xs" color="error" variant="ghost" icon="i-lucide-trash-2" aria-label="删除样例" @click="samples.splice(index, 1)" /></div>
       <div class="grid gap-3 sm:grid-cols-2"><UFormField label="输入"><UTextarea v-model="sample.input" class="w-full font-mono" :rows="4" /></UFormField><UFormField label="预期输出"><UTextarea v-model="sample.output" class="w-full font-mono" :rows="4" /></UFormField></div>
-      <UFormField label="样例说明"><UTextarea v-model="sample.explanation" class="w-full" :rows="2" /></UFormField>
+      <UFormField label="样例说明">
+        <MarkdownEditor
+          v-model="sample.explanation"
+          compact
+          height="100px"
+          aria-label="样例说明"
+          placeholder="说明样例输入输出规则或边界条件（支持 Markdown 与公式）"
+        />
+      </UFormField>
       <div class="flex gap-2"><UButton size="xs" variant="ghost" :disabled="index === 0" @click="move(index,-1)">上移</UButton><UButton size="xs" variant="ghost" :disabled="index === samples.length - 1" @click="move(index,1)">下移</UButton></div>
     </div>
   </section>

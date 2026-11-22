@@ -38,8 +38,7 @@ Mixed 部署，以及 OI、AI 代码、LLM、客观题、产物、预测和界�
 
 ## Brand Commitments
 
-保留 Neuro OJ 名称、标识和现有品牌 token。以域升级前 main 提交 cc05af79 的 UI
-作为视觉恢复依据。界面以中文为主，延续熟悉、清晰的学习与竞赛平台体验。
+保留 Neuro OJ 名称、标识和天青蓝/信号绿品牌认知，视觉系统遵循 `dev-docs/product/DESIGN.md` 与 `dev-docs/design/noj-design-tokens.md` 定义的 Precision Instrument（精密评测工作台）规范。界面以中文为主，提供高效、克制、清晰的学习与竞赛工作台体验。
 
 ## Evidence on Hand
 

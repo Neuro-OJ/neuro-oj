@@ -1,3 +1,5 @@
+import { stripMarkdown } from '../../markdown.ts';
+
 /** 教学权限来自当前域角色，班级名单只包含学生。 */
 export type TeachingCapability =
   | 'progress:read'
@@ -219,22 +221,49 @@ export interface AssignmentFeedback {
   body: string;
   revision: number;
   created_at: string;
+  updated_at?: string;
 }
 export interface AssignmentHelp {
   id: string;
   user_id: string;
+  author_name?: string;
   item_id: string | null;
   body: string;
   state: 'open' | 'resolved';
   revision: number;
+  created_at?: string;
+  updated_at?: string;
+  reply_count?: number;
+  answered_by_coach?: boolean;
   replies?: {
     id: string;
+    author_id?: string;
     author_name: string;
+    is_coach?: boolean;
     body: string;
     created_at: string;
   }[];
   reply_page?: number;
   reply_total?: number;
+}
+/** 从求助正文提取 Issue 列表单行标题（优先首行非空文本，剥离 Markdown 符号）。 */
+export function helpRequestTitle(body: string, maxLength = 80) {
+  const firstLine = body.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? '';
+  return stripMarkdown(firstLine, maxLength) || stripMarkdown(body, maxLength) || '（无正文内容）';
+}
+/** 格式化教学互动时间戳（精确到分钟）。 */
+export function formatTeachingTime(value?: string | null) {
+  if (!value) return '';
+  const ts = Date.parse(value);
+  if (!Number.isFinite(ts)) return '';
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(ts));
 }
 export interface TeachingPage<T> {
   data: T[];

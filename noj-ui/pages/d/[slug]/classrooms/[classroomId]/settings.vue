@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { educationCacheKey } from '~/utils/domain/education/education';
 import { extractApiError } from '~/utils/server/apiError';
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+import MarkdownEditor from '~/components/shared/MarkdownEditor.vue';
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi(), { dialog } = useDialog();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
   id = computed(() => String(route.params.classroomId));
@@ -118,6 +119,7 @@ useSeoMeta({ title: '班级设置' });
     <UAlert
       v-if="error"
       color="error"
+      variant="subtle"
       :title="error"
     />
 
@@ -144,7 +146,14 @@ useSeoMeta({ title: '班级设置' });
           </AdminFormField>
           </div>
           <AdminFormField label="班级简介">
-            <UTextarea v-model="form.description" class="w-full" :rows="4" :maxlength="10000" aria-label="班级简介" />
+            <MarkdownEditor
+              v-model="form.description"
+              compact
+              height="180px"
+              :maxlength="10000"
+              aria-label="班级简介"
+              placeholder="说明班级教学目标、阶段安排或学习要求"
+            />
           </AdminFormField>
           <div class="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
             <span v-if="saved" role="status" class="text-sm text-success-text">班级设置已保存</span>
@@ -178,7 +187,7 @@ useSeoMeta({ title: '班级设置' });
       </UCard>
     </div>
 
-    <UAlert v-else-if="room.data.value" color="warning" title="当前只能读取班级设置，无权修改配置" />
+    <UAlert v-else-if="room.data.value" color="warning" variant="subtle" title="当前只能读取班级设置，无权修改配置" />
     </AsyncContent>
   </div>
 </template>

@@ -3,7 +3,7 @@ import { educationCacheKey } from '~/utils/domain/education/education';
 import { workspacePath } from '~/utils/domain/workspace/workspace';
 import { extractApiError } from '~/utils/server/apiError';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute(), { slug } = useWorkspace(), education = useEducationApi(), capture = useWorkspaceActionScope();
 const actor = useState<{ id: string } | null>('auth:user', () => null),
@@ -55,6 +55,7 @@ useSeoMeta({ title: '申请加入班级' });
     <UAlert
       v-if="error"
       color="error"
+      variant="subtle"
       :title="error"
     />
 
@@ -98,7 +99,7 @@ useSeoMeta({ title: '申请加入班级' });
         </template>
 
         <div class="space-y-4">
-          <div v-if="state.data.value.data.request" class="rounded-lg bg-bg-sunken p-3.5 text-sm space-y-1">
+          <div v-if="state.data.value.data.request" class="rounded-md bg-bg-sunken p-3.5 text-sm space-y-1">
             <div class="flex items-center justify-between text-xs text-text-muted">
               <span>申请提交时间：{{ new Date(state.data.value.data.request.created_at).toLocaleString() }}</span>
             </div>

@@ -61,15 +61,15 @@ async function select(page: Page, label: string, option: string) {
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 
-/** 求助卡片的状态文本与正文由不同节点渲染，按用户可见卡片定位。 */
-function helpButton(page: Page, body: string, state: "待处理" | "已处理") {
-  const bodyButton = page.locator(
-    'section[aria-label="反馈与求助"] button',
-  ).filter({ hasText: body }).first();
-  // 正文在卡片内的 button 中，状态在其后的元信息 div 中；不能把状态
-  // 当作 button 的后代文本筛选。
-  return bodyButton.locator("xpath=..").filter({ hasText: state })
-    .getByRole("button").first();
+/** 求助列表采用 GitHub Issue 风格链接项，按正文与状态标签定位条目链接。 */
+function helpLink(
+  page: Page,
+  body: string,
+  state: "待回答" | "教练已回答" | "已处理",
+) {
+  return page.getByRole("link", { name: new RegExp(body) }).filter({
+    hasText: state,
+  }).first();
 }
 
 /** 页面写操作的响应同时作为稳定资源定位依据。 */
@@ -103,13 +103,15 @@ async function fixture(
   token: string,
   body?: unknown,
   revision?: number,
+  idempotencyKey?: string,
 ) {
+  const headers: Record<string, string> = {};
+  if (revision !== undefined) headers["If-Match"] = String(revision);
+  if (idempotencyKey !== undefined) headers["Idempotency-Key"] = idempotencyKey;
   const result = await api(method, path, {
     token,
     body,
-    ...(revision === undefined
-      ? {}
-      : { headers: { "If-Match": String(revision) } }),
+    ...(Object.keys(headers).length ? { headers } : {}),
   });
   if (result.status < 200 || result.status >= 300) {
     throw new Error(
@@ -508,14 +510,14 @@ Deno.test({
         },
       );
       await step(
-        "学生求助，教师反馈、回复并处理，学生 Web 读取反馈与回复",
+        "学生求助，教师发布全体通知、进入 Issue 详情回复并处理，学生 Web 读取通知与回复",
         async () => {
           await student.page.getByRole("tab", {
-            name: "反馈与求助",
+            name: "我的求助",
             exact: true,
           }).click();
           await student.page.getByRole("button", {
-            name: "向老师求助",
+            name: "发起求助",
             exact: true,
           }).click();
           await student.page.getByRole("textbox", {
@@ -523,70 +525,98 @@ Deno.test({
             exact: true,
           }).fill(question);
           await student.page.getByRole("button", {
-            name: "发送求助",
+            name: "提交求助",
             exact: true,
           }).click();
-          await expect(helpButton(student.page, question, "待处理"))
+          await student.page.waitForURL(
+            (url) =>
+              url.pathname.startsWith(
+                `/d/${slug}/assignments/${assignmentId}/help/`,
+              ),
+          );
+          await ready(student.page);
+          await expect(
+            student.page.getByRole("heading", { name: question }),
+          ).toBeVisible();
+          await expect(student.page.getByText("待教练回答", { exact: true }))
             .toBeVisible();
           await teacher.page.reload();
           await ready(teacher.page);
-          // reload 后作业详情的任务、班级与矩阵数据分开恢复；只等待 Vue
-          // 挂载会早于权限标签渲染，先等教师矩阵稳定再切换反馈标签。
+          // reload 后作业详情的任务、班级与矩阵数据分开恢复；先等教师矩阵
+          // 稳定，再在作业简介下方发布全体通知并切换学生求助标签。
           await expect(
             teacher.page.getByRole("table", { name: "学生成绩矩阵" }),
           ).toBeVisible({ timeout: 15000 });
-          await teacher.page.locator('[role="tab"]').filter({
-            hasText: "反馈与求助",
-          }).first().click();
           await teacher.page.getByRole("button", {
-            name: "写反馈",
+            name: "发布通知",
             exact: true,
           }).click();
           await teacher.page.getByRole("textbox", {
-            name: "作业反馈正文",
+            name: "作业全体通知正文",
             exact: true,
           }).fill(feedback);
           await teacher.page.getByRole("button", {
-            name: "发送反馈",
+            name: "发布全体通知",
             exact: true,
           }).click();
           await expect(teacher.page.getByText(feedback, { exact: true }))
             .toBeVisible();
-          await helpButton(teacher.page, question, "待处理").click();
+          await teacher.page.locator('[role="tab"]').filter({
+            hasText: "学生求助",
+          }).first().click();
+          await helpLink(teacher.page, question, "待回答").click();
+          await teacher.page.waitForURL(
+            (url) =>
+              url.pathname.startsWith(
+                `/d/${slug}/assignments/${assignmentId}/help/`,
+              ),
+          );
+          await ready(teacher.page);
           await teacher.page.getByRole("textbox", {
             name: "求助回复",
             exact: true,
           }).fill(reply);
-          await teacher.page.getByRole("button", { name: "回复", exact: true })
-            .click();
-          await expect(teacher.page.getByText(reply, { exact: true }))
-            .toBeVisible();
           await teacher.page.getByRole("button", {
-            name: "标记已处理",
+            name: "回复并标记已处理",
             exact: true,
           }).click();
-          await expect(helpButton(teacher.page, question, "已处理"))
+          await expect(teacher.page.getByText(reply, { exact: true }))
             .toBeVisible();
-          await student.page.reload();
-          await ready(student.page);
-          await expect(
-            student.page.locator('[role="tab"]').filter({
-              hasText: "反馈与求助",
-            }).first(),
-          ).toBeVisible({ timeout: 15000 });
-          await student.page.locator('[role="tab"]').filter({
-            hasText: "反馈与求助",
-          }).first().click();
+          await expect(teacher.page.getByText("已处理", { exact: true }))
+            .toBeVisible();
+          await gotoPage(
+            student.page,
+            `/d/${slug}/assignments/${assignmentId}`,
+          );
           await expect(student.page.getByText(feedback, { exact: true }))
-            .toBeVisible();
-          await helpButton(student.page, question, "已处理").click();
+            .toBeVisible({ timeout: 15000 });
+          const myHelpTab = student.page.locator('[role="tab"]').filter({
+            hasText: "我的求助",
+          }).first();
+          await expect(myHelpTab).toBeVisible({ timeout: 15000 });
+          await myHelpTab.click();
+          const resolvedIssue = helpLink(student.page, question, "已处理");
+          await expect(resolvedIssue).toBeVisible();
+          await resolvedIssue.click();
+          await student.page.waitForURL(
+            (url) =>
+              url.pathname.startsWith(
+                `/d/${slug}/assignments/${assignmentId}/help/`,
+              ),
+          );
+          await ready(student.page);
           await expect(student.page.getByText(reply, { exact: true }))
             .toBeVisible();
         },
       );
       await step(
-        "教师从未达标名单生成补题、预览并发布，390px矩阵保持操作可用",
+        "验证作业管理已移除补题复制且 API 补题可读取，390px 矩阵保持操作可用",
         async () => {
+          await gotoPage(
+            teacher.page,
+            `/d/${slug}/assignments/${assignmentId}`,
+          );
+          await ready(teacher.page);
           await teacher.page.getByRole("button", {
             name: "管理作业",
             exact: true,
@@ -596,34 +626,45 @@ Deno.test({
             exact: true,
           });
           await expect(manager).toBeVisible();
-          await manager.getByRole("button", {
-            name: "为全班未达标学生布置补题",
-            exact: true,
-          }).click();
-          const modal = teacher.page.getByRole("dialog", {
-            name: "全班补题候选预览",
-          });
           await expect(
-            modal.getByRole("checkbox", { name: studentName, exact: true }),
-          ).toBeChecked();
-          await modal.getByRole("textbox", {
-            name: "补题任务标题",
-            exact: true,
-          }).fill(`${title} 补题`);
-          const created = await write(
-            teacher.page,
+            manager.getByRole("button", {
+              name: "为全班未达标学生布置补题",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          await teacher.page.keyboard.press("Escape");
+          await expect(manager).toBeHidden();
+          const preview = await fixture(
+            "POST",
+            `/api/v1/domains/${slug}/assignments/${assignmentId}/remediation-preview`,
+            teacherToken,
+            { scope: "on_time" },
+          ) as {
+            data: {
+              preview_token: string;
+              source: { revision: number };
+              students: { user_id: string }[];
+              items: { id: string }[];
+            };
+          };
+          const created = await fixture(
             "POST",
             `/api/v1/domains/${slug}/assignments/${assignmentId}/remediation`,
-            () =>
-              modal.getByRole("button", { name: "创建补题草稿", exact: true })
-                .click(),
-          );
-          // 创建响应先返回，组件随后才导航到新草稿详情；先绑定目标 URL，
-          // 再读取标题和指定人数，避免在旧作业页上抢跑断言。
-          await teacher.page.waitForURL(
-            (url) =>
-              url.pathname === `/d/${slug}/assignments/${created.data.id}`,
-            { timeout: 15000 },
+            teacherToken,
+            {
+              title: `${title} 补题`,
+              scope: "on_time",
+              preview_token: preview.data.preview_token,
+              target_student_ids: preview.data.students.map((s) => s.user_id),
+              item_ids: preview.data.items.map((item) => item.id),
+              deadline_at: null,
+            },
+            preview.data.source.revision,
+            crypto.randomUUID(),
+          ) as { data: { id: string } };
+          await gotoPage(
+            teacher.page,
+            `/d/${slug}/assignments/${created.data.id}`,
           );
           await ready(teacher.page);
           await expect(

@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import ClassroomNavigation from '~/components/education/ClassroomNavigation.vue';
 import type { ClassroomDetail, TeachingCapability } from '~/utils/domain/education/education';
 
 const route = reactive({ path: '/d/school/classrooms/class-one' });
+const knowledgeDisabled = ref(false);
 beforeEach(() => {
+  knowledgeDisabled.value = false;
   vi.stubGlobal('computed', computed);
   vi.stubGlobal('useRoute', () => route);
+  vi.stubGlobal('useKnowledge', () => ({ disabled: knowledgeDisabled }));
   route.path = '/d/school/classrooms/class-one';
 });
 
@@ -40,19 +43,18 @@ describe('班级页面导航', () => {
     result.unmount();
   });
 
-  it('域教练无需班级成员关系即可查看全部教学入口', async () => {
+  it('域教练无需班级成员关系即可查看全部教学入口，并高亮合并后的班级成员页', async () => {
     const result = view('educator');
     expect(result.findAll('a').map((link) => link.text())).toEqual([
       '我的班级',
       '班级概览',
-      '学生训练',
       '班级成员',
       '知识点掌握',
       '班级设置',
     ]);
     route.path = '/d/school/classrooms/class-one/students/student-one';
     await result.vm.$nextTick();
-    expect(result.find('[aria-current="location"]').attributes('href')).toBe('/d/school/classrooms/class-one/students');
+    expect(result.find('[aria-current="location"]').attributes('href')).toBe('/d/school/classrooms/class-one/members');
     expect(result.find('[aria-current="page"]').exists()).toBe(false);
     result.unmount();
   });
@@ -62,14 +64,13 @@ describe('班级页面导航', () => {
     expect(result.findAll('a').map((link) => link.text())).toEqual([
       '我的班级',
       '班级概览',
-      '学生训练',
       '班级成员',
       '知识点掌握',
       '班级设置',
     ]);
     for (const link of result.findAll('a')) {
       expect(link.attributes('href')).toMatch(
-        /^\/d\/school\/classrooms(?:\/class-one(?:\/(?:students|members|knowledge|settings))?)?$/,
+        /^\/d\/school\/classrooms(?:\/class-one(?:\/(?:members|knowledge|settings))?)?$/,
       );
     }
     result.unmount();
@@ -77,6 +78,13 @@ describe('班级页面导航', () => {
 
   it('知识点掌握入口仅教练可见（学生不展示）', () => {
     const result = view('student');
+    expect(result.findAll('a').map((link) => link.text())).not.toContain('知识点掌握');
+    result.unmount();
+  });
+
+  it('知识追踪开关关闭时对教练也隐藏知识点掌握入口', () => {
+    knowledgeDisabled.value = true;
+    const result = view('educator');
     expect(result.findAll('a').map((link) => link.text())).not.toContain('知识点掌握');
     result.unmount();
   });

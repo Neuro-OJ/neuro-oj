@@ -52,6 +52,10 @@ interactionRouter.get(
         c.req.param("id"),
         c.var.userId,
         parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 }).page,
+        {
+          scope: c.req.query("scope") as "all" | "broadcast" | undefined,
+          order: c.req.query("order") as "asc" | "desc" | undefined,
+        },
       ),
     }),
 );
@@ -121,8 +125,9 @@ interactionRouter.delete(
 );
 interactionRouter.get(
   "/domains/:slug/assignments/:id/help-requests",
-  async (c) =>
-    c.json({
+  async (c) => {
+    const rawItemId = c.req.query("item_id");
+    return c.json({
       data: await listAssignmentHelp(
         c.req.param("slug"),
         c.req.param("id"),
@@ -130,9 +135,15 @@ interactionRouter.get(
         {
           page: parsePagination(c, { defaultPerPage: 50, maxPerPage: 50 }).page,
           state: c.req.query("state") as "open" | "resolved" | undefined,
+          itemId: rawItemId === undefined || rawItemId === ""
+            ? undefined
+            : rawItemId === "__none__"
+            ? null
+            : rawItemId,
         },
       ),
-    }),
+    });
+  },
 );
 interactionRouter.post(
   "/domains/:slug/assignments/:id/help-requests",

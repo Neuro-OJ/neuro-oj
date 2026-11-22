@@ -18,6 +18,9 @@ const api = useDomainProblems(), contestApi = useDomainContestAnswers(), submiss
 const { dialog } = useDialog();
 const route = useRoute();
 const { theme, set: setTheme } = useEditorTheme();
+const { copyText } = useCopyText();
+const copiedSampleKey = ref<string | null>(null);
+let copiedSampleTimer: ReturnType<typeof setTimeout> | null = null;
 const code = ref(''), answers = ref<Record<string, (string | boolean)[]>>({}), draftEnabled = ref(true);
 const version = ref(props.problem.version_id), versionNumber = ref(props.problem.version);
 const languages = computed(() =>
@@ -52,7 +55,7 @@ onMounted(() => {
 const { width: sidebarWidth } = useResizableSplitter('editor:sidebar:width', 320, 240, 480);
 const cursor = ref({ line: 1, col: 1 });
 const submitting = ref(false), templateLoading = ref(false), failure = ref('');
-const selfTestPanel = ref<{ run: () => Promise<void> } | null>(null);
+const selfTestPanel = ref<{ run: () => Promise<void>; loadSample: (input: string, output?: string) => void } | null>(null);
 const sidebarProblem = computed(() => ({
   id: props.problem.reference.problem_id,
   display_id: props.problem.reference.display_ref,
@@ -207,6 +210,46 @@ async function selfTest() {
   await nextTick();
   await selfTestPanel.value?.run();
 }
+async function copySample(keyId: string, value: string, label: string) {
+  await copyText(value, label);
+  copiedSampleKey.value = keyId;
+  if (copiedSampleTimer) clearTimeout(copiedSampleTimer);
+  copiedSampleTimer = setTimeout(() => { copiedSampleKey.value = null; }, 1500);
+}
+async function loadSampleToSelfTest(input: string, output: string) {
+  tab.value = 'self-test';
+  sidebarVisible.value = true;
+  await nextTick();
+  selfTestPanel.value?.loadSample(input, output);
+}
+function onWorkspaceKeydown(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (e.key === 'Enter') {
+    if (writable.value && code.value.trim() && language.value && !submitting.value) {
+      e.preventDefault();
+      void submit();
+    }
+    return;
+  }
+  if (e.key === "'") {
+    if (!props.contest && writable.value && code.value.trim() && !submitting.value) {
+      e.preventDefault();
+      void selfTest();
+    }
+    return;
+  }
+  if (e.key.toLowerCase() === 'b') {
+    e.preventDefault();
+    sidebarVisible.value = !sidebarVisible.value;
+  }
+}
+onMounted(() => {
+  window.addEventListener('keydown', onWorkspaceKeydown);
+});
+onUnmounted(() => {
+  window.removeEventListener('keydown', onWorkspaceKeydown);
+  if (copiedSampleTimer) clearTimeout(copiedSampleTimer);
+});
 </script>
 <template>
   <div class="flex h-dvh flex-col overflow-hidden bg-bg-page" :class="{'editor-dark':theme==='dark'}">
@@ -229,25 +272,25 @@ async function selfTest() {
           title="返回作业" />
       </template>
     </EditorToolbar>
-    <UAlert v-if="changed" color="warning" title="作答版本已变化，当前代码已保留" class="shrink-0 rounded-none">
+    <UAlert v-if="changed" color="warning" variant="subtle" title="作答版本已变化，当前代码已保留" class="shrink-0 rounded-none">
       <template #actions>
-        <UButton :disabled="submitting || templateLoading"
+        <UButton size="xs" :disabled="submitting || templateLoading"
           @click="confirmVersion">切换到 V{{ problem.version }}</UButton>
       </template>
     </UAlert>
-    <UAlert v-if="!isLoggedIn" color="info" title="当前草稿保存在此设备，登录后可以提交" class="shrink-0 rounded-none">
+    <UAlert v-if="!isLoggedIn" color="info" variant="subtle" title="当前草稿保存在此设备，登录后可以提交" class="shrink-0 rounded-none">
       <template #actions>
-        <UButton :to="{path:'/login',query:{redirect:route.fullPath}}">登录并继续作答</UButton>
+        <UButton size="xs" :to="{path:'/login',query:{redirect:route.fullPath}}">登录并继续作答</UButton>
       </template>
     </UAlert>
-    <UAlert v-else-if="contest && !contest.active" color="info" title="仅在比赛受理时间内且已报名时可提交"
+    <UAlert v-else-if="contest && !contest.active" color="info" variant="subtle" title="仅在比赛受理时间内且已报名时可提交"
       class="shrink-0 rounded-none" />
-    <UAlert v-if="draft.guestAvailable.value" color="info" title="发现登录前的本题草稿" class="shrink-0 rounded-none">
+    <UAlert v-if="draft.guestAvailable.value" color="info" variant="subtle" title="发现登录前的本题草稿" class="shrink-0 rounded-none">
       <template #actions>
-        <UButton @click="restoreGuest">恢复登录前草稿</UButton>
+        <UButton size="xs" @click="restoreGuest">恢复登录前草稿</UButton>
       </template>
     </UAlert>
-    <UAlert v-if="failure || draft.state.value==='error'" color="error"
+    <UAlert v-if="failure || draft.state.value==='error'" color="error" variant="subtle"
       :title="failure || '本地草稿保存失败，请复制代码后再离开'" class="shrink-0 rounded-none" />
     <div class="relative flex min-h-0 flex-1">
       <EditorActivityBar :active="tab" :show-self-test="!contest" @select="value=>{tab=value;sidebarVisible=true;}" />
@@ -259,32 +302,105 @@ async function selfTest() {
           :theme-mode="theme" :draft-enabled="draftEnabled"
           @update:theme-mode="setTheme($event)" @update:draft-enabled="draftEnabled=$event" @clear-draft="clearCode">
           <template #after-description>
-            <div v-for="(sample,index) in problem.content.samples" :key="index" class="mt-4 space-y-2">
-              <h3 class="text-sm font-semibold">样例 {{ index + 1 }}</h3>
-              <p class="text-xs text-text-muted">输入</p>
-              <pre class="overflow-auto rounded bg-bg-sunken p-2 text-xs">{{ sample.input }}</pre>
-              <p class="text-xs text-text-muted">输出</p>
-              <pre class="overflow-auto rounded bg-bg-sunken p-2 text-xs">{{ sample.output }}</pre>
+            <div v-for="(sample,index) in problem.content.samples" :key="index" class="mt-4 space-y-2 border-t border-border pt-3">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="text-sm font-semibold text-text">样例 {{ index + 1 }}</h3>
+                <UButton
+                  v-if="!contest && problem.content.kind === 'oi'"
+                  size="xs"
+                  color="primary"
+                  variant="soft"
+                  icon="i-lucide-flask-conical"
+                  @click="loadSampleToSelfTest(sample.input, sample.output)"
+                >
+                  载入自测
+                </UButton>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between text-xs text-text-muted">
+                  <span>输入</span>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] hover:bg-bg-sunken hover:text-text"
+                    :aria-label="`复制样例${index + 1}输入`"
+                    @click="copySample(`${index}:in`, sample.input, `样例 ${index + 1} 输入`)"
+                  >
+                    <UIcon
+                      :name="copiedSampleKey === `${index}:in` ? 'i-lucide-check' : 'i-lucide-copy'"
+                      class="size-3"
+                      :class="copiedSampleKey === `${index}:in` ? 'text-signal' : ''"
+                    />
+                    {{ copiedSampleKey === `${index}:in` ? '已复制' : '复制' }}
+                  </button>
+                </div>
+                <pre class="overflow-auto rounded-sm border border-border bg-bg-sunken p-2 font-mono text-xs text-text">{{ sample.input }}</pre>
+              </div>
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between text-xs text-text-muted">
+                  <span>输出</span>
+                  <button
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[11px] hover:bg-bg-sunken hover:text-text"
+                    :aria-label="`复制样例${index + 1}输出`"
+                    @click="copySample(`${index}:out`, sample.output, `样例 ${index + 1} 输出`)"
+                  >
+                    <UIcon
+                      :name="copiedSampleKey === `${index}:out` ? 'i-lucide-check' : 'i-lucide-copy'"
+                      class="size-3"
+                      :class="copiedSampleKey === `${index}:out` ? 'text-signal' : ''"
+                    />
+                    {{ copiedSampleKey === `${index}:out` ? '已复制' : '复制' }}
+                  </button>
+                </div>
+                <pre class="overflow-auto rounded-sm border border-border bg-bg-sunken p-2 font-mono text-xs text-text">{{ sample.output }}</pre>
+              </div>
               <MarkdownRenderer v-if="sample.explanation" :content="sample.explanation" />
             </div>
           </template>
           <template #history>
-            <h3 class="text-sm font-semibold">提交记录</h3>
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-text">提交记录</h3>
+              <span v-if="polling" class="inline-flex items-center gap-1 text-[11px] text-primary">
+                <span class="size-1.5 rounded-full bg-primary animate-pulse" />
+                评测中
+              </span>
+            </div>
             <UAlert v-if="history.error.value" color="error" :title="extractApiError(history.error.value).message" />
             <UAlert v-if="active.error.value" color="error" :title="extractApiError(active.error.value).message" />
             <SubmissionResult v-if="active.data.value && !active.error.value"
               :submission="active.data.value.data" />
             <UButton v-if="activeId" :to="`/d/${slug}/submissions/${activeId}`" variant="outline"
               size="sm">查看评测</UButton>
-            <button v-for="item in history.data.value?.data" :key="item.id"
-              class="mb-2 block w-full rounded border border-border p-3 text-left text-xs hover:border-primary"
-              @click="activeId=item.id">
-              <span class="font-mono">{{ item.id.slice(0, 8) }}</span>
-              <span
-                class="float-right tabular-nums">{{ item.result_visibility==='hidden' ? '已受理' : item.result?.score!=null ? (item.result.score/100)+' 分' : '等待正式结果' }}</span>
-              <span class="mt-1 block text-text-muted">{{ new Date(item.created_at).toLocaleString() }}</span>
-            </button>
-            <p v-if="history.data.value?.data.length===0" class="text-xs text-text-muted">暂无提交记录</p>
+            <div class="space-y-2">
+              <button
+                v-for="item in history.data.value?.data"
+                :key="item.id"
+                type="button"
+                class="block w-full rounded-md border p-3 text-left text-xs transition-colors"
+                :class="activeId === item.id
+                  ? 'border-primary bg-primary-bg/50'
+                  : 'border-border bg-bg-panel hover:border-border-strong hover:bg-bg-sunken/50'"
+                @click="activeId = item.id"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-mono font-semibold text-primary">#{{ item.id.slice(0, 8) }}</span>
+                  <span class="font-mono font-medium tabular-nums text-text">
+                    {{ item.result_visibility === 'hidden'
+                      ? '已受理'
+                      : item.result?.score != null
+                        ? `${(item.result.score / 100).toFixed(2)} 分`
+                        : '等待结果' }}
+                  </span>
+                </div>
+                <div class="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-text-muted tabular-nums">
+                  <span>{{ item.language ?? '—' }}</span>
+                  <span>{{ new Date(item.created_at).toLocaleString('zh-CN') }}</span>
+                </div>
+              </button>
+            </div>
+            <p v-if="history.data.value?.data.length === 0" class="rounded-md border border-dashed border-border py-5 text-center text-xs text-text-muted">
+              暂无提交记录
+            </p>
             <UButton
               :to="{path:`/d/${slug}/submissions`,query:{problem_id:problem.reference.problem_id,contest_id:contest?.id}}"
               variant="ghost" size="sm">查看全部提交</UButton>

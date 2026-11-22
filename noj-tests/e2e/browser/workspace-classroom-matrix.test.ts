@@ -303,7 +303,7 @@ Deno.test({
         },
       );
       await step(
-        "授予第二位域教练角色，查看学生成绩矩阵并撰写作业反馈",
+        "授予第二位域教练角色，查看学生成绩矩阵并发布作业全体通知",
         async () => {
           await fixture(
             "PUT",
@@ -341,21 +341,22 @@ Deno.test({
           await expect(
             assistant.page.getByRole("table", { name: "学生成绩矩阵" }),
           ).toContainText(pupils[0].username);
-          await assistant.page.getByRole("tab", {
-            name: "反馈与求助",
-            exact: true,
-          }).click();
           await assistant.page.getByRole("button", {
-            name: "写反馈",
+            name: "发布通知",
             exact: true,
           }).click();
-          await assistant.page.getByRole("textbox", { name: "作业反馈正文" })
+          await assistant.page.getByRole("textbox", {
+            name: "作业全体通知正文",
+          })
             .fill(`助教反馈 ${suffix}`);
           await write(assistant.page, "POST", `${assignment()}/feedback`, () =>
             assistant.page.getByRole("button", {
-              name: "发送反馈",
+              name: "发布全体通知",
               exact: true,
             }).click());
+          await expect(
+            assistant.page.getByText(`助教反馈 ${suffix}`, { exact: true }),
+          ).toBeVisible();
         },
       );
       await step(
@@ -432,7 +433,7 @@ Deno.test({
         },
       );
       await step(
-        "教师为单个学生发布补题，学生实际完成后教师重读新任务达标进度",
+        "通过 API 为单个未达标学生生成补题，验证界面已移除补题复制并重读新任务达标进度",
         async () => {
           await goto(coach.page, `/d/${slug}/assignments/${taskId}`);
           await coach.page.getByRole("button", {
@@ -444,35 +445,52 @@ Deno.test({
             exact: true,
           });
           await expect(manager).toBeVisible();
-          await manager.getByRole("button", {
-            name: "为全班未达标学生布置补题",
-            exact: true,
-          }).click();
-          const modal = coach.page.getByRole("dialog", {
-            name: "全班补题候选预览",
-          });
-          await modal.getByRole("button", { name: "取消全选学生", exact: true })
-            .click();
-          await modal.getByRole("checkbox", {
-            name: pupils[0].username,
-            exact: true,
-          }).check();
-          await modal.getByRole("textbox", { name: "补题任务标题" }).fill(
-            `${title} 补题`,
+          await expect(
+            manager.getByRole("button", {
+              name: "为全班未达标学生布置补题",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          await expect(
+            manager.getByRole("button", {
+              name: "复制到其他班级或重布",
+              exact: true,
+            }),
+          ).toHaveCount(0);
+          const preview = await fixture<{
+            data: {
+              preview_token: string;
+              source: { revision: number };
+              items: { id: string }[];
+            };
+          }>(
+            "POST",
+            `${assignment()}/remediation-preview`,
+            teacher.token,
+            { scope: "on_time" },
           );
-          const created = await write(
-            coach.page,
+          const created = await fixture<{ data: { id: string } }>(
             "POST",
             `${assignment()}/remediation`,
-            () =>
-              modal.getByRole("button", { name: "创建补题草稿", exact: true })
-                .click(),
+            teacher.token,
+            {
+              title: `${title} 补题`,
+              scope: "on_time",
+              preview_token: preview.data.preview_token,
+              target_student_ids: [pupils[0].id],
+              item_ids: preview.data.items.map((item) =>
+                item.id
+              ),
+              deadline_at: null,
+            },
+            preview.data.source.revision,
+            crypto.randomUUID(),
           );
           remediationId = created.data.id;
+          await goto(coach.page, `/d/${slug}/assignments/${remediationId}`);
           await expect(coach.page.getByText("指定学生：1 人", { exact: true }))
             .toBeVisible();
-          // 创建补题草稿后会导航到新的草稿详情页；发布入口仍收在该页的
-          // “发布与设置”抽屉中，不能复用创建前页面的隐藏控件。
+          // 在补题草稿详情页通过“发布与设置”抽屉执行发布。
           await coach.page.getByRole("button", {
             name: "发布与设置",
             exact: true,
@@ -553,8 +571,9 @@ Deno.test({
             await goto(page, `/d/${slug}/assignments/${remediationId}`);
             await expect(page.getByRole("table", { name: "学生成绩矩阵" }))
               .toBeHidden();
-            await expect(page.getByRole("textbox", { name: "作业反馈正文" }))
-              .toBeHidden();
+            await expect(
+              page.getByRole("textbox", { name: "作业全体通知正文" }),
+            ).toBeHidden();
           }
           await goto(successor.page, `/d/${slug}/assignments/${remediationId}`);
           await expect(
@@ -564,14 +583,9 @@ Deno.test({
             }),
           ).toBeVisible();
           await goto(successor.page, `/d/${slug}/assignments/${taskId}`);
-          const feedbackTab = successor.page.locator('[role="tab"]').filter({
-            hasText: "反馈与求助",
-          }).first();
-          await expect(feedbackTab).toBeVisible({ timeout: 15000 });
-          await feedbackTab.click();
           await expect(
             successor.page.getByText(`助教反馈 ${suffix}`, { exact: true }),
-          ).toBeVisible();
+          ).toBeVisible({ timeout: 15000 });
         },
       );
     });

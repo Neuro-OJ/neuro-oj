@@ -14,6 +14,11 @@ const duration = 1500;
 onMounted(() => {
   watch(() => props.value, (newVal) => {
     if (animId) cancelAnimationFrame(animId);
+    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      display.value = newVal;
+      prevValue = newVal;
+      return;
+    }
     const startVal = prevValue;
     display.value = startVal;
     const start = performance.now();

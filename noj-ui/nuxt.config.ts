@@ -11,6 +11,19 @@ const apiBase = process.env.NUXT_API_BASE ?? 'http://localhost:8000';
 const siteUrl = process.env.NUXT_SITE_URL ?? '';
 
 /**
+ * 前端功能开关：控制「我的学习」及所有知识图谱 / 知识追踪相关页面与入口是否展示。
+ *
+ * 默认关闭；可在开发或生产通过修改此处默认返回值，或设置运行期环境变量
+ * `NUXT_PUBLIC_KNOWLEDGE_ENABLED=true|false` 覆盖。
+ */
+function resolveKnowledgeEnabled(): boolean {
+  const raw = process.env.NUXT_PUBLIC_KNOWLEDGE_ENABLED?.trim().toLowerCase();
+  if (raw === 'true' || raw === '1') return true;
+  if (raw === 'false' || raw === '0') return false;
+  return false;
+}
+
+/**
  * 构建身份（前端三要素）：版本 / commit / 构建时间。
  *
  * 生产：release.yml 以 build-arg 注入 `NOJ_BUILD_*`，本文件在**构建期**读入并写进
@@ -123,6 +136,7 @@ export default defineNuxtConfig({
     // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
     public: {
       authCookiePrefix: 'noj',
+      knowledgeEnabled: resolveKnowledgeEnabled(),
       buildInfo: resolveBuildInfo(),
     },
   },

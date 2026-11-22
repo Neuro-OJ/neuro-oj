@@ -30,10 +30,28 @@ import {
   type TagUsage,
 } from '~/utils/domain/education/knowledge';
 
+function readKnowledgeFlag(): boolean {
+  try {
+    if (typeof useRuntimeConfig !== 'function') return true;
+    const flag = (useRuntimeConfig()?.public as { knowledgeEnabled?: unknown } | undefined)?.knowledgeEnabled;
+    if (typeof flag === 'boolean') return flag;
+    if (typeof flag === 'string') {
+      const normalized = flag.trim().toLowerCase();
+      if (normalized === 'false' || normalized === '0') return false;
+      if (normalized === 'true' || normalized === '1') return true;
+    }
+  } catch {
+    // 独立单测未提供 Nuxt 上下文时回退 true，关闭行为由单测显式传入 knowledgeEnabled: false 覆盖
+  }
+  return true;
+}
+
 export function useKnowledge() {
   const { api } = useApi();
-  /** 总开关关闭：为 true 时所有知识 UI 整块隐藏。 */
-  const disabled = useState<boolean>('knowledge:disabled', () => false);
+  const flagEnabled = readKnowledgeFlag();
+  /** 总开关关闭（前端 feature flag 关闭或后端返回 KNOWLEDGE_DISABLED）：为 true 时所有知识 UI 整块隐藏。 */
+  const disabled = useState<boolean>('knowledge:disabled', () => !flagEnabled);
+  if (!flagEnabled) disabled.value = true;
   const graph = useState<KnowledgeGraph | null>('knowledge:graph', () => null);
   // 同一接口同一目标在飞时复用同一 Promise，避免重复请求。
   const inflight = new Map<string, Promise<unknown>>();
@@ -46,6 +64,7 @@ export function useKnowledge() {
 
   /** 读图谱（会话内缓存一次，用于选择器分组）。 */
   function loadGraph(force = false): Promise<KnowledgeGraph | null> {
+    if (disabled.value) return Promise.resolve(null);
     const cached = graph.value as KnowledgeGraph | null;
     if (cached && !force) return Promise.resolve(cached);
     const key = 'graph';
@@ -69,6 +88,7 @@ export function useKnowledge() {
 
   /** 读题目归类；404（题目不存在/保护期）或功能关闭 → null（不展示）。 */
   function loadProblem(problemId: string): Promise<ProblemKnowledgeView | null> {
+    if (disabled.value) return Promise.resolve(null);
     const key = `problem:${problemId}`;
     const running = inflight.get(key);
     if (running) return running as Promise<ProblemKnowledgeView | null>;
@@ -94,6 +114,7 @@ export function useKnowledge() {
 
   /** 读知识点详情（`doc` 讲解 / 前置 / 后续）；功能关闭 → null，其他错误抛出。 */
   async function loadNode(nodeId: string): Promise<KnowledgeNodeView | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: KnowledgeNodeView }>(
         `/api/v1/knowledge/nodes/${encodeURIComponent(nodeId)}`,
@@ -111,6 +132,7 @@ export function useKnowledge() {
    * 由页面展示「暂无题目 / 整块隐藏」。
    */
   function loadLadder(nodeId: string, domain: string): Promise<KnowledgeLadder | null> {
+    if (disabled.value) return Promise.resolve(null);
     const key = `ladder:${nodeId}:${domain}`;
     const running = inflight.get(key);
     if (running) return running as Promise<KnowledgeLadder | null>;
@@ -141,6 +163,7 @@ export function useKnowledge() {
    * 都返回 null 让按钮不渲染，不影响做题主流程。
    */
   async function loadNextForProblem(problemId: string): Promise<KnowledgeLadderItem | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: KnowledgeLadderItem | null }>(
         `/api/v1/knowledge/problems/${encodeURIComponent(problemId)}/next`,
@@ -164,6 +187,7 @@ export function useKnowledge() {
     value: KnowledgeSelection,
     options: { passRatioOverride?: number | null } = {},
   ): Promise<ProblemKnowledgeView | null> {
+    if (disabled.value) return null;
     try {
       const body: Record<string, unknown> = { primary: value.primary, secondary: value.secondary };
       if (options.passRatioOverride !== undefined) body.pass_ratio_override = options.passRatioOverride;
@@ -182,6 +206,7 @@ export function useKnowledge() {
 
   /** 我的掌握度；功能关闭 → null。未登录（401）由调用方展示登录提示。 */
   function loadMyMastery(domain?: string): Promise<MyMasteryView | null> {
+    if (disabled.value) return Promise.resolve(null);
     const key = `mastery:${domain ?? '*'}`;
     const running = inflight.get(key);
     if (running) return running as Promise<MyMasteryView | null>;
@@ -205,6 +230,7 @@ export function useKnowledge() {
 
   /** 我的推荐；功能关闭 → null。未登录（401）由调用方展示登录提示。 */
   function loadRecommendations(domain: string, limit = 5): Promise<MyRecommendationsView | null> {
+    if (disabled.value) return Promise.resolve(null);
     const key = `recommendations:${domain}:${limit}`;
     const running = inflight.get(key);
     if (running) return running as Promise<MyRecommendationsView | null>;
@@ -231,6 +257,7 @@ export function useKnowledge() {
    * 未登录时后端返回空链，界面据此不显示提示框。
    */
   function loadDiagnosis(nodeId: string, domain: string): Promise<NodeDiagnosisView | null> {
+    if (disabled.value) return Promise.resolve(null);
     const key = `diagnosis:${nodeId}:${domain}`;
     const running = inflight.get(key);
     if (running) return running as Promise<NodeDiagnosisView | null>;
@@ -261,6 +288,7 @@ export function useKnowledge() {
    * 学生访问（403）照常抛出，由页面权限判断提前挡住。
    */
   function loadClassroomMastery(slug: string, classroomId: string): Promise<ClassroomMasteryView | null> {
+    if (disabled.value) return Promise.resolve(null);
     const key = `classroom-mastery:${slug}:${classroomId}`;
     const running = inflight.get(key);
     if (running) return running as Promise<ClassroomMasteryView | null>;
@@ -294,6 +322,7 @@ export function useKnowledge() {
     nodeId: string,
     count: number,
   ): Promise<KnowledgePickView | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: KnowledgePickView }>(
         `/api/v1/domains/${encodeURIComponent(slug)}/classrooms/${encodeURIComponent(classroomId)}/knowledge-pick`,
@@ -312,6 +341,7 @@ export function useKnowledge() {
 
   /** 覆盖度面板；`domain` 缺省为全实例（仅实例管理员）。关闭 → null。 */
   async function loadCoverage(domain?: string): Promise<CoverageView | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: CoverageView }>('/api/v1/admin/knowledge/coverage', {
         params: domain ? { domain } : undefined,
@@ -325,6 +355,7 @@ export function useKnowledge() {
   }
 
   async function loadUsage(): Promise<TagUsage | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: TagUsage }>('/api/v1/admin/knowledge/tagging/usage', { silent: true });
       return res.data;
@@ -336,6 +367,7 @@ export function useKnowledge() {
 
   /** 回填预估：每次都真实请求（数量会漂移）。 */
   async function estimateBackfill(): Promise<TagEstimate | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: TagEstimate }>('/api/v1/admin/knowledge/tagging/estimate', { silent: true });
       return res.data;
@@ -350,6 +382,7 @@ export function useKnowledge() {
    * 其他错误照常抛出（默认 toast）。
    */
   async function backfill(expectedCount: number): Promise<{ data: BackfillResult | null; drifted: boolean }> {
+    if (disabled.value) return { data: null, drifted: false };
     try {
       const res = await api.post<{ data: BackfillResult }>(
         '/api/v1/admin/knowledge/tagging/backfill',
@@ -369,6 +402,7 @@ export function useKnowledge() {
   }
 
   async function loadReviews(page: number, perPage = 20): Promise<PendingReviewPage | null> {
+    if (disabled.value) return null;
     try {
       const res = await api.get<{ data: PendingReviewPage }>('/api/v1/admin/knowledge/reviews', {
         params: { page, per_page: perPage },
@@ -386,6 +420,7 @@ export function useKnowledge() {
     problemId: string,
     decision: 'accept' | 'reject' | KnowledgeSelection,
   ): Promise<ProblemKnowledgeView | null> {
+    if (disabled.value) return null;
     try {
       const body = typeof decision === 'string'
         ? { decision }

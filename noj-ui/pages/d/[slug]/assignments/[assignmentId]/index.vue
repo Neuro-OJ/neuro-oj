@@ -4,8 +4,11 @@ import { assignmentPhase, classroomCan, educationCacheKey, teachingCellLabel } f
 import type { TeachingCapability, TeachingCell } from '~/utils/domain/education/education';
 import { workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
 import { extractApiError } from '~/utils/server/apiError';
+import AssignmentNotices from '~/components/education/AssignmentNotices.vue';
+import AssignmentHelpList from '~/components/education/AssignmentHelpList.vue';
+import MarkdownRenderer from '~/components/shared/MarkdownRenderer.vue';
 
-definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'], breadcrumbWidth: '72rem' });
+definePageMeta({ layout: 'workspace', middleware: ['auth', 'workspace-context'] });
 
 const route = useRoute(), { slug, domain } = useWorkspace(), education = useEducationApi();
 const actor = useState<{ id: string } | null>('auth:user', () => null);
@@ -17,8 +20,7 @@ const filtersOpen = ref(false);
 const selected = ref<{ userId: string; username: string; reference: string; cell: TeachingCell } | null>(null),
   drawer = ref(false),
   downloading = ref(false);
-const manageOpen = ref(false), feedbackSignal = ref(0);
-const feedbackTarget = ref<{ userId: string; username: string } | null>(null);
+const manageOpen = ref(false);
 const askSignal = ref(0), askItemId = ref<string | null>(null);
 const pendingHelp = ref(0);
 const key = computed(() => educationCacheKey(slug.value!, actor.value?.id ?? null, id.value));
@@ -37,22 +39,28 @@ const isStudent = computed(() =>
 );
 const canReadProgress = computed(() => can('progress:read') || room.data.value?.data.membership?.role === 'student');
 const canManage = computed(() => can('assignments:manage'));
-// 角色可见范围 / 反馈定位 / 历史定位
+// 角色可见范围 / 通知定位 / 求助历史参数兼容跳转
 const requestedHelp = computed(() => typeof route.query?.help === 'string' ? route.query.help : undefined);
 const requestedFeedback = computed(() => typeof route.query?.feedback === 'string' ? route.query.feedback : undefined);
-const canSeeFeedbackTab = computed(() => isStudent.value || can('feedback:write') || can('help:manage'));
-const tab = ref<'matrix' | 'progress' | 'feedback'>(
-  isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : canSeeFeedbackTab.value ? 'feedback' : 'matrix',
+const requestedTab = computed(() => typeof route.query?.tab === 'string' ? route.query.tab : undefined);
+const canSeeHelpTab = computed(() => isStudent.value || can('help:manage'));
+const tab = ref<'matrix' | 'progress' | 'help'>(
+  isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : canSeeHelpTab.value ? 'help' : 'matrix',
 );
 const tabItems = computed(() => {
   const items: Array<{ label: string; value: string; icon: string; badge?: { label: string; color: 'warning'; variant: 'subtle' } }> = [];
   if (canReadProgress.value) items.push({ label: isStudent.value ? '同班完成情况' : '学情矩阵', value: 'matrix', icon: 'i-lucide-table-2' });
   if (isStudent.value) items.push({ label: '我的进度', value: 'progress', icon: 'i-lucide-list-checks' });
-  if (canSeeFeedbackTab.value) {
+  if (canSeeHelpTab.value) {
     const badge = can('help:manage') && pendingHelp.value > 0
       ? { label: String(pendingHelp.value), color: 'warning' as const, variant: 'subtle' as const }
       : undefined;
-    items.push({ label: '反馈与求助', value: 'feedback', icon: 'i-lucide-messages-square', ...(badge ? { badge } : {}) });
+    items.push({
+      label: isStudent.value ? '我的求助' : '学生求助',
+      value: 'help',
+      icon: 'i-lucide-messages-square',
+      ...(badge ? { badge } : {}),
+    });
   }
   return items;
 });
@@ -61,10 +69,15 @@ watch(tabItems, (items) => {
     tab.value = (items[0]?.value ?? 'matrix') as typeof tab.value;
   }
 }, { immediate: true });
-if (canSeeFeedbackTab.value && (requestedHelp.value || requestedFeedback.value)) tab.value = 'feedback';
-watch([requestedHelp, requestedFeedback], ([help, feedback]) => {
-  if (canSeeFeedbackTab.value && (help || feedback)) tab.value = 'feedback';
+if (canSeeHelpTab.value && requestedTab.value === 'help') tab.value = 'help';
+watch(requestedTab, (nextTab) => {
+  if (canSeeHelpTab.value && nextTab === 'help') tab.value = 'help';
 });
+watch(requestedHelp, (helpId) => {
+  if (helpId && slug.value) {
+    void navigateTo(workspacePath(slug.value, `assignments/${id.value}/help/${helpId}`), { replace: true });
+  }
+}, { immediate: true });
 const shouldLoadMatrix = computed(() =>
   (can('progress:read') || (canReadProgress.value && tab.value === 'matrix')) &&
   !!task.data.value?.data.published_at
@@ -162,6 +175,62 @@ const activeFilterCount = computed(() =>
   [recipients.value !== 'current', statusFilter.value !== 'all', itemFilter.value !== 'all', verdictFilter.value !== 'all',
     !!search.value.trim()].filter(Boolean).length
 );
+const activeFilterChips = computed(() => {
+  const chips: Array<{ key: string; label: string; clear: () => void }> = [];
+  if (search.value.trim()) {
+    chips.push({
+      key: 'search',
+      label: `学生: ${search.value.trim()}`,
+      clear: () => { search.value = searchDraft.value = ''; },
+    });
+  }
+  if (recipients.value !== 'current') {
+    const label = recipientsOptions.find((o) => o.value === recipients.value)?.label ?? recipients.value;
+    chips.push({ key: 'recipients', label: `范围: ${label}`, clear: () => { recipients.value = 'current'; } });
+  }
+  if (statusFilter.value !== 'all') {
+    const label = statusOptions.find((o) => o.value === statusFilter.value)?.label ?? statusFilter.value;
+    chips.push({ key: 'status', label: `状态: ${label}`, clear: () => { statusFilter.value = 'all'; } });
+  }
+  if (itemFilter.value !== 'all') {
+    const label = itemFilterOptions.value.find((o) => o.value === itemFilter.value)?.label ?? itemFilter.value;
+    chips.push({ key: 'item', label: `题目: ${label}`, clear: () => { itemFilter.value = 'all'; } });
+  }
+  if (verdictFilter.value !== 'all') {
+    chips.push({ key: 'verdict', label: `判定: ${verdictFilter.value}`, clear: () => { verdictFilter.value = 'all'; } });
+  }
+  return chips;
+});
+const matrixRows = computed(() => matrix.data.value?.data.rows ?? []);
+const selectedRowIndex = computed(() =>
+  selected.value ? matrixRows.value.findIndex((r) => r.user_id === selected.value!.userId) : -1
+);
+function findNeighborRow(delta: -1 | 1): number {
+  if (!selected.value || selectedRowIndex.value < 0) return -1;
+  let idx = selectedRowIndex.value + delta;
+  while (idx >= 0 && idx < matrixRows.value.length) {
+    if (matrixRows.value[idx]?.cells.some((c) => c.item_id === selected.value!.cell.item_id)) {
+      return idx;
+    }
+    idx += delta;
+  }
+  return -1;
+}
+const hasPrevStudent = computed(() => findNeighborRow(-1) >= 0);
+const hasNextStudent = computed(() => findNeighborRow(1) >= 0);
+function stepStudent(delta: -1 | 1) {
+  const nextIdx = findNeighborRow(delta);
+  if (nextIdx < 0 || !selected.value) return;
+  const row = matrixRows.value[nextIdx]!;
+  const cell = row.cells.find((c) => c.item_id === selected.value!.cell.item_id);
+  if (!cell) return;
+  selected.value = {
+    userId: row.user_id,
+    username: row.username,
+    reference: selected.value.reference,
+    cell,
+  };
+}
 const matrixTotal = computed(() => matrix.data.value?.data.total ?? 0);
 const matrixSummary = computed(() =>
   matrix.data.value ? `${matrixTotal.value} 名学生 · ${matrix.data.value.data.items.length} 道题` : ''
@@ -224,12 +293,11 @@ watch([() => slug.value, () => id.value, () => actor.value?.id], () => {
   search.value = searchDraft.value = '';
   itemFilter.value = verdictFilter.value = 'all';
   selected.value = null;
-  feedbackTarget.value = null;
   askItemId.value = null;
   drawer.value = false;
   manageOpen.value = false;
   page.value = 1;
-  tab.value = isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : 'feedback';
+  tab.value = isStudent.value ? 'progress' : canReadProgress.value ? 'matrix' : 'help';
 });
 function resetFilters() {
   recipients.value = 'current';
@@ -247,7 +315,6 @@ function select(userId: string, cell: TeachingCell) {
         ?.reference.display_ref ?? '',
     cell,
   };
-  feedbackTarget.value = null;
   drawer.value = true;
 }
 function selectOwnSubmission(cell: TeachingCell) {
@@ -261,19 +328,9 @@ function cellTone(cell: TeachingCell) {
   if (cell.status === 'unavailable') return 'text-error-text';
   return 'text-text-secondary';
 }
-function giveFeedbackFromDrawer() {
-  if (!selected.value) return;
-  feedbackTarget.value = { userId: selected.value.userId, username: selected.value.username };
-  drawer.value = false;
-  tab.value = 'feedback';
-  feedbackSignal.value++;
-}
-function clearFeedbackTarget() {
-  feedbackTarget.value = null;
-}
 function askFromItem(itemId: string) {
   askItemId.value = itemId;
-  tab.value = 'feedback';
+  tab.value = 'help';
   askSignal.value++;
 }
 function progressCell(itemId: string) {
@@ -364,7 +421,19 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             <MarkdownRenderer :content="task.data.value.data.description" />
           </div>
 
-          <UAlert v-if="task.data.value.data.publish_error" color="warning" title="定时发布失败"
+          <AssignmentNotices
+            v-if="task.data.value.data.published_at && (isStudent || can('feedback:write'))"
+            :key="`${key}:notices`"
+            :slug="slug!"
+            :assignment-id="id"
+            :is-student="isStudent"
+            :can-write="can('feedback:write')"
+            :manages-domain="room.data.value?.data.manages_domain"
+            :writable="!!writable"
+            :focused-feedback-id="requestedFeedback"
+          />
+
+          <UAlert v-if="task.data.value.data.publish_error" color="warning" variant="subtle" title="定时发布失败"
             :description="task.data.value.data.publish_error" />
           <p v-if="task.data.value.data.state === 'scheduled'" class="text-sm text-text-muted tabular-nums">
             预定发布时间：{{ formatDateTime(task.data.value.data.publish_at) }}
@@ -431,13 +500,22 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
                     <p class="hidden text-xs text-text-muted sm:block">
                       按时成绩按截止与发布版本统计；补做进度独立计算，不改变按时成绩。
                     </p>
-                    <p v-if="activeFilterCount" class="flex items-center gap-2 text-xs text-text-muted">
-                      已筛选 {{ activeFilterCount }} 项
-                      <button type="button" class="text-primary-dark hover:underline" @click="resetFilters">清除筛选</button>
-                    </p>
+                    <div v-if="activeFilterChips.length" class="flex flex-wrap items-center gap-1.5 text-xs">
+                      <button
+                        v-for="chip in activeFilterChips"
+                        :key="chip.key"
+                        type="button"
+                        class="inline-flex items-center gap-1 rounded-sm border border-primary/25 bg-primary-bg px-2 py-0.5 font-medium text-primary hover:bg-primary-hover-bg"
+                        @click="chip.clear()"
+                      >
+                        <span>{{ chip.label }}</span>
+                        <UIcon name="i-lucide-x" class="size-3" />
+                      </button>
+                      <button type="button" class="ml-1 text-primary-dark hover:underline" @click="resetFilters">清除筛选</button>
+                    </div>
                   </div>
                   <div v-show="filtersOpen" id="assignment-filters"
-                    class="grid gap-3 rounded bg-bg-sunken/60 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                    class="grid gap-3 rounded-sm bg-bg-sunken/70 p-3 sm:grid-cols-2 lg:grid-cols-4">
                     <AdminFormField v-if="!isStudent" label="学生范围">
                       <USelect v-model="recipients" size="sm" :items="recipientsOptions" aria-label="学生范围"
                         class="w-full" />
@@ -563,14 +641,20 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             </AsyncContent>
           </section>
 
-          <!-- 反馈与求助：按角色决定是否挂载；挂载但切走时保留角标数据 -->
-          <section v-if="canSeeFeedbackTab" v-show="tab === 'feedback'" aria-label="反馈与求助">
-            <AssignmentConversation :key="key" :slug="slug!" :assignment-id="id" :is-student="isStudent"
-              :can-feedback="can('feedback:write')" :can-help="can('help:manage')" :writable="!!writable"
-              :target-user-id="feedbackTarget?.userId" :target-user-name="feedbackTarget?.username"
-              :help-id="requestedHelp" :feedback-id="requestedFeedback" :feedback-signal="feedbackSignal"
-              :items="conversationItems" :ask-item-id="askItemId" :ask-signal="askSignal"
-              @pending-help="onPendingHelp" @clear-target="clearFeedbackTarget" />
+          <!-- 学生求助：Issue 列表风格；切走时保留未处理角标计数 -->
+          <section v-if="canSeeHelpTab" v-show="tab === 'help'" :aria-label="isStudent ? '我的求助' : '学生求助'">
+            <AssignmentHelpList
+              :key="key"
+              :slug="slug!"
+              :assignment-id="id"
+              :is-student="isStudent"
+              :can-help="can('help:manage')"
+              :writable="!!writable"
+              :items="conversationItems"
+              :ask-item-id="askItemId"
+              :ask-signal="askSignal"
+              @pending-help="onPendingHelp"
+            />
           </section>
         </template>
 
@@ -582,10 +666,41 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
     </AsyncContent>
 
     <USlideover v-model:open="drawer"
-      :title="selected ? `${selected.username} · ${selected.reference}` : '学生提交与反馈'"
+      :title="selected ? `${selected.username} · ${selected.reference}` : '学生提交记录'"
       :ui="{ content: 'w-full sm:max-w-xl' }">
       <template #body>
         <div v-if="selected" class="space-y-5">
+          <!-- 教练连续阅卷导航条：免去关抽屉再回矩阵点下一位学生 -->
+          <div
+            v-if="!isStudent && matrixRows.length > 1 && selectedRowIndex >= 0"
+            class="flex items-center justify-between gap-2 rounded-sm border border-border bg-bg-sunken/70 px-3 py-2 text-xs"
+          >
+            <span class="text-text-secondary tabular-nums">
+              第 <strong class="font-semibold text-text">{{ selectedRowIndex + 1 }}</strong> / {{ matrixRows.length }} 位学生
+            </span>
+            <div class="flex items-center gap-1.5">
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-chevron-left"
+                :disabled="!hasPrevStudent"
+                @click="stepStudent(-1)"
+              >
+                上一位
+              </UButton>
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="outline"
+                trailing-icon="i-lucide-chevron-right"
+                :disabled="!hasNextStudent"
+                @click="stepStudent(1)"
+              >
+                下一位
+              </UButton>
+            </div>
+          </div>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <p class="inline-flex items-center gap-1.5 text-sm tabular-nums" :class="cellTone(selected.cell)">
               <UIcon v-if="selected.cell.status === 'achieved' && !selected.cell.updating" name="i-lucide-check"
@@ -607,13 +722,6 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
           <p v-else-if="isStudent" class="text-sm text-text-muted">
             {{ isStudent && selected.userId !== actor?.id && !selected.cell.can_read_code ? '作业进行中，可以查看完成情况；结束后可查看同学代码。' : selected.cell.updating ? '成绩更新后可查看来源提交。' : selected.cell.source_kind === 'objective' ? '此项为客观题提交。' : '当前没有可查看的代码提交。' }}
           </p>
-          <div v-if="!isStudent && can('feedback:write') && writable"
-            class="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <p class="text-xs text-text-muted">需要说明下一步改进时，可直接给这名学生写反馈。</p>
-            <UButton variant="outline" icon="i-lucide-pen-line" @click="giveFeedbackFromDrawer">
-              写反馈给该生
-            </UButton>
-          </div>
         </div>
       </template>
     </USlideover>
@@ -628,15 +736,6 @@ useSeoMeta({ title: () => task.data.value?.data.title ?? '作业' });
             <p class="text-xs text-text-muted">
               发布后题目集合与达标要求固定；版本与有效成绩仍跟随本域题库。
             </p>
-          </section>
-          <section v-if="task.data.value && writable" class="space-y-3">
-            <h3 class="text-sm font-semibold">派生新作业</h3>
-            <div class="flex flex-col gap-3">
-              <AssignmentCopy :key="`${key}:copy`" :slug="slug!" :task="task.data.value.data"
-                :matrix="matrix.data.value?.data" :writable="!!classroomWritable" />
-              <AssignmentRemediation :key="`${key}:remediation`" :slug="slug!" :task="task.data.value.data"
-                :writable="!!classroomWritable" :can-read-progress="can('progress:read')" />
-            </div>
           </section>
         </div>
       </template>

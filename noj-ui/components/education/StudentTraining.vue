@@ -83,7 +83,7 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
         :error="records.error.value ? extractApiError(records.error.value).message : undefined"
         empty-text="暂无获授权的同域提交" @retry="records.refresh()">
         <div
-          class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+          class="divide-y divide-border rounded-md border border-border bg-bg-panel">
           <button v-for="row in records.data.value?.data.data" :key="`${row.kind}:${row.id}`"
             class="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left hover:bg-primary-bg focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2"
             @click="select(row)">
@@ -101,14 +101,14 @@ useSeoMeta({ title: () => `${props.student?.username ?? '学生'} · 训练详�
           @page-change="page = $event" />
       </AsyncContent>
     </template>
-    <UAlert v-else color="info" title="未授予学生提交读取能力"
+    <UAlert v-else color="info" variant="subtle" title="未授予学生提交读取能力"
       description="学情读取和提交读取分别授权，此页面不会读取或展示学生代码。" />
     <section v-if="progress || feedback" class="flex flex-col gap-3">
       <h2 class="font-semibold">本班作业{{ progress && feedback ? '学情与反馈' : progress ? '学情' : '反馈' }}</h2>
       <AsyncContent
         :status="tasks.error.value ? 'error' : tasks.status.value === 'pending' ? 'loading' : tasks.data.value?.data.length ? 'data' : 'empty'"
         :error="tasks.error.value ? extractApiError(tasks.error.value).message : undefined" @retry="tasks.refresh()">
-        <div class="divide-y divide-border rounded-lg border border-border bg-bg-panel">
+        <div class="divide-y divide-border rounded-md border border-border bg-bg-panel">
         <div v-for="task in tasks.data.value?.data" :key="task.id" class="p-4">
           <div
             class="flex flex-wrap items-center justify-between gap-3"><span class="min-w-0 break-words font-medium">{{ task.title }}</span><UButton :to="workspacePath(slug, `assignments/${task.id}`)" variant="ghost">{{ progress ? '进入作业学情' : '进入作业反馈' }}</UButton></div>

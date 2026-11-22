@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
 import { extractApiError } from '~/utils/server/apiError';
+import TableSkeleton from '~/components/base/TableSkeleton.vue';
 definePageMeta({
   layout: 'workspace',
   middleware: 'workspace-context',
   workspaceWidth: 'library',
-  breadcrumbWidth: '960px',
 });
 const { slug, can, domain } = useWorkspace(), { user } = useAuth();
 const api = useDomainProblems(), controls = useProblemFilters(), router = useRouter();
@@ -79,21 +79,24 @@ useSeoMeta({ title: '题库' });
       @reset="router.push({query:{}})" />
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : rows.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无符合条件的题目" @retry="refresh()">
-      <div class="overflow-x-auto rounded-lg border border-border bg-bg-panel shadow-card">
-        <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap px-3 py-3 text-xs',td:'px-3 py-3 text-sm'}">
+      <template #loading>
+        <TableSkeleton :rows="8" :columns="['w-16', 'flex-1', 'w-14', 'w-28', 'w-14', 'w-14', 'w-16']" />
+      </template>
+      <div class="overflow-x-auto rounded-md border border-border bg-bg-panel">
+        <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap bg-bg-sunken/70 px-3 py-2.5 text-xs font-semibold text-text-secondary',td:'px-3 py-2.5 text-sm',tr:'transition-colors hover:bg-bg-sunken/40'}">
           <template #reference-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="whitespace-nowrap text-xs text-primary no-underline"><ProblemIdBadge :display-id="row.original.reference.display_ref" /></NuxtLink>
+              class="whitespace-nowrap text-xs text-primary no-underline hover:underline"><ProblemIdBadge :display-id="row.original.reference.display_ref" /></NuxtLink>
           </template>
           <template #title-cell="{row}">
             <div :class="{'contest-protected': row.original.contest_protection?.length}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="break-words font-medium leading-relaxed text-text no-underline hover:text-primary">{{ row.original.title }}</NuxtLink>
+              class="break-words font-medium leading-relaxed text-text no-underline transition-colors hover:text-primary">{{ row.original.title }}</NuxtLink>
             <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
               <span
-                class="rounded border border-primary/20 bg-primary-bg px-1.5 text-primary">{{ {oi:'OI',ai:'AI / LLM',objective:'客观题'}[row.original.kind] }}</span>
-              <span v-if="row.original.judge_backend" class="rounded border border-border px-1.5 font-mono text-text-secondary">{{ row.original.judge_backend }}</span>
-              <span v-if="user && row.original.best_score != null" class="text-success-text sm:hidden">{{ (row.original.best_score / 100).toFixed(2) }} 分</span>
+                class="rounded-sm border border-primary/20 bg-primary-bg px-1.5 text-primary">{{ {oi:'OI',ai:'AI / LLM',objective:'客观题'}[row.original.kind] }}</span>
+              <span v-if="row.original.judge_backend" class="rounded-sm border border-border px-1.5 font-mono text-text-secondary">{{ row.original.judge_backend }}</span>
+              <span v-if="user && row.original.best_score != null" class="text-success-text tabular-nums sm:hidden">{{ (row.original.best_score / 100).toFixed(2) }} 分</span>
               <span v-if="row.original.contest_protection?.length" class="inline-flex items-center gap-1 font-medium text-text-secondary"><UIcon name="i-lucide-lock-keyhole" class="size-3" />比赛赛题 · 受保护</span>
             </div>
             </div>
@@ -101,10 +104,15 @@ useSeoMeta({ title: '题库' });
           <template
             #difficulty-cell="{row}"><ProblemDifficultyBadge v-if="row.original.difficulty" :difficulty="row.original.difficulty" /><span v-else class="text-xs text-text-muted">—</span></template>
           <template #tags-cell="{row}">
-            <div class="flex max-w-40 flex-wrap gap-1">
-              <button v-for="label in row.original.tags" :key="label.id" type="button"
-                class="rounded-md border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs text-primary transition-colors hover:bg-primary/10"
+            <div class="flex max-w-44 flex-wrap items-center gap-1">
+              <button v-for="label in (row.original.tags ?? []).slice(0, 2)" :key="label.id" type="button"
+                class="rounded-sm border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs text-primary transition-colors hover:bg-primary-hover-bg"
                 @click="controls.setFilter('tag',label.id)">{{ label.name }}</button>
+              <span
+                v-if="(row.original.tags?.length ?? 0) > 2"
+                class="rounded-sm border border-border bg-bg-sunken px-1.5 py-0.5 text-[11px] tabular-nums text-text-muted"
+                :title="(row.original.tags ?? []).slice(2).map((t) => t.name).join('、')"
+              >+{{ row.original.tags!.length - 2 }}</span>
               <span v-if="row.original.has_hidden_algorithm_tags"
                 class="text-xs text-text-muted">通过后显示算法标签</span>
               <span v-else-if="!row.original.tags?.length" class="text-text-muted">—</span>

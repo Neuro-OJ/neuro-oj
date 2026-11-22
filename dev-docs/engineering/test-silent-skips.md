@@ -115,8 +115,8 @@
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 236 | early-return |
 | noj-tests/e2e/admin/admin_endpoints.test.ts | 252 | early-return |
 | noj-tests/e2e/browser/19_search_unified.test.ts | 121 | ignore |
-| noj-tests/e2e/browser/19_search_unified.test.ts | 159 | ignore |
-| noj-tests/e2e/browser/19_search_unified.test.ts | 181 | ignore |
+| noj-tests/e2e/browser/19_search_unified.test.ts | 157 | ignore |
+| noj-tests/e2e/browser/19_search_unified.test.ts | 179 | ignore |
 | noj-tests/e2e/browser/settings-experience.test.ts | 16 | ignore |
 | noj-tests/e2e/browser/workspace-bundle-import.test.ts | 23 | ignore |
 | noj-tests/e2e/browser/workspace-classroom-matrix.test.ts | 156 | ignore |
@@ -126,7 +126,7 @@
 | noj-tests/e2e/browser/workspace-llm-model-governance.test.ts | 218 | ignore |
 | noj-tests/e2e/browser/workspace-private-registration-annotations.test.ts | 172 | ignore |
 | noj-tests/e2e/browser/workspace-public-mixed-journeys.test.ts | 197 | ignore |
-| noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 198 | ignore |
+| noj-tests/e2e/browser/workspace-teaching-journeys.test.ts | 200 | ignore |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 113 | early-return |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 124 | early-return |
 | noj-tests/e2e/catalog/import_bundle.test.ts | 182 | early-return |

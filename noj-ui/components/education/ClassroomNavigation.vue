@@ -5,23 +5,29 @@ import { workspacePath } from '~/utils/domain/workspace/workspace';
 
 const props = defineProps<{ slug: string; classroomId: string; classroom?: ClassroomDetail | null }>();
 const route = useRoute();
+const knowledge = useKnowledge();
 const links = computed(() => {
   const base = workspacePath(props.slug, `classrooms/${props.classroomId}`);
   const room = props.classroom;
+  const canMembers =
+    room &&
+    (classroomCan(room, 'students:manage') ||
+      classroomCan(room, 'submissions:read') ||
+      classroomCan(room, 'progress:read') ||
+      room.membership?.role === 'student');
   return [
     { label: '班级概览', to: base },
-    ...(room && (classroomCan(room, 'submissions:read') || classroomCan(room, 'progress:read'))
-      ? [{ label: '学生训练', to: `${base}/students` }] : []),
-    ...(room && (classroomCan(room, 'students:manage') || room.membership?.role === 'student') ? [{ label: '班级成员', to: `${base}/members` }] : []),
-    // 知识点掌握：教练视角（学情只读能力），仅课堂教练/域管理员可见。
-    ...(room && classroomCan(room, 'progress:read')
+    ...(canMembers ? [{ label: '班级成员', to: `${base}/members` }] : []),
+    // 知识点掌握：教练视角（学情只读能力），开启知识追踪且仅课堂教练/域管理员可见。
+    ...(room && !knowledge.disabled.value && classroomCan(room, 'progress:read')
       ? [{ label: '知识点掌握', to: `${base}/knowledge` }] : []),
     ...(room && room.manages_domain
       ? [{ label: '班级设置', to: `${base}/settings` }] : []),
   ];
 });
 function active(to: string) {
-  return route.path === to || (to.endsWith('/students') && route.path.startsWith(`${to}/`));
+  const studentsPrefix = workspacePath(props.slug, `classrooms/${props.classroomId}/students/`);
+  return route.path === to || (to.endsWith('/members') && route.path.startsWith(studentsPrefix));
 }
 </script>
 
