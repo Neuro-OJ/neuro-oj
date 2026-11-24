@@ -5,7 +5,6 @@ import { NotFoundError } from "../../../../shared/base/errors.ts";
 import {
   accountNotifications,
   educationNotificationEmails,
-  educationOutbox,
 } from "../../../../shared/db/schema.ts";
 import { recordEducationNotice } from "../../contracts/facts.ts";
 import {
@@ -20,10 +19,11 @@ import {
   updateAssignmentFeedback,
 } from "../../index.ts";
 import {
-  claimEducationEvents,
+  claimEducationTasks,
+  listEducationTasks,
   processEducationBatch,
-  processEducationEvent,
-} from "../../services/progress-worker.ts";
+  runEducationTask,
+} from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 async function fixture() {
@@ -65,11 +65,13 @@ Deno.test("教学通知：持久事件和反馈同事务，重复领取不重复
     "personal",
     { body: "secret private feedback", target_user_id: f.student },
   );
-  const claimed = await claimEducationEvents();
-  const event = claimed.find((row) => row.event_type === "notification")!;
+  const claimed = await claimEducationTasks();
+  const event = claimed.find((row) =>
+    row.payload.event_type === "notification"
+  )!;
   assertEquals(JSON.stringify(event.payload).includes("secret"), false);
-  assertEquals(await processEducationEvent(event), true);
-  assertEquals(await processEducationEvent(event), false);
+  assertEquals(await runEducationTask(event), true);
+  assertEquals(await runEducationTask(event), false);
   assertEquals((await f.db.select().from(accountNotifications)).length, 1);
   const listing = await listEducationNotifications(f.school.slug, f.student);
   assertEquals(listing.total, 1);
@@ -169,7 +171,7 @@ Deno.test("教学通知：投递及读取重新检查助教能力，旧通知不
 
 Deno.test("教学通知：业务事务回滚不留事件，投递前撤回反馈不产生通知", async () => {
   const f = await fixture();
-  const countBefore = (await f.db.select().from(educationOutbox)).length;
+  const countBefore = (await listEducationTasks(f.db)).length;
   await assertRejects(() =>
     f.db.transaction(async (tx) => {
       await recordEducationNotice(tx, {
@@ -179,7 +181,7 @@ Deno.test("教学通知：业务事务回滚不留事件，投递前撤回反馈
       });
       throw new Error("回滚");
     }), Error);
-  assertEquals((await f.db.select().from(educationOutbox)).length, countBefore);
+  assertEquals((await listEducationTasks(f.db)).length, countBefore);
   const feedback = await createAssignmentFeedback(
     f.school.slug,
     f.task.id,

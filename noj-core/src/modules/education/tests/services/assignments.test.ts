@@ -12,7 +12,6 @@ import {
   assignmentRecipients,
   assignments,
   domainProblemBindings,
-  educationOutbox,
   problems,
 } from "../../../../shared/db/schema.ts";
 import {
@@ -28,6 +27,7 @@ import {
   setClassroomMember,
   updateAssignment,
 } from "../../index.ts";
+import { listEducationTasks } from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 import { loadClassroom } from "../../services/access.ts";
 import { insertAssignmentDraft } from "../../services/assignments.ts";
@@ -123,7 +123,7 @@ Deno.test("作业：发布固定条目与名单、原子保存版本依据和事
   assertEquals(item.minimum_score, 6000);
   assertEquals(item.published_version_id, f.versionId);
   assertEquals(item.answer_version_id, f.versionId);
-  assertEquals((await f.db.select().from(educationOutbox)).length, 2);
+  assertEquals((await listEducationTasks(f.db)).length, 2);
   const detail = await getAssignment(f.school.slug, draft.id, f.student);
   assertEquals("target_student_ids" in detail, false);
   await assertRejects(
@@ -237,7 +237,7 @@ Deno.test("作业：发布时资源失效整体回滚；定时发布再次校验
   assertEquals(failed.published_at, null);
   assertEquals(typeof failed.publish_error, "string");
   assertEquals((await f.db.select().from(assignmentRecipients)).length, 0);
-  assertEquals((await f.db.select().from(educationOutbox)).length, 0);
+  assertEquals((await listEducationTasks(f.db)).length, 0);
   assertEquals(failed.items[0].published_version_id, null);
 });
 

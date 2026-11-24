@@ -16,7 +16,7 @@ import { userBans, users } from "./identity.ts";
 import { problems } from "./catalog.ts";
 import { domains } from "./workspace.ts";
 import { domainProblemBindings } from "./catalog-workspace.ts";
-import { assignments, educationOutbox } from "./assignment.ts";
+import { assignments } from "./assignment.ts";
 import {
   assignmentFeedback,
   assignmentHelpReplies,
@@ -383,7 +383,8 @@ export const accountNotifications = pgTable(
     }),
     type: text("type").notNull(),
     assignment_id: text("assignment_id"),
-    event_id: text("event_id").references(() => educationOutbox.id),
+    /** 教学通知事件标识（`education.recompute` 任务 payload 的 `event_id`），用于投递幂等。 */
+    event_id: text("event_id"),
     feedback_id: text("feedback_id"),
     help_id: text("help_id"),
     reply_id: text("reply_id"),

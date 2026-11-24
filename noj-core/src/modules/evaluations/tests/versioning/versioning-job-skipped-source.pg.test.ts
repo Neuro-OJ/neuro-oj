@@ -18,15 +18,15 @@ import { bindPublishedProblemForTest } from "../../../../../tests/helper.ts";
  */
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { assertEquals } from "jsr:@std/assert@^1";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { unwrapRows } from "../../../../shared/base/sql-rows.ts";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
+  backgroundTasks,
   contestProblems,
   contests,
   domainProblemBindings,
   domains,
-  educationOutbox,
   evaluationAttempts,
   judgeImages,
   objectiveSubmissions,
@@ -584,9 +584,10 @@ async function seedObjectiveFixture(
 }
 
 async function cleanupObjective(fixture: ObjectiveFixture): Promise<void> {
-  await db.delete(educationOutbox).where(
-    eq(educationOutbox.problem_id, fixture.problemId),
-  );
+  await db.delete(backgroundTasks).where(and(
+    eq(backgroundTasks.task_type, "education.recompute"),
+    sql`${backgroundTasks.payload}->>'problem_id' = ${fixture.problemId}`,
+  ));
   await db.delete(submissionJobItems).where(
     eq(submissionJobItems.job_id, fixture.jobId),
   );

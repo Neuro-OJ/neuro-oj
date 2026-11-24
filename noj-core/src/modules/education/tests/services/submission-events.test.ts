@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import {
   assignmentProgress,
   contests,
-  educationOutbox,
   evaluationAttempts,
   submissions,
   submissionVersionResults,
@@ -19,7 +18,10 @@ import {
   getMyAssignmentProgress,
   publishAssignment,
 } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import {
+  listEducationTasks,
+  processEducationBatch,
+} from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 async function fixture() {
@@ -138,11 +140,11 @@ Deno.test("比赛结束：持久到期事件补算，延长比赛重排时刻，
     );
     await rescheduleContestEducation(tx, id, later);
   });
-  const queued = await f.db.select().from(educationOutbox);
+  const queued = await listEducationTasks(f.db);
   assertEquals(
-    queued.filter((e) => e.payload._invalidate_on_claim === true).every((e) =>
-      e.available_at === later
-    ),
+    queued.filter((e) => e.event.data._invalidate_on_claim === true).every((
+      e,
+    ) => e.available_at === later),
     true,
   );
   const ended = new Date(Date.now() - 1000).toISOString();

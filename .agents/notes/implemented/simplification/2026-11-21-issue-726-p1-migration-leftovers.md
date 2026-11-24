@@ -56,6 +56,7 @@ Status: implemented
 - 从 0.11.0 之前的 rc 实例直接跳到本版本时，如果库里还有未处理且未登记任务的
   outbox 行，这些行不会再被处理。正式支持的升级路径（v0.10.6 逻辑迁移、0.11.0
   起的原地升级）都不受影响。
-- `education_outbox` 双写仍然存在，待单独设计后再统一。
+- `education_outbox` 双写已由后续变更统一到 `background_tasks`，见
+  [`2026-11-22-issue-726-education-outbox-unification.md`](2026-11-22-issue-726-education-outbox-unification.md)。
 - 管理后台无域竞赛（`http/admin/routes/contest.ts`）和无域题目管理接口仍待迁移，
   见 #726 进展评论。

@@ -86,7 +86,6 @@ export {
   assignments,
   educationDisabledIntervals,
   educationOperations,
-  educationOutbox,
 } from "./assignment.ts";
 export { assignmentProgress } from "./assignment-progress.ts";
 export {

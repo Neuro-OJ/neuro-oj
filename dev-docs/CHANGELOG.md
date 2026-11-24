@@ -18,6 +18,10 @@
 
 ### 变更
 
+- **core 教学事件统一到通用后台任务**：删除 `education_outbox` 表（迁移
+  `0145`），教学事件、分页游标与通知投递进度都保存在 `education.recompute`
+  任务中；升级时未完成的事件自动转换，无需人工处理。告警
+  `NojEducationProjectionStale` 改为统计已到期未完成的教学任务（#726）。
 - **ui 旧 URL 重定向收口为一套规则**：旧无域入口统一由全局中间件按
   `utils/default-workspace.ts` 301 到 `main` 域，新增 `/queue` 与
   `/problems/new/bundle`；静态路径段不区分大小写；规则之外的未知路径一律

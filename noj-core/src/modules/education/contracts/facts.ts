@@ -1,54 +1,72 @@
 import type { DbRoot, DbTx } from "../../../shared/db/executor.ts";
-import {
-  educationOutbox,
-  queryProjectionRevisions,
-} from "../../../shared/db/schema.ts";
+import { queryProjectionRevisions } from "../../../shared/db/schema.ts";
 import { sql } from "drizzle-orm";
 import type { EducationNoticeType } from "../../../shared/education-types.ts";
-import { enqueueTaskTx } from "../../../shared/tasks/repository.ts";
-import type { EnqueueTaskResult } from "../../../shared/tasks/contracts.ts";
+import {
+  enqueueOrReviveTaskTx,
+  enqueueTaskTx,
+} from "../../../shared/tasks/repository.ts";
+import type {
+  EnqueueTaskResult,
+  TaskPayload,
+} from "../../../shared/tasks/contracts.ts";
+
+/** 教学事件在 `background_tasks` 中的任务类型与 payload 结构版本。 */
+export const EDUCATION_TASK_TYPE = "education.recompute";
+export const EDUCATION_TASK_PAYLOAD_VERSION = 2;
 
 /**
- * outbox 行的通用任务映射。
+ * 教学事件即一条 `education.recompute` 后台任务。
  *
- * 教学事件写入 `education_outbox`（承载游标、租约与通知投递进度），同事务登记
- * 一条 `education.recompute` 通用任务负责调度；去重键使用 outbox id。
+ * 事实定位字段放在顶层；`data` 承载事件附加信息（比赛 id、通知类型等）以及
+ * 处理过程中的可恢复游标（`_education_cursor` / `_notice_after`）和到期失效
+ * 标记（`_invalidate_on_claim`）。`event_id` 是通知投递的幂等键。
  */
-/** 旧 outbox 行的稳定任务去重键：保证重复迁移映射到同一条任务。 */
-export function educationOutboxDedupeKey(outboxId: string): string {
-  return `outbox:${outboxId}`;
+export interface EducationTaskPayload extends TaskPayload {
+  readonly event_id: string;
+  readonly domain_id: string;
+  readonly event_type: EducationEvent["event_type"];
+  readonly user_id: string | null;
+  readonly problem_id: string | null;
+  readonly classroom_id: string | null;
+  readonly assignment_id: string | null;
+  readonly data: Record<string, unknown>;
 }
 
-/**
- * 在事实事务内登记对应的通用任务。
- *
- * outbox 保留完整分页游标，通用任务只携带可恢复的摘要。
- */
-export async function enqueueEducationOutboxTaskTx(
+/** 在业务事务内登记教学事件任务；同一事件只登记一次。 */
+async function enqueueEducationTaskTx(
   tx: DbTx,
-  row: typeof educationOutbox.$inferSelect,
+  event: EducationEvent,
+  options: {
+    eventId?: string;
+    availableAt?: string;
+    data?: Record<string, unknown>;
+    revive?: { dedupeKey: string };
+  } = {},
 ): Promise<EnqueueTaskResult> {
-  const payload = row.payload ?? {};
-  const hasCursor = typeof payload._education_cursor === "object" &&
-    payload._education_cursor !== null;
-  return await enqueueTaskTx(tx, {
-    taskType: "education.recompute",
-    targetKind: row.assignment_id ? "assignment" : "domain",
-    targetId: row.assignment_id ?? row.domain_id,
-    dedupeKey: educationOutboxDedupeKey(row.id),
-    payloadVersion: 1,
-    payload: {
-      outbox_id: row.id,
-      domain_id: row.domain_id,
-      event_type: row.event_type,
-      user_id: row.user_id,
-      problem_id: row.problem_id,
-      classroom_id: row.classroom_id,
-      assignment_id: row.assignment_id,
-      education_cursor: hasCursor ? payload._education_cursor : null,
-    },
-    availableAt: row.available_at,
-  });
+  const eventId = options.eventId ?? crypto.randomUUID();
+  const payload: EducationTaskPayload = {
+    event_id: eventId,
+    domain_id: event.domain_id,
+    event_type: event.event_type,
+    user_id: event.user_id ?? null,
+    problem_id: event.problem_id ?? null,
+    classroom_id: event.classroom_id ?? null,
+    assignment_id: event.assignment_id ?? null,
+    data: options.data ?? event.payload ?? {},
+  };
+  const input = {
+    taskType: EDUCATION_TASK_TYPE,
+    targetKind: event.assignment_id ? "assignment" : "domain",
+    targetId: event.assignment_id ?? event.domain_id,
+    dedupeKey: options.revive?.dedupeKey ?? `event:${eventId}`,
+    payloadVersion: EDUCATION_TASK_PAYLOAD_VERSION,
+    payload,
+    availableAt: options.availableAt,
+  } as const;
+  return options.revive
+    ? await enqueueOrReviveTaskTx(tx, input)
+    : await enqueueTaskTx(tx, input);
 }
 
 /** 生产者只登记事实定位，消费者从数据库读取最新结果，不信任事件里的成绩。 */
@@ -76,35 +94,15 @@ export async function recordEducationEvent(
   options: { availableAt?: string } = {},
 ) {
   const now = new Date().toISOString();
-  const row = {
-    id: crypto.randomUUID(),
-    ...event,
-    created_at: now,
-    available_at: options.availableAt ?? now,
-    payload: {
+  const delayed = !!options.availableAt && options.availableAt > now;
+  await enqueueEducationTaskTx(tx, event, {
+    availableAt: options.availableAt,
+    data: {
       ...event.payload,
-      ...(options.availableAt && options.availableAt > now
-        ? { _invalidate_on_claim: true }
-        : {}),
+      ...(delayed ? { _invalidate_on_claim: true } : {}),
     },
-  } satisfies typeof educationOutbox.$inferInsert;
-  await tx.insert(educationOutbox).values(row);
-  await enqueueEducationOutboxTaskTx(tx, {
-    ...row,
-    user_id: row.user_id ?? null,
-    problem_id: row.problem_id ?? null,
-    classroom_id: row.classroom_id ?? null,
-    assignment_id: row.assignment_id ?? null,
-    payload: row.payload ?? {},
-    leased_until: null,
-    lease_token: null,
-    attempts: 0,
-    processed_at: null,
-    last_error: null,
   });
-  if (!options.availableAt || options.availableAt <= now) {
-    await invalidateEducationEvent(tx, event);
-  }
+  if (!delayed) await invalidateEducationEvent(tx, event);
 }
 
 /** 到期事件开始处理时再递增事实版本，比赛结束前不会提前标为已公开成绩。 */
@@ -140,34 +138,17 @@ export async function recordEducationNotice(tx: DbTx, notice: {
   help_id?: string;
   reply_id?: string;
 }) {
-  const now = new Date().toISOString();
-  const row = {
-    id: crypto.randomUUID(),
+  await enqueueEducationTaskTx(tx, {
     domain_id: notice.domain_id,
     assignment_id: notice.assignment_id,
     user_id: notice.user_id,
     event_type: "notification",
-    created_at: now,
-    available_at: now,
     payload: {
       notice_type: notice.type,
       feedback_id: notice.feedback_id ?? null,
       help_id: notice.help_id ?? null,
       reply_id: notice.reply_id ?? null,
     },
-  } satisfies typeof educationOutbox.$inferInsert;
-  await tx.insert(educationOutbox).values(row);
-  await enqueueEducationOutboxTaskTx(tx, {
-    ...row,
-    user_id: row.user_id ?? null,
-    problem_id: null,
-    classroom_id: null,
-    assignment_id: row.assignment_id ?? null,
-    leased_until: null,
-    lease_token: null,
-    attempts: 0,
-    processed_at: null,
-    last_error: null,
   });
 }
 
@@ -230,23 +211,21 @@ export async function enqueueEducationRefresh(
   );
 }
 
-/** 业务事务已经存在时使用的刷新登记合同。 */
+/**
+ * 业务事务已经存在时使用的刷新登记合同。
+ *
+ * 同一任务 + 学生同时只保留一条未完成的刷新；已完成的刷新会被原地复活。
+ */
 export async function enqueueEducationRefreshTx(
   tx: DbTx,
   domainId: string,
   assignmentId: string,
   userId?: string,
 ) {
-  const now = new Date().toISOString();
-  const rows = await tx.insert(educationOutbox).values({
-    id: crypto.randomUUID(),
+  await enqueueEducationTaskTx(tx, {
     domain_id: domainId,
     assignment_id: assignmentId,
     user_id: userId,
     event_type: "assignment.refresh",
-    created_at: now,
-    available_at: now,
-  }).onConflictDoNothing().returning();
-  const row = rows[0];
-  if (row) await enqueueEducationOutboxTaskTx(tx, row);
+  }, { revive: { dedupeKey: `refresh:${userId ?? ""}` } });
 }

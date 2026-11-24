@@ -57,15 +57,10 @@ export {
 export { copyAssignment } from "./services/assignment-copy.ts";
 export type { AssignmentCopyInput } from "./services/assignment-copy.ts";
 export {
-  _resetEducationWorkerForTest,
   startEducationEmailWorker,
   startEducationPublishingWorker,
-  startEducationWorker,
 } from "./services/worker-lifecycle.ts";
-export { processEducationBackgroundTask } from "./services/progress-worker.ts";
-export type {
-  EducationBackgroundTaskOutcome,
-} from "./services/progress-worker.ts";
+export { processEducationTask } from "./services/progress-worker.ts";
 export { prepareEducationSubmissionDeletion } from "./services/submission-lifecycle.ts";
 export {
   getAssignmentMatrix,

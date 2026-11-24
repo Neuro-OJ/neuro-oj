@@ -23,15 +23,19 @@ interface Cell {
   projection_revision: string;
   late: boolean;
 }
+/** 教学事件即 `education.recompute` 后台任务；payload 为自包含的 v2 结构。 */
 interface Event {
   id: string;
-  domain_id: string;
-  event_type: string;
-  user_id: string | null;
-  problem_id: string | null;
-  classroom_id: string | null;
-  assignment_id: string | null;
-  payload: Record<string, postgres.JSONValue>;
+  payload: {
+    event_id: string;
+    domain_id: string;
+    event_type: string;
+    user_id: string | null;
+    problem_id: string | null;
+    classroom_id: string | null;
+    assignment_id: string | null;
+    data: Record<string, postgres.JSONValue>;
+  };
   created_at: string;
 }
 interface ContainerState {
@@ -89,7 +93,7 @@ async function waitUntil<T>(
 
 Deno.test({
   name:
-    "[e2e/education-outbox-recovery] 重复乱序按最新事实重算，真实core重启恢复积压",
+    "[e2e/education-task-recovery] 重复乱序按最新事实重算，真实core重启恢复积压",
   ignore: !isE2E,
   sanitizeOps: false,
   sanitizeResources: false,
@@ -212,9 +216,10 @@ Deno.test({
       const events = () =>
         sql<
           Event[]
-        >`SELECT id,domain_id,event_type,user_id,problem_id,classroom_id,assignment_id,payload,created_at
-        FROM education_outbox WHERE domain_id=${domain.data.id} AND user_id=${studentId} AND problem_id=${localProblemId}
-        AND event_type='submission.changed' ORDER BY created_at DESC,id DESC LIMIT 1`;
+        >`SELECT id,payload,created_at FROM background_tasks
+        WHERE task_type='education.recompute' AND payload->>'domain_id'=${domain.data.id}
+        AND payload->>'user_id'=${studentId} AND payload->>'problem_id'=${localProblemId}
+        AND payload->>'event_type'='submission.changed' ORDER BY created_at DESC,id DESC LIMIT 1`;
       const submit = async (code: string) =>
         (await request<{ data: { id: string } }>(
           "POST",
@@ -251,34 +256,21 @@ Deno.test({
       const replay = async (event: Event, deliveries: number) => {
         const ids = [];
         for (let n = 0; n < deliveries; n++) {
-          const id = crypto.randomUUID(), payload = { ...event.payload };
-          delete payload._education_cursor;
+          const id = crypto.randomUUID(), eventId = crypto.randomUUID();
+          const data = { ...event.payload.data };
+          delete data._education_cursor;
           // 复用生产中到期事件的失效机制，只修改交付元数据，不写业务事实。
-          payload._invalidate_on_claim = true;
-          await sql`INSERT INTO education_outbox(id,domain_id,event_type,user_id,problem_id,classroom_id,assignment_id,payload,created_at,available_at)
-            VALUES(${id},${event.domain_id},${event.event_type},${event.user_id},${event.problem_id},${event.classroom_id},${event.assignment_id},${
-            sql.json(payload)
-          },${event.created_at},${new Date().toISOString()})`;
-          // P4 已切换为 background_tasks 是唯一生产消费者；手工重放也必须登记
-          // 同一稳定 outbox 身份的通用任务，否则真实 core 不会扫描裸 outbox 行。
-          const taskPayload = {
-            outbox_id: id,
-            domain_id: event.domain_id,
-            event_type: event.event_type,
-            user_id: event.user_id,
-            problem_id: event.problem_id,
-            classroom_id: event.classroom_id,
-            assignment_id: event.assignment_id,
-            education_cursor: null,
-          };
+          data._invalidate_on_claim = true;
+          const payload = { ...event.payload, event_id: eventId, data };
           const now = new Date().toISOString();
           await sql`INSERT INTO background_tasks(
             id,task_type,target_kind,target_id,dedupe_key,payload_version,payload,status,available_at,created_at,updated_at
           ) VALUES(
-            ${crypto.randomUUID()},'education.recompute',
-            ${event.assignment_id ? "assignment" : "domain"},
-            ${event.assignment_id ?? event.domain_id},${`outbox:${id}`},1,
-            ${sql.json(taskPayload)},'pending',${now},${now},${now}
+            ${id},'education.recompute',
+            ${event.payload.assignment_id ? "assignment" : "domain"},
+            ${event.payload.assignment_id ?? event.payload.domain_id},
+            ${`event:${eventId}`},2,
+            ${sql.json(payload)},'pending',${now},${event.created_at},${now}
           )`;
           ids.push(id);
         }
@@ -290,16 +282,16 @@ Deno.test({
             sql<
               {
                 id: string;
-                processed_at: string | null;
+                status: string;
                 last_error: string | null;
               }[]
             >`
-          SELECT id,processed_at,last_error FROM education_outbox WHERE id IN ${
+          SELECT id,status,last_error FROM background_tasks WHERE id IN ${
               sql(ids)
             }`,
           (rows) =>
             rows.length === ids.length && rows.every((row) =>
-              row.processed_at !== null && row.last_error === null
+              row.status === "succeeded" && row.last_error === null
             ),
           "真实消费者完成交付",
         );
@@ -471,14 +463,14 @@ Deno.test({
           assertEquals((await state(core)).Running, false);
           const deliveries = await replay(oldEvent, 2);
           const pending = await sql<
-            { processed_at: string | null; lease_token: string | null }[]
-          >`SELECT processed_at,lease_token FROM education_outbox WHERE id IN ${
+            { status: string; lease_token: string | null }[]
+          >`SELECT status,lease_token FROM background_tasks WHERE id IN ${
             sql(deliveries)
           }`;
           assertEquals(pending.length, 2);
           assert(
             pending.every((row) =>
-              row.processed_at === null && row.lease_token === null
+              row.status === "pending" && row.lease_token === null
             ),
           );
           assertEquals(identity(await cells()), expected);

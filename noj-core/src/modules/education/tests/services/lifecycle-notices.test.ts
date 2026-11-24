@@ -14,7 +14,7 @@ import {
   removeClassroomMember,
   setClassroomMember,
 } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 async function drain() {
   for (let i = 0; i < 40; i++) {

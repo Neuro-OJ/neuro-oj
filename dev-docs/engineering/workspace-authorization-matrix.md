@@ -70,23 +70,23 @@ Domain；浏览器偏好、切换器和本地缓存键不参与授权。读写�
 
 下表「有」仍须满足域进入、资源归属、模块状态与比赛保密条件。
 
-| 能力组 | owner | admin | educator | member |
-| --- | --- | --- | --- | --- |
-| 获授权题目/题单读取、本人提交、参赛 | 有 | 有 | 有 | 有 |
-| 社区发布/评论/举报、本人内容自助管理 | 有 | 有 | 有 | 有 |
-| 创建源题、编辑/发布本域题目 | 有 | 有 | 有 | 无 |
-| 编辑/下架本域所有题目 | 有 | 有 | 有 | 无 |
-| 复制其他域的已发布题目/题单（源域需同样能力） | 有 | 有 | 有 | 无 |
-| 创建/编辑/发布本域题单 | 有 | 有 | 有 | 无 |
-| 设置本域题目有效版本策略 | 有 | 有 | 有 | 无 |
-| 创建比赛、管理本域比赛、反作弊读取 | 有 | 有 | 有 | 无 |
-| 创建班级、管理本域班级 | 有 | 有 | 有 | 无 |
-| 全域提交读取及重测 | 有 | 有 | 有 | 无 |
-| 本域社区治理（审核/隐藏/锁定/处罚/板块） | 有 | 有 | 有 | 无 |
-| 本域 Provider/默认模型/LLM 配额 | 有 | 有 | 无 | 无 |
-| 本域设置、成员、邀请、归档、限额 | 有 | 有 | 无 | 无 |
-| 授予/移除管理员角色、移除管理员成员 | 有 | 无 | 无 | 无 |
-| 转交负责人 | 有 | 无 | 无 | 无 |
+| 能力组                                        | owner | admin | educator | member |
+| --------------------------------------------- | ----- | ----- | -------- | ------ |
+| 获授权题目/题单读取、本人提交、参赛           | 有    | 有    | 有       | 有     |
+| 社区发布/评论/举报、本人内容自助管理          | 有    | 有    | 有       | 有     |
+| 创建源题、编辑/发布本域题目                   | 有    | 有    | 有       | 无     |
+| 编辑/下架本域所有题目                         | 有    | 有    | 有       | 无     |
+| 复制其他域的已发布题目/题单（源域需同样能力） | 有    | 有    | 有       | 无     |
+| 创建/编辑/发布本域题单                        | 有    | 有    | 有       | 无     |
+| 设置本域题目有效版本策略                      | 有    | 有    | 有       | 无     |
+| 创建比赛、管理本域比赛、反作弊读取            | 有    | 有    | 有       | 无     |
+| 创建班级、管理本域班级                        | 有    | 有    | 有       | 无     |
+| 全域提交读取及重测                            | 有    | 有    | 有       | 无     |
+| 本域社区治理（审核/隐藏/锁定/处罚/板块）      | 有    | 有    | 有       | 无     |
+| 本域 Provider/默认模型/LLM 配额               | 有    | 有    | 无       | 无     |
+| 本域设置、成员、邀请、归档、限额              | 有    | 有    | 无       | 无     |
+| 授予/移除管理员角色、移除管理员成员           | 有    | 无    | 无       | 无     |
+| 转交负责人                                    | 有    | 无    | 无       | 无     |
 
 负责人不能直接退出、被移除或通过普通角色编辑降级；交接在一个事务内更新
 `domains.owner_id` 与双方成员角色。普通角色接口不能授予 `owner`。
@@ -270,8 +270,8 @@ active，也不证明当前用户拥有权限。
 | community reports/notifications/actions   | 举报／通知的帖子和评论同域复合 FK；类型区分域内容与账号事件；内容通知删除目标后仍须有原域                            | report 通知由真实举报记录定位；多态审核 target_id 的实际资源关系由服务核对                   |
 | feedback/help/replies                     | 非空域与同域作业／recipient／条目／求助复合 FK，正文／状态／revision CHECK                                           | 私人互动能力独立；目标提交的同域／学生关系由服务核对，不声称普通 ID FK已证明这些关系         |
 | submission_annotations                    | 非空域；同域班级、同域原提交×学生复合 FK；SHA-256 格式、行范围、正文与 revision CHECK                                | 原提交授权、实际文件和行数／哈希、比赛保密、作者编辑及受控 ZIP 预览                          |
-| education notifications/outbox            | 非空域；同域资源复合 FK；event×recipient 去重；通知类型与关联字段组合 CHECK                                          | 每次列表、发送、点击和 SSE 推送重新授权，只推定位，不保存私有正文摘要                        |
-| education_outbox 的矩阵刷新定位           | assignment.refresh 未处理记录按域×作业×COALESCE(user_id,'') 部分唯一                                                 | 合并同一范围的待处理刷新；领取租约、处理 revision 和最新事实重算仍由消费者执行               |
+| education notifications                   | 非空域；同域资源复合 FK；event×recipient 去重；通知类型与关联字段组合 CHECK                                          | 每次列表、发送、点击和 SSE 推送重新授权，只推定位，不保存私有正文摘要                        |
+| 教学矩阵刷新任务                          | assignment.refresh 以 education.recompute 任务的去重键按作业×学生合并，完成后原地复活                                | 合并同一范围的待处理刷新；领取租约、处理 revision 和最新事实重算仍由消费者执行               |
 | llm_model_aliases                         | domain_id NOT NULL；(domain_id, alias) 复合主键；revision ≥0 CHECK                                                   | default 不写表；管理者只写本域，Provider 属于同域；Gateway 独立数据库不伪造跨库 Provider FK  |
 
 约束依据：[工作空间 Schema](../../noj-core/src/shared/db/schema/workspace.ts)、
@@ -295,13 +295,13 @@ main 的 0116，保留存量回填与原始身份。0116 同时将模型别名�
 别名归 main；0117 补齐班级加入申请和教学刷新事件的 pending 部分唯一索引。
 任务条目的空绑定只允许失败或跳过的历史引用。下列可空列有明确产品语义，不能一律非空。
 
-| 表                                         | 当前仍可空的工作空间列    | 后续收缩需区分                                                                                           |
-| ------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------- |
-| submission_job_items                       | domain_problem_binding_id | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史                                                  |
-| community_posts                            | domain_problem_binding_id | 仅 solution 非空；discussion／moment 必须为空                                                            |
-| community_moderation_actions               | domain_id                 | message／user_ban 账号历史为空；其他域审核目标非空                                                       |
+| 表                                         | 当前仍可空的工作空间列    | 后续收缩需区分                                                                               |
+| ------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------------------- |
+| submission_job_items                       | domain_problem_binding_id | CHECK 限定为空时只能 failed/skipped，保留已删除来源历史                                      |
+| community_posts                            | domain_problem_binding_id | 仅 solution 非空；discussion／moment 必须为空                                                |
+| community_moderation_actions               | domain_id                 | message／user_ban 账号历史为空；其他域审核目标非空                                           |
 | community_reports、community_notifications | domain_id                 | 历史关注通知及账号封禁为空；reply／moderation／clarification 通知非空；report 由真实举报决定 |
-| education_disabled_intervals               | domain_id                 | 空域表示实例级停用区间；域级区间保存实际域                                                               |
+| education_disabled_intervals               | domain_id                 | 空域表示实例级停用区间；域级区间保存实际域                                                   |
 
 PostgreSQL 复合 FK 采用默认 MATCH SIMPLE；归属非空列与类型 CHECK
 限定可以跳过关系的合法业务形态。账号举报／通知的空域不授予域资源访问。

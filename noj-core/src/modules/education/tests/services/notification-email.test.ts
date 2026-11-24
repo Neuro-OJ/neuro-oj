@@ -9,7 +9,7 @@ import {
   createAssignmentFeedback,
   publishAssignment,
 } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import {
   claimEducationEmails,
   educationEmailContent,

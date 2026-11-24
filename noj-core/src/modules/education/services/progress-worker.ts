@@ -1,111 +1,32 @@
-import {
-  and,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  lte,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import {
   assignmentRecipients,
   assignments,
-  educationOutbox,
 } from "../../../shared/db/schema.ts";
+import type {
+  ClaimedTask,
+  TaskHandler,
+  TaskRescheduleResult,
+} from "../../../shared/tasks/contracts.ts";
+import { updateLeasedTaskPayloadTx } from "../../../shared/tasks/repository.ts";
 import { recomputeAssignmentProgress } from "./progress-materializer.ts";
-import { invalidateEducationEvent } from "../contracts/facts.ts";
+import {
+  EDUCATION_TASK_PAYLOAD_VERSION,
+  type EducationTaskPayload,
+  invalidateEducationEvent,
+} from "../contracts/facts.ts";
 import { processEducationNotice } from "./notifications.ts";
-import { Channels, publishSseEvent } from "../../../shared/sse/event-bus.ts";
+import {
+  Channels,
+  publishSseEventAfterTx,
+} from "../../../shared/sse/event-bus.ts";
+import { recordSseEvent } from "../../../shared/sse/sse-events.ts";
 
-/** 租约标识只用于当前数据库领取，不代表用户权限。 */
-export type ClaimedEducationEvent = typeof educationOutbox.$inferSelect;
-
-/** 短事务领取到期事件，多个进程通过 SKIP LOCKED 领取不同记录。 */
-export async function claimEducationEvents(limit = 20) {
-  const now = new Date().toISOString(),
-    lease = new Date(Date.now() + 60000).toISOString();
-  return await getDb().transaction(async (tx) => {
-    const events = await tx.select().from(educationOutbox).where(and(
-      isNull(educationOutbox.processed_at),
-      lte(educationOutbox.available_at, now),
-      or(
-        isNull(educationOutbox.leased_until),
-        lte(educationOutbox.leased_until, now),
-      ),
-    )).orderBy(educationOutbox.created_at, educationOutbox.id).limit(limit).for(
-      "update",
-      { skipLocked: true },
-    );
-    if (!events.length) return [];
-    const claimed = await tx.update(educationOutbox).set({
-      lease_token: crypto.randomUUID(),
-      leased_until: lease,
-      attempts: sql`${educationOutbox.attempts} + 1`,
-    }).where(inArray(educationOutbox.id, events.map((e) => e.id))).returning();
-    for (const event of claimed) {
-      if (event.payload._invalidate_on_claim) {
-        await invalidateEducationEvent(tx, {
-          domain_id: event.domain_id,
-          event_type: "submission.changed",
-          user_id: event.user_id ?? undefined,
-          problem_id: event.problem_id ?? undefined,
-          assignment_id: event.assignment_id ?? undefined,
-          classroom_id: event.classroom_id ?? undefined,
-        });
-        event.payload = { ...event.payload, _invalidate_on_claim: false };
-        await tx.update(educationOutbox).set({ payload: event.payload }).where(
-          eq(educationOutbox.id, event.id),
-        );
-      }
-    }
-    return claimed;
-  });
-}
-
-/** 通用后台任务按 outbox 身份单条领取，避免 generic task 与旧批量领取互相扫到。 */
-export async function claimEducationEventById(
-  eventId: string,
-): Promise<ClaimedEducationEvent | null> {
-  const events = await getDb().transaction(async (tx) => {
-    const now = new Date().toISOString();
-    const lease = new Date(Date.now() + 60_000).toISOString();
-    const rows = await tx.select().from(educationOutbox).where(and(
-      eq(educationOutbox.id, eventId),
-      isNull(educationOutbox.processed_at),
-      lte(educationOutbox.available_at, now),
-      or(
-        isNull(educationOutbox.leased_until),
-        lte(educationOutbox.leased_until, now),
-      ),
-    )).limit(1).for("update", { skipLocked: true });
-    if (!rows.length) return [];
-    const [claimed] = await tx.update(educationOutbox).set({
-      lease_token: crypto.randomUUID(),
-      leased_until: lease,
-      attempts: sql`${educationOutbox.attempts} + 1`,
-    }).where(eq(educationOutbox.id, eventId)).returning();
-    if (!claimed) return [];
-    if (claimed.payload._invalidate_on_claim) {
-      await invalidateEducationEvent(tx, {
-        domain_id: claimed.domain_id,
-        event_type: "submission.changed",
-        user_id: claimed.user_id ?? undefined,
-        problem_id: claimed.problem_id ?? undefined,
-        assignment_id: claimed.assignment_id ?? undefined,
-        classroom_id: claimed.classroom_id ?? undefined,
-      });
-      claimed.payload = { ...claimed.payload, _invalidate_on_claim: false };
-      await tx.update(educationOutbox).set({ payload: claimed.payload }).where(
-        eq(educationOutbox.id, eventId),
-      );
-    }
-    return [claimed];
-  });
-  return events[0] ?? null;
-}
+/** 一次领取处理一页；`payload` 为下一页的可恢复依据，`done` 表示事件已处理完。 */
+export type EducationStep =
+  | { readonly done: true; readonly skipped?: string }
+  | { readonly done: false; readonly payload: EducationTaskPayload };
 
 type EducationCursor = {
   assignment_after?: string;
@@ -113,55 +34,88 @@ type EducationCursor = {
   student_after?: string;
 };
 
-/** 每次只处理一个任务的一页学生，持久游标让大量名单也可在重启后继续。 */
-export async function processEducationEvent(event: ClaimedEducationEvent) {
-  if (event.event_type === "notification") {
-    return await processEducationNotice(event);
+function readEducationPayload(task: ClaimedTask): EducationTaskPayload {
+  const payload = task.payload as Partial<EducationTaskPayload>;
+  if (
+    task.payloadVersion !== EDUCATION_TASK_PAYLOAD_VERSION ||
+    typeof payload.domain_id !== "string" ||
+    typeof payload.event_type !== "string" ||
+    typeof payload.event_id !== "string"
+  ) {
+    throw new TypeError("教学任务 payload 版本或结构无效");
   }
+  return { ...payload, data: payload.data ?? {} } as EducationTaskPayload;
+}
+
+/**
+ * 到期事件（比赛结束后才公开的成绩）在首次领取时递增事实版本。
+ *
+ * 清除标记与失效在同一事务内、以租约为条件完成，重复领取不会重复失效。
+ */
+async function invalidateOnClaim(
+  task: ClaimedTask,
+  payload: EducationTaskPayload,
+): Promise<EducationTaskPayload | null> {
+  if (!payload.data._invalidate_on_claim) return payload;
+  const next: EducationTaskPayload = {
+    ...payload,
+    data: { ...payload.data, _invalidate_on_claim: false },
+  };
+  const held = await getDb().transaction(async (tx) => {
+    // 先以租约为条件清除标记（同时锁住任务行），再递增版本：两者同一事务提交，
+    // 之后即使租约到期，接手者也只会看到已清除的标记，不会重复失效。
+    if (
+      !(await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next))
+    ) return false;
+    await invalidateEducationEvent(tx, {
+      domain_id: payload.domain_id,
+      event_type: "submission.changed",
+      user_id: payload.user_id ?? undefined,
+      problem_id: payload.problem_id ?? undefined,
+      assignment_id: payload.assignment_id ?? undefined,
+      classroom_id: payload.classroom_id ?? undefined,
+    });
+    return true;
+  });
+  return held ? next : null;
+}
+
+/** 每次只处理一个任务的一页学生，持久游标让大量名单也可在重启后继续。 */
+async function recomputeEducationPage(
+  task: ClaimedTask,
+  payload: EducationTaskPayload,
+): Promise<EducationStep> {
   const db = getDb(),
-    cursor = (event.payload._education_cursor ?? {}) as EducationCursor;
-  const query = db.select().from(assignments).where(
+    cursor = (payload.data._education_cursor ?? {}) as EducationCursor;
+  const [assignment] = await db.select().from(assignments).where(
     and(
-      eq(assignments.domain_id, event.domain_id),
+      eq(assignments.domain_id, payload.domain_id),
       isNotNull(assignments.published_at),
       cursor.assignment_id
         ? eq(assignments.id, cursor.assignment_id)
         : cursor.assignment_after
         ? gt(assignments.id, cursor.assignment_after)
         : undefined,
-      event.assignment_id ? eq(assignments.id, event.assignment_id) : undefined,
-      event.classroom_id
-        ? eq(assignments.classroom_id, event.classroom_id)
+      payload.assignment_id
+        ? eq(assignments.id, payload.assignment_id)
         : undefined,
-      event.problem_id
-        ? sql`EXISTS (SELECT 1 FROM assignment_items i WHERE i.assignment_id = ${assignments.id} AND i.problem_id = ${event.problem_id})`
+      payload.classroom_id
+        ? eq(assignments.classroom_id, payload.classroom_id)
         : undefined,
-      event.user_id
-        ? sql`EXISTS (SELECT 1 FROM assignment_recipients r WHERE r.assignment_id = ${assignments.id} AND r.user_id = ${event.user_id})`
+      payload.problem_id
+        ? sql`EXISTS (SELECT 1 FROM assignment_items i WHERE i.assignment_id = ${assignments.id} AND i.problem_id = ${payload.problem_id})`
+        : undefined,
+      payload.user_id
+        ? sql`EXISTS (SELECT 1 FROM assignment_recipients r WHERE r.assignment_id = ${assignments.id} AND r.user_id = ${payload.user_id})`
         : undefined,
     ),
   ).orderBy(assignments.id).limit(1);
-  const [assignment] = await query;
-  const now = new Date().toISOString();
-  if (!assignment) {
-    const rows = await db.update(educationOutbox).set({
-      processed_at: now,
-      lease_token: null,
-      leased_until: null,
-      last_error: null,
-    }).where(
-      and(
-        eq(educationOutbox.id, event.id),
-        eq(educationOutbox.lease_token, event.lease_token!),
-      ),
-    ).returning({ id: educationOutbox.id });
-    return rows.length > 0;
-  }
+  if (!assignment) return { done: true };
   const students = await db.select({ user_id: assignmentRecipients.user_id })
     .from(assignmentRecipients).where(and(
       eq(assignmentRecipients.assignment_id, assignment.id),
-      event.user_id
-        ? eq(assignmentRecipients.user_id, event.user_id)
+      payload.user_id
+        ? eq(assignmentRecipients.user_id, payload.user_id)
         : undefined,
       cursor.student_after
         ? gt(assignmentRecipients.user_id, cursor.student_after)
@@ -171,117 +125,68 @@ export async function processEducationEvent(event: ClaimedEducationEvent) {
     assignment.id,
     students.map((s) => s.user_id),
   );
-  const next: EducationCursor = students.length < 50
+  const cursorNext: EducationCursor = students.length < 50
     ? { assignment_after: assignment.id }
     : { assignment_id: assignment.id, student_after: students.at(-1)!.user_id };
-  const rows = await db.update(educationOutbox).set({
-    payload: { ...event.payload, _education_cursor: next },
-    available_at: now,
-    leased_until: null,
-    lease_token: null,
-    last_error: null,
-    attempts: 0,
-  }).where(and(
-    eq(educationOutbox.id, event.id),
-    eq(educationOutbox.lease_token, event.lease_token!),
-  )).returning({ id: educationOutbox.id });
-  if (rows.length) {
-    await publishSseEvent(Channels.education(event.domain_id), {
+  const next: EducationTaskPayload = {
+    ...payload,
+    data: { ...payload.data, _education_cursor: cursorNext },
+  };
+  // 游标以租约为条件持久化后才广播：失去租约时接手者重做本页，但不会重复推送。
+  const channel = Channels.education(payload.domain_id),
+    sync = {
       type: "education:sync",
-      domain_id: event.domain_id,
+      domain_id: payload.domain_id,
       assignment_id: assignment.id,
-    });
-  }
-  return rows.length > 0;
-}
-
-/** 一批处理失败保留事件并退避，重试读取最新事实，不累计旧载荷中的成绩。 */
-export async function processEducationBatch(limit = 20) {
-  const events = await claimEducationEvents(limit),
-    results: Array<{ id: string; succeeded: boolean }> = [];
-  for (const event of events) {
-    try {
-      results.push({
-        id: event.id,
-        succeeded: await processEducationEvent(event),
-      });
-    } catch (error) {
-      const delay = Math.min(60000, 1000 * 2 ** Math.min(event.attempts, 6));
-      await getDb().update(educationOutbox).set({
-        leased_until: null,
-        lease_token: null,
-        available_at: new Date(Date.now() + delay).toISOString(),
-        last_error: error instanceof Error ? error.name : "Error",
-      }).where(
-        and(
-          eq(educationOutbox.id, event.id),
-          eq(educationOutbox.lease_token, event.lease_token!),
-        ),
-      );
-      results.push({ id: event.id, succeeded: false });
-    }
-  }
-  return results;
+    };
+  const eventId = await db.transaction(async (tx) => {
+    if (
+      !(await updateLeasedTaskPayloadTx(tx, task.id, task.leaseToken, next))
+    ) return null;
+    return await recordSseEvent(channel, sync, tx);
+  });
+  if (eventId === null) return { done: true, skipped: "lease_lost" };
+  publishSseEventAfterTx(channel, sync, eventId);
+  return { done: false, payload: next };
 }
 
 /**
- * 通用 background_tasks handler 的教学适配器。
+ * 处理一条已领取的教学任务的一页。
  *
- * 旧 outbox 仍保存分页游标与通知投递进度；通用任务只负责调度它。每次只处理
- * 一页，未完成时返回新的 outbox payload，worker 会把任务重新置为 pending。
+ * 成绩重算读取最新事实且幂等；通知投递在同一事务内复核租约并推进游标。
  */
-export interface EducationBackgroundTaskOutcome {
-  readonly processed: boolean;
-  readonly skipped?: string;
-  readonly nextAvailableAt?: string;
-  readonly outboxPayload?: Record<string, unknown>;
+export async function processEducationStep(
+  task: ClaimedTask,
+): Promise<EducationStep> {
+  const payload = await invalidateOnClaim(task, readEducationPayload(task));
+  if (!payload) return { done: true, skipped: "lease_lost" };
+  if (payload.event_type === "notification") {
+    return await processEducationNotice(task, payload);
+  }
+  return await recomputeEducationPage(task, payload);
 }
 
-export async function processEducationBackgroundTask(
-  outboxId: string,
-  signal?: AbortSignal,
-): Promise<EducationBackgroundTaskOutcome> {
-  if (signal?.aborted) throw new DOMException("任务已取消", "AbortError");
-  const event = await claimEducationEventById(outboxId);
-  if (!event) {
-    const [row] = await getDb().select({
-      processedAt: educationOutbox.processed_at,
-      availableAt: educationOutbox.available_at,
-      leasedUntil: educationOutbox.leased_until,
-      payload: educationOutbox.payload,
-    }).from(educationOutbox).where(eq(educationOutbox.id, outboxId)).limit(1);
-    if (!row || row.processedAt) {
-      return {
-        processed: true,
-        skipped: row ? "already_processed" : "missing",
-      };
-    }
-    const next = row.leasedUntil && row.leasedUntil > new Date().toISOString()
-      ? row.leasedUntil
-      : new Date(Date.now() + 1_000).toISOString();
+/**
+ * `education.recompute` 后台任务处理器。
+ *
+ * 每次只处理一页；未完成时返回 reschedule，由通用 worker 以租约为条件把新
+ * payload 写回并重新置为 pending。
+ */
+export const processEducationTask: TaskHandler = async (task, signal) => {
+  if (signal.aborted) throw new DOMException("任务已取消", "AbortError");
+  const step = await processEducationStep(task);
+  if (step.done) {
     return {
-      processed: false,
-      nextAvailableAt: next,
-      outboxPayload: row.payload,
+      event_id: (task.payload as Partial<EducationTaskPayload>).event_id ??
+        null,
+      ...(step.skipped ? { skipped: step.skipped } : {}),
     };
   }
-  const succeeded = await processEducationEvent(event);
-  if (signal?.aborted) throw new DOMException("任务已取消", "AbortError");
-  const [row] = await getDb().select({
-    processedAt: educationOutbox.processed_at,
-    availableAt: educationOutbox.available_at,
-    leasedUntil: educationOutbox.leased_until,
-    payload: educationOutbox.payload,
-  }).from(educationOutbox).where(eq(educationOutbox.id, outboxId)).limit(1);
-  if (!row || row.processedAt) {
-    return {
-      processed: true,
-      skipped: succeeded ? undefined : "lease_lost",
-    };
-  }
-  return {
-    processed: false,
-    nextAvailableAt: row.leasedUntil ?? row.availableAt,
-    outboxPayload: row.payload,
+  if (signal.aborted) throw new DOMException("任务已取消", "AbortError");
+  const result: TaskRescheduleResult = {
+    __task_control: "reschedule",
+    availableAt: new Date().toISOString(),
+    payload: step.payload,
   };
-}
+  return result;
+};

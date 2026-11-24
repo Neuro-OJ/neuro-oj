@@ -8,7 +8,6 @@ import {
   pgTable,
   text,
   unique,
-  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -253,50 +252,6 @@ export const assignmentRecipients = pgTable("assignment_recipients", {
     t.domain_id,
     t.user_id,
     t.assignment_id,
-  ),
-}));
-
-/** 持久教学事件通过数据库租约消费，不依赖 Redis 通知可靠送达。 */
-export const educationOutbox = pgTable("education_outbox", {
-  id: text("id").primaryKey(),
-  domain_id: text("domain_id").notNull().references(() => domains.id),
-  event_type: text("event_type").notNull(),
-  user_id: text("user_id").references(() => users.id),
-  problem_id: text("problem_id").references(() => problems.id),
-  classroom_id: text("classroom_id"),
-  assignment_id: text("assignment_id"),
-  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default(
-    {},
-  ),
-  created_at: text("created_at").notNull(),
-  available_at: text("available_at").notNull(),
-  leased_until: text("leased_until"),
-  lease_token: text("lease_token"),
-  attempts: integer("attempts").notNull().default(0),
-  processed_at: text("processed_at"),
-  last_error: text("last_error"),
-}, (t) => ({
-  classroomFk: foreignKey({
-    name: "education_outbox_classroom_domain_fk",
-    columns: [t.domain_id, t.classroom_id],
-    foreignColumns: [classrooms.domain_id, classrooms.id],
-  }),
-  assignmentFk: foreignKey({
-    name: "education_outbox_assignment_domain_fk",
-    columns: [t.domain_id, t.assignment_id],
-    foreignColumns: [assignments.domain_id, assignments.id],
-  }),
-  leaseIdx: index("idx_education_outbox_pending").on(
-    t.processed_at,
-    t.available_at,
-    t.leased_until,
-  ),
-  refreshUnique: uniqueIndex("education_outbox_pending_refresh_unique").on(
-    t.domain_id,
-    t.assignment_id,
-    sql`COALESCE(${t.user_id}, '')`,
-  ).where(
-    sql`${t.event_type} = 'assignment.refresh' AND ${t.processed_at} IS NULL`,
   ),
 }));
 

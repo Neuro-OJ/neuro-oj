@@ -20,7 +20,7 @@ import {
 import { FEATURES } from "../../features.ts";
 import { handleSearchIndexTask } from "./search-handlers.ts";
 import { handleEvaluationDispatchTask } from "./dispatch-handlers.ts";
-import { handleEducationTask } from "./education-handlers.ts";
+import { processEducationTask } from "../education/index.ts";
 
 /**
  * 组装生产 handler 表。
@@ -41,8 +41,8 @@ export function createBackgroundHandlers(
         task as Parameters<typeof handleEvaluationDispatchTask>[0],
         signal,
       ),
-    // 教学任务只调度旧 outbox 的单页适配器；旧 progress worker 不再启动。
-    "education.recompute": handleEducationTask,
+    // 教学事件即任务本身：每次领取处理一页，未完成时由 worker 重新调度。
+    "education.recompute": processEducationTask,
     // 对象回收在 application 组合层实现（引用守卫 + 域计数释放）。
     "storage.reclaim": () =>
       Promise.reject(new Error("storage.reclaim 处理器尚未接入")),

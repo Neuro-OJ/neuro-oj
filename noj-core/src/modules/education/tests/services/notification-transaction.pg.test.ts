@@ -8,7 +8,7 @@ import {
   createAssignmentHelp,
   publishAssignment,
 } from "../../index.ts";
-import { processEducationBatch } from "../../services/progress-worker.ts";
+import { processEducationBatch } from "../_education-tasks.ts";
 import { assignmentFixture } from "../_assignment-fixture.ts";
 
 // 独立事务才能复现池耗尽；外层测试事务会把错误的全局读取也绑定到同一连接。
