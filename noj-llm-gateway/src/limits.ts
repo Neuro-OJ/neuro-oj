@@ -519,9 +519,15 @@ export async function enforceAndCount(
     userRateLimitPerMinute: number;
     ipRateLimitPerMinute: number;
     callId?: string;
+    /**
+     * 是否计入域/用户/全局/题目共享额度（默认 true）。
+     * 用户自带模型（BYOK）为 false：只保留单次评测预算与分钟限流。
+     */
+    sharedQuotas?: boolean;
   },
 ): Promise<void> {
   const now = Date.now();
+  const sharedQuotas = opts.sharedQuotas ?? true;
   const tokens = opts.promptTokens + opts.completionTokens;
   const cost = opts.estimatedCost;
 
@@ -594,7 +600,12 @@ export async function enforceAndCount(
     "month",
   );
   /** 构建计数集合；域上限由调用方在受控边界内提供。 */
-  const buildCounters = (domainCaps: DomainQuotaCaps): CounterSpec[] => [
+  const buildCounters = (domainCaps: DomainQuotaCaps): CounterSpec[] =>
+    sharedQuotas
+      ? [...attemptCounters, ...sharedCounters(domainCaps)]
+      : attemptCounters;
+  /** 单次评测预算：始终生效（含 BYOK）。 */
+  const attemptCounters: CounterSpec[] = [
     {
       key: evalTokenCounterKey(payload, "calls"),
       limit: payload.max_calls,
@@ -613,6 +624,9 @@ export async function enforceAndCount(
       inc: cost,
       ttl: opts.ttlSeconds,
     },
+  ];
+  /** 共享额度：域 / 用户 / 全局 / 题目 / 用户×题目。 */
+  const sharedCounters = (domainCaps: DomainQuotaCaps): CounterSpec[] => [
     ...scopeCounters(
       payload.domain_id,
       "domain",

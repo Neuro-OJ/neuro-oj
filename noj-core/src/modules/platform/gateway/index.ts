@@ -1,10 +1,13 @@
 export {
+  BYOK_PROVIDER_PREFIX,
   createLlmProvider,
   deleteLlmGatewayModelAlias,
+  deleteUserLlmProvider,
   describeLlmPlatformDefaultGap,
   exportGatewayPolicySnapshot,
   getLlmPlatformDefault,
   getLlmProviderById,
+  getUserLlmProvider,
   importGatewayPolicySnapshot,
   listInstanceLlmQuotas,
   listLlmGatewayModelAliases,
@@ -17,7 +20,9 @@ export {
   readGatewayPolicy,
   readLlmGatewaySettings,
   resolveLlmGatewayExecution,
+  saveUserLlmProvider,
   testLlmProvider,
+  testUserLlmProvider,
   updateLlmGatewaySettings,
   updateLlmProvider,
   upsertLlmGatewayModelAlias,
@@ -33,6 +38,8 @@ export type {
   LlmProviderView,
   LlmQuotaInput,
   LlmUsageQuery,
+  UserLlmProviderInput,
+  UserLlmProviderView,
 } from "./services/llm.ts";
 export {
   assertLlmLimitsWithinDefault,

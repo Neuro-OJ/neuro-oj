@@ -368,6 +368,8 @@ services:
       NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE: ${NOJ_LLM_IP_RATE_LIMIT_PER_MINUTE:-60}
       # 上游出站白名单（审计 G-03）：放行内网自建模型的主机名/IP，逗号分隔
       NOJ_LLM_UPSTREAM_ALLOWED_HOSTS: ${NOJ_LLM_UPSTREAM_ALLOWED_HOSTS:-}
+      # 用户自带模型（BYOK）精确主机白名单；为空即关闭
+      NOJ_LLM_BYOK_ALLOWED_HOSTS: ${NOJ_LLM_BYOK_ALLOWED_HOSTS:-}
       # llm_usage 保留天数（0 = 不清理）
       NOJ_LLM_USAGE_RETENTION_DAYS: ${NOJ_LLM_USAGE_RETENTION_DAYS:-90}
       # Provider RPM/TPM 超限时的最长排队秒数（0 = 不排队）

@@ -155,6 +155,12 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
   ) {
     throw new BadRequestError("提交上下文由使用域入口解析");
   }
+  if (
+    body.use_own_llm_key !== undefined &&
+    typeof body.use_own_llm_key !== "boolean"
+  ) {
+    throw new BadRequestError("use_own_llm_key 必须是布尔值");
+  }
   await enforceSubmissionRateLimit(c, c.var.userId);
   const assignment = parseAssignmentOrigin(body);
   const versionId = typeof body.version_id === "string"
@@ -181,6 +187,7 @@ const submitInDomain = async (c: Context<AuthEnv>) => {
         : undefined,
       version_id: versionId,
       assignment,
+      use_own_llm_key: body.use_own_llm_key === true,
     },
     contestId,
   });

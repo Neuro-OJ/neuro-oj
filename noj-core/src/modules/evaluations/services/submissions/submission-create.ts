@@ -102,6 +102,14 @@ export async function createSubmission(
   if (domainExecution && domainExecution.problem.id !== input.problem_id) {
     throw new NotFoundError("域题目引用与内部身份不一致");
   }
+  // 自带模型只用于练习：比赛与作业需要统一的模型与额度口径，保证公平。
+  const byok = input.use_own_llm_key === true;
+  if (byok && (resolvedContestId || domainRequest?.assignment)) {
+    throw new BadRequestError(
+      "比赛与作业提交不能使用自带模型",
+      "BYOK_NOT_ALLOWED",
+    );
+  }
 
   // 比赛内每道题提交次数上限（含 error 计数）
   if (resolvedContestId) {
@@ -268,6 +276,7 @@ export async function createSubmission(
         problemVersionId: versionResolution.kind === "known"
           ? versionResolution.version.version_id
           : null,
+        byok,
       },
     );
   }

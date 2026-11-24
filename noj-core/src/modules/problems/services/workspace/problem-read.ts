@@ -342,6 +342,8 @@ export async function readDomainProblem(
     limits: fields.limits,
     supported_languages: fields.supported_languages ?? [],
     submission_mode: content.kind === "ai" ? content.submission_mode : "code",
+    /** 是否需要 LLM 能力；不下发 llm_config 本身，仅供作答页决定是否提供自带模型开关。 */
+    uses_llm: content.kind === "ai" && content.llm_config != null,
     content: trimProblemContentForViewer(
       resolved.version.content as ProblemContentV1,
       canEdit,

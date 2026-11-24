@@ -22,6 +22,13 @@ export interface SubmissionInput {
    * `VERSION_REQUIRED`——服务端**不静默绑定最新版**。
    */
   version_id?: string;
+  /**
+   * 使用提交者自带模型（BYOK）评测 LLM 题。
+   *
+   * 仅限练习：比赛与作业提交携带 `true` 时返回 `400 BYOK_NOT_ALLOWED`；
+   * 非 LLM 题忽略。
+   */
+  use_own_llm_key?: boolean;
 }
 
 /** 创建提交成功后的响应（基础字段，不含 result） */

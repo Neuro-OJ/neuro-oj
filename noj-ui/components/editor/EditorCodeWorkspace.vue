@@ -55,7 +55,9 @@ onMounted(() => {
 const { width: sidebarWidth } = useResizableSplitter('editor:sidebar:width', 320, 240, 480);
 const cursor = ref({ line: 1, col: 1 });
 const submitting = ref(false), templateLoading = ref(false), failure = ref('');
-const selfTestPanel = ref<{ run: () => Promise<void>; loadSample: (input: string, output?: string) => void } | null>(null);
+const selfTestPanel = ref<{ run: () => Promise<void>; loadSample: (input: string, output?: string) => void } | null>(
+  null,
+);
 const sidebarProblem = computed(() => ({
   id: props.problem.reference.problem_id,
   display_id: props.problem.reference.display_ref,
@@ -106,6 +108,9 @@ useEventSource({
   fetchFn: refreshResult,
   fallbackIntervalMs: 1500,
 });
+/** 自带模型只用于题库练习：LLM 题、非比赛、非作业来源。 */
+const byokAvailable = computed(() => props.problem.uses_llm === true && !props.contest && !props.assignmentOrigin);
+const useOwnKey = ref(false);
 async function submit() {
   if (!writable.value || submitting.value || !code.value.trim() || !language.value) return;
   const action = capture();
@@ -128,6 +133,7 @@ async function submit() {
         language.value,
         code.value,
         props.assignmentOrigin,
+        byokAvailable.value && useOwnKey.value,
       );
     if (!action.isCurrent()) return;
     activeId.value = response.data.id;
@@ -214,7 +220,9 @@ async function copySample(keyId: string, value: string, label: string) {
   await copyText(value, label);
   copiedSampleKey.value = keyId;
   if (copiedSampleTimer) clearTimeout(copiedSampleTimer);
-  copiedSampleTimer = setTimeout(() => { copiedSampleKey.value = null; }, 1500);
+  copiedSampleTimer = setTimeout(() => {
+    copiedSampleKey.value = null;
+  }, 1500);
 }
 async function loadSampleToSelfTest(input: string, output: string) {
   tab.value = 'self-test';
@@ -265,6 +273,10 @@ onUnmounted(() => {
       @open-settings="tab='settings';sidebarVisible=true" @submit="submit" @self-test="selfTest"
       @reset-template="loadTemplate()" @back="navigateTo(backUrl)">
       <template #actions>
+        <UButton v-if="byokAvailable" size="xs" icon="i-lucide-key-round" :color="useOwnKey ? 'primary' : 'neutral'"
+          :variant="useOwnKey ? 'soft' : 'ghost'" :aria-pressed="useOwnKey"
+          :title="useOwnKey ? '提交将使用我的模型 Key（不消耗平台额度）' : '使用我的模型 Key 评测'"
+          @click="useOwnKey = !useOwnKey">{{ useOwnKey ? '我的 Key' : '平台模型' }}</UButton>
         <UButton variant="ghost" color="neutral" size="xs" icon="i-lucide-refresh-cw" aria-label="检查版本"
           title="检查版本" @click="emit('refresh')" />
         <UButton v-if="assignmentOrigin" :to="`/d/${slug}/assignments/${assignmentOrigin.assignment_id}`"
@@ -272,20 +284,24 @@ onUnmounted(() => {
           title="返回作业" />
       </template>
     </EditorToolbar>
-    <UAlert v-if="changed" color="warning" variant="subtle" title="作答版本已变化，当前代码已保留" class="shrink-0 rounded-none">
+    <UAlert v-if="changed" color="warning" variant="subtle" title="作答版本已变化，当前代码已保留"
+      class="shrink-0 rounded-none">
       <template #actions>
         <UButton size="xs" :disabled="submitting || templateLoading"
           @click="confirmVersion">切换到 V{{ problem.version }}</UButton>
       </template>
     </UAlert>
-    <UAlert v-if="!isLoggedIn" color="info" variant="subtle" title="当前草稿保存在此设备，登录后可以提交" class="shrink-0 rounded-none">
+    <UAlert v-if="!isLoggedIn" color="info" variant="subtle" title="当前草稿保存在此设备，登录后可以提交"
+      class="shrink-0 rounded-none">
       <template #actions>
         <UButton size="xs" :to="{path:'/login',query:{redirect:route.fullPath}}">登录并继续作答</UButton>
       </template>
     </UAlert>
-    <UAlert v-else-if="contest && !contest.active" color="info" variant="subtle" title="仅在比赛受理时间内且已报名时可提交"
+    <UAlert v-else-if="contest && !contest.active" color="info" variant="subtle"
+      title="仅在比赛受理时间内且已报名时可提交"
       class="shrink-0 rounded-none" />
-    <UAlert v-if="draft.guestAvailable.value" color="info" variant="subtle" title="发现登录前的本题草稿" class="shrink-0 rounded-none">
+    <UAlert v-if="draft.guestAvailable.value" color="info" variant="subtle" title="发现登录前的本题草稿"
+      class="shrink-0 rounded-none">
       <template #actions>
         <UButton size="xs" @click="restoreGuest">恢复登录前草稿</UButton>
       </template>
@@ -302,7 +318,8 @@ onUnmounted(() => {
           :theme-mode="theme" :draft-enabled="draftEnabled"
           @update:theme-mode="setTheme($event)" @update:draft-enabled="draftEnabled=$event" @clear-draft="clearCode">
           <template #after-description>
-            <div v-for="(sample,index) in problem.content.samples" :key="index" class="mt-4 space-y-2 border-t border-border pt-3">
+            <div v-for="(sample,index) in problem.content.samples" :key="index"
+              class="mt-4 space-y-2 border-t border-border pt-3">
               <div class="flex items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold text-text">样例 {{ index + 1 }}</h3>
                 <UButton
@@ -333,7 +350,8 @@ onUnmounted(() => {
                     {{ copiedSampleKey === `${index}:in` ? '已复制' : '复制' }}
                   </button>
                 </div>
-                <pre class="overflow-auto rounded-sm border border-border bg-bg-sunken p-2 font-mono text-xs text-text">{{ sample.input }}</pre>
+                <pre
+                  class="overflow-auto rounded-sm border border-border bg-bg-sunken p-2 font-mono text-xs text-text">{{ sample.input }}</pre>
               </div>
               <div class="space-y-1.5">
                 <div class="flex items-center justify-between text-xs text-text-muted">
@@ -352,7 +370,8 @@ onUnmounted(() => {
                     {{ copiedSampleKey === `${index}:out` ? '已复制' : '复制' }}
                   </button>
                 </div>
-                <pre class="overflow-auto rounded-sm border border-border bg-bg-sunken p-2 font-mono text-xs text-text">{{ sample.output }}</pre>
+                <pre
+                  class="overflow-auto rounded-sm border border-border bg-bg-sunken p-2 font-mono text-xs text-text">{{ sample.output }}</pre>
               </div>
               <MarkdownRenderer v-if="sample.explanation" :content="sample.explanation" />
             </div>
@@ -398,7 +417,8 @@ onUnmounted(() => {
                 </div>
               </button>
             </div>
-            <p v-if="history.data.value?.data.length === 0" class="rounded-md border border-dashed border-border py-5 text-center text-xs text-text-muted">
+            <p v-if="history.data.value?.data.length === 0"
+              class="rounded-md border border-dashed border-border py-5 text-center text-xs text-text-muted">
               暂无提交记录
             </p>
             <UButton

@@ -145,6 +145,14 @@ export const GATEWAY_CONFIG_DEFINITIONS: GatewayEnvDefinition[] = [
     readMode: "static",
     defaultValue: "",
   },
+  {
+    key: "NOJ_LLM_BYOK_ALLOWED_HOSTS",
+    description:
+      "用户自带模型（BYOK）允许的上游主机精确白名单（逗号分隔，仅 https 公网）；为空则关闭 BYOK",
+    isSecret: false,
+    readMode: "static",
+    defaultValue: "",
+  },
   // ── 日志（issue #497「谁读谁声明」：真实读取点是 src/logger.ts） ──
   {
     key: "NOJ_ENV",

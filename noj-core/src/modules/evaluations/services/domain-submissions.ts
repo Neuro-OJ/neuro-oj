@@ -39,6 +39,7 @@ export async function createDomainSubmission(
       file_name: input.file_name,
       version_id: input.version_id,
       problem_id: resolved.problem.id,
+      use_own_llm_key: input.use_own_llm_key,
     },
     resolved.contestId,
     false,
