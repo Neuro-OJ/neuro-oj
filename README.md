@@ -88,7 +88,7 @@ noj-ui               Nuxt 4 + Vue 3 前端
 noj-core             Deno + Hono API 与业务服务
 noj-judge            Rust + Docker 评测 Worker
 noj-llm-gateway      LLM 调用网关
-noj-lmcc-extension   LMCC IDE / VS Code 做题插件
+noj-vscode-extension VS Code 插件（工作区拉题、本地 Mock 调试、提交与评测报告）
 noj-tests            跨模块全链路测试
 noj-docs             用户、运营者和出题人文档站
 ```

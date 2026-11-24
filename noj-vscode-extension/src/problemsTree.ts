@@ -21,7 +21,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemItem
   ): void {
     this.problems = problems;
     this.selected = selected;
-    this.message = problems.length === 0 ? "暂无可提交的代码题" : "";
+    this.message = problems.length === 0 ? "暂无可提交的题目" : "";
     this.changed.fire(undefined);
   }
 

@@ -2,19 +2,23 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { ApiError, NeuroOjApi, normalizeServerUrl } from "./api";
 import { draftKey, draftKeysToClear } from "./drafts";
-import { pollSubmission } from "./polling";
 import { ProblemsTreeProvider } from "./problemsTree";
-import type {
-  Domain,
-  Problem,
-  SelectedProblem,
-  SubmissionDetail,
-  User,
-} from "./types";
+import type { Domain, Problem, SelectedProblem, User } from "./types";
+import {
+  type WorkflowHost,
+  runInitWorkspace,
+  runLocalMockCommand,
+  runPreviewStatement,
+  runSelfTestCommand,
+  runSubmitCommand,
+} from "./workflowCommands";
+import { syncWorkspaceProblemVersion } from "./workspace";
 
 const USER_KEY = "neuroOj.user";
 const SELECTED_PROBLEM_KEY = "neuroOj.selectedProblem";
 const DOMAIN_KEY = "neuroOj.domain";
+const LAST_INITIALIZED_WORKSPACE_KEY = "neuroOj.lastInitializedWorkspace";
+const INITIALIZED_WORKSPACES_KEY = "neuroOj.initializedWorkspaces";
 
 let api: NeuroOjApi;
 let tree: ProblemsTreeProvider;
@@ -33,8 +37,10 @@ export async function activate(
     100,
   );
   statusBar.command = "neuroOj.submit";
-  statusBar.tooltip = "提交当前 Python 文件到 Neuro OJ";
+  statusBar.tooltip = "提交代码或产物 ZIP 到 Neuro OJ";
   statusBar.show();
+
+  const host = createWorkflowHost(context);
 
   context.subscriptions.push(
     output,
@@ -55,7 +61,6 @@ export async function activate(
       "neuroOj.selectProblem",
       (problem?: Problem) => selectProblem(context, problem),
     ),
-    vscode.commands.registerCommand("neuroOj.submit", () => submit(context)),
     vscode.commands.registerCommand("neuroOj.selectDomain", () =>
       selectDomain(context),
     ),
@@ -65,12 +70,110 @@ export async function activate(
     vscode.commands.registerCommand("neuroOj.showVersions", () =>
       showVersions(context),
     ),
+    vscode.commands.registerCommand(
+      "neuroOj.initWorkspace",
+      (problem?: Problem) => runInitWorkspace(host, problem),
+    ),
+    vscode.commands.registerCommand(
+      "neuroOj.previewStatement",
+      (problem?: Problem) => runPreviewStatement(host, problem),
+    ),
+    vscode.commands.registerCommand("neuroOj.runLocalMock", () =>
+      runLocalMockCommand(host),
+    ),
+    vscode.commands.registerCommand("neuroOj.selfTest", () =>
+      runSelfTestCommand(host),
+    ),
+    vscode.commands.registerCommand("neuroOj.submit", () =>
+      runSubmitCommand(host),
+    ),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("neuroOj")) void initializeApi(context);
     }),
   );
 
   await initializeApi(context);
+}
+
+function createWorkflowHost(context: vscode.ExtensionContext): WorkflowHost {
+  return {
+    getApi: () => api,
+    getServerUrl: () => currentServerUrl,
+    getWorkspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    getCandidateWorkspaceRoots: (domainSlug?: string, reference?: string) =>
+      getCandidateWorkspaceRoots(context, domainSlug, reference),
+    getRememberedWorkspaceRoot: (domainSlug: string, reference: string) =>
+      getRememberedWorkspaceRoot(context, domainSlug, reference),
+    rememberInitializedWorkspace: async (
+      rootDir: string,
+      domainSlug: string,
+      reference: string,
+    ) => {
+      const resolved = path.resolve(rootDir);
+      await context.globalState.update(lastWorkspaceKey(context), resolved);
+      const map =
+        context.globalState.get<Record<string, string>>(
+          workspaceMapKey(context),
+        ) ?? {};
+      await context.globalState.update(workspaceMapKey(context), {
+        ...map,
+        [problemWorkspaceSlot(domainSlug, reference)]: resolved,
+      });
+    },
+    activateWorkspaceFolder: async (rootDir: string) => {
+      const folders = vscode.workspace.workspaceFolders;
+      const resolved = path.resolve(rootDir);
+      if (
+        folders &&
+        folders.length > 0 &&
+        !folders.some((folder) => path.resolve(folder.uri.fsPath) === resolved)
+      ) {
+        vscode.workspace.updateWorkspaceFolders(folders.length, 0, {
+          uri: vscode.Uri.file(resolved),
+        });
+      }
+    },
+    getDomain: () => context.globalState.get<Domain>(domainKey(context)),
+    getSelectedProblem: () => {
+      const domain = context.globalState.get<Domain>(domainKey(context));
+      return domain
+        ? context.globalState.get<SelectedProblem>(
+            selectionKey(context, domain.slug),
+          )
+        : undefined;
+    },
+    updateSelectedProblem: async (selected: SelectedProblem) => {
+      const slug =
+        selected.domainSlug ??
+        context.globalState.get<Domain>(domainKey(context))?.slug;
+      if (!slug) return;
+      await context.globalState.update(selectionKey(context, slug), selected);
+      tree.markSelected(selected);
+      updateStatusBar(context);
+    },
+    selectProblem: (problem?: Problem) => selectProblem(context, problem),
+    ensureAuthenticated: () => ensureAuthenticated(context),
+    handleError: async (prefix: string, error: unknown) => {
+      await handleAuthenticatedError(context, error);
+      showError(prefix, error);
+    },
+    output,
+  };
+}
+
+async function ensureAuthenticated(
+  context: vscode.ExtensionContext,
+): Promise<boolean> {
+  const token = await context.secrets.get(tokenKey(currentServerUrl));
+  if (token) return true;
+  const action = await vscode.window.showWarningMessage(
+    "请先登录 Neuro OJ",
+    "登录",
+    "使用令牌",
+  );
+  if (action === "登录") await login(context);
+  if (action === "使用令牌") await useToken(context);
+  return Boolean(await context.secrets.get(tokenKey(currentServerUrl)));
 }
 
 /** 模板草稿绑定服务器、账号、使用域、来源题号及不可变版本。 */
@@ -85,8 +188,8 @@ async function openTemplate(context: vscode.ExtensionContext): Promise<void> {
     vscode.window.showWarningMessage("请先选择工作空间和已发布题目");
     return;
   }
-  const server = currentServerUrl,
-    actor = context.globalState.get<User>(USER_KEY)?.id ?? "";
+  const server = currentServerUrl;
+  const actor = context.globalState.get<User>(USER_KEY)?.id ?? "";
   const key = draftKey(
     server,
     actor,
@@ -112,8 +215,9 @@ async function openTemplate(context: vscode.ExtensionContext): Promise<void> {
       currentServerUrl !== server ||
       context.globalState.get<User>(USER_KEY)?.id !== actor ||
       context.globalState.get<Domain>(domainKey(context))?.slug !== domain.slug
-    )
+    ) {
       return;
+    }
     const document = await vscode.workspace.openTextDocument({
       content,
       language: "python",
@@ -121,8 +225,9 @@ async function openTemplate(context: vscode.ExtensionContext): Promise<void> {
     await vscode.window.showTextDocument(document);
     await context.globalState.update(key, content);
     const listener = vscode.workspace.onDidChangeTextDocument((event) => {
-      if (event.document.uri.toString() === document.uri.toString())
+      if (event.document.uri.toString() === document.uri.toString()) {
         void context.globalState.update(key, event.document.getText());
+      }
     });
     const close = vscode.workspace.onDidCloseTextDocument((closed) => {
       if (closed.uri.toString() === document.uri.toString()) {
@@ -136,11 +241,13 @@ async function openTemplate(context: vscode.ExtensionContext): Promise<void> {
       5000,
     );
   } catch (error) {
-    if (error instanceof ApiError && error.status === 409)
+    if (error instanceof ApiError && error.status === 409) {
       vscode.window.showWarningMessage(
         "作答版本已变化。原文件和草稿保留，请重新选择题目确认新版本。",
       );
-    else showError("读取版本模板失败", error);
+    } else {
+      showError("读取版本模板失败", error);
+    }
   }
 }
 
@@ -170,13 +277,14 @@ async function showVersions(context: vscode.ExtensionContext): Promise<void> {
         detail: new Date(item.published_at).toLocaleString(),
         next: false,
       }));
-      if (page * result.limit < result.total)
+      if (page * result.limit < result.total) {
         choices.push({
           label: "下一页",
           description: "",
           detail: "",
           next: true,
         });
+      }
       const choice = await vscode.window.showQuickPick(choices, {
         title: `${domain.slug} / ${selected.displayId} · 版本沿革`,
         placeHolder: "作答版本由域题库策略决定；此列表不切换作答版本",
@@ -284,8 +392,9 @@ async function login(context: vscode.ExtensionContext): Promise<void> {
     try {
       result = await api.login(loginName, password);
     } catch (error) {
-      if (!(error instanceof ApiError) || error.code !== "TFA_REQUIRED")
+      if (!(error instanceof ApiError) || error.code !== "TFA_REQUIRED") {
         throw error;
+      }
       const code = await vscode.window.showInputBox({
         title: "两步验证",
         prompt: "请输入 6 位验证码或恢复码",
@@ -400,11 +509,12 @@ async function refreshProblems(
       selectionKey(context, domain.slug),
     );
     tree.setProblems(problems, selected);
-    if (notify)
+    if (notify) {
       vscode.window.setStatusBarMessage(
-        `Neuro OJ：已加载 ${problems.length} 道代码题`,
+        `Neuro OJ：已加载 ${problems.length} 道题目`,
         2500,
       );
+    }
     return problems;
   } catch (error) {
     await handleAuthenticatedError(context, error);
@@ -453,7 +563,7 @@ async function selectProblem(
         description: item.difficulty,
         problem: item,
       })),
-      { title: "选择要提交的 Neuro OJ 题目", matchOnDescription: true },
+      { title: "选择 Neuro OJ 题目", matchOnDescription: true },
     );
     chosen = picked?.problem;
   }
@@ -461,21 +571,36 @@ async function selectProblem(
   const domain = context.globalState.get<Domain>(domainKey(context));
   if (!domain) return undefined;
 
-  // 选定题目时固定作答版本：提交必须携带，服务端据此判断"在评测哪一版"
   let versionId: string | null = null;
   let version: number | null = null;
+  let submissionMode: "code" | "artifact" | "prediction" = "code";
+  let judgeType: "dual" | "oi" = "dual";
   try {
     const detail = await api.domainProblem(domain.slug, chosen.id);
+    const rawMode =
+      detail.submission_mode ?? detail.content.submission_mode ?? "code";
+    if (rawMode === "ui") {
+      vscode.window.showWarningMessage(
+        "界面题暂不支持在 IDE 提交，请在网站中作答",
+      );
+      return undefined;
+    }
     if (
-      detail.content.submission_mode === "artifact" ||
-      (detail.supported_languages &&
-        !detail.supported_languages.includes("python3"))
+      rawMode === "code" &&
+      detail.supported_languages &&
+      !detail.supported_languages.includes("python3")
     ) {
       vscode.window.showWarningMessage(
         "此题不能通过 Python 代码提交，请在网站中作答",
       );
       return undefined;
     }
+    submissionMode =
+      rawMode === "artifact" || rawMode === "prediction" ? rawMode : "code";
+    judgeType =
+      detail.judge_type === "oi" || detail.content.judge_type === "oi"
+        ? "oi"
+        : "dual";
     versionId = detail.version_id;
     version = detail.version;
   } catch (err) {
@@ -497,11 +622,32 @@ async function selectProblem(
     title: chosen.title,
     versionId,
     version,
+    submissionMode,
+    judgeType,
   };
   await context.globalState.update(
     selectionKey(context, domain.slug),
     selected,
   );
+  const rootsToSync = new Set<string>();
+  const primaryRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (primaryRoot) rootsToSync.add(path.resolve(primaryRoot));
+  for (const candidate of getCandidateWorkspaceRoots(
+    context,
+    domain.slug,
+    chosen.display_id,
+  )) {
+    rootsToSync.add(path.resolve(candidate));
+  }
+  for (const rootDir of rootsToSync) {
+    await syncWorkspaceProblemVersion(
+      rootDir,
+      selected,
+      currentServerUrl,
+    ).catch((err) => {
+      output.appendLine(`[警告] 同步工作区题目版本失败：${messageOf(err)}`);
+    });
+  }
   tree.markSelected(selected);
   updateStatusBar(context);
   vscode.window.setStatusBarMessage(
@@ -510,177 +656,6 @@ async function selectProblem(
     3000,
   );
   return selected;
-}
-
-async function submit(context: vscode.ExtensionContext): Promise<void> {
-  const token = await context.secrets.get(tokenKey(currentServerUrl));
-  if (!token) {
-    const action = await vscode.window.showWarningMessage(
-      "请先登录 Neuro OJ",
-      "登录",
-      "使用令牌",
-    );
-    if (action === "登录") await login(context);
-    if (action === "使用令牌") await useToken(context);
-    if (!(await context.secrets.get(tokenKey(currentServerUrl)))) return;
-  }
-
-  const domain = context.globalState.get<Domain>(domainKey(context));
-  let selected = domain
-    ? context.globalState.get<SelectedProblem>(
-        selectionKey(context, domain.slug),
-      )
-    : undefined;
-  if (!selected) selected = await selectProblem(context);
-  if (!selected) return;
-
-  const document = await resolvePythonDocument();
-  if (!document) return;
-  const code = document.getText();
-  if (!code.trim()) {
-    vscode.window.showWarningMessage("当前 Python 文件为空，未提交");
-    return;
-  }
-
-  const confirmation = await vscode.window.showInformationMessage(
-    `提交 ${path.basename(document.fileName)} 到 ${selected.displayId} ${selected.title}？`,
-    { modal: true },
-    "提交评测",
-  );
-  if (confirmation !== "提交评测") return;
-  if (
-    !selected.domainSlug ||
-    !selected.versionId ||
-    context.globalState.get<Domain>(domainKey(context))?.slug !==
-      selected.domainSlug
-  )
-    return;
-
-  try {
-    const detail = await vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `Neuro OJ · ${selected.displayId}`,
-        cancellable: true,
-      },
-      async (progress, cancellation) => {
-        progress.report({ message: "正在上传代码…" });
-        const created = await api.submitDomainCode(
-          selected!.domainSlug!,
-          selected!.reference!,
-          code,
-          path.basename(document.fileName),
-          selected!.versionId!,
-        );
-        output.appendLine(`\n[提交] ${selected!.displayId} ${selected!.title}`);
-        output.appendLine(`文件：${document.fileName}`);
-        output.appendLine(`提交编号：${created.public_id ?? created.id}`);
-
-        const config = vscode.workspace.getConfiguration("neuroOj");
-        return await pollSubmission(
-          () => api.domainSubmission(selected!.domainSlug!, created.id),
-          {
-            intervalMs: config.get<number>("pollIntervalSeconds", 2) * 1000,
-            timeoutMs: config.get<number>("pollTimeoutSeconds", 180) * 1000,
-            isCancelled: () => cancellation.isCancellationRequested,
-            onUpdate: (current) => {
-              const queue =
-                current.queue_position == null
-                  ? ""
-                  : `，队列第 ${current.queue_position} 位`;
-              progress.report({
-                message: `${statusLabel(current.status)}${queue}`,
-              });
-            },
-          },
-        );
-      },
-    );
-    showResult(detail);
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 409) {
-      vscode.window.showWarningMessage(
-        "作答版本已变化，当前文件保留。请刷新并重新选择题目，确认新题面后再次提交。",
-      );
-    }
-    await handleAuthenticatedError(context, error);
-    showError("提交或评测失败", error);
-  }
-}
-
-async function resolvePythonDocument(): Promise<
-  vscode.TextDocument | undefined
-> {
-  const active = vscode.window.activeTextEditor?.document;
-  if (
-    active &&
-    (active.languageId === "python" ||
-      active.fileName.toLowerCase().endsWith(".py"))
-  ) {
-    return active;
-  }
-
-  const files = await vscode.workspace.findFiles(
-    "**/submission.py",
-    "**/{node_modules,.git,.venv,venv}/**",
-    2,
-  );
-  if (files.length === 1) {
-    const document = await vscode.workspace.openTextDocument(files[0]);
-    await vscode.window.showTextDocument(document);
-    return document;
-  }
-  if (files.length > 1) {
-    const picked = await vscode.window.showQuickPick(
-      files.map((uri) => ({
-        label: vscode.workspace.asRelativePath(uri),
-        uri,
-      })),
-      { title: "选择 submission.py" },
-    );
-    if (picked) return await vscode.workspace.openTextDocument(picked.uri);
-    return undefined;
-  }
-
-  vscode.window.showWarningMessage(
-    "请打开一个 Python 文件，或在工作区创建 submission.py",
-  );
-  return undefined;
-}
-
-function showResult(detail: SubmissionDetail): void {
-  if (detail.result_visibility === "hidden") {
-    output.appendLine("已受理，结果按比赛规则暂未公开");
-    output.show(true);
-    vscode.window.showInformationMessage("Neuro OJ：提交已受理，结果暂未公开");
-    return;
-  }
-  output.appendLine(`状态：${statusLabel(detail.status)}`);
-  if (detail.result) {
-    if (detail.result.score !== null)
-      output.appendLine(`得分：${(detail.result.score / 100).toFixed(2)}`);
-    if (detail.result.time_ms != null)
-      output.appendLine(`耗时：${detail.result.time_ms} ms`);
-    if (detail.result.memory_kb != null)
-      output.appendLine(`内存：${detail.result.memory_kb} KiB`);
-    if (detail.result_visibility !== "summary" && detail.result.output) {
-      output.appendLine("\n评测输出：");
-      output.appendLine(detail.result.output);
-      if (detail.result.output_truncated)
-        output.appendLine("[输出已由服务端截断]");
-    }
-  }
-  output.show(true);
-
-  if (detail.status === "error") {
-    vscode.window.showErrorMessage("Neuro OJ 评测失败，详情已写入输出面板");
-  } else {
-    const score =
-      detail.result && detail.result.score !== null
-        ? `${(detail.result.score / 100).toFixed(2)} 分`
-        : "结果已完成";
-    vscode.window.showInformationMessage(`Neuro OJ 评测完成：${score}`);
-  }
 }
 
 async function handleAuthenticatedError(
@@ -714,6 +689,48 @@ function domainKey(context: vscode.ExtensionContext): string {
 function selectionKey(context: vscode.ExtensionContext, slug: string): string {
   return `${SELECTED_PROBLEM_KEY}:${currentServerUrl}:${context.globalState.get<User>(USER_KEY)?.id ?? ""}:${slug}`;
 }
+function lastWorkspaceKey(context: vscode.ExtensionContext): string {
+  return `${LAST_INITIALIZED_WORKSPACE_KEY}:${currentServerUrl}:${context.globalState.get<User>(USER_KEY)?.id ?? ""}`;
+}
+function workspaceMapKey(context: vscode.ExtensionContext): string {
+  return `${INITIALIZED_WORKSPACES_KEY}:${currentServerUrl}:${context.globalState.get<User>(USER_KEY)?.id ?? ""}`;
+}
+function problemWorkspaceSlot(domainSlug: string, reference: string): string {
+  return `${domainSlug}::${reference}`;
+}
+function getRememberedWorkspaceRoot(
+  context: vscode.ExtensionContext,
+  domainSlug: string,
+  reference: string,
+): string | undefined {
+  const map = context.globalState.get<Record<string, string>>(
+    workspaceMapKey(context),
+  );
+  return map?.[problemWorkspaceSlot(domainSlug, reference)];
+}
+function getCandidateWorkspaceRoots(
+  context: vscode.ExtensionContext,
+  domainSlug?: string,
+  reference?: string,
+): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const push = (dir?: string) => {
+    if (!dir) return;
+    const resolved = path.resolve(dir);
+    if (seen.has(resolved)) return;
+    seen.add(resolved);
+    candidates.push(resolved);
+  };
+  if (domainSlug && reference) {
+    push(getRememberedWorkspaceRoot(context, domainSlug, reference));
+  }
+  push(context.globalState.get<string>(lastWorkspaceKey(context)));
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    push(folder.uri.fsPath);
+  }
+  return candidates;
+}
 
 async function setAuthenticated(value: boolean): Promise<void> {
   await vscode.commands.executeCommand(
@@ -721,16 +738,6 @@ async function setAuthenticated(value: boolean): Promise<void> {
     "neuroOj.authenticated",
     value,
   );
-}
-
-function statusLabel(status: SubmissionDetail["status"]): string {
-  if (status === undefined) return "已受理";
-  return {
-    pending: "等待评测",
-    judging: "评测中",
-    finished: "评测完成",
-    error: "评测错误",
-  }[status];
 }
 
 function messageOf(error: unknown): string {

@@ -1,16 +1,16 @@
 {
-  "name": "neuro-oj-lmcc",
-  "displayName": "Neuro OJ for LMCC IDE",
-  "description": "在 LMCC IDE / VS Code 中登录 Neuro OJ、选择题目并提交 Python 代码。",
+  "name": "neuro-oj-vscode",
+  "displayName": "Neuro OJ",
+  "description": "在 VS Code 中登录 Neuro OJ、初始化题目工作区、本地 Mock 调试、提交单文件或多文件 ZIP 包并查看可视化评测报告。",
   "version": "0.11.0",
   "publisher": "neuro-oj",
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "https://github.com/Neuro-OJ/neuro-oj.git",
-    "directory": "noj-lmcc-extension"
+    "directory": "noj-vscode-extension"
   },
-  "homepage": "https://github.com/Neuro-OJ/neuro-oj/tree/main/noj-lmcc-extension",
+  "homepage": "https://github.com/Neuro-OJ/neuro-oj/tree/main/noj-vscode-extension",
   "bugs": {
     "url": "https://github.com/Neuro-OJ/neuro-oj/issues"
   },
@@ -24,9 +24,11 @@
   ],
   "keywords": [
     "Neuro OJ",
-    "LMCC",
+    "NOJ",
     "online judge",
-    "Python"
+    "AI",
+    "Python",
+    "LLM"
   ],
   "icon": "resources/logo.jpg",
   "main": "./out/extension.js",
@@ -41,10 +43,34 @@
     "onCommand:neuroOj.selectDomain",
     "onCommand:neuroOj.openTemplate",
     "onCommand:neuroOj.showVersions",
+    "onCommand:neuroOj.initWorkspace",
+    "onCommand:neuroOj.previewStatement",
+    "onCommand:neuroOj.runLocalMock",
+    "onCommand:neuroOj.selfTest",
     "onCommand:neuroOj.submit"
   ],
   "contributes": {
     "commands": [
+      {
+        "command": "neuroOj.initWorkspace",
+        "title": "Neuro OJ: 初始化本地题目工作区",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "neuroOj.previewStatement",
+        "title": "Neuro OJ: 预览题面",
+        "icon": "$(book)"
+      },
+      {
+        "command": "neuroOj.runLocalMock",
+        "title": "Neuro OJ: 本地 Mock 运行与调试",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "neuroOj.selfTest",
+        "title": "Neuro OJ: 云端自测 (Self-Test)",
+        "icon": "$(beaker)"
+      },
       {
         "command": "neuroOj.openTemplate",
         "title": "Neuro OJ: 打开当前版本模板",
@@ -90,7 +116,7 @@
       },
       {
         "command": "neuroOj.submit",
-        "title": "Neuro OJ: 提交当前 Python 文件",
+        "title": "Neuro OJ: 提交代码或产物 ZIP",
         "icon": "$(cloud-upload)"
       }
     ],
@@ -139,9 +165,14 @@
           "group": "navigation@2"
         },
         {
-          "command": "neuroOj.submit",
+          "command": "neuroOj.initWorkspace",
           "when": "view == neuroOj.problems && neuroOj.authenticated",
           "group": "navigation@3"
+        },
+        {
+          "command": "neuroOj.submit",
+          "when": "view == neuroOj.problems && neuroOj.authenticated",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -149,13 +180,33 @@
           "command": "neuroOj.selectProblem",
           "when": "view == neuroOj.problems && viewItem == neuroOj.problem",
           "group": "inline"
+        },
+        {
+          "command": "neuroOj.previewStatement",
+          "when": "view == neuroOj.problems && viewItem == neuroOj.problem",
+          "group": "navigation"
+        },
+        {
+          "command": "neuroOj.initWorkspace",
+          "when": "view == neuroOj.problems && viewItem == neuroOj.problem",
+          "group": "navigation"
         }
       ],
       "editor/title": [
         {
+          "command": "neuroOj.runLocalMock",
+          "when": "editorLangId == python",
+          "group": "navigation@1"
+        },
+        {
+          "command": "neuroOj.selfTest",
+          "when": "editorLangId == python && neuroOj.authenticated",
+          "group": "navigation@2"
+        },
+        {
           "command": "neuroOj.submit",
           "when": "editorLangId == python && neuroOj.authenticated",
-          "group": "navigation"
+          "group": "navigation@3"
         }
       ]
     },
@@ -187,6 +238,16 @@
           "minimum": 10,
           "maximum": 1800,
           "description": "等待单次评测结果的最长时间（秒）。"
+        },
+        "neuroOj.localJudgeBinary": {
+          "type": "string",
+          "default": "noj-judge",
+          "description": "本地评测可执行文件路径（用于轨道 A `noj-judge run-local`）。"
+        },
+        "neuroOj.pythonBinary": {
+          "type": "string",
+          "default": "python3",
+          "description": "本地轻量调试使用的 Python 解释器路径（轨道 B）。"
         }
       }
     }

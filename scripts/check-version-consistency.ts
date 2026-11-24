@@ -35,7 +35,7 @@ export const VERSION_MANIFESTS: readonly VersionManifest[] = [
   { path: "noj-judge/Cargo.toml", kind: "toml" },
   { path: "noj-llm-gateway/deno.json", kind: "json" },
   { path: "noj-cli/deno.json", kind: "json" },
-  { path: "noj-lmcc-extension/package.json", kind: "json" },
+  { path: "noj-vscode-extension/package.json", kind: "json" },
   { path: "noj-tests/deno.json", kind: "json" },
 ];
 

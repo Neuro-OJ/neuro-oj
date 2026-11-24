@@ -4,7 +4,11 @@ import type {
   CreatedSubmission,
   Domain,
   DomainProblem,
+  DomainProblemDetail,
   Problem,
+  SelfTestCaseInput,
+  SelfTestCreated,
+  SelfTestDetail,
   SubmissionDetail,
   User,
 } from "./types";
@@ -13,7 +17,7 @@ export interface HttpRequest {
   url: URL;
   method: string;
   headers: Record<string, string>;
-  body?: string;
+  body?: string | Buffer;
   timeoutMs: number;
 }
 
@@ -75,6 +79,44 @@ export function normalizeServerUrl(value: string): string {
   return url.toString().replace(/\/$/, "");
 }
 
+/** 构造标准 `multipart/form-data` 请求体（表单字段排在文件前，满足流式解析）。 */
+export function buildMultipartFormData(
+  fields: Record<string, string>,
+  file: {
+    fieldName: string;
+    fileName: string;
+    contentType: string;
+    data: Buffer;
+  },
+): { contentType: string; body: Buffer } {
+  const boundary = `----NeuroOjBoundary${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  const chunks: Buffer[] = [];
+  const sanitizeHeaderValue = (raw: string) => raw.replace(/[\r\n"]/g, "_");
+
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${sanitizeHeaderValue(name)}"\r\n\r\n${value}\r\n`,
+        "utf8",
+      ),
+    );
+  }
+
+  chunks.push(
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${sanitizeHeaderValue(file.fieldName)}"; filename="${sanitizeHeaderValue(file.fileName)}"\r\nContent-Type: ${file.contentType}\r\n\r\n`,
+      "utf8",
+    ),
+    file.data,
+    Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"),
+  );
+
+  return {
+    contentType: `multipart/form-data; boundary=${boundary}`,
+    body: Buffer.concat(chunks),
+  };
+}
+
 /** 使用 Node 内置 HTTP 客户端，兼容不提供全局 fetch 的旧版 VS Code。 */
 export const nodeHttpTransport: HttpTransport = (request) =>
   new Promise((resolve, reject) => {
@@ -90,8 +132,8 @@ export const nodeHttpTransport: HttpTransport = (request) =>
         let size = 0;
         response.on("data", (chunk: Buffer) => {
           size += chunk.length;
-          if (size > 2 * 1024 * 1024) {
-            req.destroy(new Error("Neuro OJ 响应超过 2 MiB 限制"));
+          if (size > 4 * 1024 * 1024) {
+            req.destroy(new Error("Neuro OJ 响应超过 4 MiB 限制"));
             return;
           }
           chunks.push(chunk);
@@ -154,7 +196,7 @@ export class NeuroOjApi {
     await this.request("/api/v1/auth/logout", { method: "POST" });
   }
 
-  /** 通过公开题目端点验证服务器地址，无需登录或发送已有令牌。 */
+  /** 通过公开站点端点验证服务器地址，无需登录或发送已有令牌。 */
   async checkConnection(): Promise<void> {
     await this.request("/api/v1/instance", {
       authenticated: false,
@@ -178,13 +220,18 @@ export class NeuroOjApi {
       );
       for (const problem of result.items) {
         if (problem.kind === "objective") continue;
+        if (problem.submission_mode === "ui") continue;
         items.push({
           id: problem.reference.display_ref,
           display_id: problem.reference.display_ref,
           title: problem.title,
           difficulty: "",
           is_objective: false,
-          submission_mode: "code",
+          submission_mode:
+            problem.submission_mode === "artifact" ||
+            problem.submission_mode === "prediction"
+              ? problem.submission_mode
+              : "code",
         });
       }
       if (page * 100 >= result.total || result.items.length === 0) return items;
@@ -194,13 +241,8 @@ export class NeuroOjApi {
   async domainProblem(
     slug: string,
     reference: string,
-  ): Promise<{
-    version_id: string;
-    version: number;
-    supported_languages?: string[];
-    content: { submission_mode?: string; title: string };
-  }> {
-    return await this.request(
+  ): Promise<DomainProblemDetail> {
+    return await this.request<DomainProblemDetail>(
       `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
         reference,
       )}`,
@@ -231,6 +273,77 @@ export class NeuroOjApi {
     ).data;
   }
 
+  /** 提交多文件 ZIP 产物（multipart/form-data）。 */
+  async submitDomainArtifact(
+    slug: string,
+    reference: string,
+    zipBuffer: Buffer,
+    fileName: string,
+    versionId: string,
+  ): Promise<CreatedSubmission> {
+    return await this.submitDomainMultipart(
+      slug,
+      reference,
+      zipBuffer,
+      fileName,
+      versionId,
+      "application/zip",
+    );
+  }
+
+  /** 提交单文件预测结果（prediction 模式，multipart/form-data）。 */
+  async submitDomainPrediction(
+    slug: string,
+    reference: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    versionId: string,
+  ): Promise<CreatedSubmission> {
+    return await this.submitDomainMultipart(
+      slug,
+      reference,
+      fileBuffer,
+      fileName,
+      versionId,
+      "application/octet-stream",
+    );
+  }
+
+  private async submitDomainMultipart(
+    slug: string,
+    reference: string,
+    fileBuffer: Buffer,
+    fileName: string,
+    versionId: string,
+    contentType: string,
+  ): Promise<CreatedSubmission> {
+    const multipart = buildMultipartFormData(
+      {
+        problem_ref: reference,
+        version_id: versionId,
+      },
+      {
+        fieldName: "file",
+        fileName,
+        contentType,
+        data: fileBuffer,
+      },
+    );
+    return (
+      await this.requestRaw<{ data: CreatedSubmission }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/submissions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": multipart.contentType,
+            "Content-Length": String(multipart.body.length),
+          },
+          body: multipart.body,
+        },
+      )
+    ).data;
+  }
+
   async domainSubmission(slug: string, id: string): Promise<SubmissionDetail> {
     return (
       await this.request<{ data: SubmissionDetail }>(
@@ -239,6 +352,72 @@ export class NeuroOjApi {
         )}`,
       )
     ).data;
+  }
+
+  /** 读取提交结构化反馈；若后端尚未开启该接口（404）返回 `null` 以便优雅回退。 */
+  async domainSubmissionFeedback(
+    slug: string,
+    id: string,
+  ): Promise<Record<string, unknown> | null> {
+    return await this.requestOptionalFeedback(
+      `/api/v1/domains/${encodeURIComponent(slug)}/submissions/${encodeURIComponent(
+        id,
+      )}/feedback`,
+    );
+  }
+
+  /** 发起云端自测。 */
+  async createDomainSelfTest(
+    slug: string,
+    reference: string,
+    input: {
+      code: string;
+      language?: string;
+      file_name?: string;
+      version_id?: string;
+      cases?: SelfTestCaseInput[];
+    },
+  ): Promise<SelfTestCreated> {
+    return (
+      await this.request<{ data: SelfTestCreated }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/problems/${encodeURIComponent(
+          reference,
+        )}/self-tests`,
+        {
+          method: "POST",
+          body: {
+            code: input.code,
+            language: input.language ?? "python3",
+            ...(input.file_name ? { file_name: input.file_name } : {}),
+            ...(input.version_id ? { version_id: input.version_id } : {}),
+            ...(input.cases ? { cases: input.cases } : {}),
+          },
+        },
+      )
+    ).data;
+  }
+
+  /** 查询云端自测详情。 */
+  async domainSelfTest(slug: string, id: string): Promise<SelfTestDetail> {
+    return (
+      await this.request<{ data: SelfTestDetail }>(
+        `/api/v1/domains/${encodeURIComponent(slug)}/self-tests/${encodeURIComponent(
+          id,
+        )}`,
+      )
+    ).data;
+  }
+
+  /** 读取云端自测结构化反馈；404 时优雅回退返回 `null`。 */
+  async domainSelfTestFeedback(
+    slug: string,
+    id: string,
+  ): Promise<Record<string, unknown> | null> {
+    return await this.requestOptionalFeedback(
+      `/api/v1/domains/${encodeURIComponent(slug)}/self-tests/${encodeURIComponent(
+        id,
+      )}/feedback`,
+    );
   }
 
   async domainTemplate(
@@ -286,20 +465,36 @@ export class NeuroOjApi {
     fileName: string,
     versionId: string,
   ): Promise<CreatedSubmission> {
-    const response = await this.request<{ data: CreatedSubmission }>(
-      `/api/v1/domains/${encodeURIComponent(slug)}/submissions`,
-      {
-        method: "POST",
-        body: {
-          problem_ref: reference,
-          language: "python3",
-          code,
-          file_name: fileName,
-          version_id: versionId,
-        },
-      },
+    return await this.submitDomainCode(
+      slug,
+      reference,
+      code,
+      fileName,
+      versionId,
     );
-    return response.data;
+  }
+
+  private async requestOptionalFeedback(
+    path: string,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const response = await this.request<
+        {
+          data?: Record<string, unknown>;
+        } & Record<string, unknown>
+      >(path);
+      if (response && typeof response === "object") {
+        return response.data && typeof response.data === "object"
+          ? response.data
+          : response;
+      }
+      return null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   private async request<T>(
@@ -310,16 +505,35 @@ export class NeuroOjApi {
       authenticated?: boolean;
     } = {},
   ): Promise<T> {
+    const body = options.body ? JSON.stringify(options.body) : undefined;
+    const headers: Record<string, string> = {};
+    if (body) headers["Content-Type"] = "application/json";
+    return await this.requestRaw<T>(path, {
+      method: options.method ?? "GET",
+      headers,
+      body,
+      authenticated: options.authenticated,
+    });
+  }
+
+  private async requestRaw<T>(
+    path: string,
+    options: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string | Buffer;
+      authenticated?: boolean;
+    } = {},
+  ): Promise<T> {
     const authenticated = options.authenticated !== false;
     if (authenticated && !this.token) {
       throw new ApiError("请先登录 Neuro OJ", 401, "AUTH_REQUIRED");
     }
 
-    const body = options.body ? JSON.stringify(options.body) : undefined;
     const headers: Record<string, string> = {
       Accept: "application/json",
+      ...options.headers,
     };
-    if (body) headers["Content-Type"] = "application/json";
     if (authenticated && this.token) {
       headers.Authorization = `Bearer ${this.token}`;
     }
@@ -328,7 +542,7 @@ export class NeuroOjApi {
       url: new URL(path, `${normalizeServerUrl(this.serverUrl)}/`),
       method: options.method ?? "GET",
       headers,
-      body,
+      body: options.body,
       timeoutMs: this.timeoutMs,
     });
 

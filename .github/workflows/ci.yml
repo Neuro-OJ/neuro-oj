@@ -223,7 +223,7 @@ jobs:
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
             extension:
-              - 'noj-lmcc-extension/**'
+              - 'noj-vscode-extension/**'
               - '.github/workflows/ci.yml'
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
@@ -247,10 +247,10 @@ jobs:
             scripts/select-core-ci.ts "${args[@]}"
 
   # ===========================================================================
-  # LMCC IDE / VS Code 扩展 — 类型检查与单元测试
+  # VS Code 扩展 — 类型检查与单元测试
   # ===========================================================================
-  lmcc-extension-check:
-    name: LMCC Extension
+  vscode-extension-check:
+    name: VS Code Extension
     needs: changes
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.extension == 'true' }}
     runs-on: ubuntu-latest
@@ -264,18 +264,18 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: noj-lmcc-extension/package-lock.json
+          cache-dependency-path: noj-vscode-extension/package-lock.json
 
       - name: 安装依赖
-        working-directory: noj-lmcc-extension
+        working-directory: noj-vscode-extension
         run: npm ci
 
       - name: 类型检查
-        working-directory: noj-lmcc-extension
+        working-directory: noj-vscode-extension
         run: npm run check
 
       - name: 单元测试
-        working-directory: noj-lmcc-extension
+        working-directory: noj-vscode-extension
         run: npm test
 
   # ===========================================================================

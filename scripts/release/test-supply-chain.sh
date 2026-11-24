@@ -135,7 +135,7 @@ fi
 pass "预发布分支误转正拒绝"
 reset_fixture
 
-sed -i.bak '/neuro-oj-lmcc-\${VERSION#v}\.vsix/d' \
+sed -i.bak '/neuro-oj-vscode-\${VERSION#v}\.vsix/d' \
   "$TEST_ROOT/.github/workflows/release.yml"
 if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
   >/dev/null 2>&1; then

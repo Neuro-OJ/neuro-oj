@@ -44,7 +44,7 @@ const SCAN_ROOTS = [
   "noj-ui",
   "noj-judge/src",
   "noj-llm-gateway/src",
-  "noj-lmcc-extension/src",
+  "noj-vscode-extension/src",
   "noj-cli/src",
   "noj-tests",
 ];
