@@ -11,7 +11,7 @@
 | noj-ui             | [`noj-ui/AGENTS.md`](noj-ui/AGENTS.md)                          | Web 前端、Nitro 注入 JWT Cookie（Nuxt 4 + Vue 3）                 |
 | noj-judge          | [`noj-judge/AGENTS.md`](noj-judge/AGENTS.md)                    | Docker 沙箱评测、双容器 Evaluator + Solution（Rust + Tokio）      |
 | noj-llm-gateway    | [`noj-llm-gateway/CLAUDE.md`](noj-llm-gateway/CLAUDE.md)        | LLM 可信代理、Key 加密、eval_token、限流/额度/审计（Deno + Hono） |
-| noj-lmcc-extension | [`package.json`](noj-lmcc-extension/package.json)（无模块文档） | LMCC IDE 登录、选题、Python 提交与反馈（VS Code 扩展）            |
+| noj-vscode-extension | [`package.json`](noj-vscode-extension/package.json)（无模块文档） | VS Code 登录、拉题、本地 Mock 调试、ZIP/代码提交与评测反馈（VS Code 扩展） |
 | noj-cli            | [`noj-cli/README.md`](noj-cli/README.md)                        | 生产安装/启停/升级/备份恢复/配置校验（Deno 单二进制）             |
 | noj-tests          | [`noj-tests/E2E_TESTING.md`](noj-tests/E2E_TESTING.md)          | 跨模块 E2E 测试                                                   |
 | noj-docs           | [`architecture.md`](noj-docs/docs/system/architecture.md)       | 文档站：架构、运维、安全、FAQ                                     |

@@ -81,7 +81,7 @@ deno run -A scripts/verify-agent-note-format.ts
 | --- | --- | --- |
 | `dependency-review` | PR 新增依赖的已知漏洞，`high` / `critical` 直接失败（需组织启用 Dependency Graph） | 仅 PR |
 | `cargo-audit` | `noj-judge/Cargo.lock`（CodeQL 不支持 Rust，由它承担） | 依赖清单变更、定时 |
-| `osv-scanner` | 5 个 `deno.lock` 与 `noj-docs`、`noj-lmcc-extension` 的 `package-lock.json` | 依赖清单变更、定时 |
+| `osv-scanner` | 5 个 `deno.lock` 与 `noj-docs`、`noj-vscode-extension` 的 `package-lock.json` | 依赖清单变更、定时 |
 | `codeql` | JavaScript / TypeScript 静态扫描 | 源码变更、`main` push、定时 |
 
 `dependency-review` 依赖 GitHub Dependency Graph；组织未启用时该 job 会显式跳过并在 job summary 告警（不是扫描通过），需要组织 owner 在 Settings → Code security 启用后自动生效。
@@ -100,7 +100,7 @@ deno run -A scripts/security/deno-lock-to-package-lock.ts \
   noj-ui/deno.lock .security/osv/noj-ui/package-lock.json
 osv-scanner scan source \
   --lockfile=noj-docs/package-lock.json \
-  --lockfile=noj-lmcc-extension/package-lock.json \
+  --lockfile=noj-vscode-extension/package-lock.json \
   --lockfile=.security/osv/noj-ui/package-lock.json
 ```
 
@@ -155,7 +155,7 @@ gh pr create --draft --base main
 
 `scope` 可选值：
 
-- 模块：`core`、`ui`、`judge`、`gateway`、`cli`、`lmcc`、`docs`（noj-docs 文档站）、`tests`（noj-tests）；
+- 模块：`core`、`ui`、`judge`、`gateway`、`cli`、`vscode`、`docs`（noj-docs 文档站）、`tests`（noj-tests）；
 - 横切：`root`（根目录、`scripts/`、`dev-docs/` 等）、`ci`（工作流）、`deps`（依赖升级）；
 - 涉及多个模块时用英文逗号分隔且不加空格，例如 `feat(core,ui): ...`。
 

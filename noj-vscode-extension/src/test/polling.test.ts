@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { pollSubmission, PollTimeoutError } from "../polling";
-import type { SubmissionDetail, SubmissionStatus } from "../types";
+import { pollSelfTest, pollSubmission, PollTimeoutError } from "../polling";
+import type {
+  SelfTestDetail,
+  SubmissionDetail,
+  SubmissionStatus,
+} from "../types";
 
 function detail(status: SubmissionStatus): SubmissionDetail {
   return {
@@ -97,4 +101,29 @@ test("pollSubmission 超时后抛出明确错误", async () => {
   } finally {
     Date.now = realNow;
   }
+});
+
+test("pollSelfTest 轮询到终态 finished", async () => {
+  const states: Array<SelfTestDetail["status"]> = [
+    "pending",
+    "judging",
+    "finished",
+  ];
+  const result = await pollSelfTest(
+    async () => ({
+      id: "st_1",
+      problem_id: "p1",
+      file_name: "submission.py",
+      status: states.shift() ?? "finished",
+      result_status: "AC",
+      score: 10000,
+      output: "ok",
+      output_truncated: false,
+      details: null,
+      time_ms: 10,
+      memory_kb: 128,
+    }),
+    { intervalMs: 1, timeoutMs: 1000, sleep: async () => undefined },
+  );
+  assert.equal(result.status, "finished");
 });

@@ -42,7 +42,7 @@ test("login 使用公开登录端点且不携带 Authorization", async () => {
   assert.equal(result.token, "jwt");
   assert.equal(captured?.url.pathname, "/api/v1/auth/login");
   assert.equal(captured?.headers.Authorization, undefined);
-  assert.deepEqual(JSON.parse(captured?.body ?? "{}"), {
+  assert.deepEqual(JSON.parse(String(captured?.body ?? "{}")), {
     login: "alice",
     password: "secret",
     code: "123456",
@@ -70,7 +70,7 @@ test("submitCode 使用显式工作空间提交 DTO", async () => {
   );
   assert.equal(captured?.headers.Authorization, "Bearer jwt-token");
   assert.equal(captured?.url.pathname, "/api/v1/domains/school/submissions");
-  assert.deepEqual(JSON.parse(captured?.body ?? "{}"), {
+  assert.deepEqual(JSON.parse(String(captured?.body ?? "{}")), {
     problem_ref: "1001",
     language: "python3",
     code: "print('ok')",

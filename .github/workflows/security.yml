@@ -5,7 +5,7 @@
 #   dependency-review  PR 上比对 base↔head 新增依赖，high 及以上直接拦截
 #                      （依赖 GitHub Dependency Graph，见该 job 注释）
 #   cargo-audit        noj-judge/Cargo.lock（Rust 侧；CodeQL 官方不支持 Rust）
-#   osv-scanner        5 个 deno.lock + noj-docs / noj-lmcc-extension 的
+#   osv-scanner        5 个 deno.lock + noj-docs / noj-vscode-extension 的
 #                      package-lock.json
 #   codeql             javascript-typescript（PR / main push / 每周定时）
 #
@@ -76,8 +76,8 @@ jobs:
               - '**/deno.jsonc'
               - 'noj-docs/package.json'
               - 'noj-docs/package-lock.json'
-              - 'noj-lmcc-extension/package.json'
-              - 'noj-lmcc-extension/package-lock.json'
+              - 'noj-vscode-extension/package.json'
+              - 'noj-vscode-extension/package-lock.json'
               - '.github/workflows/security.yml'
               - 'scripts/security/**'
             codeql:
@@ -231,7 +231,7 @@ jobs:
             --format=json
             --output-file=.security/osv/results.json
             --lockfile=noj-docs/package-lock.json
-            --lockfile=noj-lmcc-extension/package-lock.json
+            --lockfile=noj-vscode-extension/package-lock.json
             --lockfile=.security/osv/noj-cli/package-lock.json
             --lockfile=.security/osv/noj-core/package-lock.json
             --lockfile=.security/osv/noj-llm-gateway/package-lock.json
