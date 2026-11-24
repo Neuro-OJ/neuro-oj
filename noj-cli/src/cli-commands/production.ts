@@ -23,6 +23,10 @@ import {
   runProdUninstall,
 } from "../prod/commands/lifecycle.ts";
 import { runProdUpdate } from "../prod/commands/update.ts";
+import {
+  parseRollbackArgs,
+  runProdRollback,
+} from "../prod/commands/rollback.ts";
 import { UsageError } from "../util/args.ts";
 import type { CommandContext } from "./context.ts";
 import { EXIT_FAILURE, EXIT_USAGE } from "./exit-codes.ts";
@@ -50,6 +54,7 @@ export async function dispatchProduction(
   // 已实现 `--dry-run` 的命令必须放行：`judge`（`judgeInstall` 内的 dry-run 分支）
   // 与 `backup restore`（`README.md` / CHANGELOG 承诺的"只规划并校验"）。
   const dryRunAllowed = command === "judge" ||
+    command === "rollback" ||
     (command === "backup" && args[0] === "restore");
   rejectUnimplementedProdFlags(args, dryRunAllowed ? ["--dry-run"] : []);
   // **互相矛盾的旗标在解析目录之前就拒绝**：`--dry-run`（只规划）与
@@ -64,6 +69,10 @@ export async function dispatchProduction(
     );
   }
   const parsed = parseProdArgs(args);
+  // 纯参数错误不依赖安装目录能否找到（rollback 参数先于 findProductionDir 校验）
+  if (command === "rollback") {
+    parseRollbackArgs(parsed.rest);
+  }
   // install 和独立 judge 允许首次安装时指定空目录。
   const allowsFreshDir = command === "install" || command === "judge";
   const dir = allowsFreshDir && parsed.dir !== undefined
@@ -115,6 +124,11 @@ export async function dispatchProduction(
       case "update":
       case "upgrade": {
         const r = await runProdUpdate(dir, rest, {});
+        say(r.error ?? "");
+        return r.exitCode;
+      }
+      case "rollback": {
+        const r = await runProdRollback(dir, rest, {});
         say(r.error ?? "");
         return r.exitCode;
       }

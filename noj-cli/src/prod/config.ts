@@ -44,6 +44,7 @@ export {
   ensureBackupPassphrase,
   PASSPHRASE_ALLOWED_MODES,
   passphraseFileMode,
+  validateExistingBackupPassphrase,
 } from "./config/passphrase.ts";
 export {
   DEFAULT_COSIGN_IDENTITY_REGEX,
@@ -71,6 +72,7 @@ export type {
 export type {
   EnsurePassphraseOptions,
   EnsurePassphraseResult,
+  ExistingPassphraseResult,
   PassphrasePathOptions,
 } from "./config/passphrase.ts";
 export type {

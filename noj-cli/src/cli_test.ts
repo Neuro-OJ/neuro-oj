@@ -50,6 +50,7 @@ Deno.test("E1: 各子命令 --help / -h 返回 0", async () => {
     ["stop", "--help"],
     ["logs", "--help"],
     ["update", "--help"],
+    ["rollback", "--help"],
     ["config", "--help"],
     ["uninstall", "--help"],
     ["problem", "--help"],

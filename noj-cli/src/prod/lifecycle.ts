@@ -57,6 +57,18 @@ export {
   upgrade,
 } from "./lifecycle/update.ts";
 export {
+  assessRollbackMigrationRisk,
+  buildRollbackPlan,
+  formatMigrationGuardError,
+  parseSemverMajorMinor,
+  rollback,
+  type RollbackBackupVerifyResult,
+  type RollbackOptions,
+  type RollbackPlanStep,
+  type RollbackPlanStepName,
+  type RollbackResult,
+} from "./lifecycle/rollback.ts";
+export {
   uninstall,
   UNINSTALL_ALL_CANCELLED_HINT,
   UNINSTALL_ALL_PROMPT,

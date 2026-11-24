@@ -144,6 +144,10 @@ export function positionals(args: string[]): string[] {
     "--input",
     "--output",
     "--benchmark",
+    "--to",
+    "--restore-backup",
+    "--drain-timeout",
+    "--min-free-mb",
   ]);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;

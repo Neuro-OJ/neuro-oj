@@ -493,7 +493,8 @@
       "noj-ui/"
     ],
     "logicOnlyPrefixes": [
-      "noj-tests/tests/"
+      "noj-tests/tests/",
+      "noj-tests/stress/"
     ],
     "docPrefixes": [
       "dev-docs/",

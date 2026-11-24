@@ -68,6 +68,61 @@ export interface EnsurePassphraseResult {
   error: string | null;
 }
 
+async function validateExistingPassphraseFile(
+  target: string,
+  stat: Deno.FileInfo,
+): Promise<string | null> {
+  if (!stat.isFile) {
+    return `GPG 备份口令路径不是普通文件：${target}`;
+  }
+  const mode = await passphraseFileMode(target);
+  if (!PASSPHRASE_ALLOWED_MODES.includes(mode)) {
+    return `GPG 备份口令文件权限必须为 600 或 400：${target}`;
+  }
+  return null;
+}
+
+/** {@link validateExistingBackupPassphrase} 结果（只读，不生成新口令也不回填配置）。 */
+export interface ExistingPassphraseResult {
+  path: string;
+  error: string | null;
+}
+
+/**
+ * 只读解析并校验既有备份口令文件（供 `rollback` 等仅解密场景使用）。
+ *
+ * 与 {@link ensureBackupPassphrase} 的区别：文件缺失时绝不生成新口令文件，也不返回 `envUpdate`。
+ */
+export async function validateExistingBackupPassphrase(
+  env: EnvValues,
+  opts: Pick<EnsurePassphraseOptions, "targetFile"> = {},
+): Promise<ExistingPassphraseResult> {
+  const configured = env["NOJ_BACKUP_PASSPHRASE_FILE"] ?? "";
+  const target = opts.targetFile ?? backupPassphrasePath({ configured });
+
+  let stat: Deno.FileInfo;
+  try {
+    stat = await Deno.stat(target);
+  } catch (err) {
+    if (err instanceof Deno.errors.NotFound) {
+      return {
+        path: target,
+        error:
+          `GPG 备份口令文件不存在：${target}；请通过 --passphrase-file 或 NOJ_BACKUP_PASSPHRASE_FILE 指定已有口令文件`,
+      };
+    }
+    return {
+      path: target,
+      error: `无法读取 GPG 备份口令文件：${target}（${
+        (err as Error).message
+      }）`,
+    };
+  }
+
+  const error = await validateExistingPassphraseFile(target, stat);
+  return { path: target, error };
+}
+
 /**
  * 确保备份口令文件存在且权限正确。
  *
@@ -95,31 +150,13 @@ export async function ensureBackupPassphrase(
   }
 
   if (stat !== null) {
-    if (!stat.isFile) {
-      return {
-        path: target,
-        created: false,
-        passphrase: null,
-        envUpdate: null,
-        error: `GPG 备份口令路径不是普通文件：${target}`,
-      };
-    }
-    const mode = await passphraseFileMode(target);
-    if (!PASSPHRASE_ALLOWED_MODES.includes(mode)) {
-      return {
-        path: target,
-        created: false,
-        passphrase: null,
-        envUpdate: null,
-        error: `GPG 备份口令文件权限必须为 600 或 400：${target}`,
-      };
-    }
+    const error = await validateExistingPassphraseFile(target, stat);
     return {
       path: target,
       created: false,
       passphrase: null,
       envUpdate: null,
-      error: null,
+      error,
     };
   }
 
