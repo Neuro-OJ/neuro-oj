@@ -71,7 +71,7 @@ flowchart TB
 | **`noj-judge`**          | Rust + Tokio + Bollard            | **高性能评测调度引擎**。监听 Redis 队列，管理双容器生命周期，执行毫秒级 NDJSON 帧路由，实施 CPU/内存/网络严格熔断                    |
 | **`noj-llm-gateway`**    | Deno 2 + Hono + ioredis           | **LLM 专有安全代理**。AES-256 加密托管出题人上游 Provider API Key，为评测容器动态签发短期 `eval_token`，强制实施频率限制与用量审计   |
 | **`noj-lmcc-extension`** | TypeScript + VS Code API          | **本地 IDE 竞赛插件**。支持参赛选手在本地 VS Code 内浏览题目、查看样例并直接提交 Python 代码与获取评测反馈                           |
-| **`noj-cli`**            | Deno 2（`deno compile` 单二进制） | **官方统一生产部署与运维工具**。负责一键安装部署、集群启停、平滑升级、数据备份、恢复演练与环境体检                                   |
+| **`noj-cli`**            | Deno 2（`deno compile` 单二进制） | **官方统一生产部署与运维工具**。负责一键安装部署、集群启停、平滑升级、数据备份与恢复、环境体检                                   |
 
 ---
 

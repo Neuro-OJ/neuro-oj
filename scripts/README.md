@@ -48,8 +48,7 @@ scripts/
 ├── deploy/                # 仓库级校验脚本
 │   ├── verify-build-server.ts
 │   ├── verify-compose-server.ts
-│   ├── restore-drill-verify.ts  # 演练验收辅助
-│   └── restore-drill-verify_test.ts
+│   └── install-sh_test.ts   # 一键部署脚本 deploy/install.sh 的回归
 ├── monitoring/            # 观测/告警快速检查
 ├── staging/               # 生产候选版本验收门禁
 ├── e2e/                   # 跨模块 E2E 测试

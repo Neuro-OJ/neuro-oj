@@ -164,15 +164,6 @@ trigram 索引。
    `deploy/monitoring/README.md` 第 4 节「node_exporter 与备份新鲜度指标」）。
 3. 备份长时间未成功期间发生的故障无法回滚，尽快手动执行一次备份并验证。
 
-### 恢复演练过期 {#恢复演练过期}
-
-触发：`NojRestoreDrillStale`（>90 天未演练）。
-
-1. 文件校验不能证明业务可恢复；安排执行
-   `noj-cli backup drill <快照>`（见生产部署文档 5.1 节）。
-2. 演练完成后确认 textfile 目录中 `noj_restore_drill.prom`
-   更新，告警在下一个评估周期解除。
-
 ::: tip 先把 Prometheus 接上再谈告警 最省事的方式是用 compose 的 `monitoring`
 profile 一键拉起 Prometheus + Alertmanager：
 

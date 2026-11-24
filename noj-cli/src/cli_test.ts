@@ -8,7 +8,6 @@ import {
 } from "./cli-commands/exit-codes.ts";
 import { parseInstallDirArg, stripCliOwnedFlags } from "./cli-commands/args.ts";
 import { formatBytes } from "./prod/commands/backup.ts";
-import { parseDrillArgs } from "./prod/commands/drill.ts";
 import {
   dispatchContainer,
   parseContainerCommand,
@@ -16,7 +15,6 @@ import {
 import type { CommandContext } from "./cli-commands/context.ts";
 import { printHelp } from "./cli-commands/help.ts";
 import { parseProblemArgs } from "./problem/command.ts";
-import { UsageError } from "./util/args.ts";
 
 const ctx: CommandContext = { cwd: "/tmp" };
 
@@ -230,47 +228,6 @@ Deno.test("E8: 拼写错误给出建议", async () => {
 });
 
 // ── 解析函数 ─────────────────────────────────────────────────────
-
-Deno.test("parseDrillArgs: 隔离 daemon、report 与快照位置参数", () => {
-  const a = parseDrillArgs([
-    "x.nojbackup",
-    "--report",
-    "/r.json",
-    "--docker-host=unix:///run/noj-restore-drill/test/docker.sock",
-    "--rpo-max-hours",
-    "24",
-  ]);
-  assertEquals(a.snapshot, "x.nojbackup");
-  assertEquals(a.report, "/r.json");
-  assertEquals(a.dockerHost, "unix:///run/noj-restore-drill/test/docker.sock");
-  assertEquals(a.rpoMaxHours, 24);
-  assertEquals(a.keep, false);
-});
-
-Deno.test("parseDrillArgs: 裸 --keep 不吞掉其后的快照路径", () => {
-  const a = parseDrillArgs(["--keep", "x.nojbackup", "--skip-judge"]);
-  assertEquals(a.keep, true);
-  assertEquals(a.snapshot, "x.nojbackup");
-  assertEquals(a.skipJudge, true);
-});
-
-Deno.test("parseDrillArgs: 旗标缺值或 RPO/RTO 非正整数报用法错误", () => {
-  for (
-    const argv of [
-      ["x", "--report"],
-      ["x", "--rpo-max-hours", "0"],
-      ["x", "--rto-max-minutes", "abc"],
-    ]
-  ) {
-    let threw = false;
-    try {
-      parseDrillArgs(argv);
-    } catch (e) {
-      threw = e instanceof UsageError;
-    }
-    assertEquals(threw, true, argv.join(" "));
-  }
-});
 
 // ── Tier 3 ──────────────────────────────────────────────────────
 

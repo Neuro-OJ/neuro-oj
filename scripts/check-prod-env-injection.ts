@@ -21,7 +21,6 @@
 export const NOT_INJECTED: Readonly<Record<string, string>> = {
   DOMAIN: "noj-cli 读取（生成 APP_URL 等派生值）",
   JUDGE_ENABLED: "noj-cli 读取（决定是否启用 judge profile）",
-  NOJ_BACKUP_MIN_FREE_MB: "noj-cli backup 读取",
   NOJ_BACKUP_PASSPHRASE_FILE: "noj-cli backup 读取",
   NOJ_BACKUP_RETENTION_DAYS: "noj-cli backup 读取",
   NOJ_COSIGN_CERT_IDENTITY_REGEX: "noj-cli 镜像签名校验读取",

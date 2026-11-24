@@ -56,7 +56,7 @@ docker run -d --name noj-prometheus \
   暴露）。目标名必须与 `docker-compose.prod.yml` 的服务名一致——服务名即
   `noj-net` 内的 DNS 名；`noj-llm-gateway` 只是开发编排中的 `container_name`，
   生产不解析，写错会让该 job 静默无数据。
-- `node`（可选）：宿主机 node_exporter，含备份/演练 textfile 指标。
+- `node`（可选）：宿主机 node_exporter，含备份 textfile 指标。
 
 ## 3. 规则文件安装与校验
 
@@ -83,17 +83,14 @@ promtool check config /etc/prometheus/prometheus.yml   # 会明确指出缺失�
 
 ## 4. node_exporter 与备份新鲜度指标
 
-`noj-alerts.yml` 中的备份/演练新鲜度告警依赖 textfile 指标：
+`noj-alerts.yml` 中的备份新鲜度告警依赖 textfile 指标：
 
 - `noj-cli backup create` 写出 `<备份目录>/metrics/noj_backup.prom`
   （`noj_backup_last_success_unix_time`、`noj_backup_snapshot_bytes`）。
-- `noj-cli backup drill <snapshot>` 写出**快照同级**的
-  `metrics/noj_restore_drill.prom`（`NOJ_BACKUP_METRICS_DIR` 可覆盖）
-  （`noj_restore_drill_last_success_unix_time`）。
 
-> 历史说明：这两组指标过去由 `scripts/deploy/backup.sh` 与
-> `scripts/deploy/restore-drill.sh` 写入；生产写入方现为 `noj-cli`
-> （见 `noj-cli/src/prod/backup/metrics.ts` 与 `noj-cli/src/prod/drill/report.ts`）。
+> 历史说明：该指标过去由 `scripts/deploy/backup.sh` 写入；生产写入方现为 `noj-cli`
+> （见 `noj-cli/src/prod/backup/metrics.ts`）。隔离恢复演练（`backup drill`）及其
+> `noj_restore_drill.prom` 指标已随 noj-cli 精简移除。
 > 弃用闸门现状：`scripts/deploy/deploy.sh` 与 `scripts/deploy/restore-drill.sh`
 > 已加闸门（每次执行需 `y` 确认）；**`backup.sh` 未加闸门，仍可直接执行并写入
 > 同一批指标**，生产请改用 `noj-cli backup create`。
@@ -110,7 +107,7 @@ docker run -d --name noj-node-exporter \
 ```
 
 然后取消 `prometheus.yml` 中 `job_name: node` 段的注释并重载 Prometheus。 未启用
-node_exporter 时，备份/演练新鲜度告警不会触发，请在容量规划中记录这一限制。
+node_exporter 时，备份新鲜度告警不会触发，请在容量规划中记录这一限制。
 
 ## 5. 告警投递演练（上线前必须执行一次）
 

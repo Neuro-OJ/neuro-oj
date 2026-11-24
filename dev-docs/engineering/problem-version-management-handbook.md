@@ -856,7 +856,6 @@ LLM 修改 [core token 服务](/home/xyber-nova/Github/neuro-oj/noj-core/src/dom
 | [composables](/home/xyber-nova/Github/neuro-oj/noj-ui/composables) | 版本/任务 API、幂等键、终态轮询和 SSE 后重取数据 |
 | [LMCC extension](/home/xyber-nova/Github/neuro-oj/noj-lmcc-extension/src) | 类型、题目选择状态、提交 API 保存并发送选定版本 |
 | [core CLI](/home/xyber-nova/Github/neuro-oj/noj-core/scripts/noj.ts) | `problems import --publish`；开发初始化显式发布 |
-| [生产演练](/home/xyber-nova/Github/neuro-oj/noj-cli/src/prod/drill/verify.ts) | 演练导入明确发布，否则后续提交会访问未发布题目 |
 | [CLI 题包目录](/home/xyber-nova/Github/neuro-oj/noj-cli/src/problem) | 小题 key 的 lint/pack/契约及 vendor 校验同步 |
 
 SSE 不广播其他用户的尝试详情或题目答案。任务 SSE 仅向操作者及有权限的管理员提供。

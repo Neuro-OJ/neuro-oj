@@ -263,16 +263,6 @@ groups:
           description: textfile 目录中没有备份指标：从未成功备份，或 node_exporter textfile collector 未配置。
           runbook: noj-docs/docs/operators/observability.md#备份过期
 
-      - alert: NojRestoreDrillStale
-        expr: time() - noj_restore_drill_last_success_unix_time > 7776000
-        for: 24h
-        labels:
-          severity: warning
-        annotations:
-          summary: 隔离恢复演练已超过 90 天未执行
-          description: 文件校验不能证明业务可恢复；请执行 `noj-cli backup drill <snapshot>`。
-          runbook: noj-docs/docs/operators/observability.md#恢复演练过期
-
       # ---- SLO 规则装载看门狗 ----
       # rule_files 指向缺失文件时 Prometheus 照常启动且不报错，整组 SLO 规则会静默
       # 消失（实测 v2.54.1）。哨兵 noj:slo:rules_loaded 由生成器恒定为 vector(1)，

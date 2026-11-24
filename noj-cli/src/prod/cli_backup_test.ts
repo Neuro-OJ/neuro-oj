@@ -30,49 +30,6 @@ Deno.test("接线: backup list 走原生实现且不创建备份", async () => {
   }
 });
 
-Deno.test("接线: backup schedule status 未安装 → 退出码 1 且提示可读", async () => {
-  const dir = await makeInstallDir();
-  try {
-    const { runBackupSchedule } = await import("./commands/backup.ts");
-    const result = await runBackupSchedule(dir, ["status"], {
-      runner: {
-        run(_cmd: string, args: string[]) {
-          // `crontab -l` 非 0（用户没有 crontab —— 常态）
-          return Promise.resolve({
-            code: args[0] === "-l" ? 1 : 0,
-            stdout: "",
-            stderr: "",
-          });
-        },
-        spawn() {
-          throw new Error("不应 spawn");
-        },
-      },
-      processEnv: {},
-      out: () => {},
-    });
-    assertEquals(result.exitCode, 1);
-    assertStringIncludes(result.message, "未安装");
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-});
-
-Deno.test("接线: backup schedule 非法子命令 → 用法错误", async () => {
-  const dir = await makeInstallDir();
-  try {
-    const { runBackupSchedule } = await import("./commands/backup.ts");
-    await assertRejects(
-      () =>
-        runBackupSchedule(dir, ["bogus"], { processEnv: {}, out: () => {} }),
-      UsageError,
-      "install/status/remove",
-    );
-  } finally {
-    await Deno.remove(dir, { recursive: true });
-  }
-});
-
 // ── 回归：prune 的数值旗标未校验 → 静默删光全部备份 ────────────
 //
 // `Number("oops")` 是 `NaN`，而 `planPrune` 里 `Math.max(0, NaN)` 仍是 `NaN`，
@@ -387,38 +344,6 @@ Deno.test("缺陷修复: backup create 口令优先级为 旗标 > 进程环境 
       passphraseFile: flagPass,
     });
     assert(fromFlag.every((p) => p === flagPass), "旗标应覆盖进程环境");
-  } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("缺陷修复: backup schedule install 未传旗标时读取 .env.prod 的口令路径", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const { dir, configuredPass } = await makeCreateFixture(root);
-    let written = "";
-    const { runBackupSchedule } = await import("./commands/backup.ts");
-    const result = await runBackupSchedule(dir, ["install"], {
-      runner: {
-        run(_cmd: string, args: string[], opts?: { stdin?: string }) {
-          if (args[0] === "-") written = opts?.stdin ?? "";
-          // `crontab -l` 非 0 = 当前无 crontab（常态）
-          return Promise.resolve({
-            code: args[0] === "-l" ? 1 : 0,
-            stdout: "",
-            stderr: "",
-          });
-        },
-        spawn() {
-          throw new Error("不应 spawn");
-        },
-      },
-      processEnv: {},
-      out: () => {},
-    });
-    assertEquals(result.exitCode, 0, result.message);
-    assertEquals(result.paths.passphraseFile, configuredPass);
-    assertStringIncludes(written, configuredPass);
   } finally {
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
@@ -816,162 +741,6 @@ Deno.test("复审: restore --confirm 的日志通道在 --json 下改为 stderr�
   );
 });
 
-Deno.test("复审: backup schedule 的人类日志在 --json 下走 stderr", async () => {
-  const { runBackupSchedule } = await import("./commands/backup.ts");
-  const outLines: string[] = [];
-  const errLines: string[] = [];
-  const root = await Deno.makeTempDir();
-  try {
-    const dir = join(root, "install");
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(
-      join(dir, "docker-compose.prod.yml"),
-      "services: {}\n",
-    );
-    await Deno.writeTextFile(join(dir, ".env.prod"), "NOJ_VERSION=v0.9.5\n");
-    await Deno.chmod(join(dir, ".env.prod"), 0o600);
-    // status 子命令会读 crontab；用注入 runner 模拟"无 crontab"
-    await runBackupSchedule(dir, ["status", "--json"], {
-      runner: {
-        run: () =>
-          Promise.resolve({ code: 1, stdout: "", stderr: "no crontab" }),
-        spawn: () => {
-          throw new Error("no spawn");
-        },
-      },
-      processEnv: {},
-      out: (t) => outLines.push(t),
-      err: (t) => errLines.push(t),
-    }).catch(() => {});
-    assertEquals(
-      outLines.filter((l) => l.trim() !== "").length,
-      0,
-      `--json 下 schedule 不得往 stdout 写人类日志，实得：${
-        JSON.stringify(outLines)
-      }`,
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
-  }
-});
-
-Deno.test("backup create: 数据量超出可用空间时在任何写入与采集前拒绝，满足时正常创建并释放锁", async () => {
-  const root = await Deno.makeTempDir();
-  try {
-    const dir = join(root, "install");
-    await Deno.mkdir(join(dir, "bin"), { recursive: true });
-    await Deno.writeTextFile(
-      join(dir, "docker-compose.prod.yml"),
-      "services: {}\n",
-    );
-    await Deno.writeTextFile(
-      join(dir, ".env.prod"),
-      "NOJ_VERSION=v0.11.0\nPOSTGRES_USER=noj\nPOSTGRES_DB=noj\nS3_BUCKET=b\n",
-    );
-    await Deno.chmod(join(dir, ".env.prod"), 0o600);
-    const backupDir = join(root, "backups");
-    const gib = 1024 * 1024 * 1024;
-    const mib = 1024 * 1024;
-    let opsCalled = false;
-    const trackingOps = {
-      ...makeCreateFakeOps(),
-      postgresDump: (dest: string) => {
-        opsCalled = true;
-        return Deno.writeTextFile(dest, "DUMP");
-      },
-    };
-
-    const { runBackupCreate } = await import("./commands/backup.ts");
-    // 可用 3 GiB >= 1024 MB 固定下限，但原始数据 2 GiB 在流式峰值下需 2 + ceil(1.7) + 0.5 = 4.2 GiB
-    const err = await assertRejects(
-      () =>
-        runBackupCreate(dir, {
-          args: [],
-          deps: { runner: minimalRunner(), processEnv: {} },
-          backupDir,
-          passphraseFile: join(root, "pass"),
-          noEncrypt: true,
-          minFreeMb: 1024,
-          ops: trackingOps,
-          probePartition: () =>
-            Promise.resolve({
-              filesystem: "/dev/vda1",
-              mountPoint: "/",
-              totalBytes: 100 * gib,
-              usedBytes: 97 * gib,
-              availableBytes: 3 * gib,
-              usedPercent: 97,
-              targetPath: backupDir,
-              probedPath: root,
-            }),
-          estimateDataSize: () =>
-            Promise.resolve({
-              postgresBytes: 512 * mib,
-              redisBytes: 0,
-              minioBytes: 1536 * mib,
-              totalBytes: 2 * gib,
-              sources: ["PostgreSQL", "MinIO"],
-            }),
-        }),
-      Error,
-      "可用空间不足",
-    );
-    assertStringIncludes(err.message, "需要");
-    assertStringIncludes(err.message, "可用");
-    assertEquals(opsCalled, false, "空间不足时绝不能开始任何采集或打包");
-    assertEquals(
-      await Deno.stat(backupDir).then(() => true).catch(() => false),
-      false,
-      "空间不足时不得创建备份目录",
-    );
-
-    // 可用空间提高到 6 GiB -> 正常创建并在完成后释放 .nojbackup-create.lock
-    const created = await runBackupCreate(dir, {
-      args: [],
-      deps: {
-        runner: minimalRunner(),
-        processEnv: {},
-        now: () => new Date("2026-11-21T00:00:00Z"),
-      },
-      backupDir,
-      passphraseFile: join(root, "pass"),
-      noEncrypt: true,
-      minFreeMb: 1024,
-      ops: trackingOps,
-      probePartition: () =>
-        Promise.resolve({
-          filesystem: "/dev/vda1",
-          mountPoint: "/",
-          totalBytes: 100 * gib,
-          usedBytes: 94 * gib,
-          availableBytes: 6 * gib,
-          usedPercent: 94,
-          targetPath: backupDir,
-          probedPath: root,
-        }),
-      estimateDataSize: () =>
-        Promise.resolve({
-          postgresBytes: 512 * mib,
-          redisBytes: 0,
-          minioBytes: 1536 * mib,
-          totalBytes: 2 * gib,
-          sources: ["PostgreSQL", "MinIO"],
-        }),
-    });
-    assertEquals(opsCalled, true);
-    assert(created.path.endsWith(".nojbackup"));
-    assertEquals(
-      await Deno.stat(join(backupDir, ".nojbackup-create.lock"))
-        .then(() => true)
-        .catch(() => false),
-      false,
-      "备份完成后必须释放排他锁",
-    );
-  } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
-  }
-});
-
 Deno.test("backup create: 启动前清理死进程残留，命中活跃锁时中止且不误删", async () => {
   const root = await Deno.makeTempDir();
   try {
@@ -1042,71 +811,51 @@ Deno.test("backup create: 启动前清理死进程残留，命中活跃锁时中
   }
 });
 
-Deno.test("backup create: NOJ_BACKUP_MIN_FREE_MB 优先级为 旗标 > 进程环境 > .env.prod > 1024", async () => {
+// ── 回归：备份目录尚不存在时空间守卫不得失效（PR #788 评审）────────
+// `df` 对不存在路径直接报错 → 若不回退到祖先目录，首次备份会被当作"无法探测"放行。
+
+Deno.test("resolveExistingAncestor: 不存在的多级路径回退到最近存在的祖先", async () => {
+  const { resolveExistingAncestor } = await import("./commands/backup.ts");
   const root = await Deno.makeTempDir();
   try {
-    const dir = join(root, "install");
-    await Deno.mkdir(dir, { recursive: true });
-    await Deno.writeTextFile(
-      join(dir, "docker-compose.prod.yml"),
-      "services: {}\n",
+    assertEquals(
+      await resolveExistingAncestor(join(root, "a", "b", "backups")),
+      root,
     );
-    await Deno.writeTextFile(
-      join(dir, ".env.prod"),
-      "NOJ_VERSION=v0.11.0\nNOJ_BACKUP_MIN_FREE_MB=4096\n",
-    );
-    await Deno.chmod(join(dir, ".env.prod"), 0o600);
-    const { runBackupCreate } = await import("./commands/backup.ts");
-    const mib = 1024 * 1024;
-    const probe2048 = () => Promise.resolve(2048 * mib);
-
-    // 1. 仅配置在 .env.prod (4096 MB) -> 可用 2048 MB 应被拒绝且输出包含 4 GiB
-    const errEnvFile = await assertRejects(
-      () =>
-        runBackupCreate(dir, {
-          args: [],
-          deps: { runner: minimalRunner(), processEnv: {} },
-          backupDir: join(root, "backups-1"),
-          noEncrypt: true,
-          probeFreeBytes: probe2048,
-        }),
-      Error,
-      "可用空间不足",
-    );
-    assertStringIncludes(errEnvFile.message, "4 GiB");
-
-    // 2. 进程环境变量 (3072 MB) 覆盖 .env.prod (4096 MB) -> 提示应反映 3 GiB
-    const errProc = await assertRejects(
-      () =>
-        runBackupCreate(dir, {
-          args: [],
-          deps: {
-            runner: minimalRunner(),
-            processEnv: { NOJ_BACKUP_MIN_FREE_MB: "3072" },
-          },
-          backupDir: join(root, "backups-2"),
-          noEncrypt: true,
-          probeFreeBytes: probe2048,
-        }),
-      Error,
-      "可用空间不足",
-    );
-    assertStringIncludes(errProc.message, "3 GiB");
-
-    // 3. CLI 旗标 --min-free-mb 512 覆盖进程环境与 .env.prod -> 2048 MB 通过空间预检
-    const created = await runBackupCreate(dir, {
-      args: ["--min-free-mb", "512"],
-      deps: {
-        runner: minimalRunner(),
-        processEnv: { NOJ_BACKUP_MIN_FREE_MB: "3072" },
-      },
-      backupDir: join(root, "backups-3"),
-      noEncrypt: true,
-      ops: makeCreateFakeOps(),
-      probeFreeBytes: probe2048,
-    });
-    assert(created.path.endsWith(".nojbackup"));
+    assertEquals(await resolveExistingAncestor(root), root);
   } finally {
-    await Deno.remove(root, { recursive: true }).catch(() => {});
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("probeDirFreeBytes: 备份目录不存在时对祖先目录执行 df 并返回可用字节", async () => {
+  const { probeDirFreeBytes } = await import("./commands/backup.ts");
+  const root = await Deno.makeTempDir();
+  try {
+    const probed: string[] = [];
+    const runner = {
+      run: (cmd: string, args: string[]) => {
+        assertEquals(cmd, "df");
+        probed.push(args[1]!);
+        return Promise.resolve({
+          code: 0,
+          stdout:
+            "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+            "/dev/sda1 1000000 999500 500 100% /\n",
+          stderr: "",
+        });
+      },
+      spawn: () => {
+        throw new Error("unused");
+      },
+    };
+    const free = await probeDirFreeBytes(
+      runner as never,
+      join(root, "not-yet", "backups"),
+    );
+    assertEquals(probed, [root]);
+    assertEquals(free, 500 * 1024);
+  } finally {
+    await Deno.remove(root, { recursive: true });
   }
 });

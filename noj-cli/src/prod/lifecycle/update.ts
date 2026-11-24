@@ -83,26 +83,6 @@ export interface UpdateOptions extends LifecycleOptions, DrainOptions {
   upgradeStatePath?: string;
   /** 显式迁移覆盖点；生产缺省按 migrate → gateway-migrate 顺序执行。 */
   migrate?: (context: UpdateMigrationContext) => Promise<void>;
-  /**
-   * 升级前整体磁盘空间预检注入点；在任何文件写入、同步或备份之前执行。
-   */
-  checkDiskSpace?: (
-    context: UpdateDiskCheckContext,
-  ) => Promise<UpdateDiskCheckResult>;
-}
-
-/** 升级前磁盘空间预检上下文。 */
-export interface UpdateDiskCheckContext {
-  dir: string;
-  envFile: string;
-  from: string;
-  to: string;
-}
-
-/** 升级前磁盘空间预检结果。 */
-export interface UpdateDiskCheckResult {
-  ok: boolean;
-  error?: string | null;
 }
 
 /** 升级前备份的上下文。 */
@@ -268,24 +248,6 @@ export async function update(opts: UpdateOptions): Promise<UpdateResult> {
   } else {
     // 恢复未完成升级时目标版本取自 checkpoint，而不是当前安装版本。
     to = recovering && previous !== null ? previous.to : from;
-  }
-
-  // ---- 2b. 升级前整体磁盘空间预检（零暂存、零下载、零备份写入前拦截）----
-  if (opts.checkDiskSpace !== undefined) {
-    let diskCheck: UpdateDiskCheckResult;
-    try {
-      diskCheck = await opts.checkDiskSpace({
-        dir: ctx.dir,
-        envFile,
-        from,
-        to,
-      });
-    } catch (err) {
-      return fail(from, to, (err as Error).message);
-    }
-    if (!diskCheck.ok) {
-      return fail(from, to, diskCheck.error ?? "升级前磁盘可用空间不足");
-    }
   }
 
   // ---- 3. 前置校验与目标配置解析都在升级序列内；暂存配置只在 --latest 有新版时创建 ----

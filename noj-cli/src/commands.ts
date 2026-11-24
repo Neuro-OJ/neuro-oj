@@ -137,18 +137,10 @@ export const COMMANDS: readonly TopCommandSpec[] = [
         name: "restore",
         summary: "恢复到已停止的 Compose 环境（需 --confirm）",
       },
-      {
-        name: "drill",
-        summary: "隔离环境真实恢复演练（分钟级、需 Docker）",
-      },
       { name: "list", summary: "列出备份（支持 --json）" },
       {
         name: "prune",
         summary: "清理过期备份（默认 dry-run，--confirm 才真正删除）",
-      },
-      {
-        name: "schedule",
-        summary: "安装/查看/删除定期备份 cron 任务",
       },
     ],
   },

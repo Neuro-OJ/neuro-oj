@@ -77,6 +77,8 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/e2e/session_test.ts",
   "scripts/verify-md-links_test.ts",
   "scripts/verify-agent-note-format_test.ts",
+  // 一键部署脚本：校验失败必须中止、参数与版本标签必须原样交给 noj-cli install。
+  "scripts/deploy/install-sh_test.ts",
 ];
 
 /**

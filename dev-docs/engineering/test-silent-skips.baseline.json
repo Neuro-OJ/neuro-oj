@@ -1,9 +1,9 @@
 {
-  "total": 335,
+  "total": 333,
   "by_reason": {
-    "early-return": 223,
+    "early-return": 222,
     "env-guard": 6,
-    "ignore": 33,
+    "ignore": 32,
     "rust-env-guard": 27,
     "rust-ignore": 46
   },
@@ -57,7 +57,6 @@
     "noj-tests/e2e/cross-domain/education_task_recovery.test.ts": 1,
     "noj-tests/e2e/cross-domain/network_capability.test.ts": 6,
     "noj-tests/e2e/cross-domain/pipeline.test.ts": 11,
-    "noj-tests/e2e/cross-domain/restore_drill_contract.test.ts": 2,
     "noj-tests/e2e/cross-domain/search.test.ts": 8,
     "noj-tests/e2e/cross-domain/storage_failure.test.ts": 5,
     "noj-tests/e2e/helper.ts": 1,

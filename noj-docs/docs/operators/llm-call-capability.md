@@ -34,7 +34,7 @@
 默认**始终启动** `llm-gateway` 且对这两个密钥使用 `${...:?}`
 必填校验，缺失会导致 `docker compose config` 直接报错。 :::
 
-升级或恢复演练由编排依赖保证 `gateway-migrate` 成功后才启动
+升级或恢复由编排依赖保证 `gateway-migrate` 成功后才启动
 `llm-gateway`；手工运行网关镜像时先执行：
 
 ```bash

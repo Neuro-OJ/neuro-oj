@@ -122,9 +122,12 @@ jobs:
           sha256sum docker-compose.prod.yml > docker-compose.prod.yml.sha256
           cp .env.prod.example env.prod.example
           sha256sum env.prod.example > env.prod.example.sha256
+          # 一键部署脚本：`releases/latest/download/install.sh` 恒指向最新正式版。
+          cp deploy/install.sh install.sh
+          sha256sum install.sh > install.sh.sha256
           # 兜底自检：资产名一律不得以 `.` 开头，否则上面的 404 会静默回流。
           for asset in docker-compose.prod.yml docker-compose.prod.yml.sha256 \
-            env.prod.example env.prod.example.sha256; do
+            env.prod.example env.prod.example.sha256 install.sh install.sh.sha256; do
             [[ "${asset:0:1}" != "." ]] || { echo "::error::资产名不得以点号开头：$asset"; exit 1; }
             [[ -f "$asset" ]] || { echo "::error::缺少待发布资产：$asset"; exit 1; }
           done
@@ -140,6 +143,8 @@ jobs:
             docker-compose.prod.yml.sha256 \
             env.prod.example \
             env.prod.example.sha256 \
+            install.sh \
+            install.sh.sha256 \
             --clobber
 
   publish-ide:

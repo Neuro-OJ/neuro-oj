@@ -1,4 +1,4 @@
-// 帮助文本渲染：顶层帮助、drill 专项帮助与生产命令帮助。
+// 帮助文本渲染：顶层帮助与生产命令帮助。
 
 import { COMMANDS, renderCommandList } from "../commands.ts";
 
@@ -19,46 +19,6 @@ export function printHelp(): string {
   const parsed = raw === undefined ? NaN : Number.parseInt(raw, 10);
   const maxWidth = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   return renderCommandList(maxWidth === undefined ? {} : { maxWidth });
-}
-
-/**
- * drill 专项帮助（#516 验收：help 必须明确「分钟级、耗 Docker」，
- * 而不是只显示通用的 maintain backup 帮助）。
- *
- * 只接受 `.nojbackup` 单文件（唯一形态）。
- */
-export function renderDrillHelp(): string {
-  return renderCommandHelp(
-    "noj-cli backup drill <snapshot> [选项]",
-    [
-      "在**隔离环境**中真实恢复快照并做业务验收（登录/题目读取/可选评测）。",
-      "",
-      "注意: 会起独立 Compose 项目（默认每次唯一生成）、占用独立子网与数据卷，",
-      "      耗时**分钟级**且**需要 Docker 资源**——不是随手可跑的检查。",
-      "      必须连接专用隔离 Docker daemon；默认宿主机 socket 会被拒绝。",
-      "      只校验文件完整请用 `backup verify`（结构可解析加 `--deep`）。",
-      "",
-      "快照形态: `.nojbackup` 单文件（`backup create` 的唯一产物形态）。",
-      "演练会校验其 payload_layout == prod-raw 后解包到临时目录，",
-      "再交给隔离编排（独立项目/独立子网/**不映射宿主机端口**）。",
-      "",
-      "选项:",
-      "  --skip-judge            跳过 Judge/附件/评测验收（无 Judge 部署时）",
-      "  --docker-host SOCKET    专用 daemon socket（或 NOJ_DRILL_DOCKER_HOST）",
-      "  --subnet CIDR           演练网络子网（默认每次唯一 172.29.x.0/24）",
-      "  --project-name NAME     演练 Compose 项目名（默认每次唯一；禁止含 prod）",
-      "  --report FILE           报告路径（默认快照同级 restore-drill-report.txt）",
-      "  --rpo-max-hours N       快照年龄上限（默认 24）；超限视为演练失败",
-      "  --rto-max-minutes N     恢复耗时上限（默认 60）；超限视为演练失败",
-      "  --keep                  保留演练环境以便排查（默认清理）",
-      "  --json                  机器可读报告",
-      "  --dir <path>            生产安装目录",
-      "  --passphrase-file FILE  GPG 口令文件",
-      "  --no-encrypt            快照未加密（`backup create --no-encrypt` 的产物）",
-      "",
-      "退出码: 0 通过 / 1 演练失败（含业务验收失败、超 RPO/RTO）/ 2 参数或资源错误",
-    ],
-  );
 }
 
 /** 生产命令的 CLI 侧帮助（#517 E12）。 */
@@ -114,8 +74,8 @@ export function renderProductionCommandHelp(command: string): string {
     ? [
       "",
       "backup 常用选项:",
-      "  create --retention-days N --min-free-mb N   保留天数 / 兜底可用空间下限（结合 PG/Redis/MinIO 预估）",
-      "  verify|restore|drill --passphrase-file FILE  GPG 口令（或用",
+      "  create --retention-days N --min-free-mb N   保留天数 / 备份目录可用空间下限（默认 1024）",
+      "  verify|restore --passphrase-file FILE  GPG 口令（或用",
       "      NOJ_BACKUP_PASSPHRASE_FILE，或 .env.prod 中的同名键）",
       "  restore 省略 --confirm（或显式 --dry-run）为只规划、零副作用",
     ]
@@ -124,7 +84,7 @@ export function renderProductionCommandHelp(command: string): string {
       "",
       "update 常用选项:",
       "  --latest                 升级到最新稳定正式 Release",
-      "  --min-free-mb N          备份峰值预检兜底下限（默认 1024 MiB）",
+      "  --min-free-mb N          升级前备份的可用空间下限（默认 1024 MiB）",
       "  --skip-drain             跳过维护模式自动排空",
       "  --drain-timeout N        等待排空超时秒数",
       "  --recover                从上次未完成 checkpoint 恢复升级",
