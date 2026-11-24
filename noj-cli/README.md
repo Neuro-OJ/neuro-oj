@@ -15,9 +15,22 @@ amd64）。
 
 ## 首次安装
 
-**不再有自举脚本**（`setup.sh` / `scripts/deploy/install.sh` 已移除）。生产主机
-无需 Deno：从 Release 下载 `noj-cli-linux-amd64` 与 `.sha256`，校验后执行
-`install`， 它会自己补齐所需的 Compose 文件。
+**一键部署**（推荐）：脚本只负责解析版本、下载并校验 `noj-cli` 二进制，然后转交
+`noj-cli install`，安装逻辑全部在 CLI 内。需要 Linux amd64（glibc）、Docker 与
+Compose v2。
+
+```bash
+curl -fsSL https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/install.sh | bash
+# 指定版本与目录，`--` 之后的参数透传给 noj-cli install
+curl -fsSL https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/install.sh \
+  | bash -s -- --version v0.11.1 --dir /srv/noj
+```
+
+脚本源码见仓库 `deploy/install.sh`；在意供应链时可先下载、核对同目录的
+`install.sh.sha256` 并阅读后再执行。
+
+**手动安装**：生产主机无需 Deno：从 Release 下载 `noj-cli-linux-amd64` 与
+`.sha256`，校验后执行 `install`， 它会自己补齐所需的 Compose 文件。
 
 ```bash
 # 1) 下载并校验二进制（Release 资产含 .sha256）

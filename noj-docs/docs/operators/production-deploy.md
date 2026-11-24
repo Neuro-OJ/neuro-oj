@@ -44,8 +44,29 @@ API，也不会修改已有站点、证书 或其他容器。部署完成后，�
 
 ## 2. 安装
 
-**不再有自举脚本**：`setup.sh` 与 `scripts/deploy/install.sh` 已移除——安装职责
-转入 `noj-cli` 自身，因此生产主机**无需 Deno**，也不需要下载源码。
+安装职责全部在 `noj-cli` 自身，生产主机**无需 Deno**，也不需要下载源码。
+
+### 一键部署（推荐）
+
+```bash
+curl -fsSL https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/install.sh | bash
+```
+
+脚本（源码见仓库 `deploy/install.sh`）依次：检查 Linux amd64 / glibc / Docker /
+Compose v2 → 解析最新正式 Release（或 `--version` 指定的标签）→ 下载
+`noj-cli-linux-amd64` 并校验 SHA-256 → 以同一标签执行
+`noj-cli install --dir /opt/neuro-oj --ref <标签>`。用 `--dir` 改安装目录，
+`--` 之后的参数原样透传给 `noj-cli install`：
+
+```bash
+curl -fsSL https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/install.sh \
+  | bash -s -- --version v0.11.1 --dir /srv/noj
+```
+
+`curl | bash` 时脚本会把终端接回 stdin，配置向导照常交互。介意直接执行远程脚本时，
+可先下载 `install.sh` 与 `install.sh.sha256` 核对并阅读后再运行。
+
+### 手动安装
 
 从 Release 手动下载二进制并校验：
 

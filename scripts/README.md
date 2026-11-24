@@ -47,7 +47,8 @@ scripts/
 ├── silent-skip-report.ts  # 静默跳过棘轮
 ├── deploy/                # 仓库级校验脚本
 │   ├── verify-build-server.ts
-│   └── verify-compose-server.ts
+│   ├── verify-compose-server.ts
+│   └── install-sh_test.ts   # 一键部署脚本 deploy/install.sh 的回归
 ├── monitoring/            # 观测/告警快速检查
 ├── staging/               # 生产候选版本验收门禁
 ├── e2e/                   # 跨模块 E2E 测试
