@@ -34,6 +34,14 @@ export interface FrozenLlmExecution {
   models?: { alias: string; model: string }[];
 }
 
+/** 尝试快照中的 `llm_execution` 是否使用提交者自带模型（`byok:` Provider）。 */
+export function isByokExecution(llmExecution: unknown): boolean {
+  const providerId = (llmExecution as { provider_id?: unknown } | null)
+    ?.provider_id;
+  return typeof providerId === "string" &&
+    providerId.startsWith(BYOK_PROVIDER_PREFIX);
+}
+
 async function deriveKey(secret: string): Promise<CryptoKey> {
   const digest = await crypto.subtle.digest(
     "SHA-256",

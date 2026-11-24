@@ -38,6 +38,7 @@ import {
 import { createArtifactSubmission } from "../../services/submissions/artifact-submissions.ts";
 import { saveEvaluationResult } from "../../services/submissions/submissions-result.ts";
 import { createSelfTest } from "../../services/self-tests.ts";
+import { sourceUsedByok } from "../../services/versioning/dispatch-attempt.ts";
 import {
   createAttempt,
   supersedeAttempt,
@@ -1055,6 +1056,106 @@ Deno.test("attempt sequence: 迁移前较大的源 rejudge_seq 不回退（#27�
     source_kind: "rejudge",
   });
   assertEquals(second.sequence, 6);
+});
+
+Deno.test("rejudge: 新尝试沿用源提交首次尝试的 BYOK 选择", async () => {
+  const db = getDb();
+  const problemId = "ec-p-byok";
+  const versionId = "ec-p-byok-v1";
+  await db.insert(problems).values({
+    domain_id: DEFAULT_DOMAIN_ID,
+    id: problemId,
+    title: problemId,
+    description: "d",
+    number: 985031,
+    owner_id: "0",
+    difficulty: "easy",
+    judge_type: "dual",
+    created_at: now,
+    updated_at: now,
+  });
+  await db.insert(problemVersions).values({
+    id: versionId,
+    problem_id: problemId,
+    version: 1,
+    origin: "published",
+    content: {
+      kind: "ai",
+      title: problemId,
+      description: "d",
+      samples: [],
+      submission_mode: "code",
+      runtime_config: {
+        evaluator: {
+          image: "noj-evaluator-python",
+          command: "python3 /workspace/evaluate.py",
+          time_limit_ms: 1000,
+          memory_limit_mb: 256,
+        },
+        solution: {
+          image: "noj-solution-python",
+          call_timeout_ms: 1000,
+          memory_limit_mb: 256,
+        },
+      },
+      template_content: "",
+      artifact_max_size_mb: null,
+      llm_config: { max_calls: 3 },
+    },
+    published_at: now,
+  });
+  const llmExecution = (providerId: string) => ({
+    llm_execution: {
+      domain_id: DEFAULT_DOMAIN_ID,
+      provider_id: providerId,
+      model: "m",
+      max_calls: 3,
+      max_tokens: 100,
+    },
+  });
+  for (
+    const [id, providerId] of [["ec-s-byok", "byok:0"], ["ec-s-plat", "p-1"]]
+  ) {
+    await db.insert(submissions).values({
+      ...await problemExecutionForTest(problemId),
+      id,
+      user_id: "0",
+      problem_id: problemId,
+      language: "python3",
+      code: "print(1)",
+      submitted_version_id: versionId,
+      version_origin: "known",
+      status: "pending",
+      created_at: now,
+    });
+    const first = await createAttempt({
+      source: {
+        kind: "submission",
+        id,
+        problem_id: problemId,
+        contest_id: null,
+      },
+      problemVersionId: versionId,
+      source_kind: "initial",
+      taskSnapshot: llmExecution(providerId),
+    });
+    await supersedeAttempt(first.id);
+    // 修复前的重测可能已用平台 Provider 冻结；判定只看用户提交时的首次尝试
+    await createAttempt({
+      source: {
+        kind: "submission",
+        id,
+        problem_id: problemId,
+        contest_id: null,
+      },
+      problemVersionId: versionId,
+      source_kind: "rejudge",
+      taskSnapshot: llmExecution(providerId === "p-1" ? "byok:0" : "p-1"),
+    });
+  }
+  assertEquals(await sourceUsedByok("ec-s-byok"), true);
+  assertEquals(await sourceUsedByok("ec-s-plat"), false);
+  assertEquals(await sourceUsedByok("ec-s-missing"), false);
 });
 
 /**

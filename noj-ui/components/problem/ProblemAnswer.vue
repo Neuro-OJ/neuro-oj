@@ -48,8 +48,10 @@ const draftKey = computed(() =>
 const guestKey = computed(() =>
   domainAnswerKey('anonymous', props.slug, props.problem.reference.problem_id, props.problem.version_id, 'answer')
 );
-/** 自带模型只用于练习：LLM 题、非作业来源；比赛走 ContestAnswer，不经过这里。 */
-const byokAvailable = computed(() => props.problem.uses_llm === true && !props.assignmentOrigin);
+/** 自带模型只用于练习的代码提交：LLM 题、非作业来源；产物/预测提交与比赛（走 ContestAnswer）不支持。 */
+const byokAvailable = computed(
+  () => submissionMode.value === 'code' && props.problem.uses_llm === true && !props.assignmentOrigin,
+);
 const useOwnKey = ref(false);
 const writable = computed(() =>
   isLoggedIn.value && domain.value?.status === 'active' && props.problem.can_practice !== false

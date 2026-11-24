@@ -183,7 +183,7 @@ describe('域题作答', () => {
     expect(api.template).toHaveBeenCalledWith('school', 'main:1001', 'v1');
     expect(view.find('textarea').element.value).toBe('# version template');
   });
-  it('LLM 题打开自带模型开关后提交带 use_own_llm_key；作业来源不显示开关', async () => {
+  it('LLM 题打开自带模型开关后提交带 use_own_llm_key；作业来源与产物提交不显示开关', async () => {
     const llmProblem = { ...detail, uses_llm: true };
     const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: llmProblem }, global: { stubs } });
     expect(view.text()).toContain('使用我的模型 Key 评测');
@@ -199,6 +199,13 @@ describe('域题作答', () => {
       global: { stubs },
     });
     expect(assigned.text()).not.toContain('使用我的模型 Key 评测');
+
+    const artifactProblem = { ...llmProblem, content: { ...llmProblem.content, submission_mode: 'artifact' } };
+    const artifact = mount(DomainProblemAnswer, {
+      props: { slug: 'school', problem: artifactProblem },
+      global: { stubs },
+    });
+    expect(artifact.text()).not.toContain('使用我的模型 Key 评测');
   });
   it('引用公共题仍提交学校域、来源题号和所见版本', async () => {
     const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: detail }, global: { stubs } });

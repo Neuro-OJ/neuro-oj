@@ -1,6 +1,6 @@
 /** 代码/产物评测尝试派发（重测），以及代码升级副本创建后的派发。 */
 
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../../../../shared/db/connection.ts";
 import {
   evaluationAttempts,
@@ -10,7 +10,10 @@ import { getLogger } from "@logtape/logtape";
 import { getStorageProvider } from "../../../assets/storage/mod.ts";
 import type { LlmConfig } from "../../../problems/types/problems.ts";
 import type { ProblemContentV1 } from "../../../problems/types/problem-content.ts";
-import { buildJudgeTaskLlm } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
+import {
+  buildJudgeTaskLlm,
+  isByokExecution,
+} from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
 import type { FrozenLlmExecution } from "../../../platform/contracts/cross-module/gateway_services_llm-token.ts";
 import { classifyJudgeQueueError, pushJudgeTask } from "../../mq/producer.ts";
 import { prepareJudgeTask } from "../prepare-judge-task.ts";
@@ -56,6 +59,23 @@ export async function loadAttemptWithSnapshot(
     eq(evaluationAttempts.id, attemptId),
   ).limit(1);
   return row ?? null;
+}
+
+/**
+ * 源提交首次尝试是否使用了提交者自带模型（BYOK）。
+ *
+ * 重测/升级的新尝试没有可继承的快照；用户在提交时的模型选择只记录在首次尝试的
+ * `llm_execution.provider_id` 中，必须沿用，否则会静默改用平台 Provider 并消耗共享额度。
+ */
+export async function sourceUsedByok(submissionId: string): Promise<boolean> {
+  const [row] = await getDb().select({
+    snapshot: evaluationAttempts.task_snapshot,
+  }).from(evaluationAttempts)
+    .where(eq(evaluationAttempts.submission_id, submissionId))
+    .orderBy(asc(evaluationAttempts.sequence))
+    .limit(1);
+  const snapshot = row?.snapshot as Record<string, unknown> | null | undefined;
+  return isByokExecution(snapshot?.llm_execution);
 }
 
 /** 派发一次 Judge 执行（重测与升级共用）。 */
@@ -136,6 +156,8 @@ export async function dispatchJudgeAttempt(input: {
       | undefined;
     let llmTask;
     if (llmConfig && content.kind === "ai") {
+      // 新尝试（无冻结快照）沿用源提交的 BYOK 选择；重派由 frozen 前缀自行识别
+      const byok = frozenLlm ? undefined : await sourceUsedByok(source.id);
       llmTask = await buildJudgeTaskLlm(
         llmConfig,
         destinationId,
@@ -148,6 +170,7 @@ export async function dispatchJudgeAttempt(input: {
           domainId: source.domain_id ?? DEFAULT_DOMAIN_ID,
           problemVersionId: targetVersionId,
           frozen: frozenLlm,
+          byok,
         },
       );
     }
