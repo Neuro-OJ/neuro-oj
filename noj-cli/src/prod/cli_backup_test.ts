@@ -810,3 +810,52 @@ Deno.test("backup create: 启动前清理死进程残留，命中活跃锁时中
     await Deno.remove(root, { recursive: true }).catch(() => {});
   }
 });
+
+// ── 回归：备份目录尚不存在时空间守卫不得失效（PR #788 评审）────────
+// `df` 对不存在路径直接报错 → 若不回退到祖先目录，首次备份会被当作"无法探测"放行。
+
+Deno.test("resolveExistingAncestor: 不存在的多级路径回退到最近存在的祖先", async () => {
+  const { resolveExistingAncestor } = await import("./commands/backup.ts");
+  const root = await Deno.makeTempDir();
+  try {
+    assertEquals(
+      await resolveExistingAncestor(join(root, "a", "b", "backups")),
+      root,
+    );
+    assertEquals(await resolveExistingAncestor(root), root);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("probeDirFreeBytes: 备份目录不存在时对祖先目录执行 df 并返回可用字节", async () => {
+  const { probeDirFreeBytes } = await import("./commands/backup.ts");
+  const root = await Deno.makeTempDir();
+  try {
+    const probed: string[] = [];
+    const runner = {
+      run: (cmd: string, args: string[]) => {
+        assertEquals(cmd, "df");
+        probed.push(args[1]!);
+        return Promise.resolve({
+          code: 0,
+          stdout:
+            "Filesystem 1024-blocks Used Available Capacity Mounted on\n" +
+            "/dev/sda1 1000000 999500 500 100% /\n",
+          stderr: "",
+        });
+      },
+      spawn: () => {
+        throw new Error("unused");
+      },
+    };
+    const free = await probeDirFreeBytes(
+      runner as never,
+      join(root, "not-yet", "backups"),
+    );
+    assertEquals(probed, [root]);
+    assertEquals(free, 500 * 1024);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});

@@ -1,6 +1,6 @@
 /** `backup` 子命令：create / verify / list / prune / restore 的命令级装配与分发。 */
 
-import { join } from "@std/path";
+import { dirname, join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
 import { UsageError } from "../../util/args.ts";
 import { PROD_COMPOSE_FILE, PROD_ENV_FILE } from "../compose.ts";
@@ -85,16 +85,34 @@ export function buildBackupComposeContext(
 }
 
 /**
- * 探测目录可用字节数（`df -Pk <dir>`，经注入 runner）。
+ * 返回 `path` 自身或最近一个已存在的祖先目录。
+ *
+ * 首次备份时备份目录往往还不存在，而 `df` 对不存在的路径直接报错；若不回退到
+ * 祖先目录，空间守卫会因"无法探测"而放行，正好在最容易写满分区的那一次失效。
+ */
+export async function resolveExistingAncestor(path: string): Promise<string> {
+  let current = path;
+  for (;;) {
+    const st = await Deno.stat(current).catch(() => null);
+    if (st !== null) return st.isDirectory ? current : dirname(current);
+    const parent = dirname(current);
+    if (parent === current) return current;
+    current = parent;
+  }
+}
+
+/**
+ * 探测目录所在分区的可用字节数（对最近存在的祖先执行 `df -Pk`，经注入 runner）。
  *
  * 无法探测时返回 `Infinity`（放行）：空间守卫的语义是"明显不足才拒绝"。
  */
-async function probeDirFreeBytes(
+export async function probeDirFreeBytes(
   runner: CommandRunner,
   dir: string,
 ): Promise<number> {
   try {
-    const res = await runner.run("df", ["-Pk", dir]);
+    const target = await resolveExistingAncestor(dir);
+    const res = await runner.run("df", ["-Pk", target]);
     if (res.code !== 0) return Number.POSITIVE_INFINITY;
     const lines = res.stdout.trim().split("\n");
     const cols = lines[lines.length - 1]?.split(/\s+/) ?? [];
