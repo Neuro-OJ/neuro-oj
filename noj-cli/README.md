@@ -239,5 +239,4 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
 
 ## 生产入口
 
-生产部署、备份与恢复统一使用 `noj-cli`；仓库不再保留 Bash
-部署入口或弃用闸门。
+生产部署、备份与恢复统一使用 `noj-cli`；仓库不再保留 Bash 部署入口或弃用闸门。
