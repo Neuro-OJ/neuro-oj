@@ -15,6 +15,7 @@
 - [提交代码与语言约定](./submit.md)：函数调用题实现规范、顶层输出约束、产物提交（Kaggle 模式）与自测方法。
 - [理解评测结果](./results.md)：评测状态（`finished` / `error` 等）流转、得分详情与调试日志查看。
 - [使用 Capability 网络能力](./capability.md)：当题目需要调用大模型或外部 API 时，通过 `call_capability` 安全交互。
+- [自带模型（BYOK）](./byok.md)：练习 LLM 题时使用自己的 OpenAI 兼容模型 Key，不消耗平台额度。
 
 ### 2. 本地提效工具
 - [LMCC IDE / VS Code 插件](./lmcc-extension.md)：无需频繁切换浏览器，直接在 VS Code 或 LMCC IDE 中一键登录、拉取题目、本地调试并提交代码。

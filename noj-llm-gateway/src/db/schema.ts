@@ -49,6 +49,35 @@ export const llmProviders = pgTable(
 );
 
 /**
+ * 用户自带模型（BYOK）表：每个用户至多一条，与平台/域 Provider 物理分离。
+ *
+ * 归属只由 `user_id` 表达（不复用 `llm_providers`，见 2026-09-21 移除 BYOK 的
+ * 重建约束）。评测时 eval_token 的 `provider_id` 为 `byok:<user_id>`，网关据此
+ * 读取本表；调用只计入单次评测预算，不占用域/用户/题目共享额度。
+ */
+export const llmUserProviders = pgTable(
+  "llm_user_providers",
+  {
+    user_id: text("user_id").primaryKey(),
+    base_url: text("base_url").notNull(),
+    /** 用户指定的上游真实模型名；题目声明的全部别名都映射到它 */
+    model: text("model").notNull(),
+    /** AES-256-GCM 加密后的用户 API Key */
+    encrypted_api_key: text("encrypted_api_key").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    revision: integer("revision").notNull().default(1),
+    created_at: text("created_at").notNull(),
+    updated_at: text("updated_at").notNull(),
+  },
+  (table) => ({
+    revisionCheck: check(
+      "llm_user_providers_revision_check",
+      sql`${table.revision} >= 1`,
+    ),
+  }),
+);
+
+/**
  * LLM 调用审计表。
  * 记录每次经 gateway 转发的请求，完整保留 request_messages，不自动清理。
  */

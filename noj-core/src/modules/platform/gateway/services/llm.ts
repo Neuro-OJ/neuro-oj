@@ -5,6 +5,7 @@
  * 统一通过 gateway 内部管理 API 完成。
  */
 
+import { getLogger } from "@logtape/logtape";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getSetting } from "../../services/system-settings.ts";
 import { AppError, BadRequestError } from "../../../../shared/base/errors.ts";
@@ -662,4 +663,99 @@ export async function readGatewayPolicy(): Promise<GatewayPolicySnapshot> {
     "/internal/policy",
   );
   return body.data;
+}
+
+// ── 用户自带模型（BYOK）：按用户归属，与使用域 Provider 分离 ──
+
+/** eval_token 中用户自带模型的 Provider ID 前缀（与 gateway 一致）。 */
+export const BYOK_PROVIDER_PREFIX = "byok:";
+
+/** 用户自带模型视图（Key 已由 gateway 脱敏）。 */
+export interface UserLlmProviderView {
+  provider_id: string;
+  base_url: string;
+  model: string;
+  api_key_masked: string;
+  enabled: boolean;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 用户自带模型写入字段（白名单，其他字段不会转发）。 */
+export interface UserLlmProviderInput {
+  base_url?: string;
+  model?: string;
+  api_key?: string;
+  enabled?: boolean;
+}
+
+/** 读取用户自带模型与实例 BYOK 开关、允许的上游主机。 */
+export async function getUserLlmProvider(userId: string): Promise<{
+  data: UserLlmProviderView | null;
+  enabled: boolean;
+  allowed_hosts: string[];
+}> {
+  return await request(
+    `/internal/user-providers/${encodeURIComponent(userId)}`,
+  );
+}
+
+/** 创建（revision=0）或更新用户自带模型。 */
+export async function saveUserLlmProvider(
+  userId: string,
+  input: UserLlmProviderInput,
+  revision: number,
+): Promise<UserLlmProviderView> {
+  const body = await request<{ data: UserLlmProviderView }>(
+    `/internal/user-providers/${encodeURIComponent(userId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        base_url: input.base_url,
+        model: input.model,
+        api_key: input.api_key,
+        enabled: input.enabled,
+      }),
+      headers: { "If-Match": String(revision) },
+    },
+  );
+  return body.data;
+}
+
+/** 删除用户自带模型（含加密 Key）。 */
+export async function deleteUserLlmProvider(userId: string): Promise<void> {
+  await request(
+    `/internal/user-providers/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/**
+ * 注销账户后吊销其自带模型：删除网关中的加密 Key，不存在视为已吊销。
+ *
+ * 网关暂时不可达时只记录错误；评测签发处另有「提交者已注销」拒绝兜底。
+ */
+export async function revokeUserLlmProvider(userId: string): Promise<void> {
+  // 未接入网关的部署不可能保存过自带模型
+  if (!Deno.env.get("NOJ_LLM_SERVICE_TOKEN")) return;
+  try {
+    await deleteUserLlmProvider(userId);
+  } catch (error) {
+    if (
+      error instanceof LlmGatewayError && error.code === "provider_not_found"
+    ) return;
+    getLogger(["noj", "llm-gateway"]).error("注销账户后吊销自带模型失败", {
+      user_id: userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/** 用已保存的 Key 测试连通性（真实请求，max_tokens=1）。 */
+export async function testUserLlmProvider(userId: string): Promise<void> {
+  await request(
+    `/internal/user-providers/${encodeURIComponent(userId)}/test`,
+    { method: "POST" },
+  );
 }

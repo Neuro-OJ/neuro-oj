@@ -37,6 +37,12 @@ import {
   resolvePublicUpstream,
   UPSTREAM_BLOCKED,
 } from "../upstream-guard.ts";
+import {
+  byokProviderId,
+  getUserProviderSecret,
+  isByokProviderId,
+  resolveByokUpstream,
+} from "../user-providers.ts";
 
 export interface LlmDeps {
   config: GatewayConfig;
@@ -550,14 +556,47 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     }
     const aliasForAudit = upstreamModel === model ? undefined : model;
 
-    let providerSecret;
+    // 上游 Provider：平台/域 Provider，或 token 绑定的用户自带模型（BYOK）。
+    // BYOK 的 provider_id 由 core 以 `byok:<user_id>` 签进 AEAD token，这里再核对
+    // 与 token 内 user_id 一致，杜绝跨用户借用 Key。
+    const byok = isByokProviderId(payload.provider_id);
+    let providerSecret: {
+      provider: {
+        base_url: string;
+        enabled: boolean;
+        cost_per_1k_tokens: number;
+        rpm_limit?: number;
+        tpm_limit?: number;
+      };
+      apiKey: string;
+    };
     try {
-      providerSecret = await getProviderSecret(
-        deps.db,
-        payload.provider_id,
-        deps.config.storeKey,
-        payload.domain_id,
-      );
+      if (byok) {
+        if (payload.provider_id !== byokProviderId(payload.user_id)) {
+          throw new Error("provider_not_found");
+        }
+        const secret = await getUserProviderSecret(
+          deps.db,
+          payload.user_id,
+          deps.config.storeKey,
+        );
+        // 用户自付费：不计平台成本，不做平台 Provider 级 RPM/TPM 排队
+        providerSecret = {
+          provider: {
+            base_url: secret.provider.base_url,
+            enabled: secret.provider.enabled,
+            cost_per_1k_tokens: 0,
+          },
+          apiKey: secret.apiKey,
+        };
+      } else {
+        providerSecret = await getProviderSecret(
+          deps.db,
+          payload.provider_id,
+          deps.config.storeKey,
+          payload.domain_id,
+        );
+      }
     } catch {
       return c.json({ error: "provider_not_found" }, 400);
     }
@@ -572,11 +611,18 @@ export function createLlmRouter(deps: LlmDeps): Hono {
     try {
       // 校验与连接绑定（审计 R1）：这里拿到**已验证地址**，下面用 fetchPinned
       // 把连接钉在这批地址上，避免校验后再次解析（DNS rebinding / TOCTOU）。
-      upstreamResolution = await resolvePublicUpstream(
-        providerSecret.provider.base_url,
-        deps.config.upstreamAllowedHosts,
-        deps.resolveDns,
-      );
+      // BYOK 走精确主机白名单，且永不放行内网地址。
+      upstreamResolution = byok
+        ? await resolveByokUpstream(
+          providerSecret.provider.base_url,
+          deps.config.byokAllowedHosts,
+          deps.resolveDns,
+        )
+        : await resolvePublicUpstream(
+          providerSecret.provider.base_url,
+          deps.config.upstreamAllowedHosts,
+          deps.resolveDns,
+        );
     } catch {
       inc("noj_llm_provider_errors_total");
       logger.warn(
@@ -685,6 +731,8 @@ export function createLlmRouter(deps: LlmDeps): Hono {
         ttlSeconds,
         userRateLimitPerMinute: deps.config.userRateLimitPerMinute,
         ipRateLimitPerMinute: deps.config.ipRateLimitPerMinute,
+        // BYOK：只受单次评测预算与分钟限流约束，不占用域/用户/题目共享额度
+        sharedQuotas: !byok,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "limit_exceeded";

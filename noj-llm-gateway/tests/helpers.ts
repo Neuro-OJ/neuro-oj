@@ -308,6 +308,7 @@ export const testConfig: GatewayConfig = {
   usageRetentionDays: 90,
   upstreamAllowedHosts: new Set(),
   providerQueueTimeoutMs: 60_000,
+  byokAllowedHosts: new Set(["api.byok.test"]),
 };
 
 export async function makeToken(

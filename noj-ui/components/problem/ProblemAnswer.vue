@@ -37,12 +37,25 @@ const submissionId = ref('');
 const isObjective = computed(() => props.problem.content.kind === 'objective');
 const submissionMode = computed(() => props.problem.content.submission_mode ?? 'code');
 const draftKey = computed(() =>
-  domainAnswerKey(user.value?.id ?? 'anonymous', props.slug, props.problem.reference.problem_id, props.problem.version_id, 'answer')
+  domainAnswerKey(
+    user.value?.id ?? 'anonymous',
+    props.slug,
+    props.problem.reference.problem_id,
+    props.problem.version_id,
+    'answer',
+  )
 );
 const guestKey = computed(() =>
   domainAnswerKey('anonymous', props.slug, props.problem.reference.problem_id, props.problem.version_id, 'answer')
 );
-const writable = computed(() => isLoggedIn.value && domain.value?.status === 'active' && props.problem.can_practice !== false);
+/** 自带模型只用于练习的代码提交：LLM 题、非作业来源；产物/预测提交与比赛（走 ContestAnswer）不支持。 */
+const byokAvailable = computed(
+  () => submissionMode.value === 'code' && props.problem.uses_llm === true && !props.assignmentOrigin,
+);
+const useOwnKey = ref(false);
+const writable = computed(() =>
+  isLoggedIn.value && domain.value?.status === 'active' && props.problem.can_practice !== false
+);
 
 const handlers: AnswerHandlers = {
   submitCode: async (versionId, language, code) => {
@@ -54,6 +67,7 @@ const handlers: AnswerHandlers = {
       language,
       code,
       props.assignmentOrigin,
+      byokAvailable.value && useOwnKey.value,
     );
     return { id: response.data.id };
   },
@@ -163,6 +177,11 @@ watch(submissionId, (value) => panel.value?.setSubmissionId(value));
     </template>
 
     <template #submit-hint>
+      <div v-if="byokAvailable" class="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <USwitch v-model="useOwnKey" size="sm" label="使用我的模型 Key 评测" />
+        <NuxtLink to="/settings#settings-byok" class="text-primary hover:underline">配置自带模型</NuxtLink>
+        <span v-if="useOwnKey">不消耗平台额度，调用费用由你的 Provider 承担。</span>
+      </div>
       <p class="text-xs text-text-muted">提交归属 {{ slug }}，来源题号 {{ problem.reference.display_ref }}。</p>
     </template>
   </ProblemAnswerPanel>

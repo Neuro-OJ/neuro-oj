@@ -5,12 +5,18 @@ import type { LlmConfig } from "../../../problems/types/problems.ts";
 import type { JudgeTaskLlm } from "../../../evaluations/types/index.ts";
 import type { RuntimeConfig } from "../../../problems/types/runtime-config.ts";
 import { encodeBase64 } from "@std/encoding/base64";
+import { eq } from "drizzle-orm";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import {
+  BYOK_PROVIDER_PREFIX,
   type GatewayResolvedModelSelection,
   getLlmProviderById,
+  getUserLlmProvider,
   LlmGatewayError,
   resolveLlmGatewayExecution,
+  type UserLlmProviderView,
 } from "./llm.ts";
 import { resolveLlmLimits } from "./llm-limits.ts";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
@@ -29,6 +35,14 @@ export interface FrozenLlmExecution {
   max_tokens: number;
   /** 别名 → 真实模型（题目声明了非 default 别名时写入；缺省按单个 default 处理） */
   models?: { alias: string; model: string }[];
+}
+
+/** 尝试快照中的 `llm_execution` 是否使用提交者自带模型（`byok:` Provider）。 */
+export function isByokExecution(llmExecution: unknown): boolean {
+  const providerId = (llmExecution as { provider_id?: unknown } | null)
+    ?.provider_id;
+  return typeof providerId === "string" &&
+    providerId.startsWith(BYOK_PROVIDER_PREFIX);
 }
 
 async function deriveKey(secret: string): Promise<CryptoKey> {
@@ -107,7 +121,9 @@ export async function mintEvalToken(
  * @param problemId 题目 ID
  * @param userId 提交用户 ID
  * @param runtimeConfig 题目 runtime_config（用于 TTL）
- * @param scope 本次评测的尝试与版本；正式提交必须传入（尝试维度预算与吊销）
+ * @param scope 本次评测的尝试与版本；正式提交必须传入（尝试维度预算与吊销）。
+ *   `byok=true` 时改用提交者自带模型（Provider ID `byok:<userId>`），
+ *   冻结快照中的 BYOK Provider 在重新派发时同样要求用户模型仍可用。
  */
 export async function buildJudgeTaskLlm(
   llmConfig: LlmConfig,
@@ -120,6 +136,8 @@ export async function buildJudgeTaskLlm(
     attemptId: string;
     problemVersionId?: string | null;
     frozen?: FrozenLlmExecution;
+    /** 使用提交者自带模型（仅练习；比赛/作业由调用方拒绝） */
+    byok?: boolean;
   },
 ): Promise<JudgeTaskLlm> {
   const domainId = scope.domainId ?? DEFAULT_DOMAIN_ID;
@@ -130,12 +148,31 @@ export async function buildJudgeTaskLlm(
     );
   }
   const aliases = normalizeLlmModels(llmConfig);
+  const byok = scope.frozen
+    ? scope.frozen.provider_id.startsWith(BYOK_PROVIDER_PREFIX)
+    : scope.byok === true;
+  if (
+    byok && scope.frozen &&
+    scope.frozen.provider_id !== `${BYOK_PROVIDER_PREFIX}${userId}`
+  ) {
+    throw new BadRequestError(
+      "冻结的自带模型不属于提交者",
+      "BYOK_OWNER_MISMATCH",
+    );
+  }
+  const userProvider = byok ? await requireUserLlmProvider(userId) : null;
   let resolved: GatewayResolvedModelSelection;
   if (scope.frozen) {
     resolved = {
       provider_id: scope.frozen.provider_id,
       models: scope.frozen.models ??
         [{ alias: LLM_DEFAULT_MODEL_ALIAS, model: scope.frozen.model }],
+    };
+  } else if (userProvider) {
+    // 题目声明的全部别名都映射到用户指定的同一个真实模型
+    resolved = {
+      provider_id: userProvider.provider_id,
+      models: aliases.map((alias) => ({ alias, model: userProvider.model })),
     };
   } else {
     try {
@@ -173,20 +210,22 @@ export async function buildJudgeTaskLlm(
   const providerMissing = defaultOnly
     ? "当前工作空间默认 LLM Provider 不存在或已停用"
     : "题目所用模型别名对应的 LLM Provider 不存在或已停用";
-  let provider;
-  try {
-    provider = await getLlmProviderById(resolved.provider_id, domainId);
-  } catch (e) {
-    // provider_not_found → 400（使用域配置指向了不存在的 Provider）；
-    // 其余（gateway 不可达 / service token 缺失）原样上抛，按 5xx 处理，
-    // 避免把服务端故障伪装成客户端错误。
-    if (e instanceof LlmGatewayError && e.code === "provider_not_found") {
+  if (!byok) {
+    let provider;
+    try {
+      provider = await getLlmProviderById(resolved.provider_id, domainId);
+    } catch (e) {
+      // provider_not_found → 400（使用域配置指向了不存在的 Provider）；
+      // 其余（gateway 不可达 / service token 缺失）原样上抛，按 5xx 处理，
+      // 避免把服务端故障伪装成客户端错误。
+      if (e instanceof LlmGatewayError && e.code === "provider_not_found") {
+        throw new BadRequestError(providerMissing);
+      }
+      throw e;
+    }
+    if (!provider.enabled || provider.domain_id !== domainId) {
       throw new BadRequestError(providerMissing);
     }
-    throw e;
-  }
-  if (!provider.enabled || provider.domain_id !== domainId) {
-    throw new BadRequestError(providerMissing);
   }
   // 仅 default 时保持旧形态：allowed_models 为真实模型名且无 model_map
   const allowedModels = defaultOnly
@@ -226,4 +265,41 @@ export async function buildJudgeTaskLlm(
     allowed_models: allowedModels,
     ...(modelMap ? { model_map: modelMap } : {}),
   };
+}
+
+/**
+ * 读取提交者的自带模型，要求实例已开启 BYOK 且用户模型已启用。
+ *
+ * @throws {BadRequestError} `BYOK_OWNER_DELETED` / `BYOK_UNAVAILABLE` /
+ *   `BYOK_NOT_CONFIGURED` / `BYOK_DISABLED`
+ */
+async function requireUserLlmProvider(
+  userId: string,
+): Promise<UserLlmProviderView> {
+  // 账户注销后其 Key 已吊销；即使网关删除失败，也不得再消耗（如管理员重测）
+  const [owner] = await getDb().select({ deleted_at: users.deleted_at })
+    .from(users).where(eq(users.id, userId)).limit(1);
+  if (!owner || owner.deleted_at) {
+    throw new BadRequestError(
+      "提交者账户已注销，无法使用其自带模型",
+      "BYOK_OWNER_DELETED",
+    );
+  }
+  const { data, enabled } = await getUserLlmProvider(userId);
+  if (!enabled) {
+    throw new BadRequestError(
+      "本实例未开启自带模型（BYOK）",
+      "BYOK_UNAVAILABLE",
+    );
+  }
+  if (!data) {
+    throw new BadRequestError(
+      "尚未配置自带模型，请先在设置页保存 API Key",
+      "BYOK_NOT_CONFIGURED",
+    );
+  }
+  if (!data.enabled) {
+    throw new BadRequestError("自带模型已停用", "BYOK_DISABLED");
+  }
+  return data;
 }

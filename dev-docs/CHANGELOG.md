@@ -10,6 +10,15 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **用户自带模型（BYOK）**：练习提交 LLM 题时可选用自己保存的 OpenAI 兼容
+  Provider（设置页「自带模型」），题目声明的全部模型别名映射到用户指定的模型，
+  不消耗域/平台共享额度，只保留单次尝试的调用与 token 上限；比赛与作业提交
+  拒绝（`BYOK_NOT_ALLOWED`）。网关新增表 `llm_user_providers`（需执行
+  `db:migrate`）与环境变量 `NOJ_LLM_BYOK_ALLOWED_HOSTS`（精确主机白名单，
+  默认为空即关闭）。JudgeTask 契约不变，judge 无需升级。
+
 ### 修复
 
 - **全站排行榜与签到活跃榜恢复可访问**：迁到新地址 `/leaderboard`（v0.11.0 把

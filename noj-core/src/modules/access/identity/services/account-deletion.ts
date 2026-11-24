@@ -8,6 +8,7 @@
 import { getDb } from "../../../../shared/db/connection.ts";
 import { enqueueSearchIndexTask } from "../../../application/search-tasks.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
+import { revokeUserLlmProvider } from "../../../platform/contracts/cross-module/gateway_services_llm.ts";
 import { logAuthEvent } from "../../../platform/contracts/cross-module/system_services_audit-log.ts";
 import { deleteAvatarIfUnreferenced } from "./users/users-avatar.ts";
 import {
@@ -20,7 +21,8 @@ import type { AccountLifecycleBoundary } from "../../account.ts";
 
 /**
  * application 统一使用的真实跨模块副作用边界。
- * 教育成员事实在同一 DbTx 内更新；对象存储、搜索通知在账户提交后执行。
+ * 教育成员事实在同一 DbTx 内更新；对象存储、搜索通知、自带模型吊销在账户
+ * 提交后执行。
  */
 function accountLifecycleBoundary(): AccountLifecycleBoundary {
   return {
@@ -38,6 +40,8 @@ function accountLifecycleBoundary(): AccountLifecycleBoundary {
         }
       }
       await enqueueSearchIndexTask("user", userId, "delete");
+      // 自带模型 Key 属于该账户；注销后不得再被重测等任务消耗
+      await revokeUserLlmProvider(userId);
     },
   };
 }

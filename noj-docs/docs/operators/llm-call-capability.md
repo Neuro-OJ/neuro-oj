@@ -59,6 +59,10 @@ Provider 上游地址（Base URL）的出站限制：
   DNS，域名解析到内网地址同样被拦截（防止借网关访问内网服务）。
 - 内网自建模型（如 vLLM）需在 `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS`
   中显式放行主机名或 IP （逗号分隔），白名单内的主机允许 http 与内网地址。
+- 用户自带模型（BYOK）使用独立白名单 `NOJ_LLM_BYOK_ALLOWED_HOSTS`（精确主机或
+  `host:port`，逗号分隔）：只允许 https，且无论是否在白名单内都必须解析到公网；
+  不受 `NOJ_LLM_UPSTREAM_ALLOWED_HOSTS` 放行。为空（默认）即关闭 BYOK。详见
+  [自带模型](../users/byok.md)。
 - 被拦截时后台保存 Provider 会提示"Base URL 不被允许"；评测中的调用返回
   `provider_base_url_blocked`，不消耗额度。
 

@@ -26,6 +26,13 @@ const detail: DomainProblemDetail = {
 };
 const stubs = {
   UCard: { template: '<div><slot /></div>' },
+  USwitch: {
+    props: ['modelValue', 'label'],
+    emits: ['update:modelValue'],
+    template:
+      '<label><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" />{{ label }}</label>',
+  },
+  NuxtLink: { template: '<a><slot /></a>' },
   UButton: { props: ['disabled'], template: '<button :disabled="disabled"><slot /></button>' },
   UAlert: { props: ['title'], template: '<div>{{ title }}<slot name="actions" /></div>' },
   USelect: { template: '<select />' },
@@ -143,6 +150,7 @@ describe('域题作答', () => {
       'ui',
       JSON.stringify({ prompt: 'school work' }, null, 2),
       origin,
+      false,
     );
   });
   it('预测题显示单文件白名单并使用使用域上传，不走代码提交', async () => {
@@ -175,12 +183,36 @@ describe('域题作答', () => {
     expect(api.template).toHaveBeenCalledWith('school', 'main:1001', 'v1');
     expect(view.find('textarea').element.value).toBe('# version template');
   });
+  it('LLM 题打开自带模型开关后提交带 use_own_llm_key；作业来源与产物提交不显示开关', async () => {
+    const llmProblem = { ...detail, uses_llm: true };
+    const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: llmProblem }, global: { stubs } });
+    expect(view.text()).toContain('使用我的模型 Key 评测');
+    await view.find('input[type="checkbox"]').setValue(true);
+    await view.find('textarea').setValue('print(1)');
+    await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
+    await flushPromises();
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v1', 'python3', 'print(1)', undefined, true);
+
+    const origin = { assignment_id: 'task', assignment_item_id: 'item' };
+    const assigned = mount(DomainProblemAnswer, {
+      props: { slug: 'school', problem: llmProblem, assignmentOrigin: origin },
+      global: { stubs },
+    });
+    expect(assigned.text()).not.toContain('使用我的模型 Key 评测');
+
+    const artifactProblem = { ...llmProblem, content: { ...llmProblem.content, submission_mode: 'artifact' } };
+    const artifact = mount(DomainProblemAnswer, {
+      props: { slug: 'school', problem: artifactProblem },
+      global: { stubs },
+    });
+    expect(artifact.text()).not.toContain('使用我的模型 Key 评测');
+  });
   it('引用公共题仍提交学校域、来源题号和所见版本', async () => {
     const view = mount(DomainProblemAnswer, { props: { slug: 'school', problem: detail }, global: { stubs } });
     await view.find('textarea').setValue('print(1)');
     await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
     await flushPromises();
-    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v1', 'python3', 'print(1)', undefined);
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v1', 'python3', 'print(1)', undefined, false);
     expect(view.text()).toContain('已受理提交：s1');
   });
   it('版本刷新后先阻止提交，明确确认后保留代码使用新版本', async () => {
@@ -193,7 +225,7 @@ describe('域题作答', () => {
     expect(view.find('textarea').element.value).toBe('my code');
     await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
     await flushPromises();
-    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my code', undefined);
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my code', undefined, false);
   });
   it('作业进入后切换版本保留代码和来源，提交仍使用普通同域接口', async () => {
     const origin = { assignment_id: 'task', assignment_item_id: 'item' };
@@ -207,6 +239,6 @@ describe('域题作答', () => {
     await flushPromises();
     await view.findAll('button').find((button) => button.text() === '提交评测')!.trigger('click');
     await flushPromises();
-    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my work', origin);
+    expect(api.code).toHaveBeenCalledWith('school', 'main:1001', 'v2', 'python3', 'my work', origin, false);
   });
 });

@@ -55,6 +55,7 @@ export function useDomainProblems() {
       language: string,
       code: string,
       origin?: AssignmentSubmissionOrigin,
+      useOwnLlmKey = false,
     ) =>
       api.post<{ data: { id: string; status: string } }>(`/api/v1/domains/${encodeURIComponent(slug)}/submissions`, {
         problem_ref,
@@ -62,6 +63,7 @@ export function useDomainProblems() {
         language,
         code,
         ...origin,
+        ...(useOwnLlmKey ? { use_own_llm_key: true } : {}),
       }),
     artifact: (
       slug: string,

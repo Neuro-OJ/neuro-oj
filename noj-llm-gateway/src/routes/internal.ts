@@ -31,6 +31,14 @@ import {
   upsertDomainModelAlias,
 } from "../model-authority.ts";
 import { createInternalPolicyRouter } from "./internal-policy.ts";
+import {
+  BYOK_DISABLED,
+  deleteUserProvider,
+  getUserProvider,
+  saveUserProvider,
+  testUserProvider,
+  type UserProviderInput,
+} from "../user-providers.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
@@ -500,6 +508,82 @@ export function createInternalRouter(deps: InternalDeps): Hono {
         { error: code },
         code === "accounting_unavailable" ? 503 : 409,
       );
+    }
+  });
+
+  // ── 用户自带模型（BYOK）：按用户归属，与使用域 Provider 分离 ──
+  app.get("/internal/user-providers/:userId", async (c) => {
+    const provider = await getUserProvider(
+      deps.db,
+      c.req.param("userId"),
+      deps.config.storeKey,
+    );
+    return c.json({
+      data: provider,
+      enabled: deps.config.byokAllowedHosts.size > 0,
+      allowed_hosts: [...deps.config.byokAllowedHosts].sort(),
+    });
+  });
+
+  app.put("/internal/user-providers/:userId", async (c) => {
+    const revision = requireRevision(c);
+    const body = await c.req.json<UserProviderInput>().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "provider_invalid" }, 400);
+    }
+    try {
+      // 只取白名单字段，请求体里的其他键（如 user_id / revision）一律忽略
+      const provider = await saveUserProvider(
+        deps.db,
+        c.req.param("userId"),
+        {
+          base_url: body.base_url,
+          model: body.model,
+          api_key: body.api_key,
+          enabled: body.enabled,
+        },
+        deps.config.storeKey,
+        deps.config.byokAllowedHosts,
+        revision,
+      );
+      return c.json({ data: provider }, revision === 0 ? 201 : 200);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "provider_invalid";
+      if (code === "revision_conflict") return c.json({ error: code }, 409);
+      if (
+        code === "provider_invalid" || code === BYOK_DISABLED ||
+        code === UPSTREAM_BLOCKED
+      ) {
+        return c.json({ error: code }, 400);
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/internal/user-providers/:userId", async (c) => {
+    const deleted = await deleteUserProvider(deps.db, c.req.param("userId"));
+    return deleted
+      ? c.body(null, 204)
+      : c.json({ error: "provider_not_found" }, 404);
+  });
+
+  app.post("/internal/user-providers/:userId/test", async (c) => {
+    try {
+      await testUserProvider(
+        deps.db,
+        c.req.param("userId"),
+        deps.config.storeKey,
+        deps.config.byokAllowedHosts,
+      );
+      return c.json({ data: { status: "ok" } });
+    } catch (err) {
+      const code = err instanceof Error ? err.message : "provider_error";
+      const status = code === "provider_not_found"
+        ? 404
+        : code === BYOK_DISABLED || code === UPSTREAM_BLOCKED
+        ? 400
+        : 502;
+      return c.json({ error: code }, status);
     }
   });
 

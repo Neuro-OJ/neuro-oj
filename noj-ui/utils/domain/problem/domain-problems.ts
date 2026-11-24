@@ -51,6 +51,8 @@ export interface DomainProblemContent {
 export interface DomainProblemDetail {
   contest_protection?: DomainProblemSummary['contest_protection'];
   can_practice?: boolean;
+  /** 题目需要 LLM 能力（练习时可选用自带模型） */
+  uses_llm?: boolean;
   reference: DomainProblemReference;
   binding_id: string;
   policy_revision: number;
@@ -76,16 +78,18 @@ export interface DomainProblemDetail {
   content: DomainProblemContent;
 }
 /** 独立代码工作区只消费公开题面、版本与执行语言，不接收作者配置。 */
-export type DomainCodeProblem = Pick<
-  DomainProblemDetail,
-  | 'reference'
-  | 'version_id'
-  | 'version'
-  | 'supported_languages'
-  | 'difficulty'
-  | 'limits'
-  | 'content'
->;
+export type DomainCodeProblem =
+  & Pick<
+    DomainProblemDetail,
+    | 'reference'
+    | 'version_id'
+    | 'version'
+    | 'supported_languages'
+    | 'difficulty'
+    | 'limits'
+    | 'content'
+  >
+  & Partial<Pick<DomainProblemDetail, 'uses_llm'>>;
 /** 草稿与账号、域、题目、版本及语言一起定位，两个标签页不会改写提交归属。 */
 export function domainAnswerKey(
   actor: string,

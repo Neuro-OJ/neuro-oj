@@ -8,6 +8,7 @@
  * openspec/changes/refactor-core-feature-slices/design.md。
  */
 import type { FeatureDefinition } from "./shared/feature.ts";
+import * as byok from "./features/byok/index.ts";
 import * as checkin from "./features/checkin/index.ts";
 import * as knowledge from "./features/knowledge/index.ts";
 import * as legal from "./features/legal/index.ts";
@@ -21,4 +22,5 @@ export const FEATURES: readonly FeatureDefinition[] = [
   tags.feature,
   checkin.feature,
   knowledge.feature,
+  byok.feature,
 ];

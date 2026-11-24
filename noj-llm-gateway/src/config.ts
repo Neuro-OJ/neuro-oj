@@ -28,6 +28,11 @@ export interface GatewayConfig {
   upstreamAllowedHosts: Set<string>;
   /** Provider RPM/TPM 超限时单个请求的最长排队时间（毫秒），默认 60 秒 */
   providerQueueTimeoutMs: number;
+  /**
+   * 用户自带模型（BYOK）允许的上游主机精确白名单（小写）。
+   * 空集合 = BYOK 关闭；命中的主机仍必须 https 且解析到公网地址。
+   */
+  byokAllowedHosts: Set<string>;
 }
 
 export function loadConfig(
@@ -55,6 +60,7 @@ export function loadConfig(
   const upstreamAllowedHosts = parseAllowedHosts(
     env.NOJ_LLM_UPSTREAM_ALLOWED_HOSTS,
   );
+  const byokAllowedHosts = parseAllowedHosts(env.NOJ_LLM_BYOK_ALLOWED_HOSTS);
   const serviceToken = env.NOJ_LLM_SERVICE_TOKEN ?? "";
   const storeKey = env.NOJ_LLM_STORE_KEY ?? "";
   const databaseUrl = env.DATABASE_URL ?? "";
@@ -86,6 +92,7 @@ export function loadConfig(
     usageRetentionDays,
     upstreamAllowedHosts,
     providerQueueTimeoutMs,
+    byokAllowedHosts,
   };
 }
 
