@@ -5,6 +5,7 @@
  * 统一通过 gateway 内部管理 API 完成。
  */
 
+import { getLogger } from "@logtape/logtape";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getSetting } from "../../services/system-settings.ts";
 import { AppError, BadRequestError } from "../../../../shared/base/errors.ts";
@@ -728,6 +729,27 @@ export async function deleteUserLlmProvider(userId: string): Promise<void> {
     `/internal/user-providers/${encodeURIComponent(userId)}`,
     { method: "DELETE" },
   );
+}
+
+/**
+ * 注销账户后吊销其自带模型：删除网关中的加密 Key，不存在视为已吊销。
+ *
+ * 网关暂时不可达时只记录错误；评测签发处另有「提交者已注销」拒绝兜底。
+ */
+export async function revokeUserLlmProvider(userId: string): Promise<void> {
+  // 未接入网关的部署不可能保存过自带模型
+  if (!Deno.env.get("NOJ_LLM_SERVICE_TOKEN")) return;
+  try {
+    await deleteUserLlmProvider(userId);
+  } catch (error) {
+    if (
+      error instanceof LlmGatewayError && error.code === "provider_not_found"
+    ) return;
+    getLogger(["noj", "llm-gateway"]).error("注销账户后吊销自带模型失败", {
+      user_id: userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /** 用已保存的 Key 测试连通性（真实请求，max_tokens=1）。 */

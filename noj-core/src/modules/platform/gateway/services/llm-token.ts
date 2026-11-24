@@ -5,6 +5,9 @@ import type { LlmConfig } from "../../../problems/types/problems.ts";
 import type { JudgeTaskLlm } from "../../../evaluations/types/index.ts";
 import type { RuntimeConfig } from "../../../problems/types/runtime-config.ts";
 import { encodeBase64 } from "@std/encoding/base64";
+import { eq } from "drizzle-orm";
+import { getDb } from "../../../../shared/db/connection.ts";
+import { users } from "../../../../shared/db/schema.ts";
 import { BadRequestError } from "../../../../shared/base/errors.ts";
 import {
   BYOK_PROVIDER_PREFIX,
@@ -267,12 +270,21 @@ export async function buildJudgeTaskLlm(
 /**
  * 读取提交者的自带模型，要求实例已开启 BYOK 且用户模型已启用。
  *
- * @throws {BadRequestError} `BYOK_UNAVAILABLE` / `BYOK_NOT_CONFIGURED` /
- *   `BYOK_DISABLED`
+ * @throws {BadRequestError} `BYOK_OWNER_DELETED` / `BYOK_UNAVAILABLE` /
+ *   `BYOK_NOT_CONFIGURED` / `BYOK_DISABLED`
  */
 async function requireUserLlmProvider(
   userId: string,
 ): Promise<UserLlmProviderView> {
+  // 账户注销后其 Key 已吊销；即使网关删除失败，也不得再消耗（如管理员重测）
+  const [owner] = await getDb().select({ deleted_at: users.deleted_at })
+    .from(users).where(eq(users.id, userId)).limit(1);
+  if (!owner || owner.deleted_at) {
+    throw new BadRequestError(
+      "提交者账户已注销，无法使用其自带模型",
+      "BYOK_OWNER_DELETED",
+    );
+  }
   const { data, enabled } = await getUserLlmProvider(userId);
   if (!enabled) {
     throw new BadRequestError(

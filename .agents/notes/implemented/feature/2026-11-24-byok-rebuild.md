@@ -46,6 +46,7 @@ LLM 题评测只能使用工作空间配置的 Provider 与共享额度。练习
 - 部署需执行网关 `db:migrate` 并按需配置 `NOJ_LLM_BYOK_ALLOWED_HOSTS`；默认空即
   关闭，升级后行为不变。
 - 选手删除/停用自带模型后，已有 BYOK 提交的重测会以 `BYOK_*` 400 失败。
+- 注销账户在提交后 best-effort 删除网关中的 Key；签发 token 前另查 `users.deleted_at`，已注销即 `BYOK_OWNER_DELETED`，网关删除失败也不会再消耗该 Key。
 - BYOK 调用不进入域成本统计，管理端用量页按 `provider_id = byok:*` 区分。
 - 已在全新库上端到端验证：设置页保存/测试连接、编辑器提交冻结 `byok:` 快照、
   用队列中的 eval_token 调网关转发到用户上游，且只产生单次尝试计数。

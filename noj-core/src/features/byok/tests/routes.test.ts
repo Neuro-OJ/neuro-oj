@@ -16,6 +16,7 @@ import { hashPassword } from "../../../modules/access/identity/services/security
 import { getDb } from "../../../shared/db/connection.ts";
 import { users } from "../../../shared/db/schema.ts";
 import { buildJudgeTaskLlm } from "../../../modules/platform/gateway/services/llm-token.ts";
+import { revokeUserLlmProvider } from "../../../modules/platform/gateway/services/llm.ts";
 import { createSubmission } from "../../../modules/evaluations/services/submissions/submission-create.ts";
 import type { RuntimeConfig } from "../../../modules/problems/index.ts";
 
@@ -259,33 +260,36 @@ pgTest("byok route: 测试连接的上游失败以 failed 返回", async () => {
 });
 
 Deno.test("byok token: 别名全部映射到用户模型，provider 为 byok:<user>", async () => {
+  const userId = await createTestUser();
   const gw = stubGateway(() => ({
     status: 200,
-    body: { data: view("u-1"), enabled: true, allowed_hosts: [] },
+    body: { data: view(userId), enabled: true, allowed_hosts: [] },
   }));
   try {
     const llm = await buildJudgeTaskLlm(
       { models: ["default", "fast"] },
       "sub-1",
       "prob-1",
-      "u-1",
+      userId,
       runtimeConfig,
       { attemptId: "att-1", byok: true },
     );
-    assertEquals(llm.provider_id, "byok:u-1");
+    assertEquals(llm.provider_id, `byok:${userId}`);
     assertEquals(llm.allowed_models, ["default", "fast"]);
     assertEquals(llm.model_map, { default: "gpt-user", fast: "gpt-user" });
     const payload = await decryptToken(llm.eval_token);
-    assertEquals(payload.provider_id, "byok:u-1");
-    assertEquals(payload.user_id, "u-1");
+    assertEquals(payload.provider_id, `byok:${userId}`);
+    assertEquals(payload.user_id, userId);
     // 只访问用户 Provider，不解析域配置、不读平台 Provider
-    assertEquals(gw.calls.map((c) => c.path), ["/internal/user-providers/u-1"]);
+    assertEquals(gw.calls.map((c) => c.path), [
+      `/internal/user-providers/${userId}`,
+    ]);
 
     const defaultOnly = await buildJudgeTaskLlm(
       {},
       "sub-1",
       "prob-1",
-      "u-1",
+      userId,
       runtimeConfig,
       { attemptId: "att-1", byok: true },
     );
@@ -293,20 +297,22 @@ Deno.test("byok token: 别名全部映射到用户模型，provider 为 byok:<us
     assert(!defaultOnly.model_map);
   } finally {
     gw.restore();
+    await getDb().delete(users).where(eq(users.id, userId));
   }
 });
 
 Deno.test("byok token: 实例关闭 / 未配置 / 已停用分别给出稳定错误码", async () => {
+  const userId = await createTestUser();
   for (
     const [body, code] of [
       [
-        { data: view("u-1"), enabled: false, allowed_hosts: [] },
+        { data: view(userId), enabled: false, allowed_hosts: [] },
         "BYOK_UNAVAILABLE",
       ],
       [{ data: null, enabled: true, allowed_hosts: [] }, "BYOK_NOT_CONFIGURED"],
       [
         {
-          data: view("u-1", { enabled: false }),
+          data: view(userId, { enabled: false }),
           enabled: true,
           allowed_hosts: [],
         },
@@ -317,12 +323,69 @@ Deno.test("byok token: 实例关闭 / 未配置 / 已停用分别给出稳定错
     const gw = stubGateway(() => ({ status: 200, body }));
     try {
       const error = await assertRejects(() =>
-        buildJudgeTaskLlm({}, "s", "p", "u-1", runtimeConfig, {
+        buildJudgeTaskLlm({}, "s", "p", userId, runtimeConfig, {
           attemptId: "a",
           byok: true,
         })
       );
       assertEquals((error as AppError).code, code);
+    } finally {
+      gw.restore();
+    }
+  }
+  await getDb().delete(users).where(eq(users.id, userId));
+});
+
+Deno.test("byok token: 提交者已注销时拒绝，且不访问网关", async () => {
+  const userId = await createTestUser();
+  await getDb().update(users).set({ deleted_at: new Date().toISOString() })
+    .where(eq(users.id, userId));
+  const gw = stubGateway(() => ({
+    status: 200,
+    body: { data: view(userId), enabled: true, allowed_hosts: [] },
+  }));
+  try {
+    for (
+      const scope of [
+        { attemptId: "a", byok: true },
+        {
+          attemptId: "a",
+          frozen: {
+            domain_id: "00000000-0000-4000-8000-000000000001",
+            provider_id: `byok:${userId}`,
+            model: "gpt-user",
+            max_calls: 1,
+            max_tokens: 1,
+          },
+        },
+      ]
+    ) {
+      const error = await assertRejects(() =>
+        buildJudgeTaskLlm({}, "s", "p", userId, runtimeConfig, scope)
+      );
+      assertEquals((error as AppError).code, "BYOK_OWNER_DELETED");
+    }
+    assertEquals(gw.calls.length, 0);
+  } finally {
+    gw.restore();
+    await getDb().delete(users).where(eq(users.id, userId));
+  }
+});
+
+Deno.test("byok revoke: 注销后删除网关 Key；不存在或网关失败不抛出", async () => {
+  for (const status of [204, 404, 503]) {
+    const gw = stubGateway(() => ({
+      status,
+      body: status === 204
+        ? undefined
+        : { error: status === 404 ? "provider_not_found" : "unavailable" },
+    }));
+    try {
+      await revokeUserLlmProvider("u-gone");
+      assertEquals(gw.calls.map((c) => [c.method, c.path]), [[
+        "DELETE",
+        "/internal/user-providers/u-gone",
+      ]]);
     } finally {
       gw.restore();
     }
