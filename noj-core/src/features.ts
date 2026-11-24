@@ -9,6 +9,7 @@
  */
 import type { FeatureDefinition } from "./shared/feature.ts";
 import * as checkin from "./features/checkin/index.ts";
+import * as evaluationFeedback from "./features/evaluation-feedback/index.ts";
 import * as knowledge from "./features/knowledge/index.ts";
 import * as legal from "./features/legal/index.ts";
 import * as tags from "./features/tags/index.ts";
@@ -21,4 +22,5 @@ export const FEATURES: readonly FeatureDefinition[] = [
   tags.feature,
   checkin.feature,
   knowledge.feature,
+  evaluationFeedback.feature,
 ];

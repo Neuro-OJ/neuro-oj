@@ -14,6 +14,8 @@ export interface SubmissionCaseResult {
   score?: number | null;
   maxScore?: number | null;
   terminationReason?: string | null;
+  errorType?: string | null;
+  reasoning?: string | null;
   visibility: SubmissionCaseVisibility;
   timeMs: number | null;
   memoryKb: number | null;
@@ -113,12 +115,16 @@ function normalizeCase(
 
   const visibility = resolveVisibility(raw, fallbackVisibility);
   const isHidden = visibility === 'hidden';
+  const errorType = isHidden ? null : asString(raw.error_type) ?? asString(raw.termination_reason);
+  const reasoning = isHidden ? null : asString(raw.reasoning) ?? asString(raw.reason) ?? asString(raw.feedback);
   return {
     caseId,
     status,
     ...(raw.score !== undefined ? { score: asNonNegativeNumber(raw.score) } : {}),
     ...(raw.max_score !== undefined ? { maxScore: asNonNegativeNumber(raw.max_score) } : {}),
     ...(raw.termination_reason !== undefined ? { terminationReason: asString(raw.termination_reason) } : {}),
+    ...(errorType !== null ? { errorType } : {}),
+    ...(reasoning !== null ? { reasoning } : {}),
     visibility,
     timeMs: asNonNegativeNumber(raw.time_ms),
     memoryKb: asNonNegativeNumber(raw.memory_kb),

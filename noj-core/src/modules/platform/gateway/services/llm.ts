@@ -8,6 +8,9 @@
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getSetting } from "../../services/system-settings.ts";
 import { AppError, BadRequestError } from "../../../../shared/base/errors.ts";
+import { getLogger } from "@logtape/logtape";
+
+const logger = getLogger(["noj", "gateway"]);
 
 /** Core 调用 Gateway 的单次 HTTP 上限；超时后只允许用 operation ID 查询结果。 */
 const GATEWAY_REQUEST_TIMEOUT_MS = 10_000;
@@ -145,6 +148,67 @@ export interface LlmUsageQuery {
   limit?: number;
   /** 页码（透传 gateway） */
   page?: number;
+}
+
+/** 单次提交/评测尝试的 LLM 汇总查询参数。 */
+export interface LlmSubmissionSummaryQuery {
+  submission_id?: string;
+  attempt_id?: string;
+  include_messages?: boolean;
+}
+
+/** 按模型汇总的 LLM 用量条目。 */
+export interface LlmModelBreakdown {
+  model: string;
+  calls: number;
+  total_tokens: number;
+  estimated_cost: number;
+}
+
+/** 单次提交的 LLM 用量与延迟汇总统计。 */
+export interface LlmSubmissionSummaryStats {
+  total_calls: number;
+  error_calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_prompt_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+  total_latency_ms: number;
+  avg_latency_ms: number;
+  p95_latency_ms: number;
+  models: LlmModelBreakdown[];
+}
+
+/** 单次 LLM 调用的瀑布流 Trace 记录。 */
+export interface LlmTraceItem {
+  id: string;
+  seq: number;
+  model: string;
+  status: string;
+  error_code: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_prompt_tokens: number;
+  total_tokens: number;
+  estimated_cost: number;
+  latency_ms: number;
+  offset_ms: number;
+  created_at: string;
+  request_params: Record<string, unknown>;
+  request_messages?: unknown[];
+}
+
+/** Gateway `/internal/usage/submission-summary` 的 data 载荷。 */
+export interface LlmSubmissionSummaryData {
+  summary: LlmSubmissionSummaryStats;
+  traces: LlmTraceItem[];
+}
+
+/** 带降级标记的汇总读取结果；Gateway 不可用时 `available: false`。 */
+export interface LlmSubmissionSummaryResult {
+  available: boolean;
+  data: LlmSubmissionSummaryData | null;
 }
 
 /**
@@ -470,6 +534,38 @@ export async function queryLlmUsage(
     domainId,
   );
   return body.data;
+}
+
+/** 查询单次提交/尝试的 LLM 汇总与瀑布流 Trace；Gateway 未配置、超时或 5xx 时优雅降级。 */
+export async function getSubmissionLlmSummary(
+  query: LlmSubmissionSummaryQuery,
+  domainId = DEFAULT_DOMAIN_ID,
+): Promise<LlmSubmissionSummaryResult> {
+  if (!Deno.env.get("NOJ_LLM_SERVICE_TOKEN")) {
+    return { available: false, data: null };
+  }
+  if (!query.submission_id && !query.attempt_id) {
+    return { available: true, data: null };
+  }
+  const params = new URLSearchParams();
+  if (query.submission_id) params.set("submission_id", query.submission_id);
+  if (query.attempt_id) params.set("attempt_id", query.attempt_id);
+  params.set("include_messages", query.include_messages ? "1" : "0");
+  try {
+    const body = await request<{ data: LlmSubmissionSummaryData }>(
+      `/internal/usage/submission-summary?${params.toString()}`,
+      { signal: AbortSignal.timeout(3500) },
+      domainId,
+    );
+    return { available: true, data: body?.data ?? null };
+  } catch (error) {
+    logger.warn("读取 LLM 提交汇总失败，已降级为空态: {error}", {
+      error: error instanceof Error ? error.message : String(error),
+      submission_id: query.submission_id ?? null,
+      attempt_id: query.attempt_id ?? null,
+    });
+    return { available: false, data: null };
+  }
 }
 
 /** 新增或按 id 更新既有配额，资源版本由 Gateway 原子比较。 */

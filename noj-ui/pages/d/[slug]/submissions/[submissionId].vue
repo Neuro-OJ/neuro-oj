@@ -16,7 +16,8 @@ const contest = await useAsyncData(
 );
 usePolling({
   intervalMs: computed(() =>
-    data.value?.data.result_visibility === 'hidden' || ['pending', 'judging'].includes(data.value?.data.status ?? '') || contest.data.value?.data.status === 'running'
+    data.value?.data.result_visibility === 'hidden' || ['pending', 'judging'].includes(data.value?.data.status ?? '') ||
+      contest.data.value?.data.status === 'running'
       ? 2000
       : null
   ),
@@ -33,13 +34,17 @@ useSeoMeta({ title: '空间提交详情' });
     <div v-if="data" class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-3">
-          <UButton :to="workspacePath(slug!, 'submissions')" variant="ghost" icon="i-lucide-arrow-left">返回提交列表</UButton>
+          <UButton :to="workspacePath(slug!, 'submissions')" variant="ghost"
+            icon="i-lucide-arrow-left">返回提交列表</UButton>
           <h2 class="text-xl font-semibold">{{ data.data.reference.display_ref }} · 提交详情</h2>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-          <UButton v-if="data.data.resource_available" :to="workspaceProblemPath(slug!, data.data.reference.display_ref)"
+          <UButton v-if="data.data.resource_available"
+            :to="workspaceProblemPath(slug!, data.data.reference.display_ref)"
             variant="outline">返回本域题目</UButton>
-          <UButton v-if="data.data.assignment_origin" :to="`/d/${slug}/assignments/${data.data.assignment_origin.assignment_id}`" variant="outline">来源作业</UButton>
+          <UButton v-if="data.data.assignment_origin"
+            :to="`/d/${slug}/assignments/${data.data.assignment_origin.assignment_id}`"
+            variant="outline">来源作业</UButton>
           <UButton variant="ghost" icon="i-lucide-refresh-cw" aria-label="刷新结果" @click="refresh()" />
         </div>
       </div>
@@ -47,7 +52,7 @@ useSeoMeta({ title: '空间提交详情' });
         class="break-all text-xs text-text-muted tabular-nums">{{ data.data.id }} · {{ formatDateTime(data.data.created_at) }} · 使用域 {{ slug }} · {{ data.data.submitted_version == null ? '版本未知' : `V${data.data.submitted_version}` }}</p>
       <UAlert v-if="!data.data.resource_available" color="warning"
         title="源资源已不可用，保留已受理的原提交和授权成绩摘要" />
-      <DomainSubmissionResult :submission="data.data" />
+      <DomainSubmissionResult :submission="data.data" :slug="slug!" :include-messages="can('submission:read_all')" />
       <ClientOnly>
         <div class="flex flex-wrap gap-3">
           <DomainUpgradeAction :slug="slug!" :source="{ kind: 'submission', id: data.data.id }"

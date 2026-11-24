@@ -92,9 +92,10 @@ export {
 export { getClientIp } from "./system/services/rate-limit-env.ts";
 // 迁移期：供 src/features/knowledge 使用（平台身份模型调用：Provider Key 仍在网关）。
 export {
-  KNOWLEDGE_TAG_MODEL_ALIAS,
   // 迁移期：供 src/features/knowledge 使用（打标管理 API 读取 `platform.tagger`
   // 是否已在网关配置）。
+  getSubmissionLlmSummary,
+  KNOWLEDGE_TAG_MODEL_ALIAS,
   listLlmGatewayModelAliases,
   mapPlatformCompletionError,
   PLATFORM_MAX_OUTPUT_TOKENS,
@@ -104,6 +105,12 @@ export {
   queryPlatformUsage,
 } from "./gateway/index.ts";
 export type {
+  LlmModelBreakdown,
+  LlmSubmissionSummaryData,
+  LlmSubmissionSummaryQuery,
+  LlmSubmissionSummaryResult,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
   PlatformChatMessage,
   PlatformCompletionErrorCode,
   PlatformCompletionInput,

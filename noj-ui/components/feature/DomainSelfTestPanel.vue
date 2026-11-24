@@ -176,6 +176,6 @@ defineExpose({ run });
       <UButton v-if="pending" color="error" variant="outline" :loading="cancelling" @click="cancel">取消运行</UButton>
       <UButton v-if="id" :to="`/d/${slug}/self-tests/${id}`" variant="ghost">查看本次自测</UButton>
     </div>
-    <DomainSelfTestResult v-if="current && !record.error.value" :record="current" />
+    <DomainSelfTestResult v-if="current && !record.error.value" :record="current" :slug="props.slug" />
   </details>
 </template>

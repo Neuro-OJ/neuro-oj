@@ -5,6 +5,7 @@ export {
   exportGatewayPolicySnapshot,
   getLlmPlatformDefault,
   getLlmProviderById,
+  getSubmissionLlmSummary,
   importGatewayPolicySnapshot,
   listInstanceLlmQuotas,
   listLlmGatewayModelAliases,
@@ -29,9 +30,15 @@ export type {
   GatewayModelAliasView,
   GatewayPolicySnapshot,
   GatewayResolvedModelSelection,
+  LlmModelBreakdown,
   LlmProviderInput,
   LlmProviderView,
   LlmQuotaInput,
+  LlmSubmissionSummaryData,
+  LlmSubmissionSummaryQuery,
+  LlmSubmissionSummaryResult,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
   LlmUsageQuery,
 } from "./services/llm.ts";
 export {
