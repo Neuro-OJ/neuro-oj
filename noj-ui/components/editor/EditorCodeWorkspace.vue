@@ -387,7 +387,7 @@ onUnmounted(() => {
             <UAlert v-if="history.error.value" color="error" :title="extractApiError(history.error.value).message" />
             <UAlert v-if="active.error.value" color="error" :title="extractApiError(active.error.value).message" />
             <SubmissionResult v-if="active.data.value && !active.error.value"
-              :submission="active.data.value.data" />
+              :submission="active.data.value.data" :slug="slug" />
             <UButton v-if="activeId" :to="`/d/${slug}/submissions/${activeId}`" variant="outline"
               size="sm">查看评测</UButton>
             <div class="space-y-2">
