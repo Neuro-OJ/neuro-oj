@@ -14,11 +14,7 @@ import {
   isDebug,
   wantsHelp,
 } from "./cli-commands/guards.ts";
-import {
-  printHelp,
-  renderDrillHelp,
-  renderProductionCommandHelp,
-} from "./cli-commands/help.ts";
+import { printHelp, renderProductionCommandHelp } from "./cli-commands/help.ts";
 import { dispatchProduction } from "./cli-commands/production.ts";
 import {
   dispatchContainer,
@@ -66,11 +62,6 @@ export async function dispatchCommand(
   ctx: CommandContext,
 ): Promise<number> {
   if (PRODUCTION_COMMANDS.has(command)) {
-    // `backup drill` 有专属 help（#516：须写明「分钟级、耗 Docker」）。
-    if (command === "backup" && args[0] === "drill" && wantsHelp(args)) {
-      console.log(renderDrillHelp());
-      return EXIT_OK;
-    }
     if (wantsHelp(args)) {
       console.log(renderProductionCommandHelp(command));
       return EXIT_OK;

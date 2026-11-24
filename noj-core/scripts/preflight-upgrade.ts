@@ -83,7 +83,7 @@ export interface PreflightReport {
 /** 报告性质声明：避免把预检当备份。 */
 export const PREFLIGHT_NOTICE =
   "本报告由只读事务生成，仅用于升级决策；它不是备份，也不能替代 " +
-  "`noj-cli backup create` 与 `noj-cli backup drill`。检查过程未修改任何业务数据。";
+  "`noj-cli backup create` 与 `noj-cli backup verify`。检查过程未修改任何业务数据。";
 
 type Row = Record<string, unknown>;
 

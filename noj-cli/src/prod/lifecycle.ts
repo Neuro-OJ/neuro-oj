@@ -49,8 +49,6 @@ export {
   UPDATE_UP_TO_DATE_HINT,
   type UpdateBackupContext,
   type UpdateBackupResult,
-  type UpdateDiskCheckContext,
-  type UpdateDiskCheckResult,
   type UpdateMigrationContext,
   type UpdateOptions,
   type UpdateResult,

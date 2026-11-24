@@ -22,7 +22,7 @@ import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
  * ## 退出码
  *
  * 0 成功 / 1 运行失败（compose 非 0、daemon 不可连）/ 2 用法或前置错误
- * （配置缺失、权限不符、共享 socket、参数非法）。与 drill / schedule 同一分层。
+ * （配置缺失、权限不符、共享 socket、参数非法）。与 backup 命令同一分层。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */

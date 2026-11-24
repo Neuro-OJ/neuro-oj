@@ -93,32 +93,12 @@ Deno.test("漂移回归: backup 声明包含 list 与 prune，且可从顶层 he
   const backup = findCommand("backup");
   assert(backup !== undefined, "必须声明 backup");
   const subs = new Set((backup.subcommands ?? []).map((s) => s.name));
-  for (const sub of ["create", "verify", "restore", "drill", "list", "prune"]) {
+  for (const sub of ["create", "verify", "restore", "list", "prune"]) {
     assert(subs.has(sub), `backup 子命令声明缺少 ${sub}`);
   }
   const text = renderCommandList();
   assert(text.includes("backup list"), "顶层 help 应可发现 backup list");
   assert(text.includes("backup prune"), "顶层 help 应可发现 backup prune");
-});
-
-Deno.test("准确: backup 的 help 声明的 schedule 确实已实现", () => {
-  // help 不得声明实现不支持的能力，也不得漏掉已实现的能力。
-  const backup = findCommand("backup");
-  assert(backup !== undefined, "必须声明 backup 命令");
-  assert(backup.subcommands !== undefined, "backup 必须声明子命令");
-  const names = backup.subcommands!.map((s) => s.name);
-  // backup 实现了 schedule（crontab 标记区块管理），清单里必须有它。
-  assertEquals(
-    names.includes("schedule"),
-    true,
-    "backup 已实现 schedule，help 必须声明它",
-  );
-  // 同时不得出现旧的合写短语（它对应已删除的 stack 条目，且未列 list/prune）
-  assertEquals(
-    renderCommandList().includes("create/verify/restore/drill/schedule"),
-    false,
-    "help 不得使用旧的合写短语（漏列 list/prune）",
-  );
 });
 
 Deno.test("P1d: maintain 作为 Tier 3 命令声明完整且可从 help 发现", () => {
@@ -167,10 +147,6 @@ Deno.test("可达性门禁: prod/ 的每个域模块都有可达的 CLI 入口",
   // 域模块 → 期望可达的顶层命令。**新增域模块时必须在此登记**——
   // 这是本门禁的"人审锚点"：忘记登记会让该模块的实现对用户不可见。
   const DOMAIN_TO_COMMAND: Record<string, string> = {
-    // 隔离恢复演练：经由 `backup drill`
-    "drill/drill.ts": "backup",
-    // crontab 标记区块：经由 `backup schedule`
-    "schedule.ts": "backup",
     // 独立 Judge：顶层命令 `judge`
     "judge/actions.ts": "judge",
     // 备份容器与命令面：经由 `backup`

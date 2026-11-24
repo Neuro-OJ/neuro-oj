@@ -64,23 +64,21 @@ SHA-256 → 生成 `.env.prod`（600，含自动生成的强随机密钥）→ �
 ## 日常运维
 
 ```bash
-noj-cli check                  # 配置、依赖校验与分区磁盘余量/低空间告警
+noj-cli check                  # 配置与依赖校验
 noj-cli verify                 # check + 镜像签名验证
 noj-cli config check           # 只做本地配置校验
-noj-cli status                 # 状态（含 compose ps 表与安装/Docker 分区磁盘余量）
+noj-cli status                 # 状态（含 compose ps 表）
 noj-cli logs core --follow     # 日志（着色契约 + 实时跟随）
 noj-cli start | stop | restart # 启停（stop 不删数据卷）
-noj-cli update                 # 按 .env.prod 的版本升级（先做数据+镜像空间预检，再自动备份与排空）
+noj-cli update                 # 按 .env.prod 的版本升级（先自动备份，再排空）
 noj-cli update --latest        # 升级到最新的资产就绪正式 Release（已是最新则 no-op）
 noj-cli maintain status        # 维护模式/排空状态（blockers、队列与在途任务）
 noj-cli maintain enter | wait | exit   # 人工进入 / 等待排空 / 退出维护模式
-noj-cli backup create          # 创建 .nojbackup 单文件快照（流式降峰，启动前清理崩溃残留并按数据量预检空间）
+noj-cli backup create          # 创建 .nojbackup 单文件快照（流式打包，启动前清理崩溃残留）
 noj-cli backup verify <快照> --deep
 noj-cli backup list | prune    # prune 默认 dry-run，--confirm 才真正删除
 noj-cli backup restore <快照> --dry-run   # 只规划并校验（等价于省略 --confirm）
 noj-cli backup restore <快照> --confirm   # 真实恢复（不可逆）
-noj-cli backup drill <快照>    # 隔离环境真实恢复演练（分钟级、需专用 Docker daemon）
-noj-cli backup schedule install --schedule '15 2 * * *'
 noj-cli uninstall              # 保留数据卷、配置与备份
 noj-cli uninstall --all --yes  # 连数据卷与安装目录一起删除（需确认）
 ```
@@ -122,15 +120,13 @@ openssl rand -hex 32    # → NOJ_INTERNAL_SERVICE_TOKEN=<上一步输出>
 `payload_layout=prod-raw`），同级 `.sha256` 为校验文件。包内含
 `postgres.dump`（原始二进制）、`redis.rdb`、`minio/` 与加密后的
 `.env.prod`。`backup create` 启动前会按 `.nojbackup-create.lock` 与 PID
-存活检查清理崩溃残留的临时文件，并结合 PostgreSQL / Redis / MinIO 数据量与
-`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB` 兜底下限执行空间预检。
+存活检查清理崩溃残留的临时文件；备份目录可用空间低于 `--min-free-mb`
+（或环境变量 `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）即中止。
 
-`backup drill` 会起**独立 Compose 项目**（默认 `noj-drill`）、独立子网，且
-**不映射宿主机端口**；必须用 `--docker-host` 或 `NOJ_DRILL_DOCKER_HOST`
-指定专门的 Docker daemon socket，禁止把生产默认 `/var/run/docker.sock` 交给演练
-命令。daemon 应使用独立 data root 和网络，准备方式见
-`dev-docs/engineering/architecture-remediation-p8.md`；RPO/RTO 超限视为演练失败
-（退出码 1），资源不足为 2。
+> 精简说明（2026-11）：隔离恢复演练 `backup drill`、`backup schedule`（crontab
+> 管理）以及按数据量估算磁盘空间的预检已移除。定期备份请用系统 cron 调用
+> `noj-cli backup create`；业务级恢复验收请在独立主机上 `install` 同版本后执行
+> `backup restore --confirm`。
 
 ## 目录定位
 
@@ -231,8 +227,6 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
   - `bootstrap.ts` / `release.ts`：Release 资产下载与版本解析
   - `config.ts`：配置校验、向导、口令、镜像验签
   - `backup/`：`.nojbackup` 容器、prod-raw 驱动、verify/list/prune/restore
-  - `drill/`：隔离恢复演练（原生）
-  - `schedule.ts`：crontab 标记区块
   - `judge/`：独立 Judge 部署
   - `maintain.ts`：维护模式/排空的 Tier 3 容器包装（`noj-cli maintain …`）
   - `lifecycle/drain.ts`：`update` 自动排空（enter/wait/exit 的默认实现与解析）
@@ -245,5 +239,5 @@ deno task build:cli       # 交叉编译 Linux amd64 → bin/noj-cli-linux-amd64
 
 ## 生产入口
 
-生产部署、备份、恢复与演练统一使用 `noj-cli`；仓库不再保留 Bash
+生产部署、备份与恢复统一使用 `noj-cli`；仓库不再保留 Bash
 部署入口或弃用闸门。

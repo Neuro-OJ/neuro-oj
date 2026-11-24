@@ -47,9 +47,7 @@ scripts/
 ├── silent-skip-report.ts  # 静默跳过棘轮
 ├── deploy/                # 仓库级校验脚本
 │   ├── verify-build-server.ts
-│   ├── verify-compose-server.ts
-│   ├── restore-drill-verify.ts  # 演练验收辅助
-│   └── restore-drill-verify_test.ts
+│   └── verify-compose-server.ts
 ├── monitoring/            # 观测/告警快速检查
 ├── staging/               # 生产候选版本验收门禁
 ├── e2e/                   # 跨模块 E2E 测试

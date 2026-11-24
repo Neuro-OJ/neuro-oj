@@ -61,7 +61,7 @@ docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compos
   --entrypoint /app/bin/noj core problems build
 
 # 导入统一题目包：**必须显式加 --publish**，否则题目只有草稿（普通访问者读不到、
-# 也无法按版本提交）。dev-setup 与生产演练内部即用 --publish。
+# 也无法按版本提交）。dev-setup 内部即用 --publish。
 docker compose --env-file /opt/neuro-oj/.env.prod -f /opt/neuro-oj/docker-compose.prod.yml run --rm \
   --entrypoint /app/bin/noj core problems import --publish
 ```

@@ -17,7 +17,7 @@
 2. 照「2. 安装」下载并运行 `noj-cli install`；
 3. 用「4. 日常运维」里的命令管理服务；
 4. 需要升级/回滚/备份时看「5. 升级与回滚」及「5.1
-   备份、文件校验与隔离恢复演练」。 :::
+   备份、文件校验与恢复」。 :::
 
 ## 1. 前置条件
 
@@ -201,7 +201,7 @@ noj-cli config check          # 只检查配置，不改变服务
 
 ::: tip `backup` 必须带子命令 `noj-cli backup`
 本身不创建备份，只打印用法错误。创建用 `noj-cli backup create`，另有 `verify` /
-`list` / `prune` / `restore` / `drill` / `schedule` 子命令。 :::
+`list` / `prune` / `restore` 子命令。 :::
 
 如果 `noj-cli` 尚未加入 PATH，可以直接调用安装目录内的二进制：
 
@@ -244,28 +244,14 @@ Release，保证安装与升级使用同一版本集合，不会选中资产未�
 数据库迁移只追加，不会自动回滚，因此跨大版本升级前必须确认迁移兼容性。
 注意：切回镜像标签不是数据库回滚；迁移只增不减，回退版本前需按迁移清单人工评估。
 
-### 升级与备份前的磁盘空间估算
+### 升级与备份前的磁盘空间
 
-从 `v0.11` 之后的版本升级与备份前，建议通过 `noj-cli check` / `noj-cli status`
-确认安装目录所在分区与 Docker
-数据目录（<span v-pre>`docker info --format '{{.DockerRootDir}}'`</span>）所在分区的可用余量（可用
-`< 5 GiB` 或使用率 `>= 85%` 会输出低空间告警；`< 1 GiB` 或 `>= 95%`
-为严重告警）：
-
-- **备份峰值估算**：`backup create` 通过 `tar | zstd | gpg`
-  流式管道直出（不生成中间 `.tar.zst`），并在打包落盘后立即删除 staging
-  目录，峰值需求按 `max(兜底下限, 原始数据 + ceil(原始数据 × 0.85) + 512 MiB)`
-  估算（其中原始数据来自 PostgreSQL `pg_database_size`、Redis `used_memory` 与
-  MinIO `mc du` 汇总，兜底下限由 `--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`
-  指定，默认 `1024 MiB`）。启动前会自动按 `.nojbackup-create.lock` 与 PID
-  存活状态清理上次异常中断遗留的 staging/临时产物（不误删活跃并发任务）。
-- **升级整体预检**：`noj-cli update`
-  在任何文件同步、配置暂存、容器拉取与备份写入之前，一次性估算「备份峰值 +
-  待拉取镜像预估」（基础服务约 `1.5 GiB`，启用 Judge 时约 `4 GiB`）：
-  - 若备份目录与 Docker 数据目录位于**同一分区**，要求可用空间
-    `>= 备份峰值 + 镜像拉取预估`；
-  - 若位于**不同分区**，则分别校验备份分区与 Docker
-    数据目录分区；任一不足即立即中止并输出「需要 X / 可用 Y」。
+`backup create`（含 `update` 的升级前备份）只做一项硬下限检查：备份目录所在分区
+可用空间低于 `--min-free-mb`（或进程环境变量 `NOJ_BACKUP_MIN_FREE_MB`，默认
+`1024 MiB`）即中止。快照经 `tar | zstd | gpg` 流式直出，启动前会清理上次异常中断
+遗留的 staging/临时产物。升级前请自行用 `df -h` 确认备份分区与 Docker 数据目录
+（<span v-pre>`docker info --format '{{.DockerRootDir}}'`</span>）至少留有
+「数据量 + 约 4 GiB 镜像」的余量。
 
 ### 0.10.6 至 0.11 升级路径说明：禁止原地升级，须走逻辑迁移
 
@@ -310,7 +296,7 @@ deno task preflight -- --json /tmp/noj-preflight.json
 提示。退出码：`0` 未命中阻塞、`2` 命中阻塞（迁移会中止）、`1` 预检本身失败。
 
 > **预检报告不是备份。** 它只用于决策，不能替代 `noj-cli backup create`、
-> `noj-cli backup verify` 与 `noj-cli backup drill`。
+> `noj-cli backup verify`。
 
 #### 新装 runbook
 
@@ -364,7 +350,7 @@ gateway / UI / IDE / CLI 的协调升级**，新旧评测协议**不能混跑**�
 9. 恢复访问。
 
 **回滚**：只能使用升级前备份 + 同版本服务组合（`noj-cli backup restore` 或
-`backup drill` 验证过的快照）。**不能**只回退 core 二进制去读新
+`backup verify --deep` 校验过的快照）。**不能**只回退 core 二进制去读新
 schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
 `objective_questions`），旧版本代码会引用 已删除的表。
 
@@ -440,72 +426,33 @@ schema——迁移只追加 （`0105` 删 `evaluation_results`、`0107` 删
 详细政策与资源上限见[工作空间部署与治理](./workspace-deployment.md)，域内
 操作见[配置本域 LLM](../features/workspaces.md#配置本域-llm)。
 
-## 5.1 备份、文件校验与隔离恢复演练
+## 5.1 备份、文件校验与恢复
 
-备份体系分三层，必须区分能力边界：
+| 层级     | 命令                            | 证明的内容                                                                 |
+| -------- | ------------------------------- | -------------------------------------------------------------------------- |
+| 备份     | `noj-cli backup create`         | PostgreSQL/Redis/MinIO/加密环境文件已写入单个 `.nojbackup`                 |
+| 文件校验 | `noj-cli backup verify`         | 快照完整、口令可用、dump 结构可解析（`--deep` / `--payload-sha` 逐档加深） |
+| 恢复     | `noj-cli backup restore <快照>` | 恢复到已停止的 Compose 环境（省略 `--confirm` 为只规划的 dry-run）         |
 
-| 层级         | 命令                          | 证明的内容                                                                 |
-| ------------ | ----------------------------- | -------------------------------------------------------------------------- |
-| 备份         | `noj-cli backup create`       | PostgreSQL/Redis/MinIO/加密环境文件已写入单个 `.nojbackup`                 |
-| 文件校验     | `noj-cli backup verify`       | 快照完整、口令可用、dump 结构可解析（`--deep` / `--payload-sha` 逐档加深） |
-| 隔离恢复演练 | `noj-cli backup drill <快照>` | 业务真的可以从快照恢复并运行                                               |
-
-`backup verify` 只做**文件级**校验，**不能**证明业务可恢复；`backup drill` 才是
-真正的恢复验收演练（会起独立 Compose 项目，分钟级、需 Docker）：
-
-```bash
-# 快照是 .nojbackup 单文件，命名形如 snapshot-YYYYMMDD-HHMMSS.nojbackup
-noj-cli backup drill backups/snapshot-20260924-021500.nojbackup \
-  --passphrase-file /secure/noj-backup-passphrase \
-  --docker-host unix:///run/user/1000/docker-noj-restore-drill.sock
-```
-
-`--docker-host` 必须指向专门为恢复演练创建的 Docker daemon socket（也可以用
-`NOJ_DRILL_DOCKER_HOST` 设置），不能省略，也不能指向承载生产服务的默认
-`/var/run/docker.sock`。演练 daemon 应使用独立的 data root、containerd root、
-Compose 项目名和网络；创建与清理它需要由维护者在维护窗口按
-[P8 演练说明](https://github.com/Neuro-OJ/neuro-oj/blob/7871d31ad22b659deb03eb92c66cb692d787a273/dev-docs/engineering/architecture-remediation-p8.md)执行。
-
-演练会把快照恢复到独立 Compose
-项目（独立数据卷、独立子网、不映射宿主机端口、不接触生产卷）， 随后通过真实 API
-验收：管理员登录、题目读取、附件（支持包）下载与一次真实双容器评测 （需要 judge
-沙箱 Docker socket 与 `noj-evaluator-python` / `noj-solution-python` 镜像，
-与生产 judge 使用同一个独立 rootless daemon）。恢复数据后演练按生产依赖顺序保留
-并执行 `migrate → gateway-migrate → core` 三个完成态服务；Core 迁移/系统初始化
-完成后才运行 Gateway 迁移与默认配额初始化，HTTP 进程只读检查 schema。可用
-`--skip-judge` 跳过评测环节。
-
-演练报告（默认写入快照同级的 `restore-drill-report.txt`，权限
-600）记录：快照时间、恢复耗时、 数据核对结果（迁移版本/用户数/Redis
-键数/对象数）、业务验收明细，以及 RPO/RTO 目标与是否达标 （默认 RPO ≤ 24
-小时、RTO ≤ 60 分钟，可用 `--rpo-max-hours` / `--rto-max-minutes` 调整）。
-损坏快照、解密失败、数据库恢复失败或业务验收失败都会以非零退出并保留失败现场报告。
-演练结束后自动 `down -v` 回收资源；`--keep` 可保留现场供人工检查。
+`backup verify` 只做**文件级**校验，**不能**证明业务可恢复。需要业务级验收时，
+请在一台独立主机上 `install` 同版本后执行 `backup restore --confirm`，再人工
+完成登录、题目读取与一次评测。
 
 ::: danger 口令遗失 = 备份不可恢复 备份快照与 GPG
 解密口令文件必须异地独立保存；口令丢失时快照无法恢复，
-任何演练都无法弥补。建议每季度以及在重要迁移前各执行一次隔离恢复演练。 :::
+任何恢复验收都无法弥补。建议每季度以及在重要迁移前在独立主机上做一次恢复验收。 :::
 
 ### 5.2 定期备份调度与 RPO
 
-恢复演练只能测量
-RPO，不能替代定期创建快照。生产安装完成后，建议为当前安装用户注册每日备份任务：
+noj-cli 不再管理 crontab。生产安装完成后，请用系统 cron（或 systemd timer）为
+安装用户注册每日备份任务，例如：
 
-```bash
-cd /opt/neuro-oj
-noj-cli backup schedule install \
-  --schedule '15 2 * * *' \
-  --passphrase-file /etc/noj/backup-passphrase
-noj-cli backup schedule status
+```cron
+15 2 * * * cd /opt/neuro-oj && NOJ_BACKUP_PASSPHRASE_FILE=/etc/noj/backup-passphrase ./bin/noj-cli backup create >> backups/backup-cron.log 2>&1
 ```
 
-任务只维护自己标记的 crontab
-区块，不覆盖其他任务；每次执行会保留快照并将输出写入
-`backups/backup-cron.log`。默认每日 02:15
-执行，实际时间按服务器时区计算。建议把备份目录和
-口令文件放在独立磁盘/主机，并由监控检查
-`noj_backup_last_success_unix_time`；任务失败时应立即
-检查日志和磁盘空间。删除任务使用 `noj-cli backup schedule remove`。
+建议把备份目录和口令文件放在独立磁盘/主机，并由监控检查
+`noj_backup_last_success_unix_time`；任务失败时应立即检查日志和磁盘空间。
 
 每日快照将 RPO 控制在约 24
 小时以内，但无法保证精确上限：任务失败、主机离线或异地复制延迟 都会扩大实际
@@ -533,7 +480,7 @@ noj-cli uninstall --all --yes
 实现直接完成（`src/prod/`），不再经任何 bash 脚本转发，
 因此配置、服务名与数据卷与旧版本完全一致。
 `noj-cli backup restore <快照> --confirm` 要求目标 Compose
-服务已停止；`backup verify` 与 `backup drill` 用于校验和演练。
+服务已停止；`backup verify` 用于校验快照。
 
 `deploy`/`maintain`/`stack`/`run-server` 与它们使用的 `noj-deploy.json` /
 `noj-secrets.json` 已移除；`noj-cli` 只管理 `.env.prod` 安装。

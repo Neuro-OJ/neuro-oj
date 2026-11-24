@@ -132,7 +132,7 @@ core、UI、Judge 和 SDK 镜像，确认镜像白名单，再分别执行一次
 Release 自带的迁移和初始化工具；不要手工修改迁移日志、直接删历史
 引用或通过重建数据库掩盖错误。旧 P 题数字在 `main` 保留，题号唯一范围改为域内。
 
-## 备份、校验和隔离恢复
+## 备份、校验和恢复验收
 
 迁移前保存完整快照，同时保存加密密钥和配置。备份文件与解密口令应异地
 分别保存。以下命令在安装目录执行，完整参数见[CLI 手册](./cli.md)：
@@ -140,19 +140,11 @@ Release 自带的迁移和初始化工具；不要手工修改迁移日志、直
 ```bash
 noj-cli backup create
 noj-cli backup verify backups/snapshot-YYYYMMDD-HHMMSS.nojbackup --deep
-noj-cli backup drill backups/snapshot-YYYYMMDD-HHMMSS.nojbackup \
-  --passphrase-file /secure/noj-backup-passphrase \
-  --docker-host unix:///run/user/1000/docker-noj-restore-drill.sock
 ```
 
-恢复演练必须使用专门的隔离 Docker daemon；通过 `--docker-host` 或
-`NOJ_DRILL_DOCKER_HOST` 显式指定 socket。不要把生产宿主机的 默认 Docker socket
-传给演练命令。daemon 的独立 data root、网络和 Compose 项目 准备方式见
-[P8 演练说明](https://github.com/Neuro-OJ/neuro-oj/blob/7871d31ad22b659deb03eb92c66cb692d787a273/dev-docs/engineering/architecture-remediation-p8.md)。
-
-创建快照、文件校验与业务恢复是三项不同证据。`verify` 校验文件，`drill` 在
-独立环境恢复并检验业务；查看实际演练报告中的数据量、成功项、失败项和
-RPO/RTO，不把一次构建或备份文件存在当作恢复成功。
+创建快照、文件校验与业务恢复是三项不同证据。`verify` 只校验文件；业务恢复需在
+独立主机上安装同版本后执行 `noj-cli backup restore <快照> --confirm`，再人工核对
+数据量与关键业务路径，不把一次构建或备份文件存在当作恢复成功。
 
 升级后的实际检查包括：公共域普通做题、学校邀请与班级作业、两个私有域的
 隔离、公共题引用与撤销、同域 LLM 调用归属，以及历史提交和反馈读取。保留

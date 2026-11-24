@@ -1,4 +1,4 @@
-/** `backup` 子命令：create / verify / list / prune / restore / schedule 的命令级装配与分发（drill 见 `drill.ts`）。 */
+/** `backup` 子命令：create / verify / list / prune / restore 的命令级装配与分发。 */
 
 import { join } from "@std/path";
 import type { CommandRunner } from "../../runtime/command.ts";
@@ -31,21 +31,6 @@ import {
 } from "../backup/driver.ts";
 import { writeBackupMetrics } from "../backup/metrics.ts";
 import type { ContainerPayloadOps } from "../backup/container.ts";
-import {
-  type BackupDataEstimate,
-  type DiskPartitionInfo,
-  estimateBackupDataSize,
-  evaluateBackupDiskSpace,
-  formatDiskBytes,
-  probeDiskPartition,
-  resolveBackupMinFreeMb,
-} from "../disk-space.ts";
-import {
-  installSchedule,
-  removeSchedule,
-  statusSchedule,
-} from "../schedule.ts";
-import type { ScheduleResult } from "../schedule.ts";
 import { gpgDecrypt, untarZst } from "../gpg-tar.ts";
 import { hasJson, humanOutput, positionals } from "./args.ts";
 import { flagValue, hasFlag, optionalCount } from "../../util/args.ts";
@@ -56,7 +41,6 @@ import {
   readConfiguredPassphrase,
   resolveBackupPassphrase,
 } from "./deps.ts";
-import { runBackupDrill } from "./drill.ts";
 import {
   EXIT_FAILURE,
   EXIT_OK,
@@ -98,6 +82,27 @@ export function buildBackupComposeContext(
     judge: true,
     noAnsi: true,
   };
+}
+
+/**
+ * 探测目录可用字节数（`df -Pk <dir>`，经注入 runner）。
+ *
+ * 无法探测时返回 `Infinity`（放行）：空间守卫的语义是"明显不足才拒绝"。
+ */
+async function probeDirFreeBytes(
+  runner: CommandRunner,
+  dir: string,
+): Promise<number> {
+  try {
+    const res = await runner.run("df", ["-Pk", dir]);
+    if (res.code !== 0) return Number.POSITIVE_INFINITY;
+    const lines = res.stdout.trim().split("\n");
+    const cols = lines[lines.length - 1]?.split(/\s+/) ?? [];
+    const availKb = Number(cols[3]);
+    return Number.isFinite(availKb) ? availKb * 1024 : Number.POSITIVE_INFINITY;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
 }
 
 /**
@@ -185,7 +190,7 @@ export interface BackupCreateCliOptions {
   /**
    * 最低可用空间（MB，`--min-free-mb` / `NOJ_BACKUP_MIN_FREE_MB`，默认 1024）。
    *
-   * 作为固定兜底下限与数据量估算峰值取较大值，空间不足直接失败。
+   * 备份目录可用空间低于该值时直接失败（`df` 不可用时放行）。
    */
   minFreeMb?: number;
   args: string[];
@@ -196,14 +201,8 @@ export interface BackupCreateCliOptions {
    * 存在的理由：**让"create 成功后是否写了指标"这条接线可测**。
    */
   ops?: ContainerPayloadOps;
-  /** 可用空间探测注入点（仅返回可用字节）。 */
+  /** 可用空间探测注入点（缺省用 `df -Pk`）。 */
   probeFreeBytes?: (dir: string) => Promise<number>;
-  /** 分区级磁盘空间探测注入点（缺省用 `probeDiskPartition`）。 */
-  probePartition?: (dir: string) => Promise<DiskPartitionInfo | null>;
-  /** 数据量估算注入点（缺省用 `estimateBackupDataSize`）。 */
-  estimateDataSize?: () => Promise<BackupDataEstimate | null>;
-  /** 调用方预估算的结果透传（如 `update` 预检已估过，避免重复运行 `mc du`）。 */
-  precomputedEstimate?: BackupDataEstimate | null;
   /** 进程存活探测注入点（供测试残留清理与锁判定）。 */
   isProcessAlive?: (pid: number) => Promise<boolean>;
 }
@@ -213,7 +212,7 @@ export interface BackupCreateCliOptions {
  *
  * 1. 参数校验；
  * 2. 检查并发锁并清理上次崩溃遗留的 staging / 临时产物；
- * 3. 按数据量与兜底下限执行磁盘空间预检（在任何写入与锁创建之前）；
+ * 3. 可用空间下限检查（在任何写入与锁创建之前）；
  * 4. 持锁执行采集 → 流式打包加密 → 原子提交 → 指标 → 清理旧快照。
  */
 export async function runBackupCreate(
@@ -228,7 +227,7 @@ export async function runBackupCreate(
   // → 刚创建的快照仍可能被自己的清理删掉。
   const backupDir = normalizeDir(opts.backupDir ?? prodBackupDir(dir));
   const env = await readEnvValuesOrEmpty(envFile);
-  // 口令来源：显式选项（旗标）> 进程环境 > `.env.prod`，与 verify/restore/drill
+  // 口令来源：显式选项（旗标）> 进程环境 > `.env.prod`，与 verify/restore
   // 一致。此前只认旗标：`install`/`update` 已把口令路径写进 `.env.prod`，
   // 手动 `backup create` 却仍报"缺少 GPG 口令文件"。
   const passphraseFile = opts.passphraseFile ??
@@ -244,14 +243,7 @@ export async function runBackupCreate(
     opts.retentionDays ?? 30,
     "--retention-days",
   );
-  const flagMinFreeMb = opts.minFreeMb !== undefined
-    ? assertNonNegative(opts.minFreeMb, "--min-free-mb")
-    : numberFlag(opts.args, "--min-free-mb");
-  const minFreeMb = resolveBackupMinFreeMb({
-    flag: flagMinFreeMb,
-    processEnv: d.processEnv["NOJ_BACKUP_MIN_FREE_MB"],
-    configured: env["NOJ_BACKUP_MIN_FREE_MB"],
-  });
+  const minFreeMb = assertNonNegative(opts.minFreeMb ?? 1024, "--min-free-mb");
   const note = opts.deps.err ?? ((t: string) => console.error(t));
 
   // ---- 0a. 启动前检查锁并清理上次异常中断残留的临时产物 ----
@@ -263,66 +255,28 @@ export async function runBackupCreate(
   if (cleaned.removedStaleLock || cleaned.removed.length > 0) {
     note(
       `✓ 启动前已清理崩溃残留（释放 ${
-        formatDiskBytes(cleaned.reclaimedBytes)
+        formatBytes(cleaned.reclaimedBytes)
       }，移除 ${cleaned.removed.length} 项临时产物）`,
     );
   }
 
-  // ---- 0b. 按固定下限 + 真实数据量预估执行磁盘空间预检（零写入前拦截）----
+  // ---- 0b. 可用空间下限守卫（磁盘写满后连恢复都没有余量）----
+  const probe = opts.probeFreeBytes ??
+    ((target: string) => probeDirFreeBytes(d.runner, target));
+  const freeBytes = await probe(backupDir);
+  if (Number.isFinite(freeBytes) && freeBytes < minFreeMb * 1024 * 1024) {
+    throw new Error(
+      `备份目录可用空间不足：需要至少 ${minFreeMb}MB（可用 ${
+        Math.floor(freeBytes / (1024 * 1024))
+      }MB）`,
+    );
+  }
+
   const composeCtx = buildBackupComposeContext(
     composeFile,
     envFile,
     d.processEnv,
   );
-  let partition: DiskPartitionInfo | null = null;
-  let availableBytes = Number.POSITIVE_INFINITY;
-  if (opts.probeFreeBytes !== undefined) {
-    availableBytes = await opts.probeFreeBytes(backupDir);
-  } else {
-    partition = opts.probePartition !== undefined
-      ? await opts.probePartition(backupDir)
-      : await probeDiskPartition(d.runner, backupDir);
-    if (partition !== null) availableBytes = partition.availableBytes;
-  }
-
-  const streaming = opts.noEncrypt === true || (
-    opts.ops === undefined
-      ? d.runner.pipe !== undefined
-      : opts.ops.tarZstEncrypt !== undefined
-  );
-  if (Number.isFinite(availableBytes)) {
-    const floorCheck = evaluateBackupDiskSpace({
-      partition,
-      availableBytes,
-      minFreeMb,
-      estimate: null,
-      streaming,
-    });
-    if (!floorCheck.ok) {
-      throw new Error(floorCheck.error ?? "备份目录可用空间不足");
-    }
-
-    const estimate = opts.precomputedEstimate !== undefined
-      ? opts.precomputedEstimate
-      : opts.estimateDataSize !== undefined
-      ? await opts.estimateDataSize()
-      : await estimateBackupDataSize({
-        runner: d.runner,
-        compose: composeCtx,
-        env,
-      });
-    const fullCheck = evaluateBackupDiskSpace({
-      partition,
-      availableBytes,
-      minFreeMb,
-      estimate,
-      streaming,
-    });
-    if (!fullCheck.ok) {
-      throw new Error(fullCheck.error ?? "备份目录可用空间不足");
-    }
-  }
-
   const ops = opts.ops ?? createProdPayloadOps({
     runner: d.runner,
     driver: realRawDriver(d.runner),
@@ -581,50 +535,6 @@ export async function runBackupRestore(
   }
 }
 
-/** `backup schedule`。 */
-export async function runBackupSchedule(
-  dir: string,
-  args: string[],
-  deps: ProdCliDeps,
-): Promise<ScheduleResult> {
-  const d = prodDeps(deps);
-  const sub = positionals(args)[0] ?? "status";
-  const crontabBin = d.processEnv["NOJ_BACKUP_CRONTAB_BIN"];
-  const common = {
-    runner: d.runner,
-    crontabBin,
-    installDir: dir,
-    envFile: join(dir, PROD_ENV_FILE),
-    composeFile: join(dir, PROD_COMPOSE_FILE),
-    backupDir: flagValue(args, "--backup-dir") ?? prodBackupDir(dir),
-    // 口令来源与 create/verify 一致：旗标 > 进程环境 > `.env.prod`。
-    passphraseFile: resolveBackupPassphrase(args, {
-      env: d.processEnv,
-      configured: await readConfiguredPassphrase(dir),
-    }),
-    // 同上：`--json` 时人类日志走 stderr，保证 stdout 干净。
-    log: (line: string) => {
-      if (hasJson(args)) console.error(line);
-      else (deps.out ?? ((t: string) => console.log(t)))(line);
-    },
-  };
-  switch (sub) {
-    case "install":
-      return await installSchedule({
-        ...common,
-        schedule: flagValue(args, "--schedule"),
-      });
-    case "remove":
-      return await removeSchedule(common);
-    case "status":
-      return await statusSchedule(common);
-    default:
-      throw new UsageError(
-        `backup schedule 需要子命令 install/status/remove，收到 "${sub}"`,
-      );
-  }
-}
-
 /** 人类可读字节数（备份 list 展示用）。 */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return bytes + "B";
@@ -643,8 +553,6 @@ export async function runProdBackup(
   const rest = args.slice(1);
   const say = humanOutput(json);
   switch (sub) {
-    case "drill":
-      return await runBackupDrill(dir, rest);
     case "create": {
       const created = await runBackupCreate(dir, {
         args: rest,
@@ -750,26 +658,9 @@ export async function runProdBackup(
       }
       return EXIT_OK;
     }
-    case "schedule": {
-      const r = await runBackupSchedule(dir, rest, {});
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            exitCode: r.exitCode,
-            message: r.message,
-            block: r.block,
-          },
-          null,
-          2,
-        ));
-      } else {
-        say(r.message);
-      }
-      return r.exitCode;
-    }
     default:
       console.error(
-        `backup 需要子命令 create/verify/list/prune/restore/drill/schedule，` +
+        `backup 需要子命令 create/verify/list/prune/restore，` +
           `收到 "${sub}"`,
       );
       return EXIT_USAGE;
