@@ -5,7 +5,6 @@
  */
 import {
   deleteUserLlmProvider,
-  enforceRateLimit,
   getUserLlmProvider,
   LlmGatewayError,
   saveUserLlmProvider,
@@ -38,8 +37,6 @@ export interface ByokTestResult {
 }
 
 /** 连通性测试会真实调用上游（用户付费），按账号限流。 */
-const TEST_LIMIT = { windowSec: 600, max: 10 };
-
 const TEST_FAILURES: Record<string, string> = {
   provider_auth_failed: "上游鉴权失败：API Key 无效，或该 Key 无权访问此模型",
   provider_rate_limited: "上游限流（429）：请稍后重试，或检查账户额度",
@@ -144,7 +141,6 @@ export async function removeByok(userId: string): Promise<void> {
 
 /** 用已保存的 Key 发一次最小请求测试连通性。 */
 export async function testByok(userId: string): Promise<ByokTestResult> {
-  await enforceRateLimit(`byok-test:${userId}`, TEST_LIMIT);
   try {
     await testUserLlmProvider(userId);
     return { status: "ok" };

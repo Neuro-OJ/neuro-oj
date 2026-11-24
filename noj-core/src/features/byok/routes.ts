@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { type AuthEnv, authMiddleware } from "../../modules/access/index.ts";
+import { enforceRateLimit } from "../../modules/platform/index.ts";
 import { BadRequestError } from "../../shared/base/errors.ts";
 import {
   parseByokInput,
@@ -12,6 +13,11 @@ import {
 /** 用户自带模型（BYOK）路由，挂在 `/api/v1` 下；只操作本人数据。 */
 export const byokRouter = new Hono<AuthEnv>();
 const prefix = "/me/llm-provider";
+
+/** 保存/删除：每用户 10 分钟 30 次（每次都触发网关加密写入）。 */
+const WRITE_LIMIT = { windowSec: 600, max: 30 };
+/** 测试连接会真实请求用户上游并产生费用：每用户 10 分钟 10 次。 */
+const TEST_LIMIT = { windowSec: 600, max: 10 };
 
 function parseRevision(header: string | undefined): number {
   const raw = (header ?? "").replace(/^"|"$/g, "");
@@ -41,6 +47,7 @@ byokRouter.get(prefix, authMiddleware, async (c) => {
  * body: `{ base_url, model, api_key?, enabled? }`；更新时省略 api_key 即保留原 Key
  */
 byokRouter.put(prefix, authMiddleware, async (c) => {
+  await enforceRateLimit(`byok-write:${c.var.userId}`, WRITE_LIMIT);
   const revision = parseRevision(c.req.header("If-Match"));
   const input = parseByokInput(await c.req.json().catch(() => null));
   const provider = await saveByok(c.var.userId as string, input, revision);
@@ -52,6 +59,7 @@ byokRouter.put(prefix, authMiddleware, async (c) => {
  * DELETE /api/v1/me/llm-provider
  */
 byokRouter.delete(prefix, authMiddleware, async (c) => {
+  await enforceRateLimit(`byok-write:${c.var.userId}`, WRITE_LIMIT);
   await removeByok(c.var.userId as string);
   return c.body(null, 204);
 });
@@ -62,5 +70,6 @@ byokRouter.delete(prefix, authMiddleware, async (c) => {
  * 响应：`{ data: { status: "ok" | "failed", code?, message? } }`
  */
 byokRouter.post(`${prefix}/test`, authMiddleware, async (c) => {
+  await enforceRateLimit(`byok-test:${c.var.userId}`, TEST_LIMIT);
   return c.json({ data: await testByok(c.var.userId as string) });
 });
