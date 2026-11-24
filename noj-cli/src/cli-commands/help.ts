@@ -129,6 +129,20 @@ export function renderProductionCommandHelp(command: string): string {
       "  --drain-timeout N        等待排空超时秒数",
       "  --recover                从上次未完成 checkpoint 恢复升级",
     ]
+    : command === "rollback"
+    ? [
+      "",
+      "rollback 常用选项:",
+      "  --to <version>           回滚目标版本（缺省读取升级记录中的上一版本）",
+      "  --restore-backup <path>  一并恢复指定 .nojbackup 数据快照",
+      "  --passphrase-file FILE   GPG 口令文件（配合 --restore-backup）",
+      "  --no-encrypt             快照未加密时使用",
+      "  --force-app-only         显式跳过跨版本迁移数据恢复门禁（仅回切镜像/配置）",
+      "  --skip-drain             跳过维护模式自动排空",
+      "  --drain-timeout N        等待排空超时秒数",
+      "  --dry-run                零副作用预演（校验与规划而不执行变更）",
+      "  --json                   机器可读 JSON 输出",
+    ]
     : [];
   return renderCommandHelp(`noj-cli ${command} [选项]`, [
     ...head,

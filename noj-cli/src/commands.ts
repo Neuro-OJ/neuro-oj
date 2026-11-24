@@ -127,6 +127,11 @@ export const COMMANDS: readonly TopCommandSpec[] = [
     summary: "同步部署文件、备份并升级生产服务（中断后用 --recover）",
   },
   {
+    name: "rollback",
+    tier: "prod",
+    summary: "生产一键回滚到上一版本或指定版本（支持 --dry-run）",
+  },
+  {
     name: "backup",
     tier: "prod",
     summary: "生产备份；子命令如下（list/prune 支持 --json）",
