@@ -90,7 +90,6 @@ export {
 } from "./system/services/hardening-rate-limit.ts";
 // 迁移期：供 src/features/* 使用（客户端 IP 遵循 TRUSTED_PROXIES，审计与限流须用它而非直接读请求头）。
 export { getClientIp } from "./system/services/rate-limit-env.ts";
-// 迁移期：供 src/features/knowledge 使用（平台身份模型调用：Provider Key 仍在网关）。
 export {
   // 供 src/features/byok：用户自带模型的 gateway 客户端
   deleteUserLlmProvider,
@@ -103,10 +102,10 @@ export type {
   UserLlmProviderInput,
   UserLlmProviderView,
 } from "./gateway/index.ts";
+// 迁移期：供 src/features/knowledge 与 evaluation-feedback 使用（平台身份模型调用与评测 LLM 汇总）。
 export {
+  getSubmissionLlmSummary,
   KNOWLEDGE_TAG_MODEL_ALIAS,
-  // 迁移期：供 src/features/knowledge 使用（打标管理 API 读取 `platform.tagger`
-  // 是否已在网关配置）。
   listLlmGatewayModelAliases,
   mapPlatformCompletionError,
   PLATFORM_MAX_OUTPUT_TOKENS,
@@ -116,6 +115,12 @@ export {
   queryPlatformUsage,
 } from "./gateway/index.ts";
 export type {
+  LlmModelBreakdown,
+  LlmSubmissionSummaryData,
+  LlmSubmissionSummaryQuery,
+  LlmSubmissionSummaryResult,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
   PlatformChatMessage,
   PlatformCompletionErrorCode,
   PlatformCompletionInput,

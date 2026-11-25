@@ -39,6 +39,7 @@ import {
   testUserProvider,
   type UserProviderInput,
 } from "../user-providers.ts";
+import { querySubmissionUsageSummary } from "../usage-summary.ts";
 
 export interface InternalDeps {
   config: GatewayConfig;
@@ -367,6 +368,28 @@ export function createInternalRouter(deps: InternalDeps): Hono {
       [...params, limit, (page - 1) * limit],
     );
     return c.json({ data: rows });
+  });
+
+  // 单次提交/评测尝试的用量聚合与调用瀑布流（供评测可视化反馈面板使用）
+  app.get("/internal/usage/submission-summary", async (c) => {
+    const submissionId = c.req.query("submission_id")?.trim() || undefined;
+    const attemptId = c.req.query("attempt_id")?.trim() || undefined;
+    if (!submissionId && !attemptId) {
+      return c.json({ error: "submission_id_or_attempt_id_required" }, 400);
+    }
+    const includeMessages = c.req.query("include_messages") === "1";
+    const rawLimit = c.req.query("limit");
+    const limit = rawLimit !== undefined && /^\d+$/.test(rawLimit)
+      ? Number(rawLimit)
+      : undefined;
+    const data = await querySubmissionUsageSummary(deps.db, {
+      domainId: domain(c),
+      submissionId,
+      attemptId,
+      includeMessages,
+      limit,
+    });
+    return c.json({ data });
   });
 
   // 配额列表

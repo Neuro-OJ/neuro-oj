@@ -45,6 +45,8 @@ export interface DomainSubmission {
       score: number;
     }
   >;
+  effective_attempt_id?: string | null;
+  latest_attempt_id?: string | null;
 }
 
 export interface DomainSubmissionListQuery {

@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import type { DomainSelfTest } from '~/composables/useDomainSelfTests';
+import type { EvaluationFeedback } from '~/utils/domain/submission/aiFeedback';
 import { formatMemory, formatScore, formatTime } from '~/utils/domain/submission/submissionFormat';
-const props = defineProps<{ record: DomainSelfTest }>();
+import AiFeedbackPanel from './AiFeedbackPanel.vue';
+const props = defineProps<{
+  record: DomainSelfTest;
+  slug?: string;
+  feedback?: EvaluationFeedback | null;
+}>();
 interface CaseStream {
   case_id: string;
   status: string;
@@ -17,9 +23,9 @@ const cases = computed(() =>
   props.record.resource_available ? oi.value?.subtasks?.flatMap((item) => item.cases ?? []) ?? [] : []
 );
 // 自测只包含公开样例与用户输入；正式完成后不能让最后一条进度覆盖最终判定。
-const details = computed(() => oi.value
-  ? { cases: cases.value.map(item => ({ ...item, visibility: 'visible' })) }
-  : props.record.details);
+const details = computed(() =>
+  oi.value ? { cases: cases.value.map((item) => ({ ...item, visibility: 'visible' })) } : props.record.details
+);
 const progress = computed(() => ['pending', 'judging'].includes(props.record.status) ? props.record.progress : null);
 const statuses = {
   pending: '等待运行',
@@ -36,6 +42,16 @@ const statuses = {
     <UAlert v-if="!record.resource_available" color="warning" title="源资源不可用，只保留原自测和授权成绩摘要" />
     <template v-else>
       <SubmissionCaseResults :details="details" :progress="progress" />
+      <AiFeedbackPanel
+        kind="self-test"
+        :target-id="record.id"
+        :slug="slug"
+        :status="record.status"
+        result-visibility="cases"
+        :resource-available="record.resource_available"
+        :include-messages="true"
+        :feedback="feedback"
+      />
       <UCard v-if="oi?.compile_error">
         <h3 class="mb-2 font-semibold">编译诊断</h3>
         <pre class="max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs">{{ oi.compile_error }}</pre>

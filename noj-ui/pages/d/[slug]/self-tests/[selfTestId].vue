@@ -39,7 +39,7 @@ useSeoMeta({ title: '代码自测详情' });
       </div>
       <p
         class="break-all text-xs text-text-muted">{{ data.data.id }} · 使用域 {{ slug }} · 自测不计正式成绩或作业进度</p>
-      <SubmissionSelfTestResult :record="data.data" />
+      <SubmissionSelfTestResult :record="data.data" :slug="slug!" />
       <UCard v-if="data.data.code != null">
         <h3 class="mb-3 font-semibold">原自测代码</h3>
         <pre class="max-h-96 overflow-auto whitespace-pre font-mono text-xs">{{ data.data.code }}</pre>
