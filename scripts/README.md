@@ -5,8 +5,8 @@ Neuro OJ 仓库根目录的脚本统一存放点。
 > **T24 起：生产运维不再经本目录的 bash 脚本**。`setup.sh`、`install.sh`、
 > `production.sh`、`backup-schedule.sh`、`judge-install.sh` 等自举/运维脚本
 > 已删除——能力全部迁入 `noj-cli`（纯 TS，见 `noj-cli/src/prod/`）。
-> 首次安装改为**手动下载 Release 二进制**后执行 `install`（不再有自举脚本）。
-> 旧 Bash 部署、备份、演练与弃用闸门脚本均已删除。
+> 首次安装改为**手动下载 Release 二进制**后执行 `install`（不再有自举脚本）。 旧
+> Bash 部署、备份、演练与弃用闸门脚本均已删除。
 > 注意：`scripts/release/test-supply-chain.sh`、`scripts/staging/test-acceptance.sh`
 > 等**门禁/回归测试**脚本仍然保留（被删除的是旧的自举与运维入口脚本）。
 

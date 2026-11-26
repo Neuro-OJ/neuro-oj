@@ -5,8 +5,7 @@
 #   dependency-review  PR 上比对 base↔head 新增依赖，high 及以上直接拦截
 #                      （依赖 GitHub Dependency Graph，见该 job 注释）
 #   cargo-audit        noj-judge/Cargo.lock（Rust 侧；CodeQL 官方不支持 Rust）
-#   osv-scanner        5 个 deno.lock + noj-docs / noj-vscode-extension 的
-#                      package-lock.json
+#   osv-scanner        5 个 deno.lock + noj-docs 的 package-lock.json
 #   codeql             javascript-typescript（PR / main push / 每周定时）
 #
 # 触发成本控制：PR 与 main push 通过 dorny/paths-filter 只跑相关 job；
@@ -76,8 +75,6 @@ jobs:
               - '**/deno.jsonc'
               - 'noj-docs/package.json'
               - 'noj-docs/package-lock.json'
-              - 'noj-vscode-extension/package.json'
-              - 'noj-vscode-extension/package-lock.json'
               - '.github/workflows/security.yml'
               - 'scripts/security/**'
             codeql:
@@ -220,7 +217,7 @@ jobs:
 
       # 发现漏洞时 action 以 1 退出；交给下一步汇总，避免存量漏洞阻塞合并。
       # 工具/镜像/解析失败时不会产出结果文件，下一步会失败。
-      - name: 扫描 7 个锁文件
+      - name: 扫描 6 个锁文件
         id: scan
         continue-on-error: true
         uses: google/osv-scanner-action/osv-scanner-action@32d3cd482bdadfb38b186c0ad1b031902d55d932 # v2.7.1
@@ -231,7 +228,6 @@ jobs:
             --format=json
             --output-file=.security/osv/results.json
             --lockfile=noj-docs/package-lock.json
-            --lockfile=noj-vscode-extension/package-lock.json
             --lockfile=.security/osv/noj-cli/package-lock.json
             --lockfile=.security/osv/noj-core/package-lock.json
             --lockfile=.security/osv/noj-llm-gateway/package-lock.json
@@ -252,7 +248,7 @@ jobs:
           packages=$(jq '[.results[]?.packages[]?] | length' .security/osv/results.json)
           vulns=$(jq '[.results[]?.packages[]?.vulnerabilities[]?] | length' .security/osv/results.json)
           {
-            echo "### osv-scanner（7 个锁文件）"
+            echo "### osv-scanner（6 个锁文件）"
             echo ""
             echo "- 受影响包：${packages}"
             echo "- 已知漏洞：${vulns}"

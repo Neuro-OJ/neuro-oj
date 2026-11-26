@@ -55,6 +55,10 @@ Deno.test("release-set 校验 tag、协议、组件和客户端版本绑定", ()
   assertEquals(parsed.release, "v0.10.5");
   assertEquals(parsed.protocol_versions.evaluation, 3);
   assertEquals(parsed.components.core.image, "ghcr.io/neuro-oj/noj-server");
+  const withoutIde = validReleaseSet() as Record<string, unknown>;
+  delete withoutIde.ide_version;
+  const parsedWithoutIde = validateReleaseSet(withoutIde, "0.10.5");
+  assertEquals(parsedWithoutIde.ide_version, undefined);
   assertThrows(
     () => validateReleaseSet(validReleaseSet(), "v0.10.6"),
     Error,

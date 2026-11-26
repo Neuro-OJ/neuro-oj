@@ -120,7 +120,7 @@ flowchart LR
 - **noj-judge**：从队列拉取任务，在 Docker 沙箱容器中执行评测并回传结果。
 - **noj-llm-gateway**（可选）：LLM 调用的可信代理，承载 Provider Key、限流/额度与审计。
 - **noj-cli**（运维）：生产部署、启停、升级与备份/恢复。
-- **noj-lmcc-extension**（可选）：VS Code / LMCC IDE 做题插件。
+- **[`noj-vscode`](https://github.com/Neuro-OJ/noj-vscode)**（独立仓库，可选）：Visual Studio Code 扩展（登录、工作区拉题、本地 Mock 调试、ZIP/代码提交与评测报告）。
 
 更完整的部署形态与各服务职责见[系统架构](../system/architecture.md)。
 

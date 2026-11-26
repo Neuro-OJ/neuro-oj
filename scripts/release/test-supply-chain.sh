@@ -135,23 +135,6 @@ fi
 pass "预发布分支误转正拒绝"
 reset_fixture
 
-sed -i.bak '/neuro-oj-vscode-\${VERSION#v}\.vsix/d' \
-  "$TEST_ROOT/.github/workflows/release.yml"
-if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
-  >/dev/null 2>&1; then
-  fail "缺少 IDE 插件 VSIX 打包的工作流未被拒绝"
-fi
-pass "缺少 IDE VSIX 资产拒绝"
-reset_fixture
-
-sed -i.bak '/^[[:space:]]*publish-ide,/d' \
-  "$TEST_ROOT/.github/workflows/release.yml"
-if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" \
-  >/dev/null 2>&1; then
-  fail "publish-release 未等待 publish-ide 的工作流未被拒绝"
-fi
-pass "publish-release 漏等 publish-ide 拒绝"
-reset_fixture
 
 sed -i.bak 's/deno run -A --config deno\.json \.\.\/scripts\/release\/generate-release-set\.ts/deno run -A ..\/scripts\/release\/generate-release-set.ts/' \
   "$TEST_ROOT/.github/workflows/release.yml"

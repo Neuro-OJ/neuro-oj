@@ -97,6 +97,7 @@ export async function generateReleaseSet(options: {
     protocol_versions: { evaluation: 3, gateway: 3 },
     components,
     cli_version: options.release,
+    // 兼容存量节点：旧版 noj-cli 在升级自举前仍校验非空 ide_version，过渡窗口期保留输出。
     ide_version: options.release,
     sdk_standard: SDK_STANDARD,
   }, options.release);

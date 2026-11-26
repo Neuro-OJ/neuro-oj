@@ -196,7 +196,7 @@ export const REPO_GATES: Gate[] = [
   // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
   // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
   { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },
-  // 模块版本一致性（2026-10-17，Issue #658）：7 个模块各自在自己的清单里声明
+  // 模块版本一致性（2026-10-17，Issue #658）：6 个模块各自在自己的清单里声明
   // version，没有任何同步机制——实测 noj-tests 已漂移到 0.9.5，其余为 0.10.5，
   // 而页脚/构建身份/文档各取一处，无人察觉。只断言彼此一致，不绑定 Release 标签。
   { args: ["deno", "run", "-A", "scripts/check-version-consistency.ts"] },
