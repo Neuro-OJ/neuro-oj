@@ -7,7 +7,6 @@ import {
   apiPatch,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -18,7 +17,6 @@ let regularToken = "";
 let regularUserId = "";
 
 e2eTest("[e2e/auth] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   const userTs = (Date.now() + 1).toString(36);
@@ -32,7 +30,6 @@ e2eTest("[e2e/auth] Setup", async () => {
 });
 
 e2eTest("[e2e/auth] 3.1 非管理员 promote 被拒", async () => {
-  if (!isE2E) return;
   const { status } = await apiPatch(
     "/api/v1/admin/identity/users/some-id/role",
     {
@@ -45,7 +42,6 @@ e2eTest("[e2e/auth] 3.1 非管理员 promote 被拒", async () => {
 });
 
 e2eTest("[e2e/auth] 3.2 缺少 role 字段", async () => {
-  if (!isE2E) return;
   // 用真实用户 id 才能把"缺字段"与"用户不存在"分开：非法 id 先 404。
   const { status } = await apiPatch(
     "/api/v1/admin/identity/users/" + regularUserId + "/role",
@@ -57,7 +53,6 @@ e2eTest("[e2e/auth] 3.2 缺少 role 字段", async () => {
 });
 
 e2eTest("[e2e/auth] 3.3 非法角色 ID", async () => {
-  if (!isE2E) return;
   // 数组角色与未知角色值都必须 400。
   const arrayStatus = (await apiPatch(
     "/api/v1/admin/identity/users/" + regularUserId + "/role",
@@ -77,7 +72,6 @@ e2eTest("[e2e/auth] 3.3 非法角色 ID", async () => {
 });
 
 e2eTest("[e2e/auth] 3.4 提升不存在的用户", async () => {
-  if (!isE2E) return;
   const { status } = await apiPatch(
     "/api/v1/admin/identity/users/nonexistent-id/role",
     { role: "admin" },
@@ -88,7 +82,6 @@ e2eTest("[e2e/auth] 3.4 提升不存在的用户", async () => {
 });
 
 e2eTest("[e2e/auth] 3.5 管理员提升用户成功", async () => {
-  if (!isE2E) return;
   const { status } = await apiPatch(
     "/api/v1/admin/identity/users/" + regularUserId + "/role",
     { role: "admin" },

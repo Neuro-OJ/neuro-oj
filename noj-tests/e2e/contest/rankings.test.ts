@@ -6,18 +6,11 @@
  * - GET /api/v1/rankings/me
  */
 
-import {
-  apiGet,
-  e2eTest,
-  isE2E,
-  registerUser,
-  waitForServer,
-} from "../helper.ts";
+import { apiGet, e2eTest, registerUser, waitForServer } from "../helper.ts";
 
 let userToken = "";
 
 e2eTest("[e2e/rankings] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   const ts = Date.now().toString(36);
   userToken = await registerUser(
@@ -28,7 +21,6 @@ e2eTest("[e2e/rankings] Setup", async () => {
 });
 
 e2eTest("[e2e/rankings] 1.1 GET /rankings 返回数组", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet("/api/v1/rankings", userToken);
   if (status !== 200) throw new Error(`期望 200，实际 ${status}`);
   const data = body as { data?: Array<unknown> };
@@ -38,7 +30,6 @@ e2eTest("[e2e/rankings] 1.1 GET /rankings 返回数组", async () => {
 });
 
 e2eTest("[e2e/rankings] 1.2 GET /rankings 支持分页", async () => {
-  if (!isE2E) return;
   const { body } = await apiGet(
     "/api/v1/rankings?limit=5&offset=0",
     userToken,
@@ -53,7 +44,6 @@ e2eTest("[e2e/rankings] 1.2 GET /rankings 支持分页", async () => {
 });
 
 e2eTest("[e2e/rankings] 1.3 GET /rankings/me 返回当前用户信息", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet(
     "/api/v1/rankings/me",
     userToken,

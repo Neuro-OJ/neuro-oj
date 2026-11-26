@@ -28,7 +28,7 @@
  * `KNOWLEDGE_DISABLED`；开关每次请求经 `getSetting()` 读取，不走本模块缓存。
  */
 import { Hono } from "hono";
-import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../shared/access/actor.ts";
 import {
   authMiddleware,
   loadWorkspace,
@@ -39,11 +39,8 @@ import {
   assertClassroomCoach,
   loadClassroom,
 } from "../../modules/education/index.ts";
-import {
-  enforceRateLimit,
-  getClientIp,
-  getSetting,
-} from "../../modules/platform/index.ts";
+import { getSetting } from "../../shared/config/system-settings.ts";
+import { enforceRateLimit, getClientIp } from "../../modules/platform/index.ts";
 import {
   AppError,
   BadRequestError,

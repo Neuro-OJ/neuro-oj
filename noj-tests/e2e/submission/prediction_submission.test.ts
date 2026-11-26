@@ -33,7 +33,6 @@ import {
   e2eTest,
   getAdminToken,
   getProblemReference,
-  isE2E,
   publishProblemVersion,
   registerUser,
   TEST_PASSWORD,
@@ -74,12 +73,10 @@ function makePredictionCsv(): Blob {
 }
 
 e2eTest("[e2e/prediction] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
 });
 
 e2eTest("[e2e/prediction] 创建 prediction 题目并上传 csv 评测", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
   const userToken = await registerUser(

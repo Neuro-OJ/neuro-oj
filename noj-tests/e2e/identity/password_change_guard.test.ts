@@ -26,7 +26,6 @@ import {
   apiGet,
   apiPost,
   e2eTest,
-  isE2E,
   loginUser,
   waitForServer,
 } from "../helper.ts";
@@ -38,7 +37,6 @@ let flagToken = "";
 let guardAvailable = false; // false 表示改密已被执行过，无法测试守卫
 
 e2eTest("[e2e/guard] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   // 先试初始密码（须有 must_change_password flag）
   try {
@@ -56,7 +54,6 @@ e2eTest("[e2e/guard] Setup", async () => {
 e2eTest(
   "[e2e/guard] 1.1 非白名单 API 返回 403 PASSWORD_CHANGE_REQUIRED",
   async () => {
-    if (!isE2E) return;
     const { status, body } = await apiGet(
       "/api/v1/admin/identity/users",
       flagToken,
@@ -72,7 +69,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/guard] 1.2 /api/v1/auth/me 白名单放行", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet("/api/v1/auth/me", flagToken);
   if (status !== 200) throw new Error("期望 200, 实际 " + status);
   console.log("  ✓ /me 白名单放行");
@@ -81,7 +77,6 @@ e2eTest("[e2e/guard] 1.2 /api/v1/auth/me 白名单放行", async () => {
 e2eTest(
   "[e2e/guard] 1.3 /api/v1/auth/logout 端点存在（no-op 不走中间件）",
   async () => {
-    if (!isE2E) return;
     const { status, body } = await apiPost(
       "/api/v1/auth/logout",
       {},
@@ -99,7 +94,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/guard] 1.4 /api/v1/auth/change-password 白名单放行", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPost(
     "/api/v1/auth/change-password",
     { old_password: PWCHANGE_PASS, new_password: PWCHANGE_NEW_PASS },
@@ -114,7 +108,6 @@ e2eTest("[e2e/guard] 1.4 /api/v1/auth/change-password 白名单放行", async ()
 }, !guardAvailable);
 
 e2eTest("[e2e/guard] 1.5 改密后非白名单 API 恢复正常", async () => {
-  if (!isE2E) return;
   // 用新密码登录拿到无 flag 的 token
   const cleanToken = await loginUser(PWCHANGE_EMAIL, PWCHANGE_NEW_PASS);
   const { status } = await apiGet("/api/v1/submissions", cleanToken);
@@ -123,7 +116,6 @@ e2eTest("[e2e/guard] 1.5 改密后非白名单 API 恢复正常", async () => {
 }, !guardAvailable);
 
 e2eTest("[e2e/guard] 1.6 pwchange 限流桶独立（评审修复 M3）", async () => {
-  if (!isE2E) return;
   const cleanToken = await loginUser(PWCHANGE_EMAIL, PWCHANGE_NEW_PASS);
   for (let i = 0; i < 6; i++) {
     await apiPost(

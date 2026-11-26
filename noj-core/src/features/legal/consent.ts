@@ -10,7 +10,7 @@ import { getLogger } from "@logtape/logtape";
 import { getDb } from "../../shared/db/connection.ts";
 import type { DbTx } from "../../shared/db/executor.ts";
 import { userConsents } from "../../shared/db/schema.ts";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
 import type { LegalKind, UserConsentSnapshot } from "./types.ts";
 import { LEGAL_KINDS } from "./types.ts";
 import {

@@ -10,7 +10,6 @@ import {
   e2eTest,
   getAdminToken,
   getProblemReference,
-  isE2E,
   publishProblemVersion,
   registerUser,
   TEST_PASSWORD,
@@ -27,12 +26,10 @@ function makeZip(): Blob {
 }
 
 e2eTest("[e2e/artifact] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
 });
 
 e2eTest("[e2e/artifact] 创建 artifact 题目并上传 zip 评测", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
   const userToken = await registerUser(

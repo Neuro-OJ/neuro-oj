@@ -79,6 +79,7 @@ export const GATE_SELF_TESTS: string[] = [
   "scripts/verify-agent-note-format_test.ts",
   // 一键部署脚本：校验失败必须中止、参数与版本标签必须原样交给 noj-cli install。
   "scripts/deploy/install-sh_test.ts",
+  "scripts/gen-api-contracts_test.ts",
 ];
 
 /**
@@ -168,6 +169,7 @@ export const REPO_GATES: Gate[] = [
   // fixture 逐字符锁定等价，否则「统一日志渲染」会静默漂移。
   { args: ["deno", "run", "-A", "scripts/check-log-parity.ts"] },
   { args: ["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"] },
+  { args: ["deno", "run", "-A", "scripts/gen-api-contracts.ts", "--check"] },
   // 出题模板嵌入（P0-2 B）：noj-cli 单二进制读不到仓库文件，模板以生成模块嵌入；
   // 改了 noj-core/scripts/problem-templates/ 却没重新生成，两处 init 会发出旧模板。
   {

@@ -13,7 +13,6 @@ import {
   domainProblemPath,
   e2eTest,
   getOrCreateUser,
-  isE2E,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
@@ -57,7 +56,6 @@ async function pollSelfTest(
 }
 
 e2eTest("[e2e/self-test] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   const user = await getOrCreateUser(
     USER_KEY,
@@ -94,7 +92,6 @@ e2eTest("[e2e/self-test] Setup", async () => {
 });
 
 e2eTest("[e2e/self-test] 创建自测并返回 id", async () => {
-  if (!isE2E) return;
   // 自测与正式提交一样必须携带作答版本（Handbook §4.2）
   const res = await apiPost(
     `/api/v1/domains/main/problems/${problemNumber}/self-tests`,
@@ -122,7 +119,6 @@ def solve(text: str) -> str:
 });
 
 e2eTest("[e2e/self-test] 轮询到终态并返回分数/状态/输出", async () => {
-  if (!isE2E) return;
   const result = await pollSelfTest(selfTestId);
   if (result.status !== "finished") {
     throw new Error(`自测未正常完成: ${JSON.stringify(result)}`);
@@ -136,7 +132,6 @@ e2eTest("[e2e/self-test] 轮询到终态并返回分数/状态/输出", async ()
 });
 
 e2eTest("[e2e/self-test] 自测后正式提交历史不变化", async () => {
-  if (!isE2E) return;
   const history = await apiGet("/api/v1/submissions", token);
   if (history.status !== 200) {
     throw new Error(`读取提交历史失败: ${history.status}`);
@@ -163,7 +158,6 @@ e2eTest("[e2e/self-test] 自测后正式提交历史不变化", async () => {
 });
 
 e2eTest("[e2e/self-test] 队列概览展示自测条目", async () => {
-  if (!isE2E) return;
   const res = await apiGet("/api/v1/instance/queue", token);
   if (res.status !== 200) {
     throw new Error(`获取队列失败: ${res.status}`);

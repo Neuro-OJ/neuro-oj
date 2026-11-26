@@ -1,11 +1,6 @@
 import type { DomainProblemReference, DomainProblemSummary } from './domain-problems.ts';
-export interface DomainTrainingInput {
-  state?: 'draft' | 'published';
-  title: string;
-  description: string;
-  visibility?: 'private' | 'unlisted' | 'public';
-  problems: string[];
-}
+import type { DomainTrainingInput } from '../../generated/api-contracts.ts';
+export type { DomainTrainingInput };
 export interface DomainTrainingDetail {
   state?: 'draft' | 'published';
   id: string;

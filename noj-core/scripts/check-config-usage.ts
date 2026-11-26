@@ -75,7 +75,8 @@ const NON_CONSUMER_PATTERNS: RegExp[] = [
   // 设置 KV 存储自身的实现与其**校验分支**（如 `key === "smtp_from"` 只做 email
   // 格式校验，不代表该键被消费）。审计口径明确把这类「能存/能校验」排除在消费之外，
   // 否则 smtp_from 这类死键会被自己的校验分支掩盖（实测漏报）。
-  /domains\/system\/services\/system-settings\.ts$/,
+  /(?:domains\/system|modules\/platform)\/services\/system-settings\.ts$/,
+  /shared\/config\/system-settings\.ts$/,
   // 管理后台通用设置页：对任何键一视同仁，不构成消费
   /noj-ui\/pages\/admin\/settings\.vue$/,
 ];

@@ -154,3 +154,11 @@ export type {
 } from "./services/contest-remediation.ts";
 export { resolveAssignmentSubmissionOrigin } from "./services/assignment-submission-origin.ts";
 export { registerEducationObservability } from "./observability.ts";
+
+import { registerSettingChangeHook } from "../../shared/config/system-settings.ts";
+import { recordInstanceEducationModulesChange } from "./contracts/module-facts.ts";
+
+registerSettingChangeHook(
+  "instance_allowed_modules",
+  recordInstanceEducationModulesChange,
+);

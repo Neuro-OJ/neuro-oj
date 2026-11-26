@@ -6,7 +6,6 @@ import {
   apiGet,
   apiPut,
   e2eTest,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -16,7 +15,6 @@ let token = "";
 let userId = "";
 
 e2eTest("[e2e/profile] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   const ts = Date.now().toString(36);
   token = await registerUser(
@@ -29,7 +27,6 @@ e2eTest("[e2e/profile] Setup", async () => {
 });
 
 e2eTest("[e2e/profile] 5.1 查看用户主页", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet(
     "/api/v1/users/" + userId + "/profile",
   );
@@ -50,7 +47,6 @@ e2eTest("[e2e/profile] 5.1 查看用户主页", async () => {
 });
 
 e2eTest("[e2e/profile] 5.2 不存在用户 404", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet(
     "/api/v1/users/nonexistent-id/profile",
   );
@@ -61,14 +57,12 @@ e2eTest("[e2e/profile] 5.2 不存在用户 404", async () => {
 });
 
 e2eTest("[e2e/profile] 5.3 主页无需认证", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet("/api/v1/users/" + userId + "/profile");
   if (status !== 200) throw new Error("期望 200");
   console.log("  ✓ 主页无需认证");
 });
 
 e2eTest("[e2e/profile] 5.4 bio 默认为空", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet(
     "/api/v1/users/" + userId + "/profile",
   );
@@ -79,7 +73,6 @@ e2eTest("[e2e/profile] 5.4 bio 默认为空", async () => {
 });
 
 e2eTest("[e2e/profile] 5.5 PUT 未认证 401", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPut("/api/v1/users/me", { bio: "test" });
   if (status !== 401) throw new Error("期望 401");
   if ((body as { error: string }).error !== "未提供认证令牌") {
@@ -89,7 +82,6 @@ e2eTest("[e2e/profile] 5.5 PUT 未认证 401", async () => {
 });
 
 e2eTest("[e2e/profile] 5.6 缺 bio 400", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPut("/api/v1/users/me", {}, token);
   if (status !== 400) throw new Error("期望 400");
   if (!(body as { error: string }).error.includes("缺少必填字段")) {
@@ -99,7 +91,6 @@ e2eTest("[e2e/profile] 5.6 缺 bio 400", async () => {
 });
 
 e2eTest("[e2e/profile] 5.7 bio 超长 400", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPut("/api/v1/users/me", {
     bio: "x".repeat(5001),
   }, token);
@@ -111,7 +102,6 @@ e2eTest("[e2e/profile] 5.7 bio 超长 400", async () => {
 });
 
 e2eTest("[e2e/profile] 5.8 更新 bio 成功", async () => {
-  if (!isE2E) return;
   const markdownBio = "# 自我介绍\n\n热爱 **算法竞赛**\n";
   const { status, body } = await apiPut("/api/v1/users/me", {
     bio: markdownBio,
@@ -124,7 +114,6 @@ e2eTest("[e2e/profile] 5.8 更新 bio 成功", async () => {
 });
 
 e2eTest("[e2e/profile] 5.9 主页反映更新", async () => {
-  if (!isE2E) return;
   const expectedBio = "# 自我介绍\n\n热爱 **算法竞赛**\n";
   const { body } = await apiGet("/api/v1/users/" + userId + "/profile");
   if (
@@ -135,7 +124,6 @@ e2eTest("[e2e/profile] 5.9 主页反映更新", async () => {
 });
 
 e2eTest("[e2e/profile] 5.10 清空 bio", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPut(
     "/api/v1/users/me",
     { bio: "" },

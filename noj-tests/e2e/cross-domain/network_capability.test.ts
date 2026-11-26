@@ -241,7 +241,6 @@ async function judgeAvailable(): Promise<boolean> {
 // ── 测试 ────────────────────────────────────────────
 
 e2eTest("[e2e/network-capability] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
@@ -259,7 +258,6 @@ e2eTest("[e2e/network-capability] Setup", async () => {
 e2eTest(
   "[e2e/network-capability] 管理员创建联网题放行（network.enabled=true）",
   async () => {
-    if (!isE2E) return;
     const res = await apiPost(
       "/api/v1/domains/main/problems",
       {
@@ -309,7 +307,6 @@ e2eTest(
 e2eTest(
   "[e2e/network-capability] 管理员导入联网统一包（import-bundle 放行）",
   async () => {
-    if (!isE2E) return;
     const zip = await makeBundleZip();
     bundleProblemId = await importBundle(zip);
     // 题包导入只写共享草稿；提交前必须显式发布作答版本（Handbook §6.2）

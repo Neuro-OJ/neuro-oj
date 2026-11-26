@@ -15,14 +15,8 @@ import {
 import { workspaceAudit } from "../../modules/access/contracts/cross-module/workspace_services_domains.ts";
 import { resolveDomainProblem } from "../../modules/problems/index.ts";
 
-/** 域题单只编排本域题目；跨域复用先复制为独立资源。 */
-export interface DomainTrainingInput {
-  state?: "draft" | "published";
-  title: string;
-  description?: string;
-  visibility?: "private" | "unlisted" | "public";
-  problems: string[];
-}
+import type { DomainTrainingInput } from "../../shared/api-contracts/features.ts";
+export type { DomainTrainingInput };
 
 function validate(input: DomainTrainingInput) {
   if (

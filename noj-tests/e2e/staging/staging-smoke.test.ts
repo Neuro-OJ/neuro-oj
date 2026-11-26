@@ -174,14 +174,12 @@ async function readSseOnce(url: string, token: string): Promise<string> {
 }
 
 e2eTest("[e2e/staging] 启动检查与管理员登录改密", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   if (!adminToken) throw new Error("管理员登录改密后未获得 token");
 });
 
 e2eTest("[e2e/staging] 用户登录与 TFA 全流程", async () => {
-  if (!isE2E) return;
   const login = `staging_tfa_${testSuffix}`;
   userToken = await registerUser(login, `${login}@test.com`, TEST_PASSWORD);
 
@@ -211,7 +209,6 @@ e2eTest("[e2e/staging] 用户登录与 TFA 全流程", async () => {
 });
 
 e2eTest("[e2e/staging] 导入题包并验证对象存储下载", async () => {
-  if (!isE2E) return;
   problemId = await importBundle();
   const packageResponse = await apiGet(
     `/api/v1/problems/${problemId}/support-package`,
@@ -223,7 +220,6 @@ e2eTest("[e2e/staging] 导入题包并验证对象存储下载", async () => {
 });
 
 e2eTest("[e2e/staging] 真实提交完成评测", async () => {
-  if (!isE2E) return;
   submissionId = await submitCode(
     adminToken,
     problemId,
@@ -238,7 +234,6 @@ e2eTest("[e2e/staging] 真实提交完成评测", async () => {
 });
 
 e2eTest("[e2e/staging] 提交 SSE 可连接并收到事件", async () => {
-  if (!isE2E) return;
   const payload = await readSseOnce(
     `${BASE_URL}/api/v1/domains/main/submissions/${submissionId}/events`,
     adminToken,
@@ -247,7 +242,6 @@ e2eTest("[e2e/staging] 提交 SSE 可连接并收到事件", async () => {
 });
 
 e2eTest("[e2e/staging] 管理员重测并再次完成评测", async () => {
-  if (!isE2E) return;
   const response = await apiPost(
     `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},

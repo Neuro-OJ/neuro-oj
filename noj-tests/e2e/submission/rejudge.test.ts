@@ -15,7 +15,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  isE2E,
   pollSubmission,
   registerUser,
   submitCode,
@@ -32,7 +31,6 @@ let userToken = "";
 let submissionId = "";
 
 e2eTest("[e2e/rejudge] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
 
   adminToken = await getAdminToken();
@@ -65,7 +63,6 @@ e2eTest("[e2e/rejudge] Setup", async () => {
 // ── 单条重测 ──
 
 e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
-  if (!isE2E) return;
   const rejudgeRes = await apiPost(
     `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
@@ -115,7 +112,6 @@ e2eTest("[e2e/rejudge] 5.1 管理员单条重测完成提交", async () => {
 // ── 404 / 403 ──
 
 e2eTest("[e2e/rejudge] 5.2a 不存在的提交受理为空任务", async () => {
-  if (!isE2E) return;
   // 统一任务化后不存在的提交不会进入条目集合：返回 202 且总数为 0
   // （Handbook §4.3「空集合返回已完成、总数为 0 的任务」）。
   const res = await apiPost(
@@ -134,7 +130,6 @@ e2eTest("[e2e/rejudge] 5.2a 不存在的提交受理为空任务", async () => {
 });
 
 e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
-  if (!isE2E) return;
   const res = await apiPost(
     `/api/v1/admin/submission/submissions/${submissionId}/rejudge`,
     {},
@@ -149,7 +144,6 @@ e2eTest("[e2e/rejudge] 5.2b 非管理员重测被拒 403", async () => {
 // ── 批量重测 ──
 
 e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
-  if (!isE2E) return;
   const res = await apiPost(
     `/api/v1/admin/submission/problems/${PROBLEM_ID}/rejudge`,
     {},
@@ -173,7 +167,6 @@ e2eTest("[e2e/rejudge] 5.3a 批量重测返回正确结构", async () => {
 });
 
 e2eTest("[e2e/rejudge] 5.3b 重测在审计日志中有记录", async () => {
-  if (!isE2E) return;
   const logs = await apiGet(
     "/api/v1/admin/system/audit-logs?action=submissions.rejudge",
     adminToken,

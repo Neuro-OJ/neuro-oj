@@ -9,7 +9,7 @@
 
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../shared/db/connection.ts";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
 import { dataRequests } from "../../shared/db/schema.ts";
 import {
   BadRequestError,
@@ -17,7 +17,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "../../shared/base/errors.ts";
-import { type AuditMeta, recordAudit } from "../../modules/platform/index.ts";
+import { type AuditMeta, recordAudit } from "../../shared/audit/audit-log.ts";
 
 /** 请求类型。 */
 export const DATA_REQUEST_KINDS = ["delete", "correct"] as const;

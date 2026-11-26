@@ -7,7 +7,6 @@ import {
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
 } from "../helper.ts";
@@ -83,7 +82,6 @@ async function publishContestSubmissionEvent(
 }
 
 e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
-  if (!isE2E) return;
   adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
   userToken = await registerUser(
@@ -116,7 +114,6 @@ e2eTest("[e2e/anti-cheat-abnormal] Setup", async () => {
 });
 
 e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async () => {
-  if (!isE2E) return;
   // 公开赛：未报名用户可以订阅（榜单事件），但不得收到任何提交事件帧。
   const res = await fetch(
     `${BASE_URL}/api/v1/domains/main/contests/${contestId}/events`,
@@ -138,7 +135,6 @@ e2eTest("[e2e/anti-cheat-abnormal] 未报名用户收不到提交事件", async 
 e2eTest(
   "[e2e/anti-cheat-abnormal] 报名用户收到提交事件但不含 user_id",
   async () => {
-    if (!isE2E) return;
     const reg = await apiPost(
       `/api/v1/domains/main/contests/${contestId}/register`,
       {},

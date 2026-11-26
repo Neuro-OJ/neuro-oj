@@ -23,7 +23,6 @@ import {
   getAnswerVersionId,
   getOrCreateUser,
   getProblemIdByNumber,
-  isE2E,
   TEST_PASSWORD,
   waitForServer,
 } from "../helper.ts";
@@ -178,7 +177,6 @@ async function readSSEEventNames(
 }
 
 e2eTest("[e2e/anti-cheat] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
 
   adminToken = await getAdminToken();
@@ -335,7 +333,6 @@ e2eTest("[e2e/anti-cheat] Setup", async () => {
 });
 
 e2eTest("[e2e/anti-cheat] 1. 无上下文直取私有题 → 404", async () => {
-  if (!isE2E) return;
   const anon = await apiGet(paperPath());
   if (anon.status !== 404) {
     throw new Error(`匿名读取私有题应 404，实际 ${anon.status}`);
@@ -368,7 +365,6 @@ e2eTest("[e2e/anti-cheat] 1. 无上下文直取私有题 → 404", async () => {
 e2eTest(
   "[e2e/anti-cheat] 2. 普通客观题入口携带伪造 contestId → 400",
   async () => {
-    if (!isE2E) return;
     // 客观题提交入口支持携带 contest_id：攻击者用真实存在的非公开赛 ID，
     // 但该套卷不属于该赛/攻击者未注册，服务层必须拒绝伪造的竞赛上下文。
     const res = await apiPost(
@@ -394,7 +390,6 @@ e2eTest(
 e2eTest(
   "[e2e/anti-cheat] 3. 竞赛入口重复提交超 submission_limits → 429；普通入口私有题 → 404",
   async () => {
-    if (!isE2E) return;
     const first = await apiPost(
       `/api/v1/domains/main/contests/${limitContestId}/problems/A/submissions`,
       {
@@ -445,7 +440,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404", async () => {
-  if (!isE2E) return;
   // 4.1 本域建赛时挂入其他域的私有套卷 → 404
   //
   // 断言的是**引用隔离**，不是建赛权限：0.11 起建赛只能走显式域入口，普通账号没有
@@ -530,7 +524,6 @@ e2eTest("[e2e/anti-cheat] 4. 其他域私有题加入本域竞赛/题单 → 404
 e2eTest(
   "[e2e/anti-cheat] 5. 非参赛者订阅 SSE contestSubmission → 无事件",
   async () => {
-    if (!isE2E) return;
     // 非参赛者打开非公开赛 SSE。当前实现返回 404（无法订阅），同样满足“无事件”。
     // 若未来成员校验放宽为可连接但不推送，这里也会在事件收集后断言无 submission 事件。
     const eventsPromise = readSSEEventNames(
@@ -564,7 +557,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async () => {
-  if (!isE2E) return;
   if (!contestSubmissionId) {
     throw new Error("场景 3 未产生竞赛提交，无法执行场景 6");
   }
@@ -639,7 +631,6 @@ e2eTest("[e2e/anti-cheat] 6. 赛中提交详情/全局队列不泄判据", async
 e2eTest(
   "[e2e/anti-cheat] 7. 私有套卷练习提交非 owner 被拒，owner 响应不泄 expected",
   async () => {
-    if (!isE2E) return;
     // 攻击者对 private 套卷做练习提交应 403（防止把练习当答案 oracle）
     const submit = await apiPost(
       `${paperPath()}/objective-submissions`,

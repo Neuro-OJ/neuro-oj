@@ -7,7 +7,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
   retryE2E,
   submitCode,
@@ -21,7 +20,6 @@ let adminToken = "";
 let PROBLEM_ID = "";
 
 e2eTest("[e2e/queue] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
@@ -34,7 +32,6 @@ e2eTest("[e2e/queue] Setup", async () => {
 });
 
 e2eTest("[e2e/queue] 7.1 公共队列概览结构", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet(
     "/api/v1/domains/main/queue",
     adminToken,
@@ -67,7 +64,6 @@ e2eTest("[e2e/queue] 7.1 公共队列概览结构", async () => {
 });
 
 e2eTest("[e2e/queue] 7.2 提交后出现在队列中", async () => {
-  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   await retryE2E(async () => {
     const { body } = await apiGet("/api/v1/domains/main/queue", adminToken);
@@ -78,7 +74,6 @@ e2eTest("[e2e/queue] 7.2 提交后出现在队列中", async () => {
 });
 
 e2eTest("[e2e/queue] 7.3 状态端点正确", async () => {
-  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   const { status, body } = await apiGet(
     "/api/v1/submissions/" + id + "/status",
@@ -99,13 +94,11 @@ e2eTest("[e2e/queue] 7.3 状态端点正确", async () => {
 });
 
 e2eTest("[e2e/queue] 7.4 未认证 401", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet("/api/v1/submissions/dummy/status");
   if (status !== 401) throw new Error("期望 401");
 });
 
 e2eTest("[e2e/queue] 7.5 不存在 404", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet(
     "/api/v1/submissions/nonexistent/status",
     token,

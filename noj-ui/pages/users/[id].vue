@@ -86,18 +86,7 @@ useSeoMeta({
   ogDescription: () => profile.value?.user?.bio ? profile.value.user.bio.slice(0, 160) : 'Neuro OJ 用户主页',
 })
 
-interface CheckinStatsData {
-  total_days: number
-  current_streak: number
-  max_streak: number
-  month_days: number
-  last_checkin_date: string | null
-}
-
-interface CheckinHistoryData {
-  days: string[]
-  total_days: number
-}
+import type { CheckinHistory, CheckinStats } from '~/utils/generated/api-contracts';
 
 // 活跃度（issue #184）：stats/history 支持 user_id 参数公开查询
 const {
@@ -105,7 +94,7 @@ const {
   error: checkinError,
   pending: checkinPending,
   refresh: refreshCheckinStats,
-} = useFetch<{ data: CheckinStatsData }>(
+} = useFetch<{ data: CheckinStats }>(
   `/api/v1/checkin/stats?user_id=${userId}`,
 )
 const {
@@ -113,7 +102,7 @@ const {
   error: checkinHistoryError,
   pending: checkinHistoryPending,
   refresh: refreshCheckinHistory,
-} = useFetch<{ data: CheckinHistoryData }>(
+} = useFetch<{ data: CheckinHistory }>(
   `/api/v1/checkin/history?days=365&user_id=${userId}`,
 )
 

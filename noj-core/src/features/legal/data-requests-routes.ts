@@ -10,7 +10,7 @@ import { authMiddleware } from "../../modules/access/index.ts";
 import { type AuthEnv } from "../../shared/http/hono-env.ts";
 import { parseJsonBody } from "../../shared/http/request.ts";
 import { enforceRateLimit } from "../../modules/platform/index.ts";
-import { requireUserActor } from "../../modules/access/contracts/actor.ts";
+import { requireUserActor } from "../../shared/access/actor.ts";
 import { createDataRequest, listUserDataRequests } from "./data-requests.ts";
 
 const router = new Hono<AuthEnv>();

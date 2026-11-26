@@ -13,7 +13,11 @@ impl std::error::Error for CompilerInfrastructureError {}
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::Path;
+#[cfg(not(target_os = "linux"))]
+use std::process::{Command, ExitStatus};
+#[cfg(target_os = "linux")]
 use std::process::{Command, ExitStatus, Stdio};
+#[cfg(target_os = "linux")]
 use std::time::Instant;
 
 /// 使用 worker 配置的 WASI SDK 编译器把用户源代码转换成 wasm。编译器是
@@ -201,6 +205,16 @@ fn compile_impl(
 /// 编译器是宿主上的受信工具，但源码和题包辅助文件来自用户输入，仍须
 /// 作为不可信子进程处理。子进程使用独立进程组、512 MiB 地址空间、10 秒
 /// CPU/墙钟和有限诊断文件；超时会回收整个进程组，不能留下后台 clang。
+#[cfg(not(target_os = "linux"))]
+fn run_compiler_with_limits(
+    _command: &mut Command,
+    _root: &Path,
+    _cancellation: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<CompileOutput> {
+    anyhow::bail!("WASI 编译器必须运行在支持 Landlock 的 Linux worker")
+}
+
+#[cfg(target_os = "linux")]
 fn run_compiler_with_limits(
     command: &mut Command,
     root: &Path,
@@ -215,10 +229,7 @@ fn run_compiler_with_limits(
         .env("TMPDIR", root)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
-    #[cfg(target_os = "linux")]
     super::compiler_fs::restrict_compiler(command, root).context(CompilerInfrastructureError)?;
-    #[cfg(not(target_os = "linux"))]
-    anyhow::bail!("WASI 编译器必须运行在支持 Landlock 的 Linux worker");
     configure_compiler_process(command).context(CompilerInfrastructureError)?;
     let mut child = command
         .spawn()
@@ -257,6 +268,7 @@ struct CompileOutput {
     stdout: String,
 }
 
+#[cfg(target_os = "linux")]
 fn read_compile_diagnostic(path: &Path) -> Result<String> {
     use std::io::Read;
     let mut bytes = Vec::new();
@@ -268,7 +280,7 @@ fn read_compile_diagnostic(path: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn configure_compiler_process(command: &mut Command) -> Result<()> {
     use std::os::unix::process::CommandExt;
 
@@ -298,12 +310,7 @@ fn configure_compiler_process(command: &mut Command) -> Result<()> {
     Ok(())
 }
 
-#[cfg(not(unix))]
-fn configure_compiler_process(_command: &mut Command) -> Result<()> {
-    Ok(())
-}
-
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn kill_compiler_process_group(pid: u32) {
     // 负 pid 指向由 configure_compiler_process 建立的整个进程组。
     unsafe {

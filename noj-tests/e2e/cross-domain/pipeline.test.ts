@@ -9,7 +9,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getProblemIdByNumber,
-  isE2E,
   pollSubmission,
   registerUser,
   requireJudgeCanary,
@@ -22,7 +21,6 @@ let token = "";
 let PROBLEM_ID = "";
 
 e2eTest("[e2e/pipeline] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   const ts = Date.now().toString(36);
   token = await registerUser(
@@ -38,7 +36,6 @@ e2eTest("[e2e/pipeline] Setup", async () => {
 });
 
 e2eTest("[e2e/pipeline] 1/8 已评测", async () => {
-  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   console.log("  → 提交 ID: " + id.slice(0, 8));
   const result = await pollSubmission(token, id);
@@ -49,7 +46,6 @@ e2eTest("[e2e/pipeline] 1/8 已评测", async () => {
 });
 
 e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
-  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.wrongAnswer);
   const result = await pollSubmission(token, id);
   if (result.status !== "finished" || result.score >= 10000) {
@@ -58,7 +54,6 @@ e2eTest("[e2e/pipeline] 2/8 Wrong Answer", async () => {
 });
 
 e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
-  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,
@@ -71,7 +66,6 @@ e2eTest("[e2e/pipeline] 3/8 TLE", async () => {
 });
 
 e2eTest("[e2e/pipeline] 4/8 MQ 可靠性", async () => {
-  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   const result = await pollSubmission(token, id);
   if (result.status !== "finished") throw new Error("状态非 finished");
@@ -79,7 +73,6 @@ e2eTest("[e2e/pipeline] 4/8 MQ 可靠性", async () => {
 });
 
 e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
-  if (!isE2E) return;
   try {
     const password = Deno.env.get("E2E_REDIS_PASSWORD");
     const cmd = new Deno.Command("docker", {
@@ -108,7 +101,6 @@ e2eTest("[e2e/pipeline] 5/8 无效消息容错", async () => {
 });
 
 e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
-  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,
@@ -124,7 +116,6 @@ e2eTest("[e2e/pipeline] 6/8 Memory Limit Exceeded", async () => {
 });
 
 e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
-  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,
@@ -137,7 +128,6 @@ e2eTest("[e2e/pipeline] 7/8 Runtime Error", async () => {
 });
 
 e2eTest("[e2e/pipeline] 8/8 Syntax Error", async () => {
-  if (!isE2E) return;
   const id = await submitCode(
     token,
     PROBLEM_ID,

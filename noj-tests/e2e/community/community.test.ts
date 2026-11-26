@@ -7,7 +7,6 @@ import {
   apiPut,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -39,7 +38,6 @@ async function joinDomain(token: string, email: string): Promise<void> {
 }
 
 e2eTest("[e2e/community] 准备两个社区用户和默认板块", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   const preset = await apiPost(
@@ -100,7 +98,6 @@ e2eTest("[e2e/community] 准备两个社区用户和默认板块", async () => {
 });
 
 e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程", async () => {
-  if (!isE2E) return;
   const created = await apiPost(
     `${community}/posts`,
     {
@@ -239,7 +236,6 @@ e2eTest("[e2e/community] 发布、互动、治理、通知与软删除主流程"
 });
 
 e2eTest("[e2e/community] 新用户评论进入预审并可被管理员批准", async () => {
-  if (!isE2E) return;
   const admin = await getAdminToken();
   // 先创建讨论帖（此时未开启预审 → 立即发布），避免 root 也被视为新用户
   const boards = await apiGet(`${community}/boards`, admin);

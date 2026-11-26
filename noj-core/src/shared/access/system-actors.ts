@@ -6,10 +6,7 @@
  * bootstrap、migration、background task 三个装配点创建，不从凭据或请求
  * 字段推导。
  */
-import type {
-  SystemActor,
-  SystemPurpose,
-} from "../../modules/access/contracts/actor.ts";
+import type { SystemActor, SystemPurpose } from "./actor.ts";
 
 /** 仅由启动、迁移和受管后台任务创建系统身份。 */
 export function createSystemActor(purpose: SystemPurpose): SystemActor {

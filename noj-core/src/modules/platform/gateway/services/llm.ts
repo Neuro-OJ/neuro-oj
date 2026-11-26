@@ -9,6 +9,22 @@ import { getLogger } from "@logtape/logtape";
 import { DEFAULT_DOMAIN_ID } from "../../../../shared/workspace/types.ts";
 import { getSetting } from "../../services/system-settings.ts";
 import { AppError, BadRequestError } from "../../../../shared/base/errors.ts";
+import type {
+  LlmModelBreakdown,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
+  LlmTraceMessage,
+  UserLlmProviderInput,
+  UserLlmProviderView,
+} from "../../../../shared/api-contracts/features.ts";
+export type {
+  LlmModelBreakdown,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
+  LlmTraceMessage,
+  UserLlmProviderInput,
+  UserLlmProviderView,
+};
 
 const logger = getLogger(["noj", "gateway"]);
 
@@ -155,48 +171,6 @@ export interface LlmSubmissionSummaryQuery {
   submission_id?: string;
   attempt_id?: string;
   include_messages?: boolean;
-}
-
-/** 按模型汇总的 LLM 用量条目。 */
-export interface LlmModelBreakdown {
-  model: string;
-  calls: number;
-  total_tokens: number;
-  estimated_cost: number;
-}
-
-/** 单次提交的 LLM 用量与延迟汇总统计。 */
-export interface LlmSubmissionSummaryStats {
-  total_calls: number;
-  error_calls: number;
-  prompt_tokens: number;
-  completion_tokens: number;
-  cached_prompt_tokens: number;
-  total_tokens: number;
-  estimated_cost: number;
-  total_latency_ms: number;
-  avg_latency_ms: number;
-  p95_latency_ms: number;
-  models: LlmModelBreakdown[];
-}
-
-/** 单次 LLM 调用的瀑布流 Trace 记录。 */
-export interface LlmTraceItem {
-  id: string;
-  seq: number;
-  model: string;
-  status: string;
-  error_code: string | null;
-  prompt_tokens: number;
-  completion_tokens: number;
-  cached_prompt_tokens: number;
-  total_tokens: number;
-  estimated_cost: number;
-  latency_ms: number;
-  offset_ms: number;
-  created_at: string;
-  request_params: Record<string, unknown>;
-  request_messages?: unknown[];
 }
 
 /** Gateway `/internal/usage/submission-summary` 的 data 载荷。 */
@@ -764,26 +738,6 @@ export async function readGatewayPolicy(): Promise<GatewayPolicySnapshot> {
 
 /** eval_token 中用户自带模型的 Provider ID 前缀（与 gateway 一致）。 */
 export const BYOK_PROVIDER_PREFIX = "byok:";
-
-/** 用户自带模型视图（Key 已由 gateway 脱敏）。 */
-export interface UserLlmProviderView {
-  provider_id: string;
-  base_url: string;
-  model: string;
-  api_key_masked: string;
-  enabled: boolean;
-  revision: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** 用户自带模型写入字段（白名单，其他字段不会转发）。 */
-export interface UserLlmProviderInput {
-  base_url?: string;
-  model?: string;
-  api_key?: string;
-  enabled?: boolean;
-}
 
 /** 读取用户自带模型与实例 BYOK 开关、允许的上游主机。 */
 export async function getUserLlmProvider(userId: string): Promise<{

@@ -8,18 +8,11 @@
  * 依赖 seed 中的 e2e_admin 用户。
  */
 
-import {
-  apiPost,
-  e2eTest,
-  isE2E,
-  registerUser,
-  waitForServer,
-} from "../helper.ts";
+import { apiPost, e2eTest, registerUser, waitForServer } from "../helper.ts";
 
 let testEmail = "";
 
 e2eTest("[e2e/pwd-reset] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   const ts = Date.now().toString(36);
   testEmail = `pwdreset_${ts}@test.com`;
@@ -31,7 +24,6 @@ e2eTest("[e2e/pwd-reset] Setup", async () => {
 });
 
 e2eTest("[e2e/pwd-reset] 1.1 forgot-password 已存在邮箱返回 200", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/auth/forgot-password", {
     email: testEmail,
   });
@@ -44,7 +36,6 @@ e2eTest("[e2e/pwd-reset] 1.1 forgot-password 已存在邮箱返回 200", async (
 e2eTest(
   "[e2e/pwd-reset] 1.2 forgot-password 不存在邮箱也返回 200",
   async () => {
-    if (!isE2E) return;
     const { status } = await apiPost("/api/v1/auth/forgot-password", {
       email: "nonexistent_" + Date.now() + "@test.com",
     });
@@ -56,7 +47,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/pwd-reset] 1.3 forgot-password 空邮箱 400", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPost("/api/v1/auth/forgot-password", {
     email: "",
   });
@@ -68,7 +58,6 @@ e2eTest("[e2e/pwd-reset] 1.3 forgot-password 空邮箱 400", async () => {
 });
 
 e2eTest("[e2e/pwd-reset] 1.4 reset-password 非法令牌 400", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/auth/reset-password", {
     token: "invalid-token-12345",
     password: "NewPass1234!",
@@ -79,7 +68,6 @@ e2eTest("[e2e/pwd-reset] 1.4 reset-password 非法令牌 400", async () => {
 });
 
 e2eTest("[e2e/pwd-reset] 1.5 reset-password 弱密码 400", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/auth/reset-password", {
     token: "some-valid-looking-uuid",
     password: "123",

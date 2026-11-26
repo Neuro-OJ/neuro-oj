@@ -8,7 +8,7 @@
  *
  * 实现只用毫秒偏移换算（不依赖 Intl/时区库），保证跨环境稳定。
  */
-import { getSetting } from "../../modules/platform/index.ts";
+import { getSetting } from "../../shared/config/system-settings.ts";
 
 /** 默认低峰时段（北京时间）。 */
 export const DEFAULT_OFFPEAK_WINDOW = "00:30-08:30";

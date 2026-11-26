@@ -48,7 +48,7 @@ import { listJudgeImages } from "../platform/services/judge-images.ts";
 import { banlistMiddleware } from "../access/identity/middleware/banlist.ts";
 import { requestContext } from "../platform/observability/middleware/request-context.ts";
 import { httpMetricsMiddleware } from "../platform/observability/middleware/http-metrics.ts";
-import { getSetting } from "../platform/services/system-settings.ts";
+import { getSetting } from "../../shared/config/system-settings.ts";
 import { registerSystemEmailMetrics } from "../platform/system/observability.ts";
 import { SECONDS_PER_DAY } from "../../shared/base/constants.ts";
 import { securityHeaders } from "../../shared/http/security-headers.ts";

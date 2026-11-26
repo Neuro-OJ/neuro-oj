@@ -22,7 +22,6 @@ import {
   apiGet,
   apiPost,
   e2eTest,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
 } from "../helper.ts";
@@ -38,7 +37,6 @@ const LOCK_THRESHOLD = Number(
 e2eTest(
   "[e2e/rate-limit] 连续错误密码触发当前 IP 的账号锁定（正确密码也被拒）",
   async () => {
-    if (!isE2E) return;
     const ts = Date.now().toString(36);
     const username = `rl_${ts}`;
     const token = await registerUser(

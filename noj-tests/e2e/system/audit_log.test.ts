@@ -17,7 +17,6 @@ import {
   domainProblemPath,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -43,7 +42,6 @@ async function targetAuditRecords(action: string, targetId: string) {
 }
 
 e2eTest("[e2e/audit-log] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
 
@@ -94,7 +92,6 @@ e2eTest("[e2e/audit-log] Setup", async () => {
 // ── 执行 7 类操作 ──
 
 e2eTest("[e2e/audit-log] 3.1a role_change 产生审计记录", async () => {
-  if (!isE2E) return;
   // 先提升为 admin，再降回 user 确保产生记录
   const upRes = await apiPatch(
     `/api/v1/admin/identity/users/${targetUserId}/role`,
@@ -127,7 +124,6 @@ e2eTest("[e2e/audit-log] 3.1a role_change 产生审计记录", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.1b ban/unban 产生审计记录", async () => {
-  if (!isE2E) return;
   const banRes = await apiPatch(
     `/api/v1/admin/identity/users/${targetUserId}/ban`,
     { reason: "E2E 测试封禁" },
@@ -154,7 +150,6 @@ e2eTest("[e2e/audit-log] 3.1b ban/unban 产生审计记录", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.1c problems.delete 产生审计记录", async () => {
-  if (!isE2E) return;
   const delRes = await apiDelete(
     await domainProblemPath(problemId),
     adminToken,
@@ -171,7 +166,6 @@ e2eTest("[e2e/audit-log] 3.1c problems.delete 产生审计记录", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.1d tags.delete 产生审计记录", async () => {
-  if (!isE2E) return;
   const delRes = await apiDelete(
     `/api/v1/tags/${tagId}`,
     adminToken,
@@ -188,7 +182,6 @@ e2eTest("[e2e/audit-log] 3.1d tags.delete 产生审计记录", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.1e tags.merge 产生审计记录", async () => {
-  if (!isE2E) return;
   // 重建两个标签用于合并审计
   const srcRes = await apiPost("/api/v1/tags", {
     name: "审计合并源" + ts,
@@ -220,7 +213,6 @@ e2eTest("[e2e/audit-log] 3.1e tags.merge 产生审计记录", async () => {
 // ── 列表查询 ──
 
 e2eTest("[e2e/audit-log] 3.2a 时间筛选", async () => {
-  if (!isE2E) return;
   const now = new Date();
   const from = new Date(now.getTime() - 3600000).toISOString(); // 1h ago
   const to = now.toISOString();
@@ -236,7 +228,6 @@ e2eTest("[e2e/audit-log] 3.2a 时间筛选", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.2b 分页正确", async () => {
-  if (!isE2E) return;
   const logs = await apiGet(
     "/api/v1/admin/system/audit-logs?per_page=3&page=1",
     adminToken,
@@ -253,7 +244,6 @@ e2eTest("[e2e/audit-log] 3.2b 分页正确", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.2c 非 admin 返回 403", async () => {
-  if (!isE2E) return;
   // 前序 3.1b 封禁后递增了 session_version 导致原有 JWT 失效，重新登录获取新会话
   const loginRes = await apiPost("/api/v1/auth/login", {
     login: "audit_user_" + ts,
@@ -272,7 +262,6 @@ e2eTest("[e2e/audit-log] 3.2c 非 admin 返回 403", async () => {
 });
 
 e2eTest("[e2e/audit-log] 3.3 管理操作写入审计且包含操作者与时间", async () => {
-  if (!isE2E) return;
   const title = "Audit " + Date.now().toString(36);
   const res = await apiPost(
     "/api/v1/admin/system/announcements",

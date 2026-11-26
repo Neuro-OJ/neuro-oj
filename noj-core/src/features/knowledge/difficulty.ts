@@ -16,12 +16,12 @@
  * 本模块同时供 P3 掌握度（`user_knowledge_mastery`）复用达标判定与难度派生。
  */
 import { and, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
 import {
   loadDomainProblemProtection,
   loadWorkspace,
 } from "../../modules/access/index.ts";
-import { getSetting } from "../../modules/platform/index.ts";
+import { getSetting } from "../../shared/config/system-settings.ts";
 import { FULL_SCORE } from "../../shared/base/constants.ts";
 import { logger } from "../../shared/base/logging.ts";
 import { unwrapFirstRow, unwrapRows } from "../../shared/base/sql-rows.ts";

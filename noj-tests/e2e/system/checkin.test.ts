@@ -18,7 +18,6 @@ import {
   apiPost,
   domainProblemPath,
   e2eTest,
-  isE2E,
   registerUser,
   waitForServer,
 } from "../helper.ts";
@@ -32,7 +31,6 @@ const TEST_USER = {
 };
 
 e2eTest("[e2e/checkin] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   userToken = await registerUser(
     TEST_USER.username,
@@ -43,28 +41,24 @@ e2eTest("[e2e/checkin] Setup", async () => {
 });
 
 e2eTest("[e2e/checkin] 1.1 未登录 POST 返回 401", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/checkin", {});
   if (status !== 401) throw new Error("期望 401, 实际 " + status);
   console.log("  ✓ 未登录 POST → 401");
 });
 
 e2eTest("[e2e/checkin] 1.2 未登录 GET /today 返回 401", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet("/api/v1/checkin/today");
   if (status !== 401) throw new Error("期望 401, 实际 " + status);
   console.log("  ✓ 未登录 GET /today → 401");
 });
 
 e2eTest("[e2e/checkin] 1.2b 无效 token POST 返回 401", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/checkin", {}, "invalidtoken123");
   if (status !== 401) throw new Error("期望 401, 实际 " + status);
   console.log("  ✓ 无效 token POST → 401");
 });
 
 e2eTest("[e2e/checkin] 1.2c 无效 token GET /today 返回 401", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet("/api/v1/checkin/today", "invalidtoken123");
   if (status !== 401) throw new Error("期望 401, 实际 " + status);
   console.log("  ✓ 无效 token GET /today → 401");
@@ -73,7 +67,6 @@ e2eTest("[e2e/checkin] 1.2c 无效 token GET /today 返回 401", async () => {
 e2eTest(
   "[e2e/checkin] 1.2d 签到前 GET /today 返回 checked_in=false + streak=0",
   async () => {
-    if (!isE2E) return;
     const ts2 = Date.now() + 1;
     const freshToken = await registerUser(
       `e2e_cb_${ts2}`,
@@ -93,7 +86,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/checkin] 1.3 已登录首次签到返回 200 + streak=1", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPost("/api/v1/checkin", {}, userToken);
   if (status !== 200) {
     throw new Error("期望 200, 实际 " + status + " " + JSON.stringify(body));
@@ -106,7 +98,6 @@ e2eTest("[e2e/checkin] 1.3 已登录首次签到返回 200 + streak=1", async ()
 });
 
 e2eTest("[e2e/checkin] 1.4 同日重复签到返回 409 + 完整错误体", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPost("/api/v1/checkin", {}, userToken);
   if (status !== 409) {
     throw new Error("期望 409, 实际 " + status + " " + JSON.stringify(body));
@@ -122,7 +113,6 @@ e2eTest("[e2e/checkin] 1.4 同日重复签到返回 409 + 完整错误体", asyn
 });
 
 e2eTest("[e2e/checkin] 1.5 GET /today 已签到返回 streak", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet("/api/v1/checkin/today", userToken);
   if (status !== 200) {
     throw new Error("期望 200, 实际 " + status);
@@ -139,7 +129,6 @@ e2eTest("[e2e/checkin] 1.5 GET /today 已签到返回 streak", async () => {
 e2eTest(
   "[e2e/checkin] 1.6 并发签到：仅一个 200，其余 409（评审 H2）",
   async () => {
-    if (!isE2E) return;
     // 注册新用户避免 1.3 已签到污染
     const ts2 = Date.now() + 1;
     const token2 = await registerUser(
@@ -170,7 +159,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/checkin] 1.7 多用户隔离：各自签到独立", async () => {
-  if (!isE2E) return;
   const ts3 = Date.now() + 2;
   // 用户 A 签到，用户 B 首次签到应不受影响
   const tokenA = await registerUser(

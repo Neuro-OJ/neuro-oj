@@ -13,7 +13,6 @@ import {
   getAdminToken,
   getContestAnswerVersionId,
   getProblemIdByNumber,
-  isE2E,
   pollSubmission,
   registerUser,
   requireJudgeCanary,
@@ -37,7 +36,6 @@ interface KaggleRankingRow {
 }
 
 e2eTest("[e2e/contest] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   participantToken = await registerUser(
@@ -59,7 +57,6 @@ const CONTEST_WINDOW_MS = 90_000;
 let contestEndTime = 0;
 
 e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
-  if (!isE2E) return;
   const now = Date.now();
   contestEndTime = now + CONTEST_WINDOW_MS;
   const createResult = await apiPost(
@@ -91,7 +88,6 @@ e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {
 });
 
 e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
-  if (!isE2E) return;
   const registerResult = await apiPost(
     `/api/v1/domains/main/contests/${contestId}/register`,
     {},
@@ -145,7 +141,6 @@ e2eTest("[e2e/contest] 2. 用户注册并进行竞赛提交", async () => {
 });
 
 e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
-  if (!isE2E) return;
   // 进行中（running）竞赛：非管理员仅能查看自己的排名（服务端设计，见
   // contest-ranking.ts getContestRanking：running 且非 admin 时 viewerId
   // 缺失返回 401、非参赛者返回 403，参赛者只见自身行）。因此这里用
@@ -174,7 +169,6 @@ e2eTest("[e2e/contest] 3. 排名包含提交分数", async () => {
 });
 
 e2eTest("[e2e/contest] 4. 结束竞赛并发布正式成绩后公开最终排名", async () => {
-  if (!isE2E) return;
   // 域入口开赛后不能修改受理窗口：等待创建时设定的结束时间自然到达。
   await new Promise((resolve) =>
     setTimeout(resolve, Math.max(0, contestEndTime - Date.now()) + 500)
