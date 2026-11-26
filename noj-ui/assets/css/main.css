@@ -548,12 +548,14 @@
 }
 
 /* ==========================================================================
-   深色终端主题：墨黑底、等宽为主、琥珀色交互、高对比判定色。
-   app.vue 的 :root 保留浅色基线与未覆盖的 token；这里用 html:root
-   （特异性高于 :root）整体覆盖为深色，不依赖样式表加载顺序。
+   终端风格：等宽为主、琥珀色交互、高对比判定色，分深色（默认）与浅色两套。
+   app.vue 在 SSR 阶段按 noj-theme cookie 写入 html[data-theme]（见 utils/site-theme.ts）。
+   app.vue 的 :root 是浅色基线；深色用 html:root:not([data-theme="light"])、浅色用
+   html[data-theme="light"]，特异性都高于 :root，不依赖样式表加载顺序。
    ========================================================================== */
 
-html:root {
+/* ---- 深色：墨黑底 ---- */
+html:root:not([data-theme="light"]) {
   color-scheme: dark;
   --c-bg-page: #0a0c0d;
   --c-bg-panel: #101315;
@@ -627,12 +629,86 @@ html:root {
   --ui-color-neutral-950: #eef3f6;
 }
 
+/* ---- 浅色：纸白底，同一套终端排版；琥珀加深到白底可读，判定色取 700–800 档 ---- */
+html[data-theme="light"],
+html[data-theme="light"] .editor-light {
+  color-scheme: light;
+  --c-bg-page: #f7f7f5;
+  --c-bg-panel: #ffffff;
+  --c-bg-card: #ffffff;
+  --c-bg-elevated: #ffffff;
+  --c-bg-sunken: #efefec;
+  --c-white: #ffffff;
+  --c-border: #e3e3df;
+  --c-border-subtle: #ececea;
+  --c-border-strong: #cfcfca;
+  --c-text: #16181a;
+  --c-text-secondary: #4a5157;
+  --c-text-muted: #5a6268; /* 白底 6.2:1，最深的 neutral-200 底 4.8:1 */
+  --c-primary: #b45309;
+  --c-primary-dark: #9a4a08;
+  --c-primary-light: #d97706;
+  --c-primary-bg: rgba(180, 83, 9, 0.07);
+  --c-primary-hover-bg: rgba(180, 83, 9, 0.12);
+  --c-primary-active-bg: rgba(180, 83, 9, 0.18);
+  --c-primary-text: #9a4a08;
+  --c-signal: #15803d;
+  --c-signal-deep: #166534;
+  --c-signal-rgb: 21, 128, 61;
+  --c-on-signal: #ffffff;
+  --c-success-text: #166534;
+  --c-info-text: #9a4a08;
+  --c-warning-text: #854d0e;
+  --c-warning-bg: #fdf5e6;
+  --c-warning-border: #f0d9a8;
+  --c-error-text: #b91c1c;
+  --c-verdict-accepted: #166534;
+  --c-verdict-accepted-bg: rgba(22, 101, 52, 0.08);
+  --c-verdict-partial: #854d0e;
+  --c-verdict-partial-bg: rgba(133, 77, 14, 0.08);
+  --c-verdict-wrong: #b91c1c;
+  --c-verdict-wrong-bg: rgba(185, 28, 28, 0.07);
+  --c-verdict-limit: #9a3412;
+  --c-verdict-limit-bg: rgba(154, 52, 18, 0.08);
+  --c-verdict-judging: #9a4a08;
+  --c-verdict-judging-bg: rgba(180, 83, 9, 0.08);
+  --c-verdict-pending: #5a6268;
+  --c-verdict-pending-bg: rgba(90, 98, 104, 0.08);
+  --c-diff-easy: #166534;
+  --c-diff-medium: #854d0e;
+  --c-diff-hard: #b91c1c;
+  --font-sans: "Geist Mono Variable", "JetBrains Mono", ui-monospace, "PingFang SC", "Microsoft YaHei", monospace;
+  --radius: 3px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
+  --shadow-card: none;
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.08), 0 0 0 1px #cfcfca;
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.14), 0 0 0 1px #cfcfca;
+  --ui-text-inverted: #ffffff;
+  --ui-bg-inverted: #16181a;
+  --ui-color-neutral-50: #f7f7f5;
+  --ui-color-neutral-100: #efefec;
+  --ui-color-neutral-200: #e3e3df;
+  --ui-color-neutral-300: #cfcfca;
+  --ui-color-neutral-400: #9a9f9c;
+  --ui-color-neutral-500: #5a6268;
+  --ui-color-neutral-600: #4a5157;
+  --ui-color-neutral-700: #353b40;
+  --ui-color-neutral-800: #22262a;
+  --ui-color-neutral-900: #16181a;
+  --ui-color-neutral-950: #0b0c0d;
+}
+
 /* ---- 深色终端下重映射 Tailwind 调色板 ----
    页面里仍有不少浅色语义配对（如 bg-amber-50 + text-amber-800 的提示条、bg-red-50 的
    错误块）。这里把彩色 50–300 改成「本色 500 混入面板底」的暗色调，600–900 改成本色
    400 混白的亮色调，配对关系不变、对比度在深色底上成立；灰阶直接落到终端 token。
    400 / 500 保持原值（圆点、实心按钮仍用标准色）。 */
-html:root {
+html:root:not([data-theme="light"]) {
   --color-red-50: color-mix(in oklab, var(--color-red-500) 10%, var(--c-bg-panel));
   --color-red-100: color-mix(in oklab, var(--color-red-500) 16%, var(--c-bg-panel));
   --color-red-200: color-mix(in oklab, var(--color-red-500) 30%, var(--c-bg-panel));
@@ -810,7 +886,7 @@ html:root {
   --color-stone-800: var(--c-text);
   --color-stone-900: var(--c-text);
 }
-html:root .bg-white {
+html:root:not([data-theme="light"]) .bg-white {
   background-color: var(--c-bg-panel);
 }
 
@@ -1002,7 +1078,7 @@ html:root .bg-white {
   background-color: #fff;
 }
 
-/* 深色终端：页面标题带提示符，表头大写等宽。
+/* 终端风格（深浅通用）：页面标题带提示符，表头大写等宽。
    提示符用空替代文本（/ ""），不计入标题的可访问名称，读屏与 getByRole 仍得到原标题。 */
 html main h1::before {
   content: "> " / "";

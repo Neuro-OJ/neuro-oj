@@ -102,6 +102,8 @@ onMounted(() => {
     navigationObserver.disconnect();
   });
 });
+
+const { theme: siteTheme, toggle: toggleSiteTheme } = useSiteTheme();
 </script>
 <template>
   <header ref="headerRef"
@@ -188,6 +190,9 @@ onMounted(() => {
           <span v-if="unreadCount"
             class="absolute -top-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-error-text px-1 font-mono text-[9px] font-semibold text-white">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </UButton>
+        <UButton color="neutral" variant="ghost" class="text-text-secondary hover:bg-bg-sunken hover:text-text"
+          :icon="siteTheme === 'dark' ? 'i-lucide-sun' : 'i-lucide-moon'"
+          :aria-label="siteTheme === 'dark' ? '切换到浅色主题' : '切换到深色主题'" @click="toggleSiteTheme()" />
         <UserMenu />
       </div>
     </div>
