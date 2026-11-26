@@ -165,7 +165,7 @@ check_release_workflow() {
   grep -q 'npm run check' <<< "$ide_job" || fail "IDE 插件发布缺少类型与格式检查"
   grep -q 'npm test' <<< "$ide_job" || fail "IDE 插件发布缺少单元测试"
   grep -Fq '@vscode/vsce package' <<< "$ide_job" || fail "IDE 插件发布缺少 vsce 打包步骤"
-  grep -Fq 'neuro-oj-lmcc-${VERSION#v}.vsix' <<< "$ide_job" || fail "IDE 插件发布未使用约定 VSIX 资产名"
+  grep -Fq 'neuro-oj-vscode-${VERSION#v}.vsix' <<< "$ide_job" || fail "IDE 插件发布未使用约定 VSIX 资产名"
   grep -Fq '${asset}.sha256' <<< "$ide_job" || fail "IDE 插件发布缺少 VSIX SHA-256 校验文件"
   grep -q 'gh release upload' <<< "$ide_job" || fail "IDE 插件发布缺少 Release 资产上传步骤"
 

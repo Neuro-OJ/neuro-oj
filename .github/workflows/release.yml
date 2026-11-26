@@ -5,7 +5,7 @@
 # 普通 push / pull_request / 直接 published 不发布生产镜像。
 #
 # 就绪窗口控制（issue #431）：Release 先以 GitHub pre-release 触发本工作流，
-# 完成镜像构建、扫描、签名、验证与 noj-cli / LMCC IDE 插件资产上传，最后的
+# 完成镜像构建、扫描、签名、验证与 noj-cli / VS Code 插件资产上传，最后的
 # publish-release 任务生成 release-set.json 并按版本标签类型收尾：
 # - 稳定标签（vX.Y.Z）：转正为正式 Release（--prerelease=false --latest）；
 # - 预发布标签（vX.Y.Z-rc.N / -alpha.N / -beta.N）：保持 prerelease=true，
@@ -148,7 +148,7 @@ jobs:
             --clobber
 
   publish-ide:
-    name: 发布 LMCC IDE 插件
+    name: 发布 VS Code 插件
     if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: verify-release
     runs-on: ubuntu-latest
@@ -163,15 +163,15 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: noj-lmcc-extension/package-lock.json
+          cache-dependency-path: noj-vscode-extension/package-lock.json
       - name: 安装依赖、类型检查与单元测试
-        working-directory: noj-lmcc-extension
+        working-directory: noj-vscode-extension
         run: |
           npm ci
           npm run check
           npm test
       - name: 打包 VSIX 并发布 Release 资产
-        working-directory: noj-lmcc-extension
+        working-directory: noj-vscode-extension
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event.release.tag_name || github.ref_name }}
@@ -181,7 +181,7 @@ jobs:
             echo "::error::版本必须是合法 Release tag：$VERSION"
             exit 1
           }
-          asset="neuro-oj-lmcc-${VERSION#v}.vsix"
+          asset="neuro-oj-vscode-${VERSION#v}.vsix"
           [[ "${asset:0:1}" != "." ]] || { echo "::error::资产名不得以点号开头：$asset"; exit 1; }
           npx @vscode/vsce package -o "$asset"
           sha256sum "$asset" > "${asset}.sha256"

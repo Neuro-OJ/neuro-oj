@@ -16,7 +16,7 @@
 | noj-ui             | Nuxt 4 + Vue 3                     | Web 前端、Nitro 代理注入 JWT Cookie                                          |
 | noj-judge          | Rust + Tokio                       | Docker 沙箱评测、双容器 Evaluator + Solution                                 |
 | noj-llm-gateway    | Deno + Hono                        | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计              |
-| noj-lmcc-extension | VS Code Extension API + TypeScript | LMCC IDE 登录、题目选择、Python 代码提交与结果反馈                           |
+| noj-vscode-extension | VS Code Extension API + TypeScript | VS Code 登录、工作区拉题、本地 Mock 调试、代码/ZIP 提交与可视化评测反馈     |
 | noj-cli            | Deno 2（`deno compile` 单二进制）  | 生产安装、启停、升级、备份/恢复/演练、配置校验                               |
 
 基础设施：PostgreSQL 16、Redis 7、MinIO/S3。技术栈与依赖见各模块 `deno.json` /
@@ -31,7 +31,7 @@
 | `noj-ui/`             | Web 前端（Nuxt 4）                                      |
 | `noj-judge/`          | 评测机（Rust）                                          |
 | `noj-llm-gateway/`    | LLM 可信代理（Deno + Hono）                             |
-| `noj-lmcc-extension/` | VS Code 扩展                                            |
+| `noj-vscode-extension/` | VS Code 扩展                                            |
 | `noj-cli/`            | 生产运维 CLI（单二进制）                                |
 | `noj-tests/`          | 跨模块 E2E 测试                                         |
 | `noj-docs/`           | 文档站（架构、运维、安全、FAQ）                         |
@@ -76,7 +76,7 @@ noj-core 正从 `modules/`（+ `application/` 编排层与跨模块合同层）�
 | `noj-llm-gateway/`                 | `noj-llm-gateway/CLAUDE.md`                |
 | `noj-cli/`                         | `noj-cli/README.md`                        |
 | `noj-tests/`                       | `noj-tests/E2E_TESTING.md`                 |
-| `noj-lmcc-extension/`              | 无模块文档，以根文档与 `package.json` 为准 |
+| `noj-vscode-extension/`            | 无模块文档，以根文档与 `package.json` 为准 |
 
 ## 6. 参考文档
 

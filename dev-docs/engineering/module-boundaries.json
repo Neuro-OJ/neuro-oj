@@ -506,7 +506,7 @@
     ],
     "ignoredPrefixes": [
       "noj-cli/",
-      "noj-lmcc-extension/"
+      "noj-vscode-extension/"
     ]
   }
 }

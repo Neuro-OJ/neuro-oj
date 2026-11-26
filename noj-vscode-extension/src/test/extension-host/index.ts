@@ -174,7 +174,9 @@ export async function run(): Promise<void> {
         },
       });
     }) as typeof vscode.window.createOutputChannel;
-    const extension = vscode.extensions.getExtension("neuro-oj.neuro-oj-lmcc");
+    const extension = vscode.extensions.getExtension(
+      "neuro-oj.neuro-oj-vscode",
+    );
     assert(extension, "宿主必须加载当前开发扩展");
     await extension.activate();
     assert.equal(extension.isActive, true);
@@ -185,6 +187,10 @@ export async function run(): Promise<void> {
       "selectProblem",
       "openTemplate",
       "showVersions",
+      "initWorkspace",
+      "previewStatement",
+      "runLocalMock",
+      "selfTest",
       "submit",
       "logout",
     ])
