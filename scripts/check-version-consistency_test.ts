@@ -108,8 +108,8 @@ Deno.test("compareVersions: 零输入守卫", () => {
   assert(errors[0].includes("未扫描到任何模块清单"), errors[0]);
 });
 
-Deno.test("VERSION_MANIFESTS: 覆盖 7 个模块且路径唯一", () => {
-  assertEquals(VERSION_MANIFESTS.length, 7);
+Deno.test("VERSION_MANIFESTS: 覆盖 6 个模块且路径唯一", () => {
+  assertEquals(VERSION_MANIFESTS.length, 6);
   const paths = new Set(VERSION_MANIFESTS.map((m) => m.path));
   assertEquals(paths.size, VERSION_MANIFESTS.length);
 });

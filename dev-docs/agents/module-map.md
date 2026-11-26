@@ -16,7 +16,6 @@
 | noj-ui             | Nuxt 4 + Vue 3                     | Web 前端、Nitro 代理注入 JWT Cookie                                          |
 | noj-judge          | Rust + Tokio                       | Docker 沙箱评测、双容器 Evaluator + Solution                                 |
 | noj-llm-gateway    | Deno + Hono                        | LLM 调用可信代理、Provider Key 加密、eval_token、限流/额度/审计              |
-| noj-vscode-extension | VS Code Extension API + TypeScript | VS Code 登录、工作区拉题、本地 Mock 调试、代码/ZIP 提交与可视化评测反馈     |
 | noj-cli            | Deno 2（`deno compile` 单二进制）  | 生产安装、启停、升级、备份/恢复/演练、配置校验                               |
 
 基础设施：PostgreSQL 16、Redis 7、MinIO/S3。技术栈与依赖见各模块 `deno.json` /
@@ -31,7 +30,6 @@
 | `noj-ui/`             | Web 前端（Nuxt 4）                                      |
 | `noj-judge/`          | 评测机（Rust）                                          |
 | `noj-llm-gateway/`    | LLM 可信代理（Deno + Hono）                             |
-| `noj-vscode-extension/` | VS Code 扩展                                            |
 | `noj-cli/`            | 生产运维 CLI（单二进制）                                |
 | `noj-tests/`          | 跨模块 E2E 测试                                         |
 | `noj-docs/`           | 文档站（架构、运维、安全、FAQ）                         |
@@ -39,7 +37,7 @@
 | `scripts/`            | 构建与门禁脚本（边界、迁移安全、链接、Agent Note 格式） |
 | `deploy/` `fixtures/` | 部署编排与测试夹具                                      |
 
-`noj-problems/` 为独立私有仓库，主仓库 gitignore，不在本仓修改。
+`noj-problems/`（独立私有仓库，主仓库 gitignore）与 [`noj-vscode`](https://github.com/Neuro-OJ/noj-vscode)（VS Code 扩展独立公开仓库）均不在本仓修改。
 
 ## 3. 开发默认凭据
 
@@ -76,7 +74,6 @@ noj-core 正从 `modules/`（+ `application/` 编排层与跨模块合同层）�
 | `noj-llm-gateway/`                 | `noj-llm-gateway/CLAUDE.md`                |
 | `noj-cli/`                         | `noj-cli/README.md`                        |
 | `noj-tests/`                       | `noj-tests/E2E_TESTING.md`                 |
-| `noj-vscode-extension/`            | 无模块文档，以根文档与 `package.json` 为准 |
 
 ## 6. 参考文档
 

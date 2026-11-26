@@ -1,14 +1,14 @@
 /**
  * 模块版本一致性门禁（Issue #658，2026-10-17）。
  *
- * 背景：仓库有 7 个模块各自在自己的清单里声明 `version`（Deno 的 `deno.json`、
+ * 背景：仓库有 6 个模块各自在自己的清单里声明 `version`（Deno 的 `deno.json`、
  * Node 的 `package.json`、Rust 的 `Cargo.toml`）。它们没有任何同步机制，实测
- * `noj-tests` 已漂移到 `0.9.5`，其余 6 个是 `0.10.5`——`/api/v1/site/meta`
+ * `noj-tests` 已漂移到 `0.9.5`，其余 5 个是 `0.10.5`——`/api/v1/site/meta`
  * 的构建身份、发布说明与用户看到的版本号因此各说各话，且**没有任何检查会失败**。
  *
  * 本门禁只做一件事：读取全部清单，断言版本号完全一致。刻意**不**要求版本号
  * 等于最新 Release 标签：模块版本（源码内声明的 SemVer）与发布标签（`v0.10.6`
- * 等）是两套语义，混在一起会逼着每次发版都改 7 个文件，反而制造新的漂移。
+ * 等）是两套语义，混在一起会逼着每次发版都改 6 个文件，反而制造新的漂移。
  *
  * 与 `scripts/check-deno-version.ts` 同属「静态断言防漂移」的既有做法。
  */
@@ -35,7 +35,6 @@ export const VERSION_MANIFESTS: readonly VersionManifest[] = [
   { path: "noj-judge/Cargo.toml", kind: "toml" },
   { path: "noj-llm-gateway/deno.json", kind: "json" },
   { path: "noj-cli/deno.json", kind: "json" },
-  { path: "noj-vscode-extension/package.json", kind: "json" },
   { path: "noj-tests/deno.json", kind: "json" },
 ];
 

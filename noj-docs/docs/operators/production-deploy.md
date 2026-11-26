@@ -135,8 +135,7 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root
 2. `release.yml` 只监听 `prereleased` 事件（不监听
    `published`，避免同一次预发布触发两条流水线）：构建 7 个候选镜像 → 漏洞扫描 →
    签名 / SBOM / 来源证明 → 验证 digest 与 smoke test → 上传同版本 `noj-cli`
-   二进制、`docker-compose.prod.yml`、`env.prod.example`、LMCC IDE 插件
-   `neuro-oj-lmcc-<version>.vsix` 及各自的 `.sha256` 校验文件。
+   二进制、`docker-compose.prod.yml`、`env.prod.example` 及各自的 `.sha256` 校验文件（VS Code 扩展已拆出至独立仓库 `Neuro-OJ/noj-vscode` 单独发版）。
 3. 全部门禁与资产上传通过后，工作流最后的 `publish-release` 任务生成并上传
    `release-set.json`（及 `.sha256`），再按标签格式执行收尾：
    - **稳定标签（`vX.Y.Z`）**：将 Release
@@ -148,7 +147,7 @@ Docker daemon（这是有意的边界：自动安装 daemon 需要 root
      或设为 `--latest`，从而避免存量 `v0.10.x` 节点的 `noj-cli update --latest`
      或默认 `install` 误选到 `v0.11.0-rc.1`。
 
-由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产、IDE 插件与
+由此保证：`/releases/latest` 指向的版本一定具备同版本镜像、CLI 资产与
 `release-set.json` 校验文件。`noj-cli install`（省略 `--ref`）与
 `update --latest` 自动选择版本时只接受非 draft、非 prerelease 且资产齐备的
 Release（历史已转正的如 `v0.10.4-rc.1` 保持向后兼容，而自 `v0.11` 起 RC 等预发布

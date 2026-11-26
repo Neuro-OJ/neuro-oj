@@ -153,29 +153,6 @@ check_release_workflow() {
     fail "Release workflow 仍发布 latest/beta 可变标签"
   fi
 
-  local ide_job release_job
-  ide_job="$(awk '
-    /^  publish-ide:/ { in_job=1 }
-    in_job && /^  [A-Za-z0-9_-]+:/ && $0 !~ /^  publish-ide:/ { exit }
-    in_job { print }
-  ' "$file")"
-  [[ -n "$ide_job" ]] || fail "Release workflow 缺少 publish-ide 任务"
-  grep -q 'needs: verify-release' <<< "$ide_job" || fail "IDE 插件发布必须等待生产镜像验证"
-  grep -q 'npm ci' <<< "$ide_job" || fail "IDE 插件发布缺少 npm ci"
-  grep -q 'npm run check' <<< "$ide_job" || fail "IDE 插件发布缺少类型与格式检查"
-  grep -q 'npm test' <<< "$ide_job" || fail "IDE 插件发布缺少单元测试"
-  grep -Fq '@vscode/vsce package' <<< "$ide_job" || fail "IDE 插件发布缺少 vsce 打包步骤"
-  grep -Fq 'neuro-oj-vscode-${VERSION#v}.vsix' <<< "$ide_job" || fail "IDE 插件发布未使用约定 VSIX 资产名"
-  grep -Fq '${asset}.sha256' <<< "$ide_job" || fail "IDE 插件发布缺少 VSIX SHA-256 校验文件"
-  grep -q 'gh release upload' <<< "$ide_job" || fail "IDE 插件发布缺少 Release 资产上传步骤"
-
-  release_job="$(awk '
-    /^  publish-release:/ { in_job=1 }
-    in_job && /^  [A-Za-z0-9_-]+:/ && $0 !~ /^  publish-release:/ { exit }
-    in_job { print }
-  ' "$file")"
-  [[ -n "$release_job" ]] || fail "Release workflow 缺少 publish-release 任务"
-  grep -Eq '^[[:space:]]*publish-ide,' <<< "$release_job" || fail "publish-release 必须等待 publish-ide 完成"
 
   # 禁止对预发布后缀标签执行 --prerelease=false / --latest，必须显式按 SemVer 后缀分流。
   if ! awk '

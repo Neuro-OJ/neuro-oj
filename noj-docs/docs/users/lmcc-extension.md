@@ -1,29 +1,29 @@
-# LMCC IDE 插件
+# Neuro OJ VS Code 扩展（`noj-vscode`）
 
-Neuro OJ 提供兼容 LMCC IDE 和 Visual Studio Code 的做题插件。插件用于连接你指定的
-Neuro OJ 实例，不代表 CCF 或 LMCC 官方服务。
+Neuro OJ 提供独立的 Visual Studio Code 扩展（仓库：[`Neuro-OJ/noj-vscode`](https://github.com/Neuro-OJ/noj-vscode)），兼容 VS Code 与 LMCC IDE。插件用于连接你指定的 Neuro OJ 实例，不代表 CCF 或 LMCC 官方服务。
 
-> 本页讲什么：安装插件 → 配置服务器 → 登录 → 选题 → 一键提交 Python 文件，以及常见问题。
+> 本页讲什么：安装扩展 → 配置服务器 → 登录 → 选题 → 提交与本地调试。
 
 ## 安装
 
-从项目 [GitHub Releases](https://github.com/Neuro-OJ/neuro-oj/releases) 发布页下载对应版本的 VSIX 资产与校验文件：
+从独立仓库 [Neuro-OJ/noj-vscode Releases](https://github.com/Neuro-OJ/noj-vscode/releases) 下载对应版本的 VSIX 资产与校验文件：
 
-- 插件包：`neuro-oj-lmcc-<version>.vsix`（例如 `neuro-oj-lmcc-0.11.0.vsix` 或预发布版 `neuro-oj-lmcc-0.11.0-rc.1.vsix`，文件名不含 tag 前缀 `v`）
-- 校验文件：`neuro-oj-lmcc-<version>.vsix.sha256`
+- 插件包：`neuro-oj-vscode-<version>.vsix`（例如 `neuro-oj-vscode-0.11.0.vsix`，文件名不含 tag 前缀 `v`）
+- 校验文件：`neuro-oj-vscode-<version>.vsix.sha256`
 
 下载后建议先校验 SHA-256：
 
 ```bash
-sha256sum -c neuro-oj-lmcc-<version>.vsix.sha256
+sha256sum -c neuro-oj-vscode-<version>.vsix.sha256
 ```
 
-然后在 LMCC IDE 或 Visual Studio Code 中打开命令面板，执行「扩展：从 VSIX 安装」，选择下载的 `.vsix` 文件并按提示重新加载窗口。
+然后在 Visual Studio Code 或 LMCC IDE 中打开命令面板，执行「扩展：从 VSIX 安装」，选择下载的 `.vsix` 文件并按提示重新加载窗口。
 
-开发者也可以从源码构建：
+开发者也可以从独立仓库源码构建：
 
 ```bash
-cd noj-lmcc-extension
+git clone https://github.com/Neuro-OJ/noj-vscode.git
+cd noj-vscode
 npm ci
 npm run package
 ```

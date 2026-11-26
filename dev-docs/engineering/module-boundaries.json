@@ -505,8 +505,7 @@
       ".md"
     ],
     "ignoredPrefixes": [
-      "noj-cli/",
-      "noj-vscode-extension/"
+      "noj-cli/"
     ]
   }
 }
