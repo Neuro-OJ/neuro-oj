@@ -114,10 +114,13 @@ export default defineNuxtConfig({
     },
   },
 
-  // @nuxt/fonts：仅保留本地 provider（fonts.google.com 元数据 API 在大陆网络不可达，
-  // 远程 provider 会导致 SSR 模块加载挂起；Geist 字体经 @fontsource-variable 包随 css 自托管）
+  // @nuxt/fonts：关闭全部 provider。Geist 字体经 @fontsource-variable 包随 css 自托管；
+  // 远程 provider 在大陆/CI 网络不可达，npm、fontsource provider 也会从 jsdelivr 拉取
+  // woff2，导致构建期 fetch 失败或 SSR 模块加载挂起。
   fonts: {
     providers: {
+      npm: false,
+      fontsource: false,
       google: false,
       googleicons: false,
       bunny: false,
