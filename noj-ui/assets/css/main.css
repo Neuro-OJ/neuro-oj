@@ -626,9 +626,10 @@ html:root {
   --ui-color-neutral-950: #eef3f6;
 }
 
-/* 深色终端：页面标题带提示符，表头大写等宽 */
+/* 深色终端：页面标题带提示符，表头大写等宽。
+   提示符用空替代文本（/ ""），不计入标题的可访问名称，读屏与 getByRole 仍得到原标题。 */
 html main h1::before {
-  content: "> ";
+  content: "> " / "";
   color: var(--c-primary);
 }
 html thead th {
