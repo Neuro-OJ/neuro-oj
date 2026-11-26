@@ -36,6 +36,7 @@ import {
   recordDeploymentMetadata,
   runConfigWizard,
   showPanelGuidance,
+  validateExistingBackupPassphrase,
   verifyImageSignatures,
   wizardNeedsInteractiveInput,
 } from "./config.ts";
@@ -812,6 +813,58 @@ Deno.test("backupPassphrasePath: 优先级为旗标 > 显式 > 配置键 > 默�
   );
   assertEquals(backupPassphrasePath({ configured: "/tmp/cfg" }), "/tmp/cfg");
   assertEquals(backupPassphrasePath({}), DEFAULT_BACKUP_PASSPHRASE_FILE);
+});
+
+Deno.test("validateExistingBackupPassphrase: 只读校验既有口令（缺失时不创建，权限/类型错误时拒绝）", async () => {
+  const dir = await Deno.makeTempDir({ prefix: "noj-pass-ro-" });
+  try {
+    const missing = join(dir, "nested", "missing-passphrase");
+    const missingRes = await validateExistingBackupPassphrase(
+      {},
+      { targetFile: missing },
+    );
+    assertEquals(missingRes.path, missing);
+    assertEquals(
+      missingRes.error?.includes("GPG 备份口令文件不存在"),
+      true,
+    );
+    await assertRejects(
+      () => Deno.stat(join(dir, "nested")),
+      Deno.errors.NotFound,
+    );
+
+    const badMode = join(dir, "bad-mode");
+    await Deno.writeTextFile(badMode, "secret");
+    await Deno.chmod(badMode, 0o644);
+    const badModeRes = await validateExistingBackupPassphrase(
+      {},
+      { targetFile: badMode },
+    );
+    assertEquals(
+      badModeRes.error,
+      `GPG 备份口令文件权限必须为 600 或 400：${badMode}`,
+    );
+
+    const dirTarget = join(dir, "dir-target");
+    await Deno.mkdir(dirTarget);
+    const dirRes = await validateExistingBackupPassphrase(
+      {},
+      { targetFile: dirTarget },
+    );
+    assertEquals(
+      dirRes.error,
+      `GPG 备份口令路径不是普通文件：${dirTarget}`,
+    );
+
+    await Deno.chmod(badMode, 0o400);
+    const okRes = await validateExistingBackupPassphrase(
+      {},
+      { targetFile: badMode },
+    );
+    assertEquals(okRes, { path: badMode, error: null });
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 // ---------------- 面板检测 ----------------

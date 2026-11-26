@@ -7,7 +7,7 @@
     "test:api": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts api",
     "test:domain": "bash scripts/run-e2e-domain.sh",
     "test:browser": "deno run -A --env-file=../env.e2e.template scripts/test-runner.ts browser",
-    "test:logic": "deno test -A tests/unit/",
+    "test:logic": "deno test -A tests/unit/ stress/",
     "test:baseline": "cd .. && deno run -A scripts/test-baseline.ts --suite browser",
     "env:up": "deno run -A ../scripts/e2e/session.ts up",
     "env:down": "deno run -A ../scripts/e2e/session.ts down",

@@ -27,4 +27,5 @@ Neuro OJ 生产环境统一采用纯 TypeScript 编写的单二进制运维工�
 - [竞赛代码相似度：判定口径、处置与申诉](./contest-similarity.md)：相似度算法与阈值语义、赛后复核与处置标准流程、申诉受理，以及可直接转贴给选手的公开说明模板。
 - [可观测性与故障排查](./observability.md)：Prometheus 指标埋点、Grafana 仪表盘、系统核心日志与常见高频故障应急处置 Runbook。
 - [公测容量基线验收](./capacity-baseline.md)：上线前标准压测条件、并发评测吞吐量验收与性能基准报告模板。
+- [公开线上模拟赛压测与复盘演练 SOP](./contest-readiness-drill.md)：压测指标基线、赛前检查单、赛时削峰/扩 Judge/一键回滚处置与赛后复盘模板。
 - [法律与合规指南](./legal-compliance.md)：用户服务协议与隐私政策版本化治理、实名备案、内容风控与合规审计要求。

@@ -200,7 +200,7 @@ export async function digestCandidateFiles(
 }
 
 /** 原子写入单个文件：先写同目录临时文件再 rename，避免半截内容。 */
-async function replaceFileAtomic(
+export async function replaceFileAtomic(
   source: string,
   target: string,
 ): Promise<void> {

@@ -93,9 +93,16 @@ fn extract_zip_entries_reader_with_limits<R: Read + Seek>(
         let original_name = file.name().to_string();
         let is_dir = file.is_dir();
 
-        // 路径穿越防护
-        if original_name.split(['/', '\\']).any(|part| part == "..")
+        // 符号链接防护：评测支持包/产物禁止携带 symlink，避免 tar 解包后越权指向容器敏感文件
+        if file.is_symlink() {
+            anyhow::bail!("ZIP 条目禁止包含符号链接: {}", original_name);
+        }
+
+        // 路径穿越与非法字符防护（含 `/` 与 `\` 绝对路径、NUL 与 `..`）
+        if original_name.contains('\0')
+            || original_name.split(['/', '\\']).any(|part| part == "..")
             || original_name.starts_with('/')
+            || original_name.starts_with('\\')
         {
             anyhow::bail!("ZIP 条目包含非法路径: {}", original_name);
         }
@@ -676,11 +683,52 @@ mod tests {
 
     #[test]
     fn test_extract_zip_rejects_absolute_path() {
-        let bytes = make_zip(&[("/etc/passwd", b"x")]);
+        for path in ["/etc/passwd", "\\Windows\\win.ini"] {
+            let bytes = make_zip(&[(path, b"x")]);
+            let err =
+                extract_zip_entries_reader_with_limits(std::io::Cursor::new(bytes), 10, 1024, 1024)
+                    .unwrap_err();
+            assert!(
+                err.to_string().contains("非法路径"),
+                "path={} 应被拒绝，实际: {}",
+                path,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_zip_rejects_backslash_traversal() {
+        for path in ["a\\..\\escape.py", "..\\escape.py", "a/../../b.py"] {
+            let bytes = make_zip(&[(path, b"x")]);
+            let err =
+                extract_zip_entries_reader_with_limits(std::io::Cursor::new(bytes), 10, 1024, 1024)
+                    .unwrap_err();
+            assert!(
+                err.to_string().contains("非法路径"),
+                "path={} 应被拒绝，实际: {}",
+                path,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_zip_rejects_symlink_entry() {
+        let cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default();
+        zip.add_symlink("evil_link.py", "/etc/passwd", options)
+            .unwrap();
+        let bytes = zip.finish().unwrap().into_inner();
         let err =
             extract_zip_entries_reader_with_limits(std::io::Cursor::new(bytes), 10, 1024, 1024)
                 .unwrap_err();
-        assert!(err.to_string().contains("非法路径"));
+        assert!(
+            err.to_string().contains("符号链接"),
+            "symlink 应被拒绝，实际: {}",
+            err
+        );
     }
 
     #[test]

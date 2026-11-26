@@ -85,6 +85,7 @@ noj-cli logs core --follow     # 日志（着色契约 + 实时跟随）
 noj-cli start | stop | restart # 启停（stop 不删数据卷）
 noj-cli update                 # 按 .env.prod 的版本升级（先自动备份，再排空）
 noj-cli update --latest        # 升级到最新的资产就绪正式 Release（已是最新则 no-op）
+noj-cli rollback               # 回滚到上一版本或指定版本（支持 --to / --restore-backup / --dry-run）
 noj-cli maintain status        # 维护模式/排空状态（blockers、队列与在途任务）
 noj-cli maintain enter | wait | exit   # 人工进入 / 等待排空 / 退出维护模式
 noj-cli backup create          # 创建 .nojbackup 单文件快照（流式打包，启动前清理崩溃残留）

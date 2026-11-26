@@ -35,7 +35,9 @@ import {
   checkPortValue,
   checkRequiredValues,
   ensureBackupPassphrase,
+  type ExistingPassphraseResult,
   toEntries,
+  validateExistingBackupPassphrase,
 } from "../config.ts";
 import { type EnvValues, type RequiredValuesReport } from "../config.ts";
 import {
@@ -313,6 +315,40 @@ export interface PassphraseStepResult {
   error: string | null;
 }
 
+/** {@link resolveExistingCommandPassphrase} 的输入（只读校验既有口令）。 */
+export interface ExistingPassphraseStepOptions {
+  /** 当前 `.env.prod` 键值（`NOJ_BACKUP_PASSPHRASE_FILE` 参与选目标路径）。 */
+  env: EnvValues;
+  /** 进程环境快照（`NOJ_BACKUP_PASSPHRASE_FILE` 优先于 `.env.prod`）。 */
+  processEnv: Record<string, string | undefined>;
+  /** `--passphrase-file` 旗标（优先级最高）。 */
+  passphraseFile?: string;
+}
+
+function resolveCommandPassphraseTarget(
+  opts: ExistingPassphraseStepOptions,
+): string {
+  return backupPassphrasePath({
+    flag: opts.passphraseFile,
+    explicit: opts.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"],
+    configured: opts.env["NOJ_BACKUP_PASSPHRASE_FILE"],
+  });
+}
+
+/**
+ * 只读解析并校验既有备份口令文件（供 `rollback` 等仅解密场景使用）：
+ * 沿用 `--passphrase-file > 进程环境 > .env.prod > 默认路径` 四级优先级，
+ * 但文件缺失时绝不创建新口令文件、不发出新建告警，也不回填 `.env.prod`。
+ */
+export async function resolveExistingCommandPassphrase(
+  opts: ExistingPassphraseStepOptions,
+): Promise<ExistingPassphraseResult> {
+  const target = resolveCommandPassphraseTarget(opts);
+  return await validateExistingBackupPassphrase(opts.env, {
+    targetFile: target,
+  });
+}
+
 /**
  * 备份口令的命令级装配，install（第 4 步）与 update（升级序列第 2 步）共用：
  *
@@ -330,11 +366,7 @@ export async function ensureCommandPassphrase(
   opts: PassphraseStepOptions,
 ): Promise<PassphraseStepResult> {
   const explicit = opts.processEnv["NOJ_BACKUP_PASSPHRASE_FILE"];
-  const target = backupPassphrasePath({
-    flag: opts.passphraseFile,
-    explicit,
-    configured: opts.env["NOJ_BACKUP_PASSPHRASE_FILE"],
-  });
+  const target = resolveCommandPassphraseTarget(opts);
   const ensured = await ensureBackupPassphrase(opts.env, {
     targetFile: target,
     configuredFromEnv: (explicit ?? "") !== "",
