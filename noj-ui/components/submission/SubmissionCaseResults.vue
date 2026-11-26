@@ -77,7 +77,9 @@ function statusLabel(status: string) {
 function statusClass(status: string) {
   if (status === 'RUNNING') return 'bg-primary-bg text-primary';
   if (status === 'PENDING' || status === 'IGN') return 'bg-bg-page text-text-muted';
-  return isSubmissionCasePassed(status) ? 'bg-green-50 text-success-text' : 'bg-red-50 text-error-text';
+  return isSubmissionCasePassed(status)
+    ? 'bg-verdict-accepted-bg text-verdict-accepted'
+    : 'bg-verdict-wrong-bg text-verdict-wrong';
 }
 
 function statusIcon(status: string) {

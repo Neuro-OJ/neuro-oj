@@ -60,7 +60,8 @@ useHead({
 </script>
 
 <style>
-:root {
+:root,
+.editor-light {
   /* 浅色基线 token：实际生效的深色终端主题在 assets/css/main.css 的 html:root
      中整体覆盖；这里保留覆盖未涉及的 token 与编辑器局部变量。 */
 
@@ -94,7 +95,7 @@ useHead({
   /* 4. 表面与边框（暖中性灰） */
   --c-text: #171717;
   --c-text-secondary: #525252;
-  --c-text-muted: #8f8f8f;
+  --c-text-muted: #6b6b6b; /* 白底 5.3:1，满足辅助文字 4.5:1 */
   --c-text-on-color: #ffffff;
   --c-text-on-dark: #ededed;
   --c-border: #ebebeb;
@@ -142,7 +143,7 @@ useHead({
   --c-border-strong: #383838;
   --c-text: #ededed;
   --c-text-secondary: #a1a1a1;
-  --c-text-muted: #707070;
+  --c-text-muted: #8f8f8f; /* 暗底 ≥ 4.5:1 */
   --c-primary: #8d95f2;
   --c-primary-dark: #737ce8;
   --c-primary-light: #b2b8f7;
