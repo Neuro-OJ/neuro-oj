@@ -30,7 +30,10 @@ import { logger } from "../../shared/base/logging.ts";
 import { unwrapRows } from "../../shared/base/sql-rows.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import type { DbRoot } from "../../shared/db/executor.ts";
-import { userKnowledgeMastery } from "../../shared/db/schema.ts";
+import {
+  userKnowledgeMastery,
+  userKnowledgePlacements,
+} from "../../shared/db/schema.ts";
 import type { ManagedTask } from "../../shared/runtime/managed-task.ts";
 import { startPeriodicTask } from "../../shared/runtime/managed-task.ts";
 import {
@@ -610,6 +613,17 @@ export async function loadUserMastery(
   return map;
 }
 
+/** 读取用户通过摸底自评或诊断解锁的节点 ID 集合。 */
+export async function loadUserPlacementIds(
+  userId: string,
+  db: DbRoot = getDb(),
+): Promise<Set<string>> {
+  const rows = await db.select({ node_id: userKnowledgePlacements.node_id })
+    .from(userKnowledgePlacements)
+    .where(eq(userKnowledgePlacements.user_id, userId));
+  return new Set(rows.map((row) => row.node_id));
+}
+
 // ── API 读取（掌握度、根因诊断、推荐、覆盖度）──────────────
 
 /** 掌握度条目（`GET /knowledge/me/mastery`）。 */
@@ -632,6 +646,8 @@ export interface MyMasteryView {
   mastered: number;
   learning: number;
   total: number;
+  /** 通过摸底诊断/自评解锁的知识点 ID。 */
+  placed_nodes: string[];
   items: MasteryItem[];
 }
 
@@ -646,8 +662,11 @@ export async function readMyMastery(
   db: DbRoot = getDb(),
 ): Promise<MyMasteryView> {
   const graph = await readKnowledgeGraph();
-  const mastery = await loadUserMastery(userId, db);
-  const rows = await loadNodeProblems(db);
+  const [mastery, placedIds, rows] = await Promise.all([
+    loadUserMastery(userId, db),
+    loadUserPlacementIds(userId, db),
+    loadNodeProblems(db),
+  ]);
   const counts = new Map<string, number>();
   for (const row of rows) {
     if (domain && row.domain_id !== domain.id) continue;
@@ -681,6 +700,7 @@ export async function readMyMastery(
     mastered,
     learning,
     total: items.length,
+    placed_nodes: [...placedIds].sort(),
     items,
   };
 }
@@ -722,12 +742,15 @@ export async function diagnoseNode(
   const target = graph.nodes.find((node) => node.id === nodeId);
   if (!target) return null;
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
-  const mastery = await loadUserMastery(userId, db);
+  const [mastery, placedIds] = await Promise.all([
+    loadUserMastery(userId, db),
+    loadUserPlacementIds(userId, db),
+  ]);
   const stateOf = (id: string): MasteryState =>
     mastery.get(id)?.state ?? "none";
-  const missingDirect = target.requires.filter((id) =>
-    stateOf(id) !== "mastered"
-  );
+  const isUnlocked = (id: string): boolean =>
+    stateOf(id) === "mastered" || placedIds.has(id);
+  const missingDirect = target.requires.filter((id) => !isUnlocked(id));
   const chain: DiagnosisItem[] = [];
   const seen = new Set<string>([nodeId]);
   let frontier = target.requires.filter((id) => byId.has(id));
@@ -739,7 +762,7 @@ export async function diagnoseNode(
       seen.add(id);
       const node = byId.get(id)!;
       next.push(...node.requires);
-      if (stateOf(id) === "mastered") continue;
+      if (isUnlocked(id)) continue;
       if (chain.length >= DIAGNOSIS_MAX_ITEMS) break;
       chain.push({
         node_id: id,
@@ -817,10 +840,14 @@ export function rankFrontierNodes(
     countOf: (nodeId: string) => number;
     /** 节点未达标题数（`continue_learning` 的剩余题数用）。 */
     solvedOf: (nodeId: string) => number;
+    /** 是否已通过摸底自评解锁（作为前置满足，非 learning 时不重复推荐基础题）。 */
+    placedOf?: (nodeId: string) => boolean;
   },
 ): Array<{ node: KnowledgeGraphNode; reason: RecommendationReason }> {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const isMastered = (id: string) => input.stateOf(id) === "mastered";
+  const isPlaced = (id: string) => input.placedOf?.(id) ?? false;
+  const isUnlocked = (id: string) => isMastered(id) || isPlaced(id);
   const candidates: Array<{
     rank: number;
     order: RecommendationOrder;
@@ -837,17 +864,18 @@ export function rankFrontierNodes(
   for (const node of nodes) {
     if (isMastered(node.id)) continue;
     const requires = node.requires.filter((id) => byId.has(id));
-    const unmet = requires.filter((id) => !isMastered(id));
+    const unmet = requires.filter((id) => !isUnlocked(id));
     const learning = input.stateOf(node.id) === "learning";
+    if (!learning && isPlaced(node.id)) continue;
     if (unmet.length > 0) {
-      // 根因提示：仅对「多次未达标」的节点推荐补前置（前置本身须未掌握且有题）。
+      // 根因提示：仅对「多次未达标」的节点推荐补前置（前置本身须未掌握且未自评）。
       if (
         input.stateOf(node.id) !== "learning" ||
         input.failedOf(node.id) < ROOT_CAUSE_THRESHOLD
       ) continue;
       for (const id of unmet) {
         const prerequisite = byId.get(id)!;
-        if (isMastered(prerequisite.id)) continue;
+        if (isUnlocked(prerequisite.id)) continue;
         add(1, prerequisite, {
           code: "review_prerequisite",
           params: {
@@ -931,8 +959,11 @@ export async function readMyRecommendations(
   db: DbRoot = getDb(),
 ): Promise<MyRecommendationsView> {
   const graph = await readKnowledgeGraph();
-  const mastery = await loadUserMastery(userId, db);
-  const rows = await loadNodeProblems(db);
+  const [mastery, placedIds, rows] = await Promise.all([
+    loadUserMastery(userId, db),
+    loadUserPlacementIds(userId, db),
+    loadNodeProblems(db),
+  ]);
   const counts = new Map<string, number>();
   for (const row of rows) {
     if (row.domain_id !== domain.id) continue;
@@ -948,6 +979,7 @@ export async function readMyRecommendations(
     failedOf: (id) => mastery.get(id)?.failed_attempts ?? 0,
     countOf: (id) => counts.get(id) ?? 0,
     solvedOf: (id) => mastery.get(id)?.solved_count ?? 0,
+    placedOf: (id) => placedIds.has(id),
   }).slice(0, limit);
 
   const viewer = userActorFromAuthenticatedId(userId);

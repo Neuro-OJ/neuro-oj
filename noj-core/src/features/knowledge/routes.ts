@@ -11,6 +11,8 @@
  * - `GET /admin/knowledge/tagging/usage|estimate` 与
  *   `POST /admin/knowledge/tagging/backfill`：AI 打标用量/预估/回填（实例管理员）。
  * - `GET /knowledge/me/mastery|recommendations`：我的掌握度与推荐（登录用户）。
+ * - `GET|POST /knowledge/me/diagnostic(/self-assess)`：摸底诊断计划与自评解锁。
+ * - `GET /knowledge/problems/:problemId/remediation`：结合错因反馈的补强节点。
  * - `GET /knowledge/nodes/:id/diagnosis`：根因诊断（未登录返回空）。
  * - `GET /admin/knowledge/coverage`：覆盖度面板（实例管理员；`?domain=` 时域
  *   管理员可见本域）。
@@ -90,6 +92,14 @@ import {
   reviewMapping,
   setProblemKnowledgeManually,
 } from "./mappings.ts";
+import {
+  readDiagnosticPlan,
+  saveSelfAssessedPlacements,
+} from "./diagnostic.ts";
+import {
+  parseFeedbackSignalParam,
+  readProblemRemediation,
+} from "./remediation.ts";
 
 export const knowledgeRouter = new Hono<AuthEnv>();
 
@@ -438,6 +448,58 @@ knowledgeRouter.get(
     }
     const view = await diagnoseNode(userId, nodeId);
     if (!view) throw new NotFoundError("知识点不存在");
+    return c.json({ data: view });
+  },
+);
+
+/** 摸底诊断计划（`?domain=<slug>` 可选；返回高杠杆检查点与已自评节点）。 */
+knowledgeRouter.get(
+  "/knowledge/me/diagnostic",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    const domain = await resolveDomainQuery(c);
+    return c.json({ data: await readDiagnosticPlan(userId, domain) });
+  },
+);
+
+/** 提交摸底自评解锁（写入 `user_knowledge_placements`，不伪造做题掌握度）。 */
+knowledgeRouter.post(
+  "/knowledge/me/diagnostic/self-assess",
+  authMiddleware,
+  async (c) => {
+    assertEnabled();
+    const userId = c.get("userId")!;
+    await enforceRateLimit(`knowledge-diagnostic:user:${userId}`, {
+      windowSec: 60,
+      max: 30,
+    });
+    const body = await parseJsonBody<Record<string, unknown>>(c);
+    return c.json({
+      data: await saveSelfAssessedPlacements(userId, body),
+    });
+  },
+);
+
+/** 题目错因与知识图谱补强建议（沿用题目保密防线：保护期非编辑者 → 404）。 */
+knowledgeRouter.get(
+  "/knowledge/problems/:problemId/remediation",
+  optionalAuthMiddleware,
+  async (c) => {
+    assertEnabled();
+    const problemId = parseProblemId(c.req.param("problemId"));
+    await resolveDomainQuery(c);
+    const isAdminViewer = await isViewerAdmin(c.get("userId") ?? null);
+    const view = await readProblemRemediation(
+      problemId,
+      { ...viewerOf(c), is_admin: isAdminViewer },
+      {
+        errorTypes: parseFeedbackSignalParam(c.req.query("error_types")),
+        weakMetrics: parseFeedbackSignalParam(c.req.query("metrics")),
+      },
+    );
+    if (!view) throw new NotFoundError("题目不存在");
     return c.json({ data: view });
   },
 );

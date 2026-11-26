@@ -4,12 +4,14 @@ import type { EvaluationFeedback } from '~/utils/domain/submission/aiFeedback';
 import MetricRadarChart from './MetricRadarChart.vue';
 import LlmTraceTimeline from './LlmTraceTimeline.vue';
 import BadcaseComparison from './BadcaseComparison.vue';
+import FeedbackKnowledgeRemediation from './FeedbackKnowledgeRemediation.vue';
 
 const props = withDefaults(
   defineProps<{
     kind: 'submission' | 'self-test';
     targetId: string;
     slug?: string;
+    problemId?: string;
     status?: string;
     resultVisibility?: 'hidden' | 'summary' | 'cases';
     resourceAvailable?: boolean;
@@ -124,6 +126,14 @@ watch(
     <BadcaseComparison
       v-if="resolvedFeedback.visibility === 'cases' && resolvedFeedback.badcases.length > 0"
       :badcases="resolvedFeedback.badcases"
+    />
+
+    <FeedbackKnowledgeRemediation
+      v-if="problemId && slug"
+      :problem-id="problemId"
+      :slug="slug"
+      :badcases="resolvedFeedback.visibility === 'cases' ? resolvedFeedback.badcases : []"
+      :metrics="resolvedFeedback.metrics"
     />
   </div>
 </template>

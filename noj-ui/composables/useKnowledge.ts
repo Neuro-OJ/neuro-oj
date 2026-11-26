@@ -13,6 +13,7 @@ import {
   type BackfillResult,
   type ClassroomMasteryView,
   type CoverageView,
+  type DiagnosticPlanView,
   isBackfillDrift,
   isKnowledgeDisabled,
   type KnowledgeGraph,
@@ -26,6 +27,8 @@ import {
   type NodeDiagnosisView,
   type PendingReviewPage,
   type ProblemKnowledgeView,
+  type ProblemRemediationView,
+  type SelfAssessResult,
   type TagEstimate,
   type TagUsage,
 } from '~/utils/domain/education/knowledge';
@@ -62,18 +65,26 @@ export function useKnowledge() {
     return true;
   }
 
-  /** 读图谱（会话内缓存一次，用于选择器分组）。 */
-  function loadGraph(force = false): Promise<KnowledgeGraph | null> {
+  const graphDomain = useState<string | null>('knowledge:graph:domain', () => null);
+
+  /** 读图谱（会话内按 domain 缓存，用于选择器分组与技能树视图）。 */
+  function loadGraph(force = false, domain?: string): Promise<KnowledgeGraph | null> {
     if (disabled.value) return Promise.resolve(null);
+    const normalizedDomain = domain?.trim() || null;
     const cached = graph.value as KnowledgeGraph | null;
-    if (cached && !force) return Promise.resolve(cached);
-    const key = 'graph';
+    const sameScope = normalizedDomain === null ? cached !== null : graphDomain.value === normalizedDomain;
+    if (cached && sameScope && !force) return Promise.resolve(cached);
+    const key = `graph:${normalizedDomain ?? '*'}`;
     const running = inflight.get(key);
     if (running) return running as Promise<KnowledgeGraph | null>;
     const task = (async () => {
       try {
-        const res = await api.get<{ data: KnowledgeGraph }>('/api/v1/knowledge/graph', { silent: true });
+        const res = await api.get<{ data: KnowledgeGraph }>('/api/v1/knowledge/graph', {
+          params: normalizedDomain ? { domain: normalizedDomain } : undefined,
+          silent: true,
+        });
         graph.value = res.data;
+        graphDomain.value = normalizedDomain;
         return res.data;
       } catch (err) {
         if (markDisabled(err)) return null;
@@ -281,6 +292,68 @@ export function useKnowledge() {
     return task;
   }
 
+  /** 读取当前用户的摸底诊断计划（`GET /knowledge/me/diagnostic`）。 */
+  async function loadDiagnosticPlan(domain?: string): Promise<DiagnosticPlanView | null> {
+    if (disabled.value) return null;
+    try {
+      const params = domain ? { domain } : undefined;
+      const res = await api.get<{ data: DiagnosticPlanView }>('/api/v1/knowledge/me/diagnostic', {
+        params,
+        silent: true,
+      });
+      return res.data;
+    } catch (err) {
+      if (markDisabled(err)) return null;
+      throw err;
+    }
+  }
+
+  /** 提交摸底自评（`POST /knowledge/me/diagnostic/self-assess`）。 */
+  async function submitSelfAssessment(input: {
+    node_ids?: string[];
+    area_ids?: string[];
+    mode?: 'merge' | 'replace';
+  }): Promise<SelfAssessResult | null> {
+    if (disabled.value) return null;
+    try {
+      const res = await api.post<{ data: SelfAssessResult }>(
+        '/api/v1/knowledge/me/diagnostic/self-assess',
+        input,
+      );
+      return res.data;
+    } catch (err) {
+      markDisabled(err);
+      throw err;
+    }
+  }
+
+  /**
+   * 结合评测错因与分项指标读取题目补强知识点。
+   * 功能关闭或题目受保护（404）返回 null，不中断结果页展示。
+   */
+  async function loadProblemRemediation(
+    problemId: string,
+    options: { domain?: string; errorTypes?: string[]; weakMetrics?: string[] } = {},
+  ): Promise<ProblemRemediationView | null> {
+    if (disabled.value) return null;
+    try {
+      const params: Record<string, string> = {};
+      if (options.domain) params.domain = options.domain;
+      if (options.errorTypes?.length) params.error_types = options.errorTypes.join(',');
+      if (options.weakMetrics?.length) params.metrics = options.weakMetrics.join(',');
+      const res = await api.get<{ data: ProblemRemediationView }>(
+        `/api/v1/knowledge/problems/${encodeURIComponent(problemId)}/remediation`,
+        { params, silent: true },
+      );
+      return res.data;
+    } catch (err) {
+      if (markDisabled(err)) return null;
+      const status = (err as { status?: number } | null)?.status;
+      if (status === 404) return null;
+      throw err;
+    }
+  }
+
   // ─── P4：班级教练视角 ─────────────────────────────
 
   /**
@@ -448,6 +521,9 @@ export function useKnowledge() {
     loadMyMastery,
     loadRecommendations,
     loadDiagnosis,
+    loadDiagnosticPlan,
+    submitSelfAssessment,
+    loadProblemRemediation,
     loadClassroomMastery,
     loadClassroomPick,
     loadCoverage,

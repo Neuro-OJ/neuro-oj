@@ -12,11 +12,13 @@ nodes:
     summary: 为神经元引入非线性的函数，决定网络能拟合多复杂的映射，并影响梯度传播与训练稳定性
     syllabus: [ioai, noai, lmcc]
     requires: [dl.perceptron]
+    doc: docs/dl.activation-functions.md
   - id: dl.loss-functions
     name: 损失函数（MSE、MAE、交叉熵）
     summary: 用数值衡量预测与真实标签差距的目标函数，选对损失才能让梯度指向正确的优化方向
     syllabus: [ioai, noai, lmcc]
     requires: [ml.logistic-regression]
+    doc: docs/dl.loss-functions.md
   - id: dl.gradient-descent
     name: 梯度下降
     summary: 沿损失函数负梯度方向反复更新参数以降低误差的基本训练算法，是所有深度优化方法的原型
@@ -44,6 +46,7 @@ nodes:
     summary: 在梯度基础上加入动量或自适应步长的参数更新算法，能加快收敛并缓解不同参数尺度带来的问题
     syllabus: [ioai, lmcc]
     requires: [dl.sgd-minibatch]
+    doc: docs/dl.optimizers.md
   - id: dl.learning-rate
     name: 学习率、预热、衰减与收敛
     summary: 控制每步参数更新幅度的关键超参数，配合预热与衰减策略可显著改善训练收敛与最终效果

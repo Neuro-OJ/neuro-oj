@@ -7,6 +7,7 @@ nodes:
     summary: 掌握下一词元预测与掩码还原两类自监督目标的构造与损失计算，能说明它们各自适合怎样的下游任务
     syllabus: [lmcc, ioai]
     requires: [nlp.language-modeling, dl.self-supervised, llm.architectures]
+    doc: docs/llm-train.pretraining-objectives.md
   - id: llm-train.pretraining-data
     name: 预训练数据准备
     summary: 了解网页、书籍、代码等语料从采集到清洗、去重与配比的全过程，能评估数据质量对模型能力的影响
@@ -72,6 +73,7 @@ nodes:
     summary: 理解用低秩增量矩阵近似参数更新的原理，能在固定主干权重的前提下以很小代价完成模型适配任务
     syllabus: [lmcc, ioai]
     requires: [dl.peft, llm-train.instruction-tuning]
+    doc: docs/llm-train.lora.md
   - id: llm-train.peft-variants
     name: 其他参数高效微调（Adapter、Prefix、Prompt Tuning）
     summary: 对比适配器、前缀与提示微调等方法的插入位置与可调参数量，能根据任务与资源选择合适方案

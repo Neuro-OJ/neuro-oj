@@ -214,7 +214,7 @@ export function buildTagSystemPrompt(
     "只能使用候选列表里出现的 id，不得编造 id，不得输出候选列表之外的内容。",
     "只输出一个 JSON 对象，不要输出 Markdown 代码块或其他文字，格式：",
     '{"primary": "<主知识点 id>", "secondary": ["<次要 id>", "..."], "confidence": <0 到 1 之间的小数>, "rationale": "<不超过 80 字的中文理由>"}',
-    "要求：primary 必填且只能一个；secondary 最多 3 个、不得包含 primary，没有就输出空数组；confidence 表示你对该主知识点的把握程度。",
+    "要求：primary 必填且只能一个；对于跨多能力的 AI 工程题，选最核心考查项作 primary，其余关键依赖放入 secondary（最多 3 个、不得包含 primary，没有就输出空数组）；confidence 表示你对该主知识点的把握程度。",
     "",
     "候选知识点（id 名称）：",
     lines,

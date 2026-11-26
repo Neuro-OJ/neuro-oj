@@ -6,11 +6,13 @@ nodes:
     name: Python 基础语法（变量、控制流、函数）
     summary: 掌握变量、条件分支、循环与函数定义等 Python 核心语法，能独立编写并调试完成简单任务的小程序
     syllabus: [noai, ioai, lmcc]
+    doc: docs/prog.python-basics.md
   - id: prog.python-data-structures
     name: Python 数据结构（列表、字典、集合、字符串）
     summary: 熟练使用列表、字典、集合与字符串组织数据，能用切片、推导式和内置方法完成常见的数据存取与统计
     syllabus: [noai, ioai]
     requires: [prog.python-basics]
+    doc: docs/prog.python-data-structures.md
   - id: prog.python-oop
     name: 面向对象与模块化（类、对象、包导入）
     summary: 理解类与对象、封装和继承，能用模块与包组织多个文件，写出结构清晰、可复用的 Python 项目代码
@@ -32,6 +34,7 @@ nodes:
     summary: 用 DataFrame 读取、筛选、分组聚合与拼接表格数据，完成数据探索、特征整理和简单统计分析
     syllabus: [ioai, noai]
     requires: [prog.numpy]
+    doc: docs/prog.pandas.md
   - id: prog.visualization
     name: 数据可视化（Matplotlib、Seaborn）
     summary: 使用 Matplotlib 与 Seaborn 绘制折线图、散点图、直方图与热力图，直观展示数据分布和模型训练结果

@@ -268,3 +268,18 @@
   或已废弃 404。候选 ≤ count 全返回，否则第 i 个取下标
   `ceil(i*(n-1)/(count-1))`（即 `round` 的向上取整，7 取 3 → 0/3/6），
   `count = 1` 取中位（`floor(n/2)`）。只返回题目列表，不创建作业。
+
+## 技能树可视化、摸底诊断与评测错因联动（V2）
+
+- **摸底自评表** `user_knowledge_placements`（`user_id, node_id` 主键；`source`
+  ∈ `self_assessed/diagnostic_passed`）：与 `user_knowledge_mastery` 严格隔离，
+  仅用于冷启动点亮技能树与放行 `rankFrontierNodes` 下游前置推荐，不伪造
+  `solved_count` 也不污染教练视角班级掌握矩阵。
+- **`GET /knowledge/me/diagnostic?domain=`**：返回各领域基础汇总、最多 8 个
+  按后继解锁影响度筛选的检查点及当前已自评节点 ID。
+- **`POST /knowledge/me/diagnostic/self-assess`**：提交
+  `{ node_ids, area_ids, mode }` 校验并更新 `user_knowledge_placements`。
+- **`GET /knowledge/problems/:problemId/remediation?domain=&error_types=&metrics=`**：
+  结合题目主/次知识点、用户缺失前置链，以及来自 `evaluation-feedback` 的
+  `badcases.error_type` 和薄弱 `metrics`，返回精准备考补强节点；保护期内题目
+  对非编辑者返回 404。

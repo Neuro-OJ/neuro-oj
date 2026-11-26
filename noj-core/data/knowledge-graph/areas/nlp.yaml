@@ -7,6 +7,7 @@ nodes:
     summary: 掌握分词、规范化、去停用词与构建词表的基本流程，能把原始文本转换成模型可用的符号序列
     syllabus: [noai, ioai, lmcc]
     requires: [data.tokenization]
+    doc: docs/nlp.text-preprocessing.md
   - id: nlp.word-embeddings
     name: 词向量
     summary: 理解词向量把词语映射为稠密向量的思想，掌握训练与加载词向量并用余弦相似度衡量词语相关性
@@ -32,6 +33,7 @@ nodes:
     summary: 理解 BERT 的掩码语言建模预训练与双向编码结构，能加载预训练权重做分类、抽取等下游任务
     syllabus: [ioai, lmcc]
     requires: [nlp.language-modeling, dl.transformer, dl.fine-tuning]
+    doc: docs/nlp.pretrained-encoders.md
   - id: nlp.seq2seq
     name: 序列到序列任务（翻译、摘要）
     summary: 掌握编码器-解码器框架与教师强制训练方式，理解翻译、摘要等生成任务的数据处理与评价方法

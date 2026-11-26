@@ -6,15 +6,14 @@ AI 竞赛知识图谱的默认内容：知识点（节点）与前置关系（�
 [`dev-docs/archive/openspec-changes/add-knowledge-graph/`](../../../dev-docs/archive/openspec-changes/add-knowledge-graph/)。
 内容采用 CC BY-SA 4.0，见 [LICENSE](LICENSE)。
 
-> **状态：初稿（`2026.11.0-draft`），待懂 AI 竞赛的维护者评审。** 导入、校验与
-> API 尚未实现 （提案 P0）。
+> **状态：已上线（P0–P4 架构 + 45 篇试点节点讲解）。**
 
 ## 结构
 
 ```text
 pack.yaml            # 包 id、版本、许可、考纲说明
 areas/<area>.yaml    # 每个领域一个文件
-docs/<node-id>.md    # 节点讲解（预留，尚无内容）
+docs/<node-id>.md    # 高频核心节点原创讲解（45 篇，覆盖全 14 领域）
 ```
 
 节点字段：`id`（`<领域>.<名称>`，稳定、发布后不复用）、`name`、`summary`（一句原创说明）、
