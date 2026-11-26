@@ -1,7 +1,7 @@
 /**
  * 知识图谱「技能树视图」纯拓扑布局与状态派生（无 Nuxt/DOM 依赖，可独立单测）。
  */
-import type { KnowledgeGraph, KnowledgeNode, MasteryItem, MasteryState } from './knowledge';
+import type { KnowledgeGraph, KnowledgeNode, MasteryItem, MasteryState } from './knowledge.ts';
 
 /** 技能树节点在学习视图中的展示状态。 */
 export type SkillTreeNodeStatus =

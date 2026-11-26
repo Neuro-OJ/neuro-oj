@@ -7,5 +7,5 @@ CREATE TABLE "user_knowledge_placements" (
 	CONSTRAINT "user_knowledge_placements_source_check" CHECK ("user_knowledge_placements"."source" IN ('self_assessed', 'diagnostic_passed'))
 );
 --> statement-breakpoint
-ALTER TABLE "user_knowledge_placements" ADD CONSTRAINT "user_knowledge_placements_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "user_knowledge_placements" ADD CONSTRAINT "user_knowledge_placements_node_id_knowledge_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."knowledge_nodes"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "user_knowledge_placements" ADD CONSTRAINT "user_knowledge_placements_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "user_knowledge_placements" ADD CONSTRAINT "user_knowledge_placements_node_id_knowledge_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "knowledge_nodes"("id") ON DELETE cascade ON UPDATE no action;
