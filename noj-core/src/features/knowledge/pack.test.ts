@@ -9,6 +9,7 @@ import {
   loadPackFromDir,
   resolveOfficialPackDir,
   validatePack,
+  validatePackDocs,
 } from "./pack.ts";
 
 interface TempPackOptions {
@@ -318,13 +319,41 @@ Deno.test("knowledge pack: 缺少 pack.yaml 或 areas 目录时抛错", async ()
   }
 });
 
-Deno.test("knowledge pack: 真实官方包校验通过（14 领域 / 181 节点）", async () => {
+Deno.test("knowledge pack: 真实官方包校验通过（14 领域 / 181 节点 / 讲解完整）", async () => {
   const pack = await loadPackFromDir(resolveOfficialPackDir());
-  const errors = validatePack(pack);
+  const errors = [...validatePack(pack), ...(await validatePackDocs(pack))];
   assertEquals(errors, []);
   assertEquals(pack.id, "official");
   assertEquals(pack.areas.length, 14);
   assertEquals(pack.areas.reduce((n, area) => n + area.nodes.length, 0), 181);
+  const docCount = pack.areas.reduce(
+    (n, area) => n + area.nodes.filter((item) => Boolean(item.doc)).length,
+    0,
+  );
+  assertEquals(
+    docCount >= 40,
+    true,
+    `预期高频节点讲解不少于 40 篇，实际 ${docCount}`,
+  );
+});
+
+Deno.test("knowledge pack: 声明缺失或越界 doc 文件时校验失败", async () => {
+  const dir = await writePack({
+    areas: {
+      "ml.yaml": areaYaml("ml", "机器学习", [
+        { ...node("ml.a", []), doc: "docs/missing.md" },
+        { ...node("ml.b", []), doc: "../secret.md" },
+      ]),
+    },
+  });
+  try {
+    const errors = await validatePackDocs(await loadPackFromDir(dir));
+    assertEquals(errors.length, 2);
+    assertEquals(errors.some((e) => e.includes("不存在")), true);
+    assertEquals(errors.some((e) => e.includes("非法")), true);
+  } finally {
+    await Deno.remove(dir, { recursive: true });
+  }
 });
 
 Deno.test("knowledge pack: NOJ_PROJECT_ROOT 指向 noj-core 根（生产镜像 /app 布局）", () => {

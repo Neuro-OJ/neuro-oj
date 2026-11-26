@@ -6,11 +6,13 @@ nodes:
     name: 人工智能基本概念与发展
     summary: 了解人工智能、机器学习与深度学习的层次关系及发展脉络，能区分规则驱动与数据驱动两类智能实现方式
     syllabus: [lmcc, noai]
+    doc: docs/ai.concepts.md
   - id: ai.ml-paradigms
     name: 机器学习范式（监督、无监督、自监督、强化）
     summary: 理解监督、无监督、自监督与强化学习在数据和反馈形式上的差别，能判断一个实际任务属于哪种范式
     syllabus: [lmcc, noai, ioai]
     requires: [ai.concepts]
+    doc: docs/ai.ml-paradigms.md
   - id: ai.ml-workflow
     name: 机器学习流程（数据、训练、验证、部署）
     summary: 掌握从问题建模、数据准备、训练调参到验证评估与上线部署的完整流程，能规划并推进一个端到端 AI 项目

@@ -12,11 +12,13 @@ nodes:
     summary: 掌握卷积核、步长、填充与感受野的概念，能手动计算特征图尺寸，并用代码实现与可视化卷积操作
     syllabus: [ioai, noai]
     requires: [cv.image-basics, dl.mlp]
+    doc: docs/cv.convolution.md
   - id: cv.cnn
     name: 卷积神经网络
     summary: 认识堆叠卷积、池化与全连接层构成的典型网络结构，理解参数共享与局部连接为何适合处理图像
     syllabus: [ioai, noai]
     requires: [dl.pooling]
+    doc: docs/cv.cnn.md
   - id: cv.image-classification
     name: 图像分类
     summary: 用卷积网络完成多类别图像识别，掌握数据加载、数据增强、训练与验证流程，并读懂分类指标

@@ -661,22 +661,68 @@ async function loadNodeProblems(
 }
 
 /**
- * 各知识点在该域的可访问题目数（主动知识点口径；供「只显示有题的知识点」）。
+ * 各知识点在该域的可访问题目数（主知识点口径；供「只显示有题的知识点」）。
  *
- * 计数与阶梯同一口径（已发布、绑定未禁用、非保护期）。
+ * 计数与阶梯同一口径（已发布、绑定未禁用、非保护期），单次 SQL + 单次保护态查询，
+ * 避免对 181 个节点做 N+1 逐节点查询。
  */
 export async function loadNodeProblemCounts(
   nodeIds: string[],
   domainId: string,
-  viewer: UserActor | null,
+  _viewer: UserActor | null,
   options: { is_admin?: boolean } = {},
 ): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   const unique = [...new Set(nodeIds)];
   if (unique.length === 0) return counts;
-  for (const nodeId of unique) {
-    const items = await loadNodeProblems(nodeId, domainId, viewer, options);
-    counts.set(nodeId, items.length);
+  for (const id of unique) counts.set(id, 0);
+
+  const rawRows = await getDb().execute<{
+    node_id: string;
+    problem_id: string;
+  }>(sql`
+    SELECT DISTINCT pk.node_id, pk.problem_id
+    FROM problem_knowledge pk
+    JOIN knowledge_nodes kn ON kn.id = pk.node_id AND kn.status = 'active'
+    JOIN problems p ON p.id = pk.problem_id
+    JOIN domains d ON d.id = p.domain_id
+    JOIN domain_problem_bindings b
+      ON b.domain_id = p.domain_id AND b.problem_id = p.id
+    WHERE pk.node_id IN (${sql.join(unique.map((id) => sql`${id}`), sql`, `)})
+      AND pk.role = 'primary'
+      AND pk.review_status IN ('auto', 'confirmed')
+      AND p.domain_id = ${domainId}
+      AND b.disabled_at IS NULL
+      AND d.status <> 'suspended'
+      AND p.latest_version_id IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM problem_versions v
+        WHERE v.problem_id = p.id
+          AND v.id = CASE
+            WHEN p.effective_version_mode = 'exact' THEN p.required_version_id
+            ELSE p.latest_version_id
+          END
+      )
+  `);
+  const rows = unwrapRows(rawRows as never) as {
+    node_id: string;
+    problem_id: string;
+  }[];
+  if (rows.length === 0) return counts;
+
+  const uniqueProblemIds = [...new Set(rows.map((r) => r.problem_id))];
+  const protection = options.is_admin === true
+    ? new Map<string, string[]>()
+    : await loadDomainProblemProtection(domainId, uniqueProblemIds);
+
+  for (const row of rows) {
+    if (
+      options.is_admin !== true &&
+      (protection.get(row.problem_id) ?? []).length > 0
+    ) {
+      continue;
+    }
+    counts.set(row.node_id, (counts.get(row.node_id) ?? 0) + 1);
   }
   return counts;
 }

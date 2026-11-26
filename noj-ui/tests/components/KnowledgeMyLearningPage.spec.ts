@@ -7,8 +7,10 @@ const disabled = ref(false);
 const loggedIn = ref(true);
 const mastery = ref<Record<string, unknown> | null>(null);
 const recommendationView = ref<Record<string, unknown> | null>(null);
+const graphView = ref<Record<string, unknown> | null>(null);
 const loadMyMastery = vi.fn((_domain?: string) => Promise.resolve(mastery.value));
 const loadRecommendations = vi.fn((_domain: string, _limit?: number) => Promise.resolve(recommendationView.value));
+const loadGraph = vi.fn((_force?: boolean, _domain?: string) => Promise.resolve(graphView.value));
 
 const stubs = {
   NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
@@ -59,7 +61,32 @@ beforeEach(() => {
     disabled,
     loadMyMastery,
     loadRecommendations,
+    loadGraph,
   }));
+  graphView.value = {
+    pack: { id: 'official', version: '2026.11.0-draft' },
+    areas: [{ id: 'ds', name: '数据结构', sort: 0 }],
+    nodes: [
+      {
+        id: 'ds.array',
+        area: 'ds',
+        name: '数组',
+        summary: '线性存储',
+        syllabus: ['noai'],
+        requires: [],
+        problem_count: 3,
+      },
+      {
+        id: 'ds.list',
+        area: 'ds',
+        name: '链表',
+        summary: '指针链式结构',
+        syllabus: ['noai'],
+        requires: ['ds.array'],
+        problem_count: 2,
+      },
+    ],
+  };
   mastery.value = {
     domain: { id: 'd1', slug: 'school' },
     mastered: 1,
@@ -161,6 +188,8 @@ describe('我的学习页', () => {
     expect(nodes[0]!.text()).toContain('已掌握');
     expect(nodes[1]!.text()).toContain('学习中');
     expect(wrapper.find('a[data-to="/d/school/knowledge/ds.list"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="knowledge-skill-tree"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="skill-node-ds.array"]').text()).toContain('已掌握');
   });
 
   it('KNOWLEDGE_DISABLED（总开关关闭）只显示未开启提示且不报错', async () => {

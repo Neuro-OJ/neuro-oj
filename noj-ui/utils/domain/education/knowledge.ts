@@ -39,6 +39,8 @@ export interface KnowledgeNode {
   area: string;
   name: string;
   summary: string | null;
+  syllabus?: string[];
+  doc?: string | null;
   requires: string[];
   /** 本域内以该节点为主知识点的可做题目数（P2 附加，旧响应可能缺省）。 */
   problem_count?: number;
@@ -145,7 +147,68 @@ export interface MyMasteryView {
   mastered: number;
   learning: number;
   total: number;
+  /** 通过摸底诊断/自评解锁的知识点 ID。 */
+  placed_nodes?: string[];
   items: MasteryItem[];
+}
+
+export interface DiagnosticAreaSummary {
+  area_id: string;
+  name: string;
+  total_nodes: number;
+  foundation_node_ids: string[];
+  mastered_count: number;
+  placed_count: number;
+}
+
+export interface DiagnosticCheckpoint {
+  node_id: string;
+  name: string;
+  area: string;
+  area_name: string;
+  summary: string;
+  has_doc: boolean;
+  unlocks_count: number;
+  problem_count: number;
+  sample_problem: KnowledgeLadderItem | null;
+  state: MasteryState;
+  placed: boolean;
+}
+
+export interface DiagnosticPlanView {
+  domain: { id: string; slug: string } | null;
+  placed_nodes: string[];
+  areas: DiagnosticAreaSummary[];
+  checkpoints: DiagnosticCheckpoint[];
+}
+
+export interface SelfAssessResult {
+  placed_nodes: string[];
+  added_count: number;
+  total_placed: number;
+}
+
+export type RemediationReason =
+  | 'problem_primary'
+  | 'problem_secondary'
+  | 'missing_prerequisite'
+  | 'feedback_signal';
+
+export interface RemediationNodeItem {
+  node_id: string;
+  name: string;
+  area: string;
+  summary: string;
+  has_doc: boolean;
+  reason: RemediationReason;
+  matched_signals: string[];
+  state: MasteryState;
+  placed: boolean;
+}
+
+export interface ProblemRemediationView {
+  problem_id: string;
+  items: RemediationNodeItem[];
 }
 
 /** 推荐理由（前端按 `code` 拼中文；params 字段以后端为准）。 */

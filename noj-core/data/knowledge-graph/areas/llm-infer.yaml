@@ -17,6 +17,7 @@ nodes:
     summary: 学会用温度缩放与截断候选集合控制生成多样性与稳定性，能针对对话、创作或解题任务调节参数
     syllabus: [lmcc, ioai]
     requires: [llm-infer.probability-sampling]
+    doc: docs/llm-infer.sampling-strategies.md
   - id: llm-infer.chat-template
     name: 对话模板与批量生成
     summary: 理解对话标记如何把多轮消息拼成输入以匹配训练格式，并掌握批量生成时的对齐与截断处理
@@ -27,6 +28,7 @@ nodes:
     summary: 能够约束模型按指定格式输出并从中稳定抽取字段，使生成结果可以直接交给程序做自动评测与处理
     syllabus: [lmcc]
     requires: [llm-infer.chat-template, llm-infer.sampling-strategies]
+    doc: docs/llm-infer.structured-output.md
   - id: llm-infer.kv-cache
     name: KV 缓存与推理开销
     summary: 理解解码时缓存历史键值以减少重复计算的作用，能估算缓存显存并分析预填充与逐词生成的耗时构成

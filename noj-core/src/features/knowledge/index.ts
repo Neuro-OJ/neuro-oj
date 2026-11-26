@@ -82,6 +82,7 @@ export {
   type DiagnosisItem,
   knowledgeMasteryHandler,
   loadUserMastery,
+  loadUserPlacementIds,
   loadUserProblemScores,
   MASTERY_PROTECTION_INTERVAL_MS,
   type MasteryItem,
@@ -137,6 +138,26 @@ export {
 export { objectiveFullScore } from "./objective-full-score.ts";
 export { setPassRatioOverride } from "./pass-ratio.ts";
 export {
+  computeDownstreamReach,
+  DIAGNOSTIC_MAX_CHECKPOINTS,
+  type DiagnosticAreaSummary,
+  type DiagnosticCheckpoint,
+  type DiagnosticPlanView,
+  readDiagnosticPlan,
+  saveSelfAssessedPlacements,
+  selectDiagnosticCheckpoints,
+  type SelfAssessInput,
+  type SelfAssessResult,
+} from "./diagnostic.ts";
+export {
+  matchSignalsToNodes,
+  parseFeedbackSignalParam,
+  type ProblemRemediationView,
+  readProblemRemediation,
+  type RemediationNodeItem,
+  type RemediationReason,
+} from "./remediation.ts";
+export {
   type KnowledgePack,
   loadPackFromDir,
   normalizePackRelativePath,
@@ -146,4 +167,5 @@ export {
   resolveDocsDir,
   resolveOfficialPackDir,
   validatePack,
+  validatePackDocs,
 } from "./pack.ts";

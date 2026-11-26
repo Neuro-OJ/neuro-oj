@@ -168,6 +168,7 @@ const subtasks = computed(() =>
       kind="submission"
       :target-id="submission.id"
       :slug="slug ?? submission.domain?.slug"
+      :problem-id="submission.reference?.problem_id"
       :status="submission.status"
       :result-visibility="submission.result_visibility ?? 'cases'"
       :resource-available="submission.resource_available"

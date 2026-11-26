@@ -6,8 +6,11 @@
  * - 掌握状态徽标：已掌握=成功绿、学习中=品牌主色、未开始=中性灰（语义色映射设计 token）；
  * - 总开关关闭（`KNOWLEDGE_DISABLED`）时整块隐藏、不报错；未登录提示登录，不发请求。
  */
+import KnowledgeDiagnosticModal from '~/components/knowledge/KnowledgeDiagnosticModal.vue';
+import KnowledgeSkillTree from '~/components/knowledge/KnowledgeSkillTree.vue';
 import { extractApiError } from '~/utils/server/apiError';
 import {
+  type KnowledgeGraph,
   type KnowledgeRecommendation,
   ladderItemPath,
   masteryPercent,
@@ -27,8 +30,10 @@ const knowledge = useKnowledge();
 
 const mastery = ref<MyMasteryView | null>(null);
 const recommendations = ref<KnowledgeRecommendation[]>([]);
+const graph = ref<KnowledgeGraph | null>(null);
 const loading = ref(true);
 const failure = ref('');
+const diagnosticOpen = ref(false);
 
 /** 功能关闭：整块隐藏，不报错。 */
 const hidden = computed(() => knowledge.disabled.value);
@@ -40,24 +45,33 @@ async function load() {
     loading.value = false;
     mastery.value = null;
     recommendations.value = [];
+    graph.value = null;
     return;
   }
   if (!isLoggedIn.value) {
     loading.value = false;
     mastery.value = null;
     recommendations.value = [];
+    if (typeof knowledge.loadGraph === 'function') {
+      graph.value = await knowledge.loadGraph(false, domain).catch(() => null);
+    }
     return;
   }
   loading.value = true;
   failure.value = '';
   try {
-    const [loadedMastery, loadedRecommendations] = await Promise.all([
+    const graphPromise = typeof knowledge.loadGraph === 'function'
+      ? knowledge.loadGraph(false, domain).catch(() => null)
+      : Promise.resolve(null);
+    const [loadedMastery, loadedRecommendations, loadedGraph] = await Promise.all([
       knowledge.loadMyMastery(domain),
       knowledge.loadRecommendations(domain, 5),
+      graphPromise,
     ]);
     if (knowledge.disabled.value) return;
     mastery.value = loadedMastery;
     recommendations.value = loadedRecommendations?.items ?? [];
+    graph.value = loadedGraph;
   } catch (error) {
     if (knowledge.disabled.value) return;
     failure.value = extractApiError(error).message;
@@ -102,9 +116,22 @@ useSeoMeta({ title: '我的学习' });
 
 <template>
   <div v-if="!hidden" class="space-y-6">
-    <header class="space-y-1">
-      <h1 class="text-2xl font-bold text-text">我的学习</h1>
-      <p class="text-sm text-text-secondary">按知识图谱的掌握状态安排下一步：先补齐前置，再攻克新知识点。</p>
+    <header class="flex flex-wrap items-start justify-between gap-3">
+      <div class="space-y-1">
+        <h1 class="text-2xl font-bold text-text">我的学习</h1>
+        <p class="text-sm text-text-secondary">按知识图谱的掌握状态安排下一步：先补齐前置，再攻克新知识点。</p>
+      </div>
+      <UButton
+        v-if="isLoggedIn"
+        color="primary"
+        variant="outline"
+        size="sm"
+        icon="i-lucide-compass"
+        data-testid="open-diagnostic-btn"
+        @click="diagnosticOpen = true"
+      >
+        快速摸底诊断
+      </UButton>
     </header>
 
     <UAlert
@@ -166,6 +193,16 @@ useSeoMeta({ title: '我的学习' });
           </ul>
         </section>
 
+        <!-- 轻量技能树视图 -->
+        <KnowledgeSkillTree
+          v-if="graph && graph.nodes.length > 0"
+          :graph="graph"
+          :slug="slug ?? ''"
+          :mastery-items="items"
+          :recommendations="recommendations"
+          :placed-node-ids="mastery?.placed_nodes ?? []"
+        />
+
         <!-- 掌握度（按当前域汇总） -->
         <section aria-labelledby="knowledge-mastery" class="space-y-3">
           <h2 id="knowledge-mastery" class="text-lg font-semibold text-text">掌握度</h2>
@@ -224,6 +261,13 @@ useSeoMeta({ title: '我的学习' });
         </section>
       </div>
     </AsyncContent>
+
+    <KnowledgeDiagnosticModal
+      v-if="isLoggedIn && slug"
+      v-model:open="diagnosticOpen"
+      :slug="slug"
+      @saved="load()"
+    />
   </div>
   <p v-else class="py-12 text-center text-sm text-text-muted" data-testid="knowledge-disabled">
     本实例未开启知识图谱。
