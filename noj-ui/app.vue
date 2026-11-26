@@ -83,6 +83,8 @@ useHead({
   --c-success-text: #17803d;
   --c-info-text: #5059c7;
   --c-warning-text: #b45309;
+  --c-warning-bg: #fdf5e6;
+  --c-warning-border: #f0d9a8;
   --c-error-text: #dc3545;
   --c-signal: #17803d;
   --c-signal-deep: #126b33;

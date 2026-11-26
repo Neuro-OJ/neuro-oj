@@ -7,12 +7,10 @@
 
 /* 赛题保护仅标记元数据，条纹之外保留文字说明以便辨认。 */
 .contest-protected {
-  background: repeating-linear-gradient(135deg, #f3f4f6 0 8px, #e5e7eb 8px 16px);
+  /* 条纹取语义底色，随终端主题与编辑器亮色区域切换，正文对比度不受影响。 */
+  background: repeating-linear-gradient(135deg, var(--c-bg-sunken) 0 8px, var(--c-bg-elevated) 8px 16px);
   border-radius: 4px;
   padding: 0.5rem;
-}
-.dark .contest-protected {
-  background: repeating-linear-gradient(135deg, #27272a 0 8px, #3f3f46 8px 16px);
 }
 
 /* ---- Tailwind v4 主题：将现有 --c-* 设计 token 映射为 Tailwind 主题 ---- */
@@ -94,19 +92,19 @@
   /* 状态基础色 + 300/600 档（Nuxt UI color="success/error" 等需要） */
   --color-success: var(--c-success-text);
   --color-success-300: #6fc58c;
-  --color-success-600: #17803d;
+  --color-success-600: var(--c-success-text);
   --color-info: var(--c-info-text);
   --color-info-300: #9aaeef;
-  --color-info-600: #2c4cca;
+  --color-info-600: var(--c-info-text);
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
-  --color-warning-600: #a35a00;
-  /* 警示横幅底色/描边：保持视觉统一 */
-  --color-warning-bg: #fdf5e6;
-  --color-warning-border: #f0d9a8;
+  --color-warning-600: var(--c-warning-text);
+  /* 警示横幅底色/描边：走 --c-* token，随主题切换 */
+  --color-warning-bg: var(--c-warning-bg);
+  --color-warning-border: var(--c-warning-border);
   --color-error: var(--c-error-text);
   --color-error-300: #fda4af;
-  --color-error-600: #c62f45;
+  --color-error-600: var(--c-error-text);
 
   /* 圆角：工具型近直角（2px / 3px / 4px / 6px） */
   --radius: 6px;
@@ -585,6 +583,8 @@ html:root {
   --c-success-text: #3ddc84;
   --c-info-text: #ffb224;
   --c-warning-text: #e6c84a;
+  --c-warning-bg: rgba(230, 200, 74, 0.1);
+  --c-warning-border: rgba(230, 200, 74, 0.35);
   --c-error-text: #ff5f6d;
   --c-verdict-accepted: #3ddc84;
   --c-verdict-accepted-bg: rgba(61, 220, 132, 0.12);
