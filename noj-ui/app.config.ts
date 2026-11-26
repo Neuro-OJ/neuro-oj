@@ -1,4 +1,4 @@
-// 精致现代：Nuxt UI 组件默认收紧到工具型密度，圆角与阴影跟随 main.css 的 token。
+// Nuxt UI 组件默认收紧到工具型密度，圆角与阴影跟随 main.css 的 token（深色终端主题）。
 // 页面里显式传入的 size / class 仍然优先，这里只改默认值。
 export default defineAppConfig({
   ui: {

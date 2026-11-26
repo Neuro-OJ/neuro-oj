@@ -3,7 +3,6 @@
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
-    <StyleSwitcher />
   </UApp>
 </template>
 
@@ -13,7 +12,6 @@ import { useBanStatus } from '~/composables/useBanStatus';
 const { fetch } = useBanStatus();
 const { isLoggedIn } = useAuth();
 const { t } = useI18n();
-const uiStyle = useUiStyle();
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
@@ -52,7 +50,7 @@ function resolvePageTitle(path: string): string {
 
 useHead({
   title: computed(() => resolvePageTitle(route.path)),
-  htmlAttrs: { lang: 'zh-CN', 'data-style': uiStyle },
+  htmlAttrs: { lang: 'zh-CN' },
   meta: [
     { property: 'og:title', content: 'Neuro OJ' },
     { property: 'og:description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },
@@ -63,8 +61,8 @@ useHead({
 
 <style>
 :root {
-  /* 精致现代（Linear / Vercel 取向）：冷白与纯中性灰承载信息，靛蓝只用于交互，
-     绿/红只用于评测结论；信息密度保持工具级。 */
+  /* 浅色基线 token：实际生效的深色终端主题在 assets/css/main.css 的 html:root
+     中整体覆盖；这里保留覆盖未涉及的 token 与编辑器局部变量。 */
 
   /* 1. 品牌与交互（钴蓝） */
   --c-primary: #5e6ad2;
