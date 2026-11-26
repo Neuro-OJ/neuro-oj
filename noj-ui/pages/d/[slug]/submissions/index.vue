@@ -26,7 +26,9 @@ async function copySubmissionId(fullId: string) {
       await navigator.clipboard.writeText(fullId);
       copiedId.value = fullId;
       if (copiedTimer) clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => { copiedId.value = null; }, 1500);
+      copiedTimer = setTimeout(() => {
+        copiedId.value = null;
+      }, 1500);
       toast.success('已复制完整提交编号');
     } else {
       toast.error('当前浏览器不支持自动复制，请在提交详情查看完整编号');
@@ -226,26 +228,27 @@ useSeoMeta({ title: '提交' });
 </script>
 
 <template>
-  <div class="space-y-4">
-    <LibraryPageHeader title="提交记录" description="查看评测结果，按提交者与题型实时筛选" icon="i-lucide-file-code-2">
+  <div class="space-y-3">
+    <LibraryPageHeader title="提交记录" :count="data ? `${data.pagination.total ?? data.data.length} 条` : undefined">
       <template #actions>
         <span
           v-if="hasPendingSubmissions"
-          class="inline-flex items-center gap-1.5 rounded-sm border border-primary/25 bg-primary-bg px-2.5 py-1 text-xs font-medium text-primary"
+          class="inline-flex items-center gap-1.5 text-xs text-primary"
         >
           <span class="size-1.5 rounded-full bg-primary animate-pulse" />
           实时刷新中
         </span>
-        <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" aria-label="刷新提交"
+        <UButton color="neutral" variant="ghost" size="xs" icon="i-lucide-refresh-cw" aria-label="刷新提交"
           :loading="status === 'pending'" @click="refresh()" />
       </template>
     </LibraryPageHeader>
 
     <!-- 统一筛选工具栏 -->
-    <div class="space-y-3 rounded-md border border-border bg-bg-panel p-3 sm:p-4">
-      <div class="flex flex-wrap items-center gap-2.5">
+    <div class="space-y-2">
+      <div class="flex flex-wrap items-center gap-2">
         <!-- 视角分段快切 -->
-        <div class="inline-flex items-center rounded-sm border border-border bg-bg-sunken/70 p-0.5" role="group" aria-label="提交范围切换">
+        <div class="inline-flex items-center rounded-sm border border-border bg-bg-sunken/70 p-0.5" role="group"
+          aria-label="提交范围切换">
           <UButton
             v-if="user?.username"
             size="xs"
@@ -267,10 +270,10 @@ useSeoMeta({ title: '提交' });
         </div>
 
         <!-- 用户名防抖筛选 -->
-        <div class="min-w-44 flex-1">
+        <div class="min-w-44 max-w-xs flex-1">
           <UInput
             :model-value="usernameInput"
-            size="sm"
+            size="xs"
             icon="i-lucide-search"
             placeholder="按用户名筛选..."
             class="w-full"
@@ -282,12 +285,13 @@ useSeoMeta({ title: '提交' });
 
         <!-- 题型筛选（即时触发） -->
         <div class="w-36 sm:w-40">
-          <USelect id="submission-kind" v-model="kindFilter" size="sm" :items="kindOptions" class="w-full" aria-label="题型" />
+          <USelect id="submission-kind" v-model="kindFilter" size="xs" :items="kindOptions" class="w-full"
+            aria-label="题型" />
         </div>
 
         <UButton
           v-if="usernameFilter"
-          size="sm"
+          size="xs"
           color="neutral"
           variant="ghost"
           icon="i-lucide-x"
@@ -301,13 +305,13 @@ useSeoMeta({ title: '提交' });
       <!-- 附加上下文筛选 Chips -->
       <div
         v-if="filters.problem_id || filters.contest_id || kindFilter !== 'all'"
-        class="flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5 text-xs"
+        class="flex flex-wrap items-center gap-1.5 text-xs"
       >
         <span class="text-text-muted mr-1">当前条件：</span>
         <button
           v-if="filters.problem_id"
           type="button"
-          class="inline-flex items-center gap-1 rounded-sm border border-primary/25 bg-primary-bg px-2 py-0.5 font-medium text-primary hover:bg-primary-hover-bg"
+          class="inline-flex items-center gap-1 rounded-[4px] bg-primary-bg px-1.5 py-0.5 text-primary hover:bg-primary-hover-bg"
           @click="clearExtraFilter('problem_id')"
         >
           <span>题目: {{ filters.problem_id }}</span>
@@ -316,7 +320,7 @@ useSeoMeta({ title: '提交' });
         <button
           v-if="filters.contest_id"
           type="button"
-          class="inline-flex items-center gap-1 rounded-sm border border-primary/25 bg-primary-bg px-2 py-0.5 font-medium text-primary hover:bg-primary-hover-bg"
+          class="inline-flex items-center gap-1 rounded-[4px] bg-primary-bg px-1.5 py-0.5 text-primary hover:bg-primary-hover-bg"
           @click="clearExtraFilter('contest_id')"
         >
           <span>比赛: {{ filters.contest_id }}</span>
@@ -325,7 +329,7 @@ useSeoMeta({ title: '提交' });
         <button
           v-if="kindFilter !== 'all'"
           type="button"
-          class="inline-flex items-center gap-1 rounded-sm border border-primary/25 bg-primary-bg px-2 py-0.5 font-medium text-primary hover:bg-primary-hover-bg"
+          class="inline-flex items-center gap-1 rounded-[4px] bg-primary-bg px-1.5 py-0.5 text-primary hover:bg-primary-hover-bg"
           @click="kindFilter = 'all'"
         >
           <span>题型: {{ kindOptions.find((k) => k.value === kindFilter)?.label ?? kindFilter }}</span>
@@ -351,7 +355,8 @@ useSeoMeta({ title: '提交' });
         <TableSkeleton :rows="8" :columns="['w-20', 'flex-1', 'w-20', 'w-20', 'w-24', 'w-12', 'w-28']" />
       </template>
       <div class="overflow-x-auto rounded-md border border-border bg-bg-panel">
-        <UTable :data="data?.data ?? []" :columns="columns" :ui="{ th: 'bg-bg-sunken/70 px-3 py-2.5 text-xs font-semibold text-text-secondary', td: 'px-3 py-2.5 text-sm', tr: 'transition-colors hover:bg-bg-sunken/40' }">
+        <UTable :data="data?.data ?? []" :columns="columns"
+          :ui="{ th: 'bg-bg-sunken/60 px-3 py-2 text-xs font-medium text-text-muted', td: 'px-3 py-1.5 text-[13px]', tr: 'transition-colors hover:bg-bg-sunken/40' }">
           <template #id-cell="{ row }">
             <div class="flex items-center gap-1">
               <NuxtLink
@@ -382,22 +387,28 @@ useSeoMeta({ title: '提交' });
             <span v-else class="text-text-muted">资源不可用</span>
           </template>
           <template #user-cell="{ row }">
-            <span class="whitespace-nowrap text-xs text-text-secondary">{{ row.original.username || (row.original.user_id ? row.original.user_id.slice(0, 8) : '—') }}</span>
+            <span
+              class="whitespace-nowrap text-xs text-text-secondary">{{ row.original.username || (row.original.user_id ? row.original.user_id.slice(0, 8) : '—') }}</span>
           </template>
           <template #type_lang-cell="{ row }">
-            <span v-if="row.original.kind === 'objective'" class="whitespace-nowrap text-xs text-text-secondary">客观题</span>
-            <span v-else-if="row.original.language" class="whitespace-nowrap text-xs text-text-secondary">{{ languageLabels[row.original.language] ?? row.original.language }}</span>
-            <span v-else-if="row.original.submission_mode" class="whitespace-nowrap text-xs text-text-secondary">{{ row.original.submission_mode }}</span>
+            <span v-if="row.original.kind === 'objective'"
+              class="whitespace-nowrap text-xs text-text-secondary">客观题</span>
+            <span v-else-if="row.original.language"
+              class="whitespace-nowrap text-xs text-text-secondary">{{ languageLabels[row.original.language] ?? row.original.language }}</span>
+            <span v-else-if="row.original.submission_mode"
+              class="whitespace-nowrap text-xs text-text-secondary">{{ row.original.submission_mode }}</span>
             <span v-else class="text-xs text-text-muted">—</span>
           </template>
           <template #result-cell="{ row }">
             <SubmissionStatus :submission="row.original" />
           </template>
           <template #version-cell="{ row }">
-            <span class="whitespace-nowrap text-xs tabular-nums text-text-muted">{{ row.original.submitted_version == null ? '—' : `V${row.original.submitted_version}` }}</span>
+            <span
+              class="whitespace-nowrap text-xs tabular-nums text-text-muted">{{ row.original.submitted_version == null ? '—' : `V${row.original.submitted_version}` }}</span>
           </template>
           <template #created_at-cell="{ row }">
-            <span class="whitespace-nowrap text-xs tabular-nums text-text-muted">{{ formatDateTime(row.original.created_at) }}</span>
+            <span
+              class="whitespace-nowrap text-xs tabular-nums text-text-muted">{{ formatDateTime(row.original.created_at) }}</span>
           </template>
         </UTable>
       </div>

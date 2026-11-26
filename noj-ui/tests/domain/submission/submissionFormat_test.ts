@@ -38,10 +38,10 @@ Deno.test('formatMemory: KB/MB/GB', () => {
 });
 
 Deno.test('getStatusColor: result 优先，state 回退，未知兜底', () => {
-  assertEquals(getStatusColor('finished', 'finished'), '#10b981');
-  assertEquals(getStatusColor('finished', 'error'), '#ef4444');
-  assertEquals(getStatusColor('pending', null), '#9ca3af');
-  assertEquals(getStatusColor('unknown', null), '#6b7280');
+  assertEquals(getStatusColor('finished', 'finished'), '#2f8f4e');
+  assertEquals(getStatusColor('finished', 'error'), '#d23f55');
+  assertEquals(getStatusColor('pending', null), '#8a8a82');
+  assertEquals(getStatusColor('unknown', null), '#7c7c74');
 });
 
 Deno.test('getStatusLabel: result 优先，state 回退，未知原样返回', () => {

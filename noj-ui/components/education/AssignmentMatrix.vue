@@ -8,7 +8,12 @@ const expanded = ref<string | null>(null);
 const focused = ref<{ row: number; col: number }>({ row: 0, col: 0 });
 
 // 分别比较结构键，成绩轮询返回新对象时保留展开和键盘位置。
-watch([() => props.matrix.page, () => props.matrix.scope, () => props.matrix.rows.map(row => row.user_id).join(','), () => props.matrix.items.map(item => item.id).join(',')], () => {
+watch([
+  () => props.matrix.page,
+  () => props.matrix.scope,
+  () => props.matrix.rows.map((row) => row.user_id).join(','),
+  () => props.matrix.items.map((item) => item.id).join(','),
+], () => {
   expanded.value = null;
   focused.value = { row: 0, col: 0 };
 });
@@ -17,27 +22,37 @@ const rows = computed(() => props.matrix.rows);
 const items = computed(() => props.matrix.items);
 
 function itemTitle(itemId: string) {
-  const item = items.value.find(value => value.id === itemId);
+  const item = items.value.find((value) => value.id === itemId);
   return item ? props.titles?.[item.reference.qualified_ref] ?? `题目 ${item.reference.display_ref}` : '题目';
 }
 function requirementLabel(item: { requirement: 'accepted' | 'min_score'; minimum_score: number | null }) {
   return item.requirement === 'accepted' ? '正式通过' : `至少 ${(item.minimum_score ?? 0) / 100} 分`;
 }
 function achievedInColumn(itemId: string) {
-  return rows.value.filter(row => row.cells.some(cell => cell.item_id === itemId && !cell.updating && cell.status === 'achieved')).length;
+  return rows.value.filter((row) =>
+    row.cells.some((cell) => cell.item_id === itemId && !cell.updating && cell.status === 'achieved')
+  ).length;
 }
 function achievedPercent(itemId: string) {
   if (!rows.value.length) return 0;
   return Math.round((achievedInColumn(itemId) / rows.value.length) * 100);
 }
 function rowAchieved(cells: TeachingCell[]) {
-  return cells.filter(cell => !cell.updating && cell.status === 'achieved').length;
+  return cells.filter((cell) => !cell.updating && cell.status === 'achieved').length;
 }
 function rowSummary(cells: TeachingCell[]) {
-  if (props.matrix.updating || cells.some(cell => cell.updating)) return '成绩更新中';
+  if (props.matrix.updating || cells.some((cell) => cell.updating)) return '成绩更新中';
   return `已达标 ${rowAchieved(cells)} / ${cells.length}`;
 }
-interface CellView { icon: string; spin: boolean; text: string; cls: string; surface: string; aria: string; dot?: boolean }
+interface CellView {
+  icon: string;
+  spin: boolean;
+  text: string;
+  cls: string;
+  surface: string;
+  aria: string;
+  dot?: boolean;
+}
 function cellView(cell: TeachingCell | undefined): CellView | null {
   if (!cell) return null;
   if (cell.updating) {
@@ -102,7 +117,7 @@ function cellView(cell: TeachingCell | undefined): CellView | null {
   };
 }
 function cellAt(row: MatrixData['rows'][number], itemId: string) {
-  return row.cells.find(cell => cell.item_id === itemId);
+  return row.cells.find((cell) => cell.item_id === itemId);
 }
 function select(userId: string, cell: TeachingCell | undefined) {
   if (cell) emit('select', userId, cell);
@@ -116,7 +131,10 @@ function onCellFocus(rowIndex: number, colIndex: number) {
 /** 表格内方向键漫游：40 名学生 × 10 道题时不必逐格 Tab。 */
 function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number) {
   const deltas: Record<string, [number, number]> = {
-    ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
+    ArrowUp: [-1, 0],
+    ArrowDown: [1, 0],
+    ArrowLeft: [0, -1],
+    ArrowRight: [0, 1],
   };
   const delta = deltas[event.key];
   if (!delta) return;
@@ -144,9 +162,9 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
       <table class="w-full text-sm" aria-label="学生成绩矩阵" :aria-busy="matrix.updating">
         <thead class="border-b border-border bg-bg-sunken text-left">
           <tr>
-            <th scope="col" class="sticky left-0 z-20 min-w-44 bg-bg-sunken px-4 py-3 font-medium">学生</th>
+            <th scope="col" class="sticky left-0 z-20 min-w-44 bg-bg-sunken px-3 py-2 font-medium">学生</th>
             <th v-for="item in matrix.items" :key="item.id"
-              class="min-w-40 border-l border-border/70 px-3 py-3 align-top font-medium">
+              class="min-w-40 border-l border-border/70 px-3 py-2 align-top font-medium">
               <span class="font-mono text-xs text-text-secondary">{{ item.reference.display_ref }}</span>
               <p class="mt-0.5 line-clamp-2 whitespace-normal text-sm font-medium leading-snug">
                 {{ titles?.[item.reference.qualified_ref] ?? `题目 ${item.reference.display_ref}` }}
@@ -156,7 +174,8 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
                 · <span class="tabular-nums">{{ achievedInColumn(item.id) }}/{{ matrix.rows.length }} 达标</span>
               </p>
               <div class="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-border/60" aria-hidden="true">
-                <div class="h-full rounded-full bg-signal transition-[width] duration-300" :style="{ width: `${achievedPercent(item.id)}%` }" />
+                <div class="h-full rounded-full bg-signal transition-[width] duration-300"
+                  :style="{ width: `${achievedPercent(item.id)}%` }" />
               </div>
             </th>
           </tr>
@@ -165,7 +184,7 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
           <tr v-for="(row, rowIndex) in matrix.rows" :key="row.user_id"
             class="group border-b border-border last:border-0 hover:bg-primary-bg/40">
             <th scope="row"
-              class="sticky left-0 z-10 min-w-44 bg-bg-panel px-4 py-2 text-left font-normal group-hover:bg-primary-bg">
+              class="sticky left-0 z-10 min-w-44 bg-bg-panel px-3 py-2 text-left font-normal group-hover:bg-primary-bg">
               <span class="block break-words font-medium">{{ row.username }}</span>
               <span class="mt-0.5 block text-11px text-text-muted tabular-nums">
                 {{ rowSummary(row.cells) }}<template v-if="row.recipient_status !== 'active'"> · 历史学生</template>
@@ -177,15 +196,18 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
                 :aria-label="`${row.username} ${item.reference.display_ref} ${cellView(cellAt(row, item.id))?.aria ?? ''}`"
                 title="查看提交与反馈"
                 class="flex min-h-9 w-full items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-sm transition-colors"
-                :class="[cellView(cellAt(row, item.id))?.cls, cellView(cellAt(row, item.id))?.surface]" @focus="onCellFocus(rowIndex, colIndex)"
+                :class="[cellView(cellAt(row, item.id))?.cls, cellView(cellAt(row, item.id))?.surface]"
+                @focus="onCellFocus(rowIndex, colIndex)"
                 @keydown="onCellKeydown($event, rowIndex, colIndex)" @click="select(row.user_id, cellAt(row, item.id))">
                 <UIcon v-if="cellView(cellAt(row, item.id))?.spin" name="i-lucide-loader-circle"
                   class="size-4 shrink-0 animate-spin-slow" aria-hidden="true" />
                 <UIcon v-else-if="cellView(cellAt(row, item.id))?.icon" :name="cellView(cellAt(row, item.id))!.icon"
                   class="size-4 shrink-0" aria-hidden="true" />
-                <span v-else-if="cellView(cellAt(row, item.id))?.dot" class="size-1.5 shrink-0 rounded-full bg-warning-text"
+                <span v-else-if="cellView(cellAt(row, item.id))?.dot"
+                  class="size-1.5 shrink-0 rounded-full bg-warning-text"
                   aria-hidden="true" />
-                <span v-if="cellView(cellAt(row, item.id))?.text" class="tabular-nums">{{ cellView(cellAt(row, item.id))!.text }}</span>
+                <span v-if="cellView(cellAt(row, item.id))?.text"
+                  class="tabular-nums">{{ cellView(cellAt(row, item.id))!.text }}</span>
                 <span v-if="cellView(cellAt(row, item.id))?.aria === '更新中'" class="sr-only">更新中</span>
                 <span v-if="cellAt(row, item.id)?.late" class="text-11px font-normal text-text-secondary">逾期</span>
               </button>
@@ -220,7 +242,7 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
             <span class="min-w-0 text-sm">
               <span class="block break-words">{{ itemTitle(cell.item_id) }}</span>
               <span class="mt-0.5 block text-11px text-text-muted">
-                {{ matrix.items.find(item => item.id === cell.item_id)?.reference.display_ref }}
+                {{ matrix.items.find((item) => item.id === cell.item_id)?.reference.display_ref }}
                 · {{ matrix.items.find(item => item.id === cell.item_id) ? requirementLabel(matrix.items.find(item => item.id === cell.item_id)!) : '' }}
               </span>
             </span>
@@ -238,12 +260,16 @@ function onCellKeydown(event: KeyboardEvent, rowIndex: number, colIndex: number)
     </ul>
 
     <p v-if="!matrix.rows.length" class="px-4 py-10 text-center text-sm text-text-muted">没有符合筛选条件的学生</p>
-    <div v-else class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 text-11px text-text-muted sm:px-5">
+    <div v-else
+      class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-border px-4 py-2.5 text-11px text-text-muted sm:px-5">
       <p class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="inline-flex items-center gap-1"><UIcon name="i-lucide-check" class="size-3 text-signal-deep" />达标</span>
-        <span class="inline-flex items-center gap-1"><span class="size-1.5 rounded-full bg-warning-text" aria-hidden="true" />未达标</span>
+        <span
+          class="inline-flex items-center gap-1"><UIcon name="i-lucide-check" class="size-3 text-signal-deep" />达标</span>
+        <span
+          class="inline-flex items-center gap-1"><span class="size-1.5 rounded-full bg-warning-text" aria-hidden="true" />未达标</span>
         <span>— 未开始</span>
-        <span class="inline-flex items-center gap-1"><UIcon name="i-lucide-circle-slash" class="size-3" />资源不可用</span>
+        <span
+          class="inline-flex items-center gap-1"><UIcon name="i-lucide-circle-slash" class="size-3" />资源不可用</span>
       </p>
       <p>
         <span class="sm:hidden">点击学生展开，再点题目查看提交</span>

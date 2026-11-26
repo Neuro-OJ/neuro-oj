@@ -260,7 +260,7 @@ onUnmounted(() => {
 });
 </script>
 <template>
-  <div class="flex h-dvh flex-col overflow-hidden bg-bg-page" :class="{'editor-dark':theme==='dark'}">
+  <div class="flex h-dvh flex-col overflow-hidden bg-bg-page" :class="theme==='dark' ? 'editor-dark' : 'editor-light'">
     <EditorToolbar :problem="sidebarProblem" :language="language" :languages="languages" :theme-mode="theme"
       :can-submit="writable && !!code.trim() && !!language" :submitting="submitting"
       :can-self-test="!contest && writable && !!code.trim()" :self-testing="false"

@@ -135,22 +135,22 @@ const activeChips = computed(() => {
 </script>
 
 <template>
-  <UCard class="mb-4 rounded-md shadow-none" :ui="{ body: 'p-3 sm:p-4' }" aria-label="题库筛选">
+  <section aria-label="题库筛选">
     <!-- 主筛选行：搜索 + 核心筛选项 + 更多筛选切换 -->
-    <form class="flex flex-wrap items-center gap-2.5" @submit.prevent="emit('update:keyword', searchInput)">
+    <form class="flex flex-wrap items-center gap-2" @submit.prevent="emit('update:keyword', searchInput)">
       <UInput
         v-model="searchInput"
         icon="i-lucide-search"
         type="search"
-        size="sm"
+        size="xs"
         placeholder="搜索题号、来源题号或标题..."
         aria-label="搜索题目"
-        class="min-w-48 flex-1"
+        class="min-w-48 max-w-md flex-1"
       />
       <USelect
         :model-value="difficulty || allFilterValue"
         :items="difficulties"
-        size="sm"
+        size="xs"
         class="w-28 sm:w-32"
         aria-label="难度"
         @update:model-value="emit('update:difficulty', filterValue($event))"
@@ -158,7 +158,7 @@ const activeChips = computed(() => {
       <USelect
         :model-value="kind || allFilterValue"
         :items="kinds"
-        size="sm"
+        size="xs"
         class="w-32 sm:w-36"
         aria-label="题目类型"
         @update:model-value="emit('update:kind', filterValue($event))"
@@ -167,7 +167,7 @@ const activeChips = computed(() => {
         v-if="signedIn"
         :model-value="progress || allFilterValue"
         :items="progressOptions"
-        size="sm"
+        size="xs"
         class="w-28 sm:w-32"
         aria-label="筛选本人状态"
         @update:model-value="emit('update:progress', filterValue($event))"
@@ -176,7 +176,7 @@ const activeChips = computed(() => {
         type="button"
         color="neutral"
         :variant="advancedOpen || advancedCount > 0 ? 'soft' : 'outline'"
-        size="sm"
+        size="xs"
         icon="i-lucide-sliders-horizontal"
         :aria-expanded="advancedOpen || advancedCount > 0"
         @click="advancedOpen = !advancedOpen"
@@ -192,12 +192,13 @@ const activeChips = computed(() => {
     </form>
 
     <!-- 可折叠次级筛选行：标签与底层评测后端 -->
-    <div v-if="advancedOpen || advancedCount > 0" class="mt-3 grid grid-cols-1 gap-2.5 border-t border-border pt-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div v-if="advancedOpen || advancedCount > 0"
+      class="mt-2 grid grid-cols-1 gap-2 rounded-lg border border-border bg-bg-panel p-2.5 sm:grid-cols-2 lg:grid-cols-4">
       <UFormField label="标签" class="min-w-0">
         <USelect
           :model-value="tagId || allFilterValue"
           :items="tagItems"
-          size="sm"
+          size="xs"
           class="w-full"
           aria-label="标签"
           @update:model-value="emit('update:tagId', filterValue($event) || null)"
@@ -207,7 +208,7 @@ const activeChips = computed(() => {
         <USelect
           :model-value="judgeBackend || allFilterValue"
           :items="judgeBackends"
-          size="sm"
+          size="xs"
           class="w-full"
           aria-label="评测后端"
           @update:model-value="emit('update:judgeBackend', filterValue($event))"
@@ -240,5 +241,5 @@ const activeChips = computed(() => {
         清空筛选
       </UButton>
     </div>
-  </UCard>
+  </section>
 </template>

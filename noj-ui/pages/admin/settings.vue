@@ -1,14 +1,11 @@
 <script setup lang="ts">
 import { useToast } from '~/composables/useToast';
 import { extractApiError } from '~/utils/server/apiError';
-import AdminSettingFieldInput, {
-  type SystemSetting,
-} from '~/components/admin/AdminSettingFieldInput.vue';
+import AdminSettingFieldInput, { type SystemSetting } from '~/components/admin/AdminSettingFieldInput.vue';
 
 definePageMeta({
   layout: 'admin',
   middleware: 'admin',
-
 });
 
 const { isLoggedIn } = useAuth();
@@ -73,10 +70,22 @@ const oiMemoryCosts = computed(() => {
   if (!costs) return [];
   return [
     { operation: '普通读写（以 i32.load / i32.store 为例）', cost: `${costs.I32Load} / ${costs.I32Store} fuel / 条` },
-    { operation: '批量复制 memory.copy', cost: `${costs.MemoryCopy} + 字节数 × ${costs.variable.memory_copy_per_byte} fuel` },
-    { operation: '批量填充 memory.fill', cost: `${costs.MemoryFill} + 字节数 × ${costs.variable.memory_fill_per_byte} fuel` },
-    { operation: '批量初始化 memory.init', cost: `${costs.MemoryInit} + 字节数 × ${costs.variable.memory_init_per_byte} fuel` },
-    { operation: '内存增长 memory.grow', cost: `${costs.MemoryGrow} + 页数 × ${costs.variable.memory_grow_per_page} fuel（每页 64 KiB）` },
+    {
+      operation: '批量复制 memory.copy',
+      cost: `${costs.MemoryCopy} + 字节数 × ${costs.variable.memory_copy_per_byte} fuel`,
+    },
+    {
+      operation: '批量填充 memory.fill',
+      cost: `${costs.MemoryFill} + 字节数 × ${costs.variable.memory_fill_per_byte} fuel`,
+    },
+    {
+      operation: '批量初始化 memory.init',
+      cost: `${costs.MemoryInit} + 字节数 × ${costs.variable.memory_init_per_byte} fuel`,
+    },
+    {
+      operation: '内存增长 memory.grow',
+      cost: `${costs.MemoryGrow} + 页数 × ${costs.variable.memory_grow_per_page} fuel（每页 64 KiB）`,
+    },
   ];
 });
 
@@ -84,7 +93,9 @@ const oiMemoryCopyExample = computed(() => {
   const standard = oiProfileStatus.value?.standard;
   if (!standard) return '';
   const fuel = standard.operator_costs.MemoryCopy + 1048576 * standard.operator_costs.variable.memory_copy_per_byte;
-  return `复制 1 MiB 的指令成本为 ${fuel.toLocaleString()} fuel，约 ${(fuel / standard.fuel_per_ms).toFixed(2)} NOJ 参考毫秒；地址计算、循环等指令另行计费。`;
+  return `复制 1 MiB 的指令成本为 ${fuel.toLocaleString()} fuel，约 ${
+    (fuel / standard.fuel_per_ms).toFixed(2)
+  } NOJ 参考毫秒；地址计算、循环等指令另行计费。`;
 });
 
 async function loadOiCostProfile() {
@@ -261,9 +272,7 @@ const dbSettings = computed(() =>
   settings.value.filter((s) => s.scope === 'runtime' && s.key !== 'oi_cost_profile_active')
 );
 
-const envOnlySettings = computed(() =>
-  settings.value.filter((s) => s.scope === 'bootstrap')
-);
+const envOnlySettings = computed(() => settings.value.filter((s) => s.scope === 'bootstrap'));
 
 const availableCategories = computed(() => {
   const cats = new Set<string>();
@@ -380,9 +389,7 @@ async function saveSetting(key: string) {
 const resettingKeys = ref(new Set<string>());
 
 async function confirmReset(s: SystemSetting) {
-  const targetFallback = s.env_present
-    ? `环境变量 ${s.env_key || s.key}`
-    : '系统默认值';
+  const targetFallback = s.env_present ? `环境变量 ${s.env_key || s.key}` : '系统默认值';
   const restartNote = s.needsRestart ? '此项更改需重启服务后生效。' : '';
 
   const ok = await dialog.confirm(
@@ -444,7 +451,8 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
 
 <template>
   <div class="flex flex-col gap-5 min-w-0 max-w-full">
-    <AdminPageHeader title="系统设置" description="运行时配置逐项保存，需重启的设置会单独注明；环境配置只读，修改 .env 后需重启服务。">
+    <AdminPageHeader title="系统设置"
+      description="运行时配置逐项保存，需重启的设置会单独注明；环境配置只读，修改 .env 后需重启服务。">
       <template #actions>
         <UButton variant="outline" @click="reloadSettings">重新读取配置</UButton>
       </template>
@@ -461,7 +469,8 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
     </div>
 
     <!-- 优先级与规则说明（DB 优先，重置回退 env 或默认） -->
-    <div class="flex items-start gap-2.5 p-3.5 bg-bg-panel border border-border rounded text-xs text-text-secondary leading-relaxed shadow-xs">
+    <div
+      class="flex items-start gap-2.5 p-3.5 bg-bg-panel border border-border rounded text-xs text-text-secondary leading-relaxed shadow-xs">
       <UIcon name="i-lucide-info" class="size-4 text-primary shrink-0 mt-0.5" />
       <div>
         <strong class="text-text">读取优先级：</strong>数据库 (DB) 写入值优先生效。点击「重置」删除数据库覆盖，回退至 <code class="font-mono text-[11px] bg-bg-sunken px-1 py-0.5 rounded">.env</code> 环境变量（若有配置）或系统默认值。<strong class="text-text ml-2">环境配置：</strong>由环境变量启动期定型，后台只读，修改需更新 <code class="font-mono text-[11px] bg-bg-sunken px-1 py-0.5 rounded">.env</code> 并重启服务。
@@ -673,11 +682,11 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
           <table class="w-full text-xs">
             <thead>
               <tr class="bg-bg-sunken/40 border-b border-border text-text-muted">
-                <th class="px-3 py-2.5 text-left font-medium w-[220px]">设置项与描述</th>
-                <th class="px-3 py-2.5 text-left font-medium min-w-[200px]">配置值</th>
-                <th class="px-3 py-2.5 text-left font-medium w-[80px]">来源</th>
-                <th class="px-3 py-2.5 text-left font-medium">状态说明</th>
-                <th class="px-3 py-2.5 text-right font-medium w-[180px]">操作</th>
+                <th class="px-3 py-2 text-left font-medium w-[220px]">设置项与描述</th>
+                <th class="px-3 py-2 text-left font-medium min-w-[200px]">配置值</th>
+                <th class="px-3 py-2 text-left font-medium w-[80px]">来源</th>
+                <th class="px-3 py-2 text-left font-medium">状态说明</th>
+                <th class="px-3 py-2 text-right font-medium w-[180px]">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -688,7 +697,7 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                 :class="isDirty(s.key) ? 'bg-amber-50/40' : 'hover:bg-primary-bg/20'"
               >
                 <!-- 设置项与描述 -->
-                <td class="px-3 py-3 align-top">
+                <td class="px-3 py-1.5 align-top">
                   <div class="flex flex-col gap-0.5">
                     <span class="font-medium text-text text-sm">{{ s.description }}</span>
                     <code class="font-mono text-xs text-primary font-semibold break-all">{{ s.key }}</code>
@@ -697,7 +706,7 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                 </td>
 
                 <!-- 当前值输入 -->
-                <td class="px-3 py-3 align-top">
+                <td class="px-3 py-1.5 align-top">
                   <AdminSettingFieldInput
                     v-model="drafts[s.key]"
                     :setting="s"
@@ -706,13 +715,14 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                     template-id="desktop"
                     @edit-secret="drafts[s.key] = ''"
                   />
-                  <p v-if="saveErrors[s.key]" :id="`${s.key}-error-desktop`" class="mt-1 text-xs text-error-text" role="alert">
+                  <p v-if="saveErrors[s.key]" :id="`${s.key}-error-desktop`" class="mt-1 text-xs text-error-text"
+                    role="alert">
                     {{ saveErrors[s.key] }}
                   </p>
                 </td>
 
                 <!-- 来源标签 -->
-                <td class="px-3 py-3 align-top">
+                <td class="px-3 py-1.5 align-top">
                   <span
                     class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold"
                     :class="{
@@ -725,7 +735,7 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                 </td>
 
                 <!-- 描述与提示 -->
-                <td class="px-3 py-3 align-top text-xs text-text-secondary">
+                <td class="px-3 py-1.5 align-top text-xs text-text-secondary">
                   <div :id="`${s.key}-help-desktop`" class="flex flex-col gap-1">
                     <span v-if="s.needsRestart" class="inline-flex items-center gap-0.5 font-medium text-warning-text">
                       <UIcon name="i-lucide-refresh-cw" class="size-3" /> 需重启生效
@@ -737,7 +747,7 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                 </td>
 
                 <!-- 操作按钮 -->
-                <td class="px-3 py-3 align-top">
+                <td class="px-3 py-1.5 align-top">
                   <div class="flex items-center justify-end gap-1.5">
                     <UButton
                       v-if="isDirty(s.key)"
@@ -783,9 +793,11 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
     <!-- ─── 第二组：环境变量（只读折叠面板） ───────────────── -->
     <section class="bg-bg-panel border border-border rounded overflow-hidden shadow-xs">
       <details class="group">
-        <summary class="flex items-center justify-between px-4 py-3 bg-bg-sunken/40 cursor-pointer select-none hover:bg-bg-sunken/70 transition-colors">
+        <summary
+          class="flex items-center justify-between px-4 py-3 bg-bg-sunken/40 cursor-pointer select-none hover:bg-bg-sunken/70 transition-colors">
           <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-chevron-right" class="size-4 text-text-secondary transition-transform group-open:rotate-90" />
+            <UIcon name="i-lucide-chevron-right"
+              class="size-4 text-text-secondary transition-transform group-open:rotate-90" />
             <h2 class="text-sm font-semibold text-text">
               环境配置（只读，启动期定型需重启）
             </h2>
@@ -864,7 +876,8 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                       </div>
                     </td>
                     <td class="px-2 py-2 align-top w-[220px]">
-                      <UTooltip v-if="s.is_secret && s.effective_value !== null" :text="getSecretTooltip(s.key)" class="cursor-help">
+                      <UTooltip v-if="s.is_secret && s.effective_value !== null" :text="getSecretTooltip(s.key)"
+                        class="cursor-help">
                         <span class="inline-flex items-center gap-1">
                           <UIcon name="i-lucide-lock" class="size-3 text-amber-700 shrink-0" />
                           <code class="font-mono text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 break-all">
@@ -914,9 +927,11 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
     <!-- ─── 第三组：OI WASM 统一计量标准（次级可展开面板，保留全部事实） ─── -->
     <section class="rounded border border-border bg-bg-panel overflow-hidden shadow-xs">
       <details class="group">
-        <summary class="flex items-center justify-between px-4 py-3 bg-bg-sunken/40 cursor-pointer select-none hover:bg-bg-sunken/70 transition-colors">
+        <summary
+          class="flex items-center justify-between px-4 py-3 bg-bg-sunken/40 cursor-pointer select-none hover:bg-bg-sunken/70 transition-colors">
           <div class="flex items-center gap-2">
-            <UIcon name="i-lucide-chevron-right" class="size-4 text-text-secondary transition-transform group-open:rotate-90" />
+            <UIcon name="i-lucide-chevron-right"
+              class="size-4 text-text-secondary transition-transform group-open:rotate-90" />
             <h2 class="text-sm font-semibold text-text">OI WASM 统一计量标准（内置工作量基准）</h2>
           </div>
           <span class="text-xs text-text-muted">展开详情</span>
@@ -930,12 +945,14 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
             <dt class="font-medium text-text">标准版本</dt>
             <dd>{{ oiProfileStatus.standard.id }}</dd>
             <dt class="font-medium text-text">计量单位</dt>
-            <dd class="tabular-nums">{{ oiProfileStatus.standard.fuel_per_ms.toLocaleString() }} fuel = 1 NOJ 参考毫秒</dd>
+            <dd
+              class="tabular-nums">{{ oiProfileStatus.standard.fuel_per_ms.toLocaleString() }} fuel = 1 NOJ 参考毫秒</dd>
             <dt class="font-medium text-text">工具链修订</dt>
             <dd>{{ oiProfileStatus.standard.toolchain }} / {{ oiProfileStatus.standard.runtime_version }}</dd>
             <template v-if="oiProfileStatus.standard.toolchain_components_sha256">
               <dt class="font-medium text-text">工具链组件摘要</dt>
-              <dd class="break-all font-mono text-[11px]">{{ oiProfileStatus.standard.toolchain_components_sha256 }}</dd>
+              <dd
+                class="break-all font-mono text-[11px]">{{ oiProfileStatus.standard.toolchain_components_sha256 }}</dd>
             </template>
             <dt class="font-medium text-text">标准摘要</dt>
             <dd class="break-all font-mono text-[11px]">{{ oiProfileStatus.standard.hash }}</dd>
@@ -952,7 +969,8 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="row in oiMemoryCosts" :key="row.operation" class="border-b border-border/60 last:border-b-0">
+                  <tr v-for="row in oiMemoryCosts" :key="row.operation"
+                    class="border-b border-border/60 last:border-b-0">
                     <td class="py-1.5 pr-4 text-text-secondary">{{ row.operation }}</td>
                     <td class="py-1.5 tabular-nums text-text">{{ row.cost }}</td>
                   </tr>
@@ -971,7 +989,8 @@ useSeoMeta({ title: '系统设置 - 平台管理' });
 
           <details class="pt-1">
             <summary class="cursor-pointer text-xs text-primary hover:underline">查看完整标准清单 (JSON)</summary>
-            <pre class="mt-2 max-h-72 overflow-auto text-[11px] font-mono p-3 bg-bg-sunken rounded border border-border">{{ oiProfileText }}</pre>
+            <pre
+              class="mt-2 max-h-72 overflow-auto text-[11px] font-mono p-3 bg-bg-sunken rounded border border-border">{{ oiProfileText }}</pre>
           </details>
         </div>
       </details>
