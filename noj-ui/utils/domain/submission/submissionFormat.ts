@@ -65,10 +65,10 @@ export const languageLabels: Record<string, string> = {
  * 提交流 state 标签颜色。
  */
 export const statusColors: Record<string, string> = {
-  pending: '#9ca3af',
-  judging: '#00d68a',
-  finished: '#00b377',
-  error: '#ef4444',
+  pending: '#8a8a82',
+  judging: '#4565d9',
+  finished: '#2f8f4e',
+  error: '#d23f55',
 };
 
 /**
@@ -93,8 +93,8 @@ export const resultLabels: Record<string, string> = {
  * 评测结果状态 → 标签颜色。
  */
 export const resultColors: Record<string, string> = {
-  finished: '#10b981',
-  error: '#ef4444',
+  finished: '#2f8f4e',
+  error: '#d23f55',
 };
 
 /**
@@ -108,7 +108,7 @@ export function getStatusColor(
   if (resultStatus && resultColors[resultStatus]) {
     return resultColors[resultStatus];
   }
-  return statusColors[status] || '#6b7280';
+  return statusColors[status] || '#7c7c74';
 }
 
 /**

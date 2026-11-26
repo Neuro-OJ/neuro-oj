@@ -4,12 +4,12 @@
 // 交互参考 admin/community.vue：各表单本地草稿 + 顶部「有未保存的更改」标识 +
 // 保存/放弃；政策发布是独立动作（生成不可变版本，可标记重大变更）。不做 preset。
 
-import { useToast } from "~/composables/useToast";
-import { useDialog } from "~/composables/useDialog";
-import { extractApiError } from "~/utils/server/apiError";
-import type { LegalKind, LegalVersionSummary } from "~/composables/useLegal";
+import { useToast } from '~/composables/useToast';
+import { useDialog } from '~/composables/useDialog';
+import { extractApiError } from '~/utils/server/apiError';
+import type { LegalKind, LegalVersionSummary } from '~/composables/useLegal';
 
-definePageMeta({ layout: "admin", middleware: "admin", });
+definePageMeta({ layout: 'admin', middleware: 'admin' });
 
 const { toast } = useToast();
 const { dialog } = useDialog();
@@ -17,28 +17,28 @@ const { api } = useApi();
 const { loadDocuments, loadVersions, publishVersion } = useLegal();
 
 type TabKey =
-  | "privacy"
-  | "terms"
-  | "identity"
-  | "third_parties"
-  | "retention"
-  | "requests";
+  | 'privacy'
+  | 'terms'
+  | 'identity'
+  | 'third_parties'
+  | 'retention'
+  | 'requests';
 
 const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "privacy", label: "隐私政策" },
-  { key: "terms", label: "服务条款" },
-  { key: "identity", label: "备案与主体" },
-  { key: "third_parties", label: "第三方服务" },
-  { key: "retention", label: "留存期限" },
-  { key: "requests", label: "删除/更正请求" },
+  { key: 'privacy', label: '隐私政策' },
+  { key: 'terms', label: '服务条款' },
+  { key: 'identity', label: '备案与主体' },
+  { key: 'third_parties', label: '第三方服务' },
+  { key: 'retention', label: '留存期限' },
+  { key: 'requests', label: '删除/更正请求' },
 ];
-const activeTab = ref<TabKey>("privacy");
+const activeTab = ref<TabKey>('privacy');
 
 // ─── 政策编辑 ────────────────────────────────────────────────
-const policyContent = reactive<Record<LegalKind, string>>({ privacy: "", terms: "" });
+const policyContent = reactive<Record<LegalKind, string>>({ privacy: '', terms: '' });
 const policyVersions = reactive<Record<LegalKind, LegalVersionSummary[]>>({ privacy: [], terms: [] });
 const policyCurrent = reactive<Record<LegalKind, number>>({ privacy: 0, terms: 0 });
-const changeSummary = reactive<Record<LegalKind, string>>({ privacy: "", terms: "" });
+const changeSummary = reactive<Record<LegalKind, string>>({ privacy: '', terms: '' });
 const isMaterial = reactive<Record<LegalKind, boolean>>({ privacy: true, terms: true });
 const publishing = reactive<Record<LegalKind, boolean>>({ privacy: false, terms: false });
 const loadingPolicy = ref(true);
@@ -46,7 +46,7 @@ const loadingPolicy = ref(true);
 async function loadPolicy(kind: LegalKind) {
   const docs = await loadDocuments(true);
   const cur = docs[kind];
-  policyContent[kind] = cur?.content ?? "";
+  policyContent[kind] = cur?.content ?? '';
   policyCurrent[kind] = cur?.version ?? 0;
   policyVersions[kind] = await loadVersions(kind);
 }
@@ -54,7 +54,7 @@ async function loadPolicy(kind: LegalKind) {
 async function loadAllPolicy() {
   loadingPolicy.value = true;
   try {
-    await Promise.all([loadPolicy("privacy"), loadPolicy("terms")]);
+    await Promise.all([loadPolicy('privacy'), loadPolicy('terms')]);
   } finally {
     loadingPolicy.value = false;
   }
@@ -62,9 +62,9 @@ async function loadAllPolicy() {
 
 async function doPublish(kind: LegalKind) {
   if (publishing[kind]) return;
-  const content = policyContent[kind]?.trim() ?? "";
+  const content = policyContent[kind]?.trim() ?? '';
   if (!content) {
-    toast.error("政策正文不能为空");
+    toast.error('政策正文不能为空');
     return;
   }
   publishing[kind] = true;
@@ -75,8 +75,8 @@ async function doPublish(kind: LegalKind) {
       changeSummary[kind] || null,
       isMaterial[kind],
     );
-    toast.success(`已发布 v${version}${isMaterial[kind] ? "（重大变更，将提示用户重新同意）" : ""}`);
-    changeSummary[kind] = "";
+    toast.success(`已发布 v${version}${isMaterial[kind] ? '（重大变更，将提示用户重新同意）' : ''}`);
+    changeSummary[kind] = '';
     await loadPolicy(kind);
   } catch (err) {
     toast.error(extractApiError(err).message);
@@ -87,14 +87,14 @@ async function doPublish(kind: LegalKind) {
 
 // ─── 配置草稿（legal_*）────────────────────────────────
 const SETTING_KEYS = [
-  "legal_operator_name",
-  "legal_contact",
-  "legal_deployment_notes",
-  "legal_icp_number",
-  "legal_icp_url",
-  "legal_police_number",
-  "legal_police_url",
-  "legal_third_parties",
+  'legal_operator_name',
+  'legal_contact',
+  'legal_deployment_notes',
+  'legal_icp_number',
+  'legal_icp_url',
+  'legal_police_number',
+  'legal_police_url',
+  'legal_third_parties',
 ] as const;
 type SettingKey = (typeof SETTING_KEYS)[number];
 
@@ -107,7 +107,7 @@ const loadingSettings = ref(true);
 function isDirty(key: SettingKey): boolean {
   const draft = drafts[key];
   if (draft === undefined) return false;
-  return draft !== (savedValues[key] ?? "");
+  return draft !== (savedValues[key] ?? '');
 }
 
 const dirtyCount = computed(() => SETTING_KEYS.filter((k) => isDirty(k)).length);
@@ -120,10 +120,10 @@ async function loadSettings(silent = false) {
       effective_value: string | null;
       updated_at: string | null;
     }>;
-  }>("/api/v1/admin/system/settings", { silent });
+  }>('/api/v1/admin/system/settings', { silent });
   const relevant = res.data.filter((s) => (SETTING_KEYS as readonly string[]).includes(s.key));
   for (const item of relevant) {
-    savedValues[item.key] = String(item.effective_value ?? "");
+    savedValues[item.key] = String(item.effective_value ?? '');
     versions.value[item.key] = item.updated_at;
   }
   resetDraftsToSaved();
@@ -134,7 +134,7 @@ async function loadSettings(silent = false) {
 function resetDraftsToSaved() {
   for (const k of Object.keys(drafts)) delete drafts[k];
   for (const key of SETTING_KEYS) {
-    drafts[key] = savedValues[key] ?? "";
+    drafts[key] = savedValues[key] ?? '';
   }
 }
 
@@ -159,7 +159,7 @@ async function saveAll() {
         { value: drafts[key] },
         {
           silent: true,
-          headers: version ? { "If-Match": `"${version}"` } : undefined,
+          headers: version ? { 'If-Match': `"${version}"` } : undefined,
         },
       );
     }
@@ -175,7 +175,7 @@ async function saveAll() {
 function discardAll() {
   if (saving.value) return;
   resetDraftsToSaved();
-  toast.info("已放弃未保存的更改");
+  toast.info('已放弃未保存的更改');
 }
 
 // ─── 删除/更正请求处置（P1 D7）─────────────────────────────────
@@ -192,27 +192,27 @@ interface AdminDataRequest {
 }
 
 const adminRequests = ref<AdminDataRequest[]>([]);
-const requestsStatusFilter = ref("all");
+const requestsStatusFilter = ref('all');
 const requestsLoading = ref(false);
-const updatingRequestId = ref("");
+const updatingRequestId = ref('');
 
 const REQUEST_STATUS_ITEMS = [
-  { label: "全部", value: "all" },
-  { label: "待处理", value: "pending" },
-  { label: "处理中", value: "processing" },
-  { label: "已处理", value: "resolved" },
-  { label: "已驳回", value: "rejected" },
+  { label: '全部', value: 'all' },
+  { label: '待处理', value: 'pending' },
+  { label: '处理中', value: 'processing' },
+  { label: '已处理', value: 'resolved' },
+  { label: '已驳回', value: 'rejected' },
 ];
 
 function adminStatusLabel(s: string): string {
-  return { pending: "待处理", processing: "处理中", resolved: "已处理", rejected: "已驳回" }[s] ?? s;
+  return { pending: '待处理', processing: '处理中', resolved: '已处理', rejected: '已驳回' }[s] ?? s;
 }
 
 async function loadAdminRequests() {
   requestsLoading.value = true;
   try {
-    const query = requestsStatusFilter.value === "all"
-      ? ""
+    const query = requestsStatusFilter.value === 'all'
+      ? ''
       : `?status=${encodeURIComponent(requestsStatusFilter.value)}`;
     const res = await api.get<{ data: AdminDataRequest[] }>(
       `/api/v1/admin/legal/data-requests${query}`,
@@ -229,14 +229,14 @@ async function loadAdminRequests() {
 async function updateRequestStatus(id: string, status: string) {
   // 办结/驳回需录入处理说明（驳回必填），供用户查看处置结果。
   let resolution: string | null = null;
-  if (status === "resolved" || status === "rejected") {
-    const input = await dialog.prompt("请填写处理说明（将展示给用户）", {
-      title: status === "resolved" ? "办结请求" : "驳回请求",
-      confirmText: "确认",
+  if (status === 'resolved' || status === 'rejected') {
+    const input = await dialog.prompt('请填写处理说明（将展示给用户）', {
+      title: status === 'resolved' ? '办结请求' : '驳回请求',
+      confirmText: '确认',
     });
     if (input === null) return; // 取消
-    if (status === "rejected" && !input.trim()) {
-      toast.error("驳回必须填写处理说明");
+    if (status === 'rejected' && !input.trim()) {
+      toast.error('驳回必须填写处理说明');
       return;
     }
     resolution = input.trim() || null;
@@ -254,30 +254,26 @@ async function updateRequestStatus(id: string, status: string) {
   } catch (err) {
     toast.error(extractApiError(err).message);
   } finally {
-    updatingRequestId.value = "";
+    updatingRequestId.value = '';
   }
 }
 
 watch(requestsStatusFilter, () => {
-  if (activeTab.value === "requests") loadAdminRequests();
+  if (activeTab.value === 'requests') loadAdminRequests();
 });
 watch(activeTab, (tab) => {
-  if (tab === "requests" && adminRequests.value.length === 0) loadAdminRequests();
+  if (tab === 'requests' && adminRequests.value.length === 0) loadAdminRequests();
 });
 
 function fmtTime(iso: string | null): string {
-  if (!iso) return "—";
-  return iso.replace("T", " ").slice(0, 16);
+  if (!iso) return '—';
+  return iso.replace('T', ' ').slice(0, 16);
 }
 
 const loadingContent = computed(() =>
-  activeTab.value === "privacy" || activeTab.value === "terms"
-    ? loadingPolicy.value
-    : loadingSettings.value
+  activeTab.value === 'privacy' || activeTab.value === 'terms' ? loadingPolicy.value : loadingSettings.value
 );
-const contentStatus = computed<"loading" | "data">(() =>
-  loadingContent.value ? "loading" : "data"
-);
+const contentStatus = computed<'loading' | 'data'>(() => loadingContent.value ? 'loading' : 'data');
 
 onMounted(loadAll);
 </script>
@@ -318,7 +314,7 @@ onMounted(loadAll);
       <!-- 隐私政策 / 服务条款 -->
       <div v-if="activeTab === 'privacy' || activeTab === 'terms'" class="mt-4 space-y-4">
         <div class="flex items-center gap-2 text-sm text-text-secondary">
-          <span>当前版本：<b class="tabular-nums">{{ policyCurrent[activeTab] || "未发布" }}</b></span>
+          <span>当前版本：<b class="tabular-nums">{{ policyCurrent[activeTab] || '未发布' }}</b></span>
         </div>
         <MarkdownEditor
           v-model="policyContent[activeTab]"
@@ -345,11 +341,11 @@ onMounted(loadAll);
               <tr v-for="v in policyVersions[activeTab]" :key="v.version" class="border-t border-border">
                 <td class="px-3 py-2 tabular-nums">v{{ v.version }}</td>
                 <td class="px-3 py-2 tabular-nums">{{ fmtTime(v.published_at) }}</td>
-                <td class="px-3 py-2">{{ v.is_material ? "是" : "否" }}</td>
-                <td class="px-3 py-2 text-text-secondary">{{ v.change_summary || "—" }}</td>
+                <td class="px-3 py-2">{{ v.is_material ? '是' : '否' }}</td>
+                <td class="px-3 py-2 text-text-secondary">{{ v.change_summary || '—' }}</td>
               </tr>
               <tr v-if="policyVersions[activeTab].length === 0">
-                <td colspan="4" class="px-3 py-4 text-center text-text-muted">尚未发布任何版本</td>
+                <td colspan="4" class="px-3 py-1.5 text-center text-text-muted">尚未发布任何版本</td>
               </tr>
             </tbody>
           </table>
@@ -391,7 +387,8 @@ onMounted(loadAll);
 
       <!-- 第三方服务 -->
       <div v-else-if="activeTab === 'third_parties'" class="mt-4 max-w-3xl">
-        <AdminFormField label="第三方服务清单（JSON）" hint='格式：[{"name":"LLM Provider","purpose":"评测","data":"prompt"}]'>
+        <AdminFormField label="第三方服务清单（JSON）"
+          hint='格式：[{"name":"LLM Provider","purpose":"评测","data":"prompt"}]'>
           <UTextarea v-model="drafts.legal_third_parties" :rows="8" class="font-mono" />
         </AdminFormField>
       </div>
@@ -430,15 +427,16 @@ onMounted(loadAll);
             </thead>
             <tbody>
               <tr v-for="r in adminRequests" :key="r.id" class="border-t border-border align-top">
-                <td class="px-3 py-2 tabular-nums text-text-muted">{{ r.created_at.slice(0, 16).replace("T", " ") }}</td>
+                <td
+                  class="px-3 py-2 tabular-nums text-text-muted">{{ r.created_at.slice(0, 16).replace('T', ' ') }}</td>
                 <td class="px-3 py-2 font-mono text-xs" :title="r.user_id">{{ r.user_id.slice(0, 8) }}</td>
-                <td class="px-3 py-2">{{ r.kind === "delete" ? "删除" : "更正" }}</td>
+                <td class="px-3 py-2">{{ r.kind === 'delete' ? '删除' : '更正' }}</td>
                 <td class="px-3 py-2">
                   {{ r.target_type }}<span v-if="r.target_id" class="text-text-muted font-mono text-xs"> #{{ r.target_id }}</span>
                 </td>
                 <td class="px-3 py-2 max-w-xs">{{ r.detail }}</td>
                 <td class="px-3 py-2">{{ adminStatusLabel(r.status) }}</td>
-                <td class="px-3 py-2 max-w-xs text-text-muted">{{ r.resolution || "—" }}</td>
+                <td class="px-3 py-2 max-w-xs text-text-muted">{{ r.resolution || '—' }}</td>
                 <td class="px-3 py-2">
                   <div class="flex gap-1">
                     <UButton
@@ -469,7 +467,7 @@ onMounted(loadAll);
                 </td>
               </tr>
               <tr v-if="adminRequests.length === 0">
-                <td colspan="8" class="px-3 py-4 text-center text-text-muted">暂无请求</td>
+                <td colspan="8" class="px-3 py-1.5 text-center text-text-muted">暂无请求</td>
               </tr>
             </tbody>
           </table>

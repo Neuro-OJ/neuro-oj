@@ -12,11 +12,11 @@ export interface WorkspaceWidthSpec {
 }
 
 export const WORKSPACE_WIDTH_MAP: Record<WorkspaceWidthKey, WorkspaceWidthSpec> = {
-  home: { maxWidth: '1320px', className: 'max-w-[1320px]' },
-  library: { maxWidth: '1040px', className: 'max-w-[1040px]' },
-  problem: { maxWidth: '1280px', className: 'max-w-[1280px]' },
-  workspace: { maxWidth: '1440px', className: 'max-w-[1440px]' },
-  default: { maxWidth: '1152px', className: 'max-w-6xl' },
+  home: { maxWidth: '1440px', className: 'max-w-[1440px]' },
+  library: { maxWidth: '1440px', className: 'max-w-[1440px]' },
+  problem: { maxWidth: '1600px', className: 'max-w-[1600px]' },
+  workspace: { maxWidth: '1600px', className: 'max-w-[1600px]' },
+  default: { maxWidth: '1440px', className: 'max-w-[1440px]' },
 };
 
 /**

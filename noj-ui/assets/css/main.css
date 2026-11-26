@@ -20,17 +20,17 @@
 @theme inline {
   /* 主色（天青蓝 Brand Azure）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);
-  --color-primary-50: #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-200: #bae6fd;
-  --color-primary-300: #7dd3fc;
-  --color-primary-400: #38bdf8;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  --color-primary-800: #075985;
-  --color-primary-900: #0c4a6e;
-  --color-primary-950: #082f49;
+  --color-primary-50: #f4f5fd;
+  --color-primary-100: #eaecfa;
+  --color-primary-200: #d5d9f5;
+  --color-primary-300: #b2b8f0;
+  --color-primary-400: #8d95e6;
+  --color-primary-500: #7c85de;
+  --color-primary-600: #5e6ad2;
+  --color-primary-700: #4c57c0;
+  --color-primary-800: #3f489e;
+  --color-primary-900: #363d80;
+  --color-primary-950: #22264d;
 
   /* 语义主色变体（现有 bg-primary-dark 等工具类依赖） */
   --color-primary-dark: var(--c-primary-dark);
@@ -93,39 +93,41 @@
   --color-error-text: var(--c-error-text);
   /* 状态基础色 + 300/600 档（Nuxt UI color="success/error" 等需要） */
   --color-success: var(--c-success-text);
-  --color-success-300: #6ee7b7;
-  --color-success-600: #047857;
+  --color-success-300: #6fc58c;
+  --color-success-600: #17803d;
   --color-info: var(--c-info-text);
-  --color-info-300: #7dd3fc;
-  --color-info-600: #0369a1;
+  --color-info-300: #9aaeef;
+  --color-info-600: #2c4cca;
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
-  --color-warning-600: #b45309;
+  --color-warning-600: #a35a00;
   /* 警示横幅底色/描边：保持视觉统一 */
-  --color-warning-bg: #fffbeb;
-  --color-warning-border: #fde68a;
+  --color-warning-bg: #fdf5e6;
+  --color-warning-border: #f0d9a8;
   --color-error: var(--c-error-text);
   --color-error-300: #fda4af;
-  --color-error-600: #be123c;
+  --color-error-600: #c62f45;
 
-  /* 圆角：严格 3 档近直角（4px / 6px / 10px） */
+  /* 圆角：工具型近直角（2px / 3px / 4px / 6px） */
   --radius: 6px;
+  --radius-xs: 3px;
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-lg: 8px;
   --radius-xl: 10px;
+  --radius-2xl: 12px;
 
   /* 阴影：卡片极轻微、浮层保留明确层次 */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-dropdown: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
-  --shadow-modal: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-dropdown: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-modal: 0 24px 48px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
 
   /* 加载动画：spin 0.8s（对齐现有 animate-spin-slow） */
   --animate-spin-slow: spin 0.8s linear infinite;
 
-  /* 离线系统无衬线 + 等宽字体栈 */
-  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
-  --font-mono: "SF Mono", "Fira Code", "Consolas", "Noto Sans Mono CJK SC", monospace;
+  /* Geist / Geist Mono 随包自托管（@fontsource-variable），中文回退系统字体 */
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
 
   /* 自定义字号刻度（对齐项目中使用的任意字号，命名 token 便于统一管理）
    * Tailwind v4 中 --text-<name> 自动生成 text-<name> 工具类 */
@@ -154,36 +156,32 @@
 
 /* ---- 背景微质感装饰 (Clean Cyber Azure Grid) ---- */
 @utility bg-tech-grid {
-  background-image: radial-gradient(rgba(2, 132, 199, 0.06) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: none;
 }
 
 /* ---- native 输入框焦点样式（品牌天青蓝）---- */
 @utility input-base-focus {
   border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+  box-shadow: 0 0 0 2px rgba(44, 76, 202, 0.15);
 }
 
 /* ---- 榜单微质感徽章 (Top 3 Metallic Accent) ---- */
 @utility rank-badge-gold {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(251, 191, 36, 0.28));
-  border: 1px solid rgba(245, 158, 11, 0.45);
-  color: #b45309;
-  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.15);
+  background: #fbf5e1;
+  border: 1px solid #ecd898;
+  color: #8f6a00;
 }
 
 @utility rank-badge-silver {
-  background: linear-gradient(135deg, rgba(148, 163, 184, 0.18), rgba(203, 213, 225, 0.35));
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  color: #334155;
-  box-shadow: 0 1px 3px rgba(100, 116, 139, 0.1);
+  background: #f0efea;
+  border: 1px solid #cdccc5;
+  color: #52524c;
 }
 
 @utility rank-badge-bronze {
-  background: linear-gradient(135deg, rgba(194, 65, 12, 0.14), rgba(234, 88, 12, 0.22));
-  border: 1px solid rgba(194, 65, 12, 0.35);
-  color: #9a3412;
-  box-shadow: 0 1px 3px rgba(194, 65, 12, 0.1);
+  background: #fbefe6;
+  border: 1px solid #e8c4a8;
+  color: #9a4a12;
 }
 
 /* ---- 独立卡片专用立体感（白色专用面板底，彻底与浅蓝页面底分离） ---- */
@@ -210,6 +208,8 @@
 /* ---- 全局去噪工作台底座与浏览器原生表面换肤 ---- */
 @layer base {
   html {
+    /* 基准 14px：Geist 字面偏大，14px 与 Linear/Vercel 正文一致 */
+    font-size: 14px;
     font-family: var(--font-sans);
     scrollbar-gutter: stable;
   }
@@ -263,35 +263,47 @@
 .editor-dark {
   /* Nuxt UI primary 使用品牌天青蓝（Sky 700）：主按钮、选中 Tab、进行中状态 */
   --ui-primary: var(--c-primary);
-  --ui-color-primary-50: #f0f9ff;
-  --ui-color-primary-100: #e0f2fe;
-  --ui-color-primary-200: #bae6fd;
-  --ui-color-primary-300: #7dd3fc;
-  --ui-color-primary-400: #38bdf8;
-  --ui-color-primary-500: #0284c7;
-  --ui-color-primary-600: #0369a1;
-  --ui-color-primary-700: #075985;
-  --ui-color-primary-800: #0c4a6e;
-  --ui-color-primary-900: #082f49;
-  --ui-color-primary-950: #082f49;
+  --ui-color-primary-50: #f4f5fd;
+  --ui-color-primary-100: #eaecfa;
+  --ui-color-primary-200: #d5d9f5;
+  --ui-color-primary-300: #b2b8f0;
+  --ui-color-primary-400: #8d95e6;
+  --ui-color-primary-500: #7c85de;
+  --ui-color-primary-600: #5e6ad2;
+  --ui-color-primary-700: #4c57c0;
+  --ui-color-primary-800: #3f489e;
+  --ui-color-primary-900: #363d80;
+  --ui-color-primary-950: #22264d;
   /* Nuxt UI success 使用评测信号绿（Emerald 700）：成功/通过状态组件 */
-  --ui-color-success-50: #ecfdf5;
-  --ui-color-success-100: #d1fae5;
-  --ui-color-success-200: #a7f3d0;
-  --ui-color-success-300: #6ee7b7;
-  --ui-color-success-400: #34d399;
-  --ui-color-success-500: #059669;
-  --ui-color-success-600: #047857;
-  --ui-color-success-700: #065f46;
-  --ui-color-success-800: #064e3b;
-  --ui-color-success-900: #022c22;
-  --ui-color-success-950: #022c22;
+  --ui-color-success-50: #ecf8f0;
+  --ui-color-success-100: #d3efdc;
+  --ui-color-success-200: #a7dfb9;
+  --ui-color-success-300: #6fc58c;
+  --ui-color-success-400: #3fa864;
+  --ui-color-success-500: #24904c;
+  --ui-color-success-600: #17803d;
+  --ui-color-success-700: #126b33;
+  --ui-color-success-800: #10552a;
+  --ui-color-success-900: #0e4524;
+  --ui-color-success-950: #062612;
+  /* Nuxt UI neutral 映射为暖中性灰 */
+  --ui-color-neutral-50: #fafafa;
+  --ui-color-neutral-100: #f5f5f5;
+  --ui-color-neutral-200: #ebebeb;
+  --ui-color-neutral-300: #d6d6d6;
+  --ui-color-neutral-400: #a8a8a8;
+  --ui-color-neutral-500: #8f8f8f;
+  --ui-color-neutral-600: #666666;
+  --ui-color-neutral-700: #4d4d4d;
+  --ui-color-neutral-800: #2e2e2e;
+  --ui-color-neutral-900: #171717;
+  --ui-color-neutral-950: #0a0a0a;
   --ui-radius: var(--radius);
   --ui-bg: var(--c-bg-panel);
   --ui-bg-muted: var(--c-bg-sunken);
   --ui-bg-elevated: var(--c-bg-panel);
   --ui-border: var(--c-border);
-  --ui-border-accented: var(--c-border);
+  --ui-border-accented: var(--c-border-strong);
   --ui-text: var(--c-text);
   --ui-text-muted: var(--c-text-muted);
   --ui-text-dimmed: var(--c-text-muted);
@@ -534,4 +546,385 @@
 .panel-reveal-leave-to {
   opacity: 0;
   transform: translateY(-4px);
+}
+
+/* ==========================================================================
+   可切换风格：html[data-style] 覆盖同一套 --c-* / 字体 / 圆角 / 阴影 token。
+   :root 为「精致现代」基线；默认风格由 utils/ui-styles.ts 的 DEFAULT_UI_STYLE 决定（深色终端）。选择记录在 noj-style cookie，
+   由 app.vue 在 SSR 阶段写入 data-style，首屏不闪烁。
+   ========================================================================== */
+
+/* ---- 深色终端：墨黑底、等宽为主、琥珀色交互、高对比判定色 ---- */
+html[data-style="terminal"] {
+  color-scheme: dark;
+  --c-bg-page: #0a0c0d;
+  --c-bg-panel: #101315;
+  --c-bg-card: #101315;
+  --c-bg-elevated: #161a1d;
+  --c-bg-sunken: #060708;
+  --c-bg-dark: #060708;
+  --c-white: #101315;
+  --c-border: #1e2428;
+  --c-border-subtle: #171b1e;
+  --c-border-strong: #2c343a;
+  --c-text: #d7e0e6;
+  --c-text-secondary: #9aa6ae;
+  --c-text-muted: #66727a;
+  --c-text-on-dark: #d7e0e6;
+  --c-primary: #ffb224;
+  --c-primary-dark: #f59e0b;
+  --c-primary-light: #ffc85c;
+  --c-primary-bg: rgba(255, 178, 36, 0.1);
+  --c-primary-hover-bg: rgba(255, 178, 36, 0.16);
+  --c-primary-active-bg: rgba(255, 178, 36, 0.24);
+  --c-primary-text: #ffb224;
+  --c-signal: #3ddc84;
+  --c-signal-deep: #2fbf6f;
+  --c-signal-rgb: 61, 220, 132;
+  --c-on-signal: #0a0c0d;
+  --c-success-text: #3ddc84;
+  --c-info-text: #ffb224;
+  --c-warning-text: #e6c84a;
+  --c-error-text: #ff5f6d;
+  --c-verdict-accepted: #3ddc84;
+  --c-verdict-accepted-bg: rgba(61, 220, 132, 0.12);
+  --c-verdict-partial: #e6c84a;
+  --c-verdict-partial-bg: rgba(230, 200, 74, 0.12);
+  --c-verdict-wrong: #ff5f6d;
+  --c-verdict-wrong-bg: rgba(255, 95, 109, 0.12);
+  --c-verdict-limit: #ff9a3c;
+  --c-verdict-limit-bg: rgba(255, 154, 60, 0.12);
+  --c-verdict-judging: #ffb224;
+  --c-verdict-judging-bg: rgba(255, 178, 36, 0.12);
+  --c-verdict-pending: #8a959c;
+  --c-verdict-pending-bg: rgba(138, 149, 156, 0.12);
+  --c-diff-easy: #3ddc84;
+  --c-diff-medium: #e6c84a;
+  --c-diff-hard: #ff5f6d;
+  --font-sans: "Geist Mono Variable", "JetBrains Mono", ui-monospace, "PingFang SC", "Microsoft YaHei", monospace;
+  --radius: 3px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
+  --shadow-card: none;
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px #2c343a;
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px #2c343a;
+  --ui-text-inverted: #0a0c0d;
+  --ui-bg-inverted: #d7e0e6;
+  --ui-color-neutral-50: #060708;
+  --ui-color-neutral-100: #101315;
+  --ui-color-neutral-200: #1e2428;
+  --ui-color-neutral-300: #2c343a;
+  --ui-color-neutral-400: #4a555c;
+  --ui-color-neutral-500: #66727a;
+  --ui-color-neutral-600: #8a959c;
+  --ui-color-neutral-700: #9aa6ae;
+  --ui-color-neutral-800: #c2ccd2;
+  --ui-color-neutral-900: #d7e0e6;
+  --ui-color-neutral-950: #eef3f6;
+}
+
+/* ---- 鲜明个性：米纸底、墨黑粗描边、硬投影、信号橙（新野兽派） ---- */
+html[data-style="bold"] {
+  --c-bg-page: #f3eee4;
+  --c-bg-panel: #fffcf5;
+  --c-bg-card: #fffcf5;
+  --c-bg-elevated: #fffcf5;
+  --c-bg-sunken: #ebe4d6;
+  --c-white: #fffcf5;
+  --c-border: #1a1a1a;
+  --c-border-subtle: #ddd4c3;
+  --c-border-strong: #1a1a1a;
+  --c-text: #111111;
+  --c-text-secondary: #3d3a35;
+  --c-text-muted: #77716a;
+  --c-primary: #ff5b1f;
+  --c-primary-dark: #e64a10;
+  --c-primary-light: #ff7d4a;
+  --c-primary-bg: #ffe8dc;
+  --c-primary-hover-bg: #ffd9c6;
+  --c-primary-active-bg: #ffc2a3;
+  --c-primary-text: #d9440c;
+  --c-info-text: #d9440c;
+  --c-verdict-accepted: #0a8f3c;
+  --c-verdict-accepted-bg: #d9f5e2;
+  --c-verdict-wrong: #e0203c;
+  --c-verdict-wrong-bg: #ffe0e5;
+  --c-verdict-judging: #ff5b1f;
+  --c-verdict-judging-bg: #ffe8dc;
+  --c-diff-easy: #0a8f3c;
+  --c-diff-hard: #e0203c;
+  --c-signal: #0a8f3c;
+  --c-success-text: #0a8f3c;
+  --c-error-text: #e0203c;
+  --radius: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --shadow-card: 3px 3px 0 #1a1a1a;
+  --shadow-dropdown: 4px 4px 0 #1a1a1a, 0 0 0 1.5px #1a1a1a;
+  --shadow-modal: 6px 6px 0 #1a1a1a, 0 0 0 2px #1a1a1a;
+  --ui-color-neutral-50: #fffcf5;
+  --ui-color-neutral-100: #f3eee4;
+  --ui-color-neutral-200: #ddd4c3;
+  --ui-color-neutral-300: #c4b9a5;
+  --ui-color-neutral-400: #9a9184;
+  --ui-color-neutral-500: #77716a;
+  --ui-color-neutral-600: #5a554e;
+  --ui-color-neutral-700: #3d3a35;
+  --ui-color-neutral-800: #24221f;
+  --ui-color-neutral-900: #111111;
+  --ui-color-neutral-950: #000000;
+}
+
+html[data-style="bold"] h1,
+html[data-style="bold"] h2 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ---- 学术杂志：暖纸白、衬线标题、酒红交互，像期刊与讲义 ---- */
+html[data-style="editorial"] {
+  --c-bg-page: #f7f5f0;
+  --c-bg-panel: #fffefb;
+  --c-bg-card: #fffefb;
+  --c-bg-elevated: #fffefb;
+  --c-bg-sunken: #f1ede4;
+  --c-white: #fffefb;
+  --c-border: #e5dfd3;
+  --c-border-subtle: #eee9df;
+  --c-border-strong: #cfc6b5;
+  --c-text: #1b1a17;
+  --c-text-secondary: #57524a;
+  --c-text-muted: #8a8378;
+  --c-primary: #8c2f39;
+  --c-primary-dark: #74252e;
+  --c-primary-light: #a8505a;
+  --c-primary-bg: #f8eeee;
+  --c-primary-hover-bg: #f1dfe0;
+  --c-primary-active-bg: #e5c5c8;
+  --c-primary-text: #8c2f39;
+  --c-info-text: #8c2f39;
+  --c-verdict-accepted: #2f6b3a;
+  --c-verdict-accepted-bg: #eaf3ea;
+  --c-verdict-wrong: #b42332;
+  --c-verdict-wrong-bg: #f9e9eb;
+  --c-verdict-judging: #8c2f39;
+  --c-verdict-judging-bg: #f8eeee;
+  --c-diff-easy: #2f6b3a;
+  --c-diff-hard: #b42332;
+  --c-signal: #2f6b3a;
+  --c-success-text: #2f6b3a;
+  --c-error-text: #b42332;
+  --radius: 2px;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --shadow-card: none;
+  --ui-color-neutral-50: #fffefb;
+  --ui-color-neutral-100: #f7f5f0;
+  --ui-color-neutral-200: #e5dfd3;
+  --ui-color-neutral-300: #cfc6b5;
+  --ui-color-neutral-400: #aaa293;
+  --ui-color-neutral-500: #8a8378;
+  --ui-color-neutral-600: #6e685e;
+  --ui-color-neutral-700: #57524a;
+  --ui-color-neutral-800: #36332e;
+  --ui-color-neutral-900: #1b1a17;
+  --ui-color-neutral-950: #0e0d0b;
+}
+
+html[data-style="editorial"] h1,
+html[data-style="editorial"] h2,
+html[data-style="editorial"] h3 {
+  font-family: "Iowan Old Style", "Charter", "Georgia", "Songti SC", "Noto Serif SC", "Source Han Serif SC", serif;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* ---- 各风格的签名细节（只在对应 data-style 下生效） ---- */
+
+/* 深色终端：页面标题带提示符，表头大写等宽 */
+html[data-style="terminal"] main h1::before {
+  content: "> ";
+  color: var(--c-primary);
+}
+html[data-style="terminal"] thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* 鲜明个性：表格容器粗描边 + 硬投影，表头反白 */
+html[data-style="bold"] div:has(> table) {
+  border: 1.5px solid #1a1a1a;
+  box-shadow: var(--shadow-card);
+}
+html[data-style="bold"] thead {
+  background: #111111;
+}
+html[data-style="bold"] thead th {
+  color: #fffcf5;
+}
+html[data-style="bold"] main h1 {
+  font-size: 1.5rem;
+}
+
+/* 学术杂志：三线表（booktabs），去掉外框与底色 */
+html[data-style="editorial"] div:has(> table) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-style="editorial"] table {
+  border-top: 2px solid var(--c-text);
+  border-bottom: 2px solid var(--c-text);
+}
+html[data-style="editorial"] thead {
+  background: transparent;
+  border-bottom: 1px solid var(--c-text);
+}
+html[data-style="editorial"] thead th {
+  color: var(--c-text);
+  font-style: italic;
+}
+html[data-style="editorial"] main h1 {
+  font-size: 1.6rem;
+}
+
+/* ---- 科技风：深海军蓝底、单一青色强调、细网格与克制的发光 ---- */
+html[data-style="tech"] {
+  color-scheme: dark;
+  --c-bg-page: #060a13;
+  --c-bg-panel: #0b1220;
+  --c-bg-card: #0b1220;
+  --c-bg-elevated: #111a2c;
+  --c-bg-sunken: #070d18;
+  --c-bg-dark: #03060c;
+  --c-white: #0b1220;
+  --c-border: #18243a;
+  --c-border-subtle: #121c2e;
+  --c-border-strong: #26385a;
+  --c-text: #e2ebf7;
+  --c-text-secondary: #94a6c2;
+  --c-text-muted: #5d6f8c;
+  --c-text-on-dark: #e2ebf7;
+  --c-primary: #22d3ee;
+  --c-primary-dark: #06b6d4;
+  --c-primary-light: #67e8f9;
+  --c-primary-bg: rgba(34, 211, 238, 0.08);
+  --c-primary-hover-bg: rgba(34, 211, 238, 0.14);
+  --c-primary-active-bg: rgba(34, 211, 238, 0.22);
+  --c-primary-text: #4fdcf2;
+  --c-signal: #34d399;
+  --c-signal-deep: #10b981;
+  --c-signal-rgb: 52, 211, 153;
+  --c-on-signal: #03140d;
+  --c-success-text: #34d399;
+  --c-info-text: #4fdcf2;
+  --c-warning-text: #fbbf24;
+  --c-error-text: #fb7185;
+  --c-verdict-accepted: #34d399;
+  --c-verdict-accepted-bg: rgba(52, 211, 153, 0.1);
+  --c-verdict-partial: #fbbf24;
+  --c-verdict-partial-bg: rgba(251, 191, 36, 0.1);
+  --c-verdict-wrong: #fb7185;
+  --c-verdict-wrong-bg: rgba(251, 113, 133, 0.1);
+  --c-verdict-limit: #fb923c;
+  --c-verdict-limit-bg: rgba(251, 146, 60, 0.1);
+  --c-verdict-judging: #22d3ee;
+  --c-verdict-judging-bg: rgba(34, 211, 238, 0.1);
+  --c-verdict-pending: #7b8cab;
+  --c-verdict-pending-bg: rgba(123, 140, 171, 0.1);
+  --c-diff-easy: #34d399;
+  --c-diff-medium: #fbbf24;
+  --c-diff-hard: #fb7185;
+  --radius: 6px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --shadow-card: 0 0 0 1px rgba(34, 211, 238, 0.04), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --shadow-dropdown: 0 12px 32px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px #26385a, 0 0 24px -8px rgba(34, 211, 238, 0.25);
+  --shadow-modal: 0 24px 64px -12px rgba(0, 0, 0, 0.8), 0 0 0 1px #26385a, 0 0 40px -12px rgba(34, 211, 238, 0.3);
+  --ui-text-inverted: #03131a;
+  --ui-bg-inverted: #e2ebf7;
+  --ui-color-neutral-50: #070d18;
+  --ui-color-neutral-100: #0b1220;
+  --ui-color-neutral-200: #18243a;
+  --ui-color-neutral-300: #26385a;
+  --ui-color-neutral-400: #3e5175;
+  --ui-color-neutral-500: #5d6f8c;
+  --ui-color-neutral-600: #7b8cab;
+  --ui-color-neutral-700: #94a6c2;
+  --ui-color-neutral-800: #c3d0e3;
+  --ui-color-neutral-900: #e2ebf7;
+  --ui-color-neutral-950: #f1f6fc;
+}
+
+/* 背景：32px 细网格 + 顶部一团很淡的青色光晕，随页面固定 */
+html[data-style="tech"] body {
+  background-image:
+    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(34, 211, 238, 0.1), transparent 70%),
+    linear-gradient(rgba(148, 166, 194, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 166, 194, 0.045) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+  background-attachment: fixed;
+}
+
+/* 顶栏底边：中间亮、两端渐隐的青色细线 */
+html[data-style="tech"] header.fixed {
+  border-bottom-color: transparent;
+  box-shadow: 0 1px 0 0 rgba(34, 211, 238, 0.08);
+}
+html[data-style="tech"] header.fixed::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.55) 50%, transparent);
+  pointer-events: none;
+}
+
+/* 主按钮：青色实底 + 轻微外发光 */
+html[data-style="tech"] .bg-primary {
+  box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.4), 0 0 18px -4px rgba(34, 211, 238, 0.6);
+}
+
+/* 表格容器：半透明玻璃面板，上沿一道高光 */
+html[data-style="tech"] div:has(> table) {
+  background: rgba(11, 18, 32, 0.72);
+  backdrop-filter: blur(6px);
+  box-shadow: inset 0 1px 0 rgba(148, 196, 255, 0.06), var(--shadow-card);
+}
+html[data-style="tech"] thead {
+  background: rgba(34, 211, 238, 0.04);
+}
+html[data-style="tech"] thead th {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(103, 232, 249, 0.7);
+}
+html[data-style="tech"] tbody tr:hover {
+  background: rgba(34, 211, 238, 0.05);
+}
+
+/* 页面标题：浅蓝到青色的文字渐变（只用在 h1） */
+html[data-style="tech"] main h1 {
+  background: linear-gradient(90deg, #e2ebf7 0%, #67e8f9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }

@@ -86,76 +86,53 @@ const subtasks = computed(() =>
 );
 </script>
 <template>
-  <div class="space-y-4">
+  <div class="space-y-3">
     <UAlert v-if="!visible" color="info" title="提交已受理，比赛规定的结果暂未公开" />
-    <div
-      v-else
-      class="rounded-lg border p-5 shadow-card transition-colors"
-      :class="summary.tone === 'success' ? 'border-signal/30 bg-signal/5' : summary.tone === 'error' ? 'border-error-text/30 bg-error-text/5' : 'border-border bg-bg-panel'"
-    >
-      <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <div
-            class="flex size-11 shrink-0 items-center justify-center rounded-full text-xl"
-            :class="summary.tone === 'success' ? 'bg-signal/20 text-signal-deep' : summary.tone === 'error' ? 'bg-error-text/10 text-error-text' : 'bg-primary-bg text-primary'"
-          >
-            <UIcon :name="summary.icon" class="size-6" :class="{ 'animate-pulse': summary.pending }" />
-          </div>
-          <div>
-            <h3
-              class="text-xl font-bold tracking-tight"
-              :class="summary.tone === 'success' ? 'text-signal-deep' : summary.tone === 'error' ? 'text-error-text' : 'text-text'"
-            >
-              {{ summary.label }}
-            </h3>
-            <p class="text-xs text-text-muted mt-0.5">
-              {{ summary.description }}
-            </p>
-          </div>
-        </div>
-
-        <!-- 关键指标胶囊 -->
-        <div class="flex flex-wrap items-center gap-2.5 text-xs tabular-nums">
-          <div v-if="submission.result?.score != null"
-            class="flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-3 py-1.5 font-semibold text-text shadow-xs">
-            <span class="text-text-muted text-[11px]">得分</span>
-            <span class="text-base text-primary font-bold">{{ formatScore(submission.result.score) }}</span>
-            <span class="text-[11px] text-text-muted">分</span>
-          </div>
-          <div v-if="submission.result?.time_ms != null"
-            class="flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-3 py-1.5 text-text-secondary shadow-xs">
-            <UIcon name="i-lucide-clock" class="size-3.5 text-text-muted" />
-            <span>{{ formatTime(submission.result.time_ms) }}</span>
-          </div>
-          <div v-if="submission.result?.memory_kb != null"
-            class="flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-3 py-1.5 text-text-secondary shadow-xs">
-            <UIcon name="i-lucide-cpu" class="size-3.5 text-text-muted" />
-            <span>{{ formatMemory(submission.result.memory_kb) }}</span>
-          </div>
-        </div>
+    <div v-else class="flex flex-wrap items-stretch overflow-hidden rounded-lg border border-border bg-bg-panel">
+      <div class="flex min-w-0 flex-1 items-center gap-3 border-l-[3px] px-4 py-2.5"
+        :class="summary.tone === 'success' ? 'border-l-verdict-accepted' : summary.tone === 'error' ? 'border-l-verdict-wrong' : 'border-l-border-strong'">
+        <h3 class="text-base font-semibold"
+          :class="[summary.tone === 'success' ? 'text-verdict-accepted' : summary.tone === 'error' ? 'text-verdict-wrong' : 'text-text', { 'animate-pulse': summary.pending }]">
+          {{ summary.label }}
+        </h3>
+        <p class="truncate text-xs text-text-muted">{{ summary.description }}</p>
       </div>
+      <dl class="flex divide-x divide-border border-l border-border font-mono tabular-nums">
+        <div v-if="submission.result?.score != null" class="flex flex-col justify-center px-4 py-1.5">
+          <dt class="text-[11px] text-text-muted">得分</dt>
+          <dd class="text-sm font-semibold text-text">{{ formatScore(submission.result.score) }}</dd>
+        </div>
+        <div v-if="submission.result?.time_ms != null" class="flex flex-col justify-center px-4 py-1.5">
+          <dt class="text-[11px] text-text-muted">时间</dt>
+          <dd class="text-sm text-text">{{ formatTime(submission.result.time_ms) }}</dd>
+        </div>
+        <div v-if="submission.result?.memory_kb != null" class="flex flex-col justify-center px-4 py-1.5">
+          <dt class="text-[11px] text-text-muted">内存</dt>
+          <dd class="text-sm text-text">{{ formatMemory(submission.result.memory_kb) }}</dd>
+        </div>
+      </dl>
     </div>
     <UCard v-if="visible && submission.resource_available && oi?.compile_error">
-      <h3 class="mb-3 font-semibold text-error-text">编译诊断</h3>
+      <h3 class="mb-2 text-xs font-medium text-verdict-wrong">编译诊断</h3>
       <pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{{ oi.compile_error }}</pre>
     </UCard>
     <UCard v-if="subtasks.length">
-      <h3 class="mb-3 font-semibold">子任务成绩</h3>
+      <h3 class="mb-2 text-xs font-medium text-text-muted">子任务成绩</h3>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm" aria-label="子任务成绩">
-          <thead class="text-left text-text-muted">
+        <table class="w-full text-[13px]" aria-label="子任务成绩">
+          <thead class="text-left text-xs text-text-muted">
             <tr>
-              <th class="pb-2">子任务</th>
-              <th class="pb-2">判定</th>
-              <th class="pb-2 text-right">得分</th>
+              <th class="pb-1.5 font-medium">子任务</th>
+              <th class="pb-1.5 font-medium">判定</th>
+              <th class="pb-1.5 text-right font-medium">得分</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="subtask in subtasks" :key="subtask.id" class="border-t border-border">
-              <td class="py-2 font-mono">{{ subtask.id }}</td>
-              <td class="py-2">{{ getResultDef(subtask.verdict ?? subtask.status).label }}</td>
+              <td class="py-1.5 font-mono">{{ subtask.id }}</td>
+              <td class="py-1.5">{{ getResultDef(subtask.verdict ?? subtask.status).label }}</td>
               <td
-                class="py-2 text-right tabular-nums">{{ formatScore(subtask.score) }} / {{ formatScore(subtask.max_score) }}</td>
+                class="py-1.5 text-right font-mono tabular-nums">{{ formatScore(subtask.score) }} / {{ formatScore(subtask.max_score) }}</td>
             </tr>
           </tbody>
         </table>
@@ -177,12 +154,13 @@ const subtasks = computed(() =>
     />
     <UCard
       v-if="visible && submission.resource_available && submission.result_visibility === 'cases' && submission.result?.output">
-      <h3 class="mb-3 font-semibold">评测输出</h3>
-      <pre class="max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs">{{ submission.result.output }}</pre>
+      <h3 class="mb-2 text-xs font-medium text-text-muted">评测输出</h3>
+      <pre
+        class="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">{{ submission.result.output }}</pre>
     </UCard>
     <UCard v-if="visible && submission.attempts?.length">
-      <h3 class="mb-3 font-semibold">评测沿革</h3>
-      <ul class="space-y-2 text-sm tabular-nums">
+      <h3 class="mb-2 text-xs font-medium text-text-muted">评测沿革</h3>
+      <ul class="space-y-1 font-mono text-xs tabular-nums text-text-secondary">
         <li v-for="attempt in submission.attempts"
           :key="attempt.attempt_id">#{{ attempt.sequence }} · {{ attempt.version == null ? '版本未知' : `V${attempt.version}` }} · {{ attempt.state }} · {{ attempt.result_kind === 'graded' ? `${formatScore(attempt.score)} 分` : attempt.result_kind === 'platform_error' ? '平台失败' : '等待正式结果' }}</li>
       </ul>

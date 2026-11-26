@@ -118,9 +118,8 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="w-full lg:w-[290px] lg:self-stretch shrink-0 flex flex-col justify-between bg-bg-sunken/40 border-t lg:border-t-0 lg:border-l border-border">
-    <div class="flex items-center justify-center gap-1.5 pt-4 px-4 text-xs text-text-muted leading-tight">
-      <UIcon name="i-lucide-calendar" class="size-3.5 text-primary shrink-0" />
+    class="w-full lg:w-[260px] lg:self-stretch shrink-0 flex flex-col justify-center bg-bg-sunken/40 border-t lg:border-t-0 lg:border-l border-border">
+    <div class="flex items-center justify-center gap-1.5 pt-2 px-3 font-mono text-[11px] text-text-muted leading-tight">
       <span>{{ todayDateStr }}</span>
       <ClientOnly>
         <span class="tabular-nums font-mono text-text-secondary text-[11px]">· {{ todayTimeStr }}</span>

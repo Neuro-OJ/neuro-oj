@@ -76,14 +76,16 @@ const items = computed(() => [
 </script>
 <template>
   <template v-if="!isLoggedIn">
-    <UButton variant="outline" :to="{ path: '/login', query: { redirect: route.fullPath } }">登录</UButton>
-    <UButton :to="{ path: '/register', query: { redirect: route.fullPath } }">注册</UButton>
+    <UButton variant="ghost" color="neutral" size="xs" class="text-text-secondary hover:bg-bg-sunken hover:text-text"
+      :to="{ path: '/login', query: { redirect: route.fullPath } }">登录</UButton>
+    <UButton size="xs" :to="{ path: '/register', query: { redirect: route.fullPath } }">注册</UButton>
   </template>
   <UDropdownMenu v-else :items="items" :content="{ align: 'end' }" :ui="{ content: 'w-64' }">
-    <UButton color="neutral" variant="ghost" aria-label="用户菜单" :title="label" class="min-w-0 gap-2 px-1.5">
+    <UButton color="neutral" variant="ghost" aria-label="用户菜单" :title="label"
+      class="min-w-0 gap-1.5 px-1.5 text-text hover:bg-bg-sunken">
       <UserIdentity v-if="user" :user="user" :show-username="false" size="sm" :link="false" />
-      <span class="hidden max-w-56 truncate text-sm sm:inline" data-testid="domain-identity">{{ label }}</span>
-      <UIcon name="i-lucide-chevron-down" class="size-3.5 shrink-0 text-text-muted" />
+      <span class="hidden max-w-56 truncate text-xs sm:inline" data-testid="domain-identity">{{ label }}</span>
+      <UIcon name="i-lucide-chevron-down" class="size-3 shrink-0 text-text-muted" />
     </UButton>
   </UDropdownMenu>
 </template>

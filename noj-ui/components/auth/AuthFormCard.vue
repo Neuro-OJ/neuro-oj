@@ -1,7 +1,8 @@
 <template>
   <div class="w-full max-w-[380px] relative">
     <!-- Error banner -->
-    <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="$emit('clear-error')" />
+    <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error"
+      @close="$emit('clear-error')" />
 
     <!-- Success banner slot -->
     <slot name="banner-success" />
@@ -10,8 +11,8 @@
     <slot name="banner-info" />
 
     <div class="bg-white border border-border rounded-lg p-8">
-      <h1 class="text-22px font-bold text-center mb-3 text-text animate-[fadeInUp_0.5s_ease_both]">{{ title }}</h1>
-      <p v-if="subtitle" class="text-center text-sm text-text-secondary mb-6 animate-[fadeInUp_0.5s_ease_0.05s_both]">{{ subtitle }}</p>
+      <h1 class="text-22px font-bold text-center mb-3 text-text">{{ title }}</h1>
+      <p v-if="subtitle" class="text-center text-sm text-text-secondary mb-6">{{ subtitle }}</p>
 
       <form class="flex flex-col gap-6" @submit.prevent="$emit('submit')">
         <slot />
@@ -32,18 +33,18 @@
 
 <script setup lang="ts">
 defineProps<{
-  title: string
-  subtitle?: string
-  error: string
-  loading: boolean
-  submitLabel: string
-  loadingLabel?: string
-}>()
+  title: string;
+  subtitle?: string;
+  error: string;
+  loading: boolean;
+  submitLabel: string;
+  loadingLabel?: string;
+}>();
 
 defineEmits<{
-  submit: []
-  "clear-error": []
-}>()
+  submit: [];
+  'clear-error': [];
+}>();
 </script>
 
 <style>
