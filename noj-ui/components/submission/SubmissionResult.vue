@@ -100,7 +100,9 @@ const subtasks = computed(() =>
       <dl class="flex divide-x divide-border border-l border-border font-mono tabular-nums">
         <div v-if="submission.result?.score != null" class="flex flex-col justify-center px-4 py-1.5">
           <dt class="text-[11px] text-text-muted">得分</dt>
-          <dd class="text-sm font-semibold text-text">{{ formatScore(submission.result.score) }}</dd>
+          <dd class="text-sm font-semibold text-text">
+            {{ formatScore(submission.result.score) }}<span class="ml-0.5 text-[11px] font-normal text-text-muted">分</span>
+          </dd>
         </div>
         <div v-if="submission.result?.time_ms != null" class="flex flex-col justify-center px-4 py-1.5">
           <dt class="text-[11px] text-text-muted">时间</dt>

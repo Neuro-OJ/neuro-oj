@@ -81,7 +81,7 @@ useSeoMeta({ title: '题单' });
       <div class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-bg-panel">
         <NuxtLink v-for="item in data?.items" :key="item.id" :to="workspacePath(slug!, `trainings/${item.id}`)"
           class="group grid grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto] items-center gap-4 px-3 py-1.5 text-[13px] text-text no-underline hover:bg-bg-sunken/50">
-          <span class="truncate font-medium group-hover:text-primary">{{ item.title }}</span>
+          <h2 class="truncate text-[13px] font-medium group-hover:text-primary">{{ item.title }}</h2>
           <span class="truncate text-xs text-text-muted">{{ item.description || '暂无简介' }}</span>
           <span class="font-mono text-xs"
             :class="item.state === 'published' ? 'text-text-secondary' : 'text-verdict-limit'">
