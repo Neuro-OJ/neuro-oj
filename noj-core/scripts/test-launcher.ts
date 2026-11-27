@@ -63,6 +63,7 @@ import {
   auditShardPlan,
   buildShardPlan,
   discoverTestFiles,
+  FEATURE_TEST_ROOT,
   type FileDurationBaseline,
   loadFileDurationBaseline,
   MIGRATION_TEST_FILE,
@@ -539,14 +540,21 @@ async function loadBaseline(): Promise<FileDurationBaseline> {
   return baseline;
 }
 
+/** 计算分片发现根：增量模式保守纳入迁移测试与 features 切片测试，防止跨切片回归漏跑。 */
+export function resolveShardDiscoveryRoots(
+  modules?: readonly string[],
+): string[] | undefined {
+  if (!modules || modules.length === 0) return undefined;
+  return [
+    MIGRATION_TEST_FILE,
+    FEATURE_TEST_ROOT,
+    ...modules.flatMap((target) => testRootsForDomain(target)),
+  ];
+}
+
 /** 发现并规划分片；任何覆盖缺口都直接失败，不允许"少跑但显示绿"。 */
 async function createShardPlan(options: LauncherOptions): Promise<ShardPlan> {
-  const customRoots = options.modules && options.modules.length > 0
-    ? [
-      MIGRATION_TEST_FILE,
-      ...options.modules.flatMap((target) => testRootsForDomain(target)),
-    ]
-    : undefined;
+  const customRoots = resolveShardDiscoveryRoots(options.modules);
   const discovery = await measurePhase(
     "core.launcher.discover",
     () => discoverTestFiles(MODULE_ROOT, customRoots),

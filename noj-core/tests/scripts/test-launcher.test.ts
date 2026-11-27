@@ -19,7 +19,11 @@ import {
   redisContainerRunArgs,
   shardDatabaseName,
 } from "../../scripts/test-launcher-resources.ts";
-import { buildManifest, junitPathFor } from "../../scripts/test-launcher.ts";
+import {
+  buildManifest,
+  junitPathFor,
+  resolveShardDiscoveryRoots,
+} from "../../scripts/test-launcher.ts";
 import {
   applyShardEnvironment,
   domainTargetNames,
@@ -858,4 +862,13 @@ Deno.test("test-launcher: --shard-index 与 --modules 仅用于 parallel 且严�
     Error,
     "未知模块",
   );
+});
+
+Deno.test("test-launcher: 增量 --modules 发现根保守包含 src/features 与迁移测试", () => {
+  assertEquals(resolveShardDiscoveryRoots(undefined), undefined);
+  assertEquals(resolveShardDiscoveryRoots([]), undefined);
+  const roots = resolveShardDiscoveryRoots(["evaluations"]);
+  assert(roots !== undefined);
+  assert(roots.includes("src/features"));
+  assert(roots.some((r) => r.includes("evaluations")));
 });

@@ -350,11 +350,7 @@ jobs:
         env:
           TEST_PG_ADMIN_URL: postgres://noj:noj@localhost:5432/postgres
           TEST_REDIS_URL: redis://localhost:6379/15
-        run: |
-          set -euo pipefail
-          rm -rf coverage
-          deno run -A scripts/test-launcher.ts --coverage=coverage
-          deno coverage --threshold=54 coverage
+        run: deno task test:coverage
 
   # ===========================================================================
   # noj-core — 分片并行测试（真实 PostgreSQL 模板路径）
