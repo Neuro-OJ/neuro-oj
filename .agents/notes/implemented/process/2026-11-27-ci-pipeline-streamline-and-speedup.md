@@ -23,7 +23,7 @@ Status: implemented
   - 合并 `production-cli` 与 `production-cli-e2e` 为单一 `production-cli` 作业并接入 `cli` 路径过滤。
   - 将 `noj-ui`（≥60%）与 `noj-llm-gateway`（≥54%）覆盖率阈值门禁直接并入 `ui-check` 与 `gateway-check` 单测步骤，移除重复跑单测的 `coverage-check` job（本地 `scripts/coverage-report.ts` 保留）。
   - 将 `ui-components`（Vitest）并入 `ui-check` 复用 `nuxt typecheck` 上下文，并为 `ui-check` 补上 `~/.cache/ms-playwright` 缓存。
-  - 所有代码模块 `paths-filter` 排除 `!**/*.md`；WASI 作业改用独立 `wasi` 路径过滤，并将 `judge-wasi-acceptance` 合并为单 job 一次编译 + 4 组并发（`check-oi-wasi-toolchain.sh all`）。
+  - 所有代码模块 `paths-filter` 使用 `picomatch` 内联排除模式 `/**/!(*.md)`（避免默认 `some` 语义下独立 `'!...'` 规则扩大匹配），并为 `ci.yml` / `e2e.yml` / `security.yml` 的 `changes` job 显式声明 `pull-requests: read`；WASI 作业改用独立 `wasi` 路径过滤，并将 `judge-wasi-acceptance` 合并为单 job 一次编译 + 4 组并发（`check-oi-wasi-toolchain.sh all`）。
 - **精简 `e2e.yml` 与 `e2e-domain` action**：
   - 为 `e2e-ui-build`、`judge-sandbox`、`problem-local-test` 接入 `changes` 过滤（`main` push / 手动 / 发布仍全量）。
   - 将 6 个标准环境轻量 API 域（`identity`/`admin`/`system` 与 `catalog`/`community`/`objective`）合入 2 个并发批次 job（`e2e-api-core` / `e2e-api-content`），支持按 `selected-domains` 仅运行命中域；保留有特殊环境的 `submission` / `contest` / `rate-limit` / `cross-domain` / `browser`。

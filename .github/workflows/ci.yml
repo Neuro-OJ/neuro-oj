@@ -52,6 +52,9 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       core: ${{ steps.filter.outputs.core }}
       core-full: ${{ steps.selection.outputs.core-full }}
@@ -78,51 +81,48 @@ jobs:
         uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         id: filter
         with:
+          # 注意：paths-filter 默认 predicate-quantifier 为 some（OR 语义），
+          # 不能把 '!**/*.md' 作为独立条目写入列表；使用 picomatch 内联 extglob
+          # '/**/!(*.md)' 仅在对应目录内排除 Markdown 文档。
           filters: |
             core:
-              - 'noj-core/**'
+              - 'noj-core/**/!(*.md)'
               - 'dev-docs/engineering/module-boundaries.json'
-              - 'scripts/**'
+              - 'scripts/**/!(*.md)'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
-              - '!**/*.md'
             ui:
-              - 'noj-ui/**'
+              - 'noj-ui/**/!(*.md)'
               - '.github/workflows/ci.yml'
-              - '!**/*.md'
             judge:
-              - 'noj-judge/**'
+              - 'noj-judge/**/!(*.md)'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
-              - '!**/*.md'
             wasi:
-              - 'noj-judge/src/**'
+              - 'noj-judge/src/**/!(*.md)'
               - 'noj-judge/Cargo.toml'
               - 'noj-judge/Cargo.lock'
-              - 'noj-judge/toolchain/**'
-              - 'noj-judge/examples/**'
+              - 'noj-judge/toolchain/**/!(*.md)'
+              - 'noj-judge/examples/**/!(*.md)'
               - 'noj-judge/scripts/*wasi*'
               - 'noj-judge/Dockerfile'
               - 'fixtures/noj-wasm-*.json'
               - '.github/workflows/ci.yml'
-              - '!**/*.md'
             gateway:
-              - 'noj-llm-gateway/**'
-              - 'noj-tests/fixtures/**'
-              - 'scripts/**'
+              - 'noj-llm-gateway/**/!(*.md)'
+              - 'noj-tests/fixtures/**/!(*.md)'
+              - 'scripts/**/!(*.md)'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/ci.yml'
-              - '!**/*.md'
             cli:
-              - 'noj-cli/**'
+              - 'noj-cli/**/!(*.md)'
               - 'docker-compose.prod.yml'
-              - 'deploy/**'
-              - 'scripts/deploy/**'
+              - 'deploy/**/!(*.md)'
+              - 'scripts/deploy/**/!(*.md)'
               - '.github/workflows/ci.yml'
-              - '!**/*.md'
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:

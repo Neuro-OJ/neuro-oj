@@ -55,6 +55,9 @@ jobs:
     name: Detect E2E Domains
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       e2e-domains: ${{ steps.selection.outputs.e2e-domains }}
       e2e-browser: ${{ steps.selection.outputs.e2e-browser }}
@@ -70,20 +73,19 @@ jobs:
         uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         id: filter
         with:
+          # 使用 picomatch 内联 extglob '/**/!(*.md)'，避免默认 some(OR) 下独立 '!' 规则扩大匹配。
           filters: |
             judge-sandbox:
-              - 'noj-judge/**'
+              - 'noj-judge/**/!(*.md)'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
               - '.github/workflows/e2e.yml'
-              - '!**/*.md'
             problem-local:
-              - 'noj-cli/**'
-              - 'noj-judge/**'
-              - 'fixtures/problem-test/**'
-              - 'noj-core/scripts/problem-templates/**'
+              - 'noj-cli/**/!(*.md)'
+              - 'noj-judge/**/!(*.md)'
+              - 'fixtures/problem-test/**/!(*.md)'
+              - 'noj-core/scripts/problem-templates/**/!(*.md)'
               - '.github/workflows/e2e.yml'
-              - '!**/*.md'
 
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:

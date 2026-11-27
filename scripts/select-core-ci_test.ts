@@ -509,6 +509,25 @@ Deno.test("workflow: E2E job 按选择器结果运行，且选择器覆盖全部
   );
 });
 
+Deno.test("workflow: paths-filter 声明 pull-requests: read 且不使用顶层 OR 取反规则", () => {
+  for (
+    const [name, text] of [
+      ["ci.yml", CI_TEXT],
+      ["e2e.yml", E2E_TEXT],
+    ] as const
+  ) {
+    const changes = jobBlocks(text).get("changes")!;
+    assert(
+      changes.includes("pull-requests: read"),
+      `${name} 的 changes job 使用 dorny/paths-filter，必须声明 pull-requests: read`,
+    );
+    assert(
+      !/^\s*-\s*['"]!/m.test(changes),
+      `${name} 的 paths-filter 在默认 some(OR) 语义下不得写顶层 '!...' 取反条目（会匹配任意无关文件），应使用 picomatch 内联 '/**/!(*.md)'`,
+    );
+  }
+});
+
 Deno.test("workflow: 选择器路径分类覆盖受跟踪文件，没有无法归属的 Core/E2E 文件", async () => {
   const result = await new Deno.Command("git", {
     args: ["-C", ROOT, "ls-files"],

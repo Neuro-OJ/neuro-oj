@@ -46,6 +46,9 @@ jobs:
     name: 检测依赖与代码改动
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       deps: ${{ steps.filter.outputs.deps }}
       codeql: ${{ steps.filter.outputs.codeql }}
