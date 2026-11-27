@@ -53,7 +53,10 @@ from noj_sdk_common.chunking import (
     encode_chunked_frames,
     get_max_payload_bytes,
 )
-from noj_sdk_common.serialization import RejectedTypeError, estimate_frame_size
+from noj_sdk_common.serialization import (
+    RejectedTypeError,
+    estimate_min_frame_size,
+)
 
 from .registry import _REGISTRY, get_registry, NotRegisteredError
 from .sanitize import sanitize_trace
@@ -333,7 +336,7 @@ def _execute_call(call_id: str, fn_name: str, args: list) -> None:
         _CURRENT_CALL_ID = None
 
     max_payload = get_max_payload_bytes()
-    if estimate_frame_size(result, limit=max_payload) > max_payload:
+    if estimate_min_frame_size(result, limit=max_payload) > max_payload:
         _write_frame(
             {
                 "type": "error",
@@ -498,7 +501,7 @@ def _run_forked_child(
 
         child_log_stream.flush()
         max_payload = get_max_payload_bytes()
-        if estimate_frame_size(result, limit=max_payload) > max_payload:
+        if estimate_min_frame_size(result, limit=max_payload) > max_payload:
             _child_write(
                 {
                     "type": "error",

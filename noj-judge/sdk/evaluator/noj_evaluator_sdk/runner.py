@@ -27,7 +27,10 @@ from noj_sdk_common.chunking import (
 )
 from noj_sdk_common.rpc import RpcClient
 from noj_sdk_common.sanitize import sanitize_message, sanitize_traceback
-from noj_sdk_common.serialization import RejectedTypeError
+from noj_sdk_common.serialization import (
+    RejectedTypeError,
+    estimate_min_frame_size,
+)
 
 from .capability import _get_capability
 from .errors import (
@@ -230,10 +233,10 @@ class SolutionRunner:
                     f"timeout_ms 必须是正整数或 None，实际 {timeout_ms!r}"
                 )
 
-        # 1. 参数校验与大载荷预检（防止超大对象吃光序列化内存）
+        # 1. 参数校验与大载荷下界预检（仅拒绝必然超限的大对象，边界由分片编码精确判定）
         for i, arg in enumerate(args):
             validate_type(arg, f"arg[{i}]")
-        if estimate_frame_size(list(args), limit=self._max_payload_bytes) > self._max_payload_bytes:
+        if estimate_min_frame_size(list(args), limit=self._max_payload_bytes) > self._max_payload_bytes:
             raise RejectedError(
                 f"call 参数过大（超出分片载荷上限 {self._max_payload_bytes} 字节）"
             )

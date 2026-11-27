@@ -107,8 +107,14 @@ def estimate_frame_size(value: Any, limit: int = MAX_FRAME_BYTES) -> int:
         elif isinstance(v, (bytes, bytearray, memoryview)):
             # base64 编码后 ~1.33× 膨胀 + 包装 {"__bytes__": "..."}
             total += len(bytes(v)) * 4 // 3 + 20
-        elif isinstance(v, (int, float, bool)) or v is None:
-            total += 24  # 数字/布尔/空值 JSON 字面量粗略上界
+        elif v is None:
+            total += 4  # null
+        elif isinstance(v, bool):
+            total += 5  # false / true
+        elif isinstance(v, int):
+            total += 1 if 0 <= v < 10 else len(str(v))
+        elif isinstance(v, float):
+            total += 24  # 浮点数 JSON 字面量粗略上界
         elif isinstance(v, list):
             total += 2  # []
             for item in v:
@@ -128,6 +134,57 @@ def estimate_frame_size(value: Any, limit: int = MAX_FRAME_BYTES) -> int:
                     return
         else:
             total += 64  # 未知类型兜底
+
+    walk(value)
+    return total
+
+
+def estimate_min_frame_size(value: Any, limit: int = MAX_FRAME_BYTES) -> int:
+    """估算 value 序列化后帧字节数的严格下界（不复制数据，超限即短路）。
+
+    仅在必然超限时触发快速拒绝（`estimate_min_frame_size(v, limit) > limit`），
+    避免宽松上界把大规模数字列表（如 `[0] * 700_000` 或 `[0.5] * 700_000`）误判
+    为超限；实际精确字节数由后续 `encode_chunked_frames` / `check_frame_size` 判定。
+    """
+    total = 0
+
+    def walk(v: Any) -> None:
+        nonlocal total
+        if total > limit:
+            return
+        if isinstance(v, str):
+            # ASCII 最短 1 字节/字符 + 双引号
+            total += len(v) + 2
+        elif isinstance(v, (bytes, bytearray, memoryview)):
+            # base64 最短 4/3 膨胀 + {"__bytes__":"..."} 包装
+            total += len(v) * 4 // 3 + 16
+        elif v is None or isinstance(v, bool):
+            total += 4
+        elif isinstance(v, int):
+            total += 1 if 0 <= v < 10 else len(str(v))
+        elif isinstance(v, float):
+            total += 3  # 最短如 0.0
+        elif isinstance(v, list):
+            n = len(v)
+            total += 2 + (n - 1 if n > 1 else 0)
+            if total > limit:
+                return
+            for item in v:
+                walk(item)
+                if total > limit:
+                    return
+        elif isinstance(v, dict):
+            n = len(v)
+            total += 2 + (n - 1 if n > 1 else 0)
+            if total > limit:
+                return
+            for k, kv in v.items():
+                total += (len(k) if isinstance(k, str) else 1) + 3
+                walk(kv)
+                if total > limit:
+                    return
+        else:
+            total += 1
 
     walk(value)
     return total

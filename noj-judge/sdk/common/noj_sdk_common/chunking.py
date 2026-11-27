@@ -21,6 +21,11 @@ DEFAULT_MAX_PAYLOAD_BYTES = 16 * 1024 * 1024
 HARD_MAX_PAYLOAD_BYTES = 32 * 1024 * 1024
 # 512 KiB 原始 UTF-8 JSON 切片 → base64 约 683 KiB，保证单条 NDJSON 行严格 < 1 MiB
 CHUNK_SLICE_BYTES = 512 * 1024
+# 分片数量与元数据防放大上限（防止恶意发送大量空分片/超长 stream_id 耗尽内存）
+MIN_EXPECTED_CHUNK_BYTES = 64 * 1024
+MIN_MAX_CHUNKS_PER_STREAM = 64
+MAX_STREAM_ID_LEN = 128
+CHUNK_METADATA_OVERHEAD_BYTES = 256
 
 
 def get_max_payload_bytes() -> int:
@@ -81,12 +86,13 @@ def encode_chunked_frames(
 
 
 class _StreamBuffer:
-    __slots__ = ("total", "parts", "received_bytes")
+    __slots__ = ("total", "parts", "received_bytes", "metadata_bytes")
 
-    def __init__(self, total: int) -> None:
+    def __init__(self, total: int, stream_id_bytes: int) -> None:
         self.total = total
         self.parts: dict[int, bytes] = {}
         self.received_bytes = 0
+        self.metadata_bytes = stream_id_bytes
 
 
 class ChunkReassembler:
@@ -97,6 +103,7 @@ class ChunkReassembler:
         *,
         max_payload_bytes: int | None = None,
         max_inflight_streams: int = 16,
+        max_chunks_per_stream: int | None = None,
     ) -> None:
         self._max_payload_bytes = (
             get_max_payload_bytes()
@@ -104,6 +111,20 @@ class ChunkReassembler:
             else max_payload_bytes
         )
         self._max_inflight_streams = max(1, max_inflight_streams)
+        default_max_chunks = max(
+            MIN_MAX_CHUNKS_PER_STREAM,
+            (self._max_payload_bytes + MIN_EXPECTED_CHUNK_BYTES - 1)
+            // MIN_EXPECTED_CHUNK_BYTES,
+        )
+        self._max_chunks_per_stream = (
+            default_max_chunks
+            if max_chunks_per_stream is None
+            else max(1, max_chunks_per_stream)
+        )
+        self._max_stream_metadata_bytes = (
+            MAX_STREAM_ID_LEN
+            + self._max_chunks_per_stream * CHUNK_METADATA_OVERHEAD_BYTES
+        )
         self._streams: dict[str, _StreamBuffer] = {}
 
     def feed(self, frame: dict[str, Any]) -> dict[str, Any] | None:
@@ -115,9 +136,11 @@ class ChunkReassembler:
         if (
             not isinstance(stream_id, str)
             or not stream_id
+            or len(stream_id) > MAX_STREAM_ID_LEN
             or type(seq) is not int
             or type(total) is not int
             or total <= 0
+            or total > self._max_chunks_per_stream
             or seq < 0
             or seq >= total
             or not isinstance(data, str)
@@ -130,12 +153,17 @@ class ChunkReassembler:
             self._streams.pop(stream_id, None)
             return None
 
+        # 多分片流不允许空分片，防止恶意用大量空分片占用表项内存
+        if total > 1 and len(decoded) == 0:
+            self._streams.pop(stream_id, None)
+            return None
+
         buf = self._streams.get(stream_id)
         if buf is None:
             if len(self._streams) >= self._max_inflight_streams:
                 oldest = next(iter(self._streams))
                 self._streams.pop(oldest, None)
-            buf = _StreamBuffer(total)
+            buf = _StreamBuffer(total, len(stream_id.encode("utf-8")))
             self._streams[stream_id] = buf
         elif buf.total != total:
             self._streams.pop(stream_id, None)
@@ -145,12 +173,18 @@ class ChunkReassembler:
             return None
 
         next_bytes = buf.received_bytes + len(decoded)
-        if next_bytes > self._max_payload_bytes:
+        next_metadata = buf.metadata_bytes + CHUNK_METADATA_OVERHEAD_BYTES
+        if (
+            next_bytes > self._max_payload_bytes
+            or next_metadata > self._max_stream_metadata_bytes
+            or len(buf.parts) + 1 > self._max_chunks_per_stream
+        ):
             self._streams.pop(stream_id, None)
             return None
 
         buf.parts[seq] = decoded
         buf.received_bytes = next_bytes
+        buf.metadata_bytes = next_metadata
 
         if len(buf.parts) < buf.total:
             return None

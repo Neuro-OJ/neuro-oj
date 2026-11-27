@@ -229,7 +229,7 @@ function statusIcon(status: string) {
                         @click.stop="copyText(item.stdout ?? null, '调试输出')">复制</UButton>
                     </div>
                     <pre
-                      class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.stdout }}</pre>
+                      class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-bg-sunken p-3 font-mono text-[11px] leading-relaxed text-text">{{ item.stdout }}</pre>
                     <p v-if="item.stdoutTruncated" class="mt-1 text-[11px] text-warning-text">调试输出已截断</p>
                   </div>
                 </div>

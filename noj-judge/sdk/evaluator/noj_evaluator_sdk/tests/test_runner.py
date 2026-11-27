@@ -838,6 +838,64 @@ class TestChunkedLargePayloadRpc(unittest.TestCase):
         finally:
             h.teardown()
 
+    def test_large_numeric_batch_below_limit_not_false_rejected(self):
+        """[0] * 700_000 实际 JSON 约 1.4 MB（< 16 MiB），不得被上界预检误拒。"""
+        from noj_sdk_common.chunking import ChunkReassembler
+
+        h = IpcHarness()
+        try:
+            batch = [0] * 700_000
+            t, res, err = h.start_call("echo_batch", batch)
+
+            deadline = time.monotonic() + 5.0
+            frames = []
+            while time.monotonic() < deadline:
+                raw_lines = [
+                    ln
+                    for ln in h.runner_stdout_buf.getvalue().splitlines()
+                    if ln.strip()
+                ]
+                if raw_lines:
+                    frames = [json.loads(ln) for ln in raw_lines]
+                    if frames[0].get("type") == "chunk" and len(frames) == frames[0].get("total"):
+                        break
+                time.sleep(0.01)
+
+            self.assertGreaterEqual(len(frames), 2)
+            reassembler = ChunkReassembler()
+            call_frame = None
+            for f in frames:
+                call_frame = reassembler.feed(f)
+            self.assertIsNotNone(call_frame)
+            assert call_frame is not None
+            self.assertEqual(len(call_frame["args"][0]), 700_000)
+
+            h.send_host_response({"type": "result", "id": call_frame["id"], "value": 700_000})
+            t.join(timeout=3.0)
+            self.assertFalse(t.is_alive())
+            self.assertNotIn("e", err)
+            self.assertEqual(res["v"], 700_000)
+        finally:
+            h.teardown()
+
+    def test_reassembler_rejects_excessive_and_empty_chunks(self):
+        """恶意超大 total 或多分片空载荷必须被拦截，不得在内存中累积状态。"""
+        from noj_sdk_common.chunking import ChunkReassembler
+
+        r = ChunkReassembler(max_payload_bytes=1 * 1024 * 1024)
+        # 1) total 超过允许分片上限：直接拒绝，不创建流缓冲
+        for seq in range(200):
+            out = r.feed(
+                {"type": "chunk", "stream_id": "flood", "seq": seq, "total": 100_000, "data": ""}
+            )
+            self.assertIsNone(out)
+        self.assertEqual(len(r._streams), 0)
+
+        # 2) total 合法但多分片携带空载荷：直接丢弃流，不保留空表项
+        out = r.feed({"type": "chunk", "stream_id": "empty-parts", "seq": 0, "total": 10, "data": ""})
+        self.assertIsNone(out)
+        self.assertEqual(len(r._streams), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
