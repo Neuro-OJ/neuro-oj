@@ -19,7 +19,11 @@ import {
   redisContainerRunArgs,
   shardDatabaseName,
 } from "../../scripts/test-launcher-resources.ts";
-import { buildManifest, junitPathFor } from "../../scripts/test-launcher.ts";
+import {
+  buildManifest,
+  junitPathFor,
+  resolveShardDiscoveryRoots,
+} from "../../scripts/test-launcher.ts";
 import {
   applyShardEnvironment,
   domainTargetNames,
@@ -810,4 +814,62 @@ Deno.test("test-launcher: 含空格与中文的工作区路径仍能探测功能
   } finally {
     Deno.removeSync(root, { recursive: true });
   }
+});
+
+Deno.test("test-launcher: --shard-index 与 --modules 仅用于 parallel 且严格校验", () => {
+  const sliced = parseLauncherArgs([
+    "parallel",
+    "--shards",
+    "4",
+    "--jobs",
+    "1",
+    "--shard-index",
+    "2",
+  ]);
+  assertEquals(sliced.shardCount, 4);
+  assertEquals(sliced.jobs, 1);
+  assertEquals(sliced.shardIndices, [2]);
+
+  const scoped = parseLauncherArgs([
+    "parallel",
+    "--shards",
+    "1",
+    "--jobs",
+    "1",
+    "--modules",
+    "access,problems,access",
+  ]);
+  assertEquals(scoped.modules, ["access", "problems"]);
+
+  assertThrows(
+    () => parseLauncherArgs(["test", "--shard-index", "1"]),
+    Error,
+    "--shard-index 只适用于 parallel",
+  );
+  assertThrows(
+    () => parseLauncherArgs(["test", "--modules", "access"]),
+    Error,
+    "--modules 只适用于 parallel",
+  );
+  assertThrows(
+    () =>
+      parseLauncherArgs(["parallel", "--shards", "2", "--shard-index", "3"]),
+    Error,
+    "超出分片总数",
+  );
+  assertThrows(
+    () => parseLauncherArgs(["parallel", "--modules", "not-a-module"]),
+    Error,
+    "未知模块",
+  );
+});
+
+Deno.test("test-launcher: 增量 --modules 发现根保守包含 tests/ 与 src/features", () => {
+  assertEquals(resolveShardDiscoveryRoots(undefined), undefined);
+  assertEquals(resolveShardDiscoveryRoots([]), undefined);
+  const roots = resolveShardDiscoveryRoots(["evaluations"]);
+  assert(roots !== undefined);
+  assert(roots.includes("tests"));
+  assert(roots.includes("src/features"));
+  assert(roots.some((r) => r.includes("evaluations")));
 });

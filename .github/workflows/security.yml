@@ -46,6 +46,9 @@ jobs:
     name: 检测依赖与代码改动
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       deps: ${{ steps.filter.outputs.deps }}
       codeql: ${{ steps.filter.outputs.codeql }}
@@ -73,8 +76,10 @@ jobs:
               - 'noj-ui/deno.lock'
               - '**/deno.json'
               - '**/deno.jsonc'
-              - 'noj-docs/package.json'
-              - 'noj-docs/package-lock.json'
+              - '**/package.json'
+              - '**/package-lock.json'
+              - '**/pyproject.toml'
+              - '**/requirements*.txt'
               - '.github/workflows/security.yml'
               - 'scripts/security/**'
             codeql:
@@ -97,7 +102,8 @@ jobs:
   # ===========================================================================
   dependency-review:
     name: 依赖变更审查（需 Dependency Graph）
-    if: ${{ github.event_name == 'pull_request' }}
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.deps == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -148,9 +154,11 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # 版本与本地基线一致，避免 advisory-db 解析行为随工具版本漂移。
+      # 使用预编译二进制替代 cargo install 源码编译（每次省 ~2m40s），并固定版本。
       - name: 安装 cargo-audit
-        run: cargo install cargo-audit --locked --version 0.22.2
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: cargo-audit@0.22.2
 
       - name: 审计 noj-judge/Cargo.lock
         working-directory: noj-judge

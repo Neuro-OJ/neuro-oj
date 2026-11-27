@@ -409,8 +409,10 @@ Deno.test("workflow: Core 回归只由完整分片执行，没有重复 legacy d
   assert(jobs.has("core-test-sharded"), "ci.yml 必须保留完整分片 job");
   const sharded = jobs.get("core-test-sharded")!;
   assert(
-    sharded.includes("deno task test:parallel --shards 4 --jobs 2"),
-    "完整分片必须以 4 片 2 并发执行全部 Core 测试",
+    sharded.includes(
+      "deno task test:parallel --shards 4 --jobs 1 --shard-index",
+    ) && sharded.includes("needs.changes.outputs.core-shards"),
+    "完整分片必须通过 matrix + --shards 4 --jobs 1 --shard-index 并行执行全部 Core 测试",
   );
   for (const legacy of LEGACY_DOMAIN_NAMES) {
     assert(
@@ -433,7 +435,8 @@ Deno.test("workflow: Core 回归只由完整分片执行，没有重复 legacy d
     "changes job 必须把真实变更路径交给选择器",
   );
   assert(
-    changesJob.includes("core-full") && changesJob.includes("e2e-domains"),
+    changesJob.includes("core-full") && changesJob.includes("core-shards") &&
+      changesJob.includes("e2e-domains"),
     "changes job 必须输出选择结果供下游 job 使用",
   );
 });
@@ -448,6 +451,9 @@ Deno.test("workflow: E2E job 按选择器结果运行，且选择器覆盖全部
   assert(
     changes.includes("e2e-domains") && changes.includes("e2e-browser"),
     "e2e.yml 必须输出域与浏览器选择结果",
+  );
+  const batchJobs = [...jobs.entries()].filter(([name]) =>
+    name.startsWith("e2e-api-")
   );
   for (const domain of E2E_API_DOMAINS) {
     if (domain === "browser") {
@@ -477,18 +483,49 @@ Deno.test("workflow: E2E job 按选择器结果运行，且选择器覆盖全部
       );
       continue;
     }
-    const job = jobs.get(`e2e-${domain}`);
-    assert(job, `e2e.yml 缺少 e2e-${domain} job`);
+    const dedicated = jobs.get(`e2e-${domain}`);
+    if (dedicated) {
+      assert(
+        dedicated.includes("needs.changes.outputs.e2e-domains") ||
+          dedicated.includes("always()"),
+        `e2e-${domain} 必须按选择结果运行`,
+      );
+      continue;
+    }
+    // 轻量标准环境 API 域可合并到 e2e-api-* 批次 job，但必须同时出现在 if 条件与 domains 列表中。
+    const matchedBatch = batchJobs.find(([, body]) =>
+      body.includes("needs.changes.outputs.e2e-domains") &&
+      body.includes(`'${domain}'`) &&
+      new RegExp(`domains:.*\\b${domain}\\b`).test(body)
+    );
     assert(
-      job.includes("needs.changes.outputs.e2e-domains") ||
-        job.includes("always()"),
-      `e2e-${domain} 必须按选择结果运行`,
+      matchedBatch,
+      `e2e.yml 缺少覆盖 ${domain} 域的独立 job 或 e2e-api-* 批次 job`,
     );
   }
   assert(
     jobs.get("e2e-cross-domain")?.includes("e2e-domains"),
     "cross-domain job 必须按选择结果运行",
   );
+});
+
+Deno.test("workflow: paths-filter 声明 pull-requests: read 且不使用顶层 OR 取反规则", () => {
+  for (
+    const [name, text] of [
+      ["ci.yml", CI_TEXT],
+      ["e2e.yml", E2E_TEXT],
+    ] as const
+  ) {
+    const changes = jobBlocks(text).get("changes")!;
+    assert(
+      changes.includes("pull-requests: read"),
+      `${name} 的 changes job 使用 dorny/paths-filter，必须声明 pull-requests: read`,
+    );
+    assert(
+      !/^\s*-\s*['"]!/m.test(changes),
+      `${name} 的 paths-filter 在默认 some(OR) 语义下不得写顶层 '!...' 取反条目（会匹配任意无关文件），应使用 picomatch 内联 '/**/!(*.md)'`,
+    );
+  }
 });
 
 Deno.test("workflow: 选择器路径分类覆盖受跟踪文件，没有无法归属的 Core/E2E 文件", async () => {

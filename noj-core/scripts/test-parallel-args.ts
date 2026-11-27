@@ -70,3 +70,32 @@ export function parseJobArgs(
   }
   return count;
 }
+
+/**
+ * 解析 `--shard-index`：从完整 N 分片计划中指定本机执行的 1-based 分片序号（支持逗号分隔如 `1,2`）。
+ *
+ * @param raw - 原始参数字符串
+ * @param shardCount - 完整计划的分片总数 N
+ */
+export function parseShardIndexSpec(raw: string, shardCount: number): number[] {
+  const parts = raw.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error("--shard-index 不能为空");
+  }
+  const indices: number[] = [];
+  const seen = new Set<number>();
+  for (const part of parts) {
+    const value = parsePositiveInteger(part, "--shard-index");
+    if (value > shardCount) {
+      throw new Error(
+        `--shard-index ${value} 超出分片总数 ${shardCount}（允许范围 1..${shardCount}）`,
+      );
+    }
+    if (seen.has(value)) {
+      throw new Error(`--shard-index 重复指定分片 ${value}`);
+    }
+    seen.add(value);
+    indices.push(value);
+  }
+  return indices;
+}

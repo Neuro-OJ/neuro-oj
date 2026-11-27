@@ -190,7 +190,18 @@ export async function discoverTestFiles(
       missingRoots: [],
     };
     try {
-      await walkTestFiles(normalizedRoot, root, discovery);
+      const targetPath = root ? `${normalizedRoot}/${root}` : normalizedRoot;
+      const stat = await Deno.stat(targetPath);
+      if (stat.isFile) {
+        const relativePath = normalizeTestPath(root);
+        if (isPerfExcluded(relativePath)) {
+          discovery.excluded.push(relativePath);
+        } else {
+          discovery.files.push(relativePath);
+        }
+      } else {
+        await walkTestFiles(normalizedRoot, root, discovery);
+      }
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) {
         // 迁移期模块根可能尚未创建；由启动器统一打印，避免每个根一条噪声。
@@ -426,4 +437,24 @@ export function auditShardPlan(plan: ShardPlan): string[] {
     }
   }
   return problems;
+}
+
+/**
+ * 从完整分片计划中选出本机要执行的分片（1-based 序号）。
+ * 未指定时返回全部 `plan.shards`。
+ */
+export function selectShardsByIndex(
+  plan: ShardPlan,
+  shardIndices?: readonly number[],
+): Shard[] {
+  if (!shardIndices || shardIndices.length === 0) return plan.shards;
+  return shardIndices.map((index) => {
+    const shard = plan.shards[index - 1];
+    if (!shard) {
+      throw new Error(
+        `分片序号 ${index} 超出范围（计划共 ${plan.shards.length} 片）`,
+      );
+    }
+    return shard;
+  });
 }

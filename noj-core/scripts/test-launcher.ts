@@ -37,6 +37,7 @@ import {
   pathsFor,
   profileEnvironment,
   resolveReportDirectory,
+  testRootsForDomain,
 } from "./test-launcher-args.ts";
 import {
   assertBootstrapObservation,
@@ -62,10 +63,13 @@ import {
   auditShardPlan,
   buildShardPlan,
   discoverTestFiles,
+  FEATURE_TEST_ROOT,
   type FileDurationBaseline,
   loadFileDurationBaseline,
+  selectShardsByIndex,
   type Shard,
   type ShardPlan,
+  SHARED_TEST_ROOTS,
 } from "./test-parallel-shards.ts";
 import { measurePhase } from "../../scripts/lib/test-timing.ts";
 import type { TestRunManifest } from "../../scripts/test-performance-report.ts";
@@ -536,11 +540,24 @@ async function loadBaseline(): Promise<FileDurationBaseline> {
   return baseline;
 }
 
+/** 计算分片发现根：增量模式保守纳入共享 tests/ 与 features 切片测试，防止跨切片回归漏跑。 */
+export function resolveShardDiscoveryRoots(
+  modules?: readonly string[],
+): string[] | undefined {
+  if (!modules || modules.length === 0) return undefined;
+  return [
+    ...SHARED_TEST_ROOTS,
+    FEATURE_TEST_ROOT,
+    ...modules.flatMap((target) => testRootsForDomain(target)),
+  ];
+}
+
 /** 发现并规划分片；任何覆盖缺口都直接失败，不允许"少跑但显示绿"。 */
 async function createShardPlan(options: LauncherOptions): Promise<ShardPlan> {
+  const customRoots = resolveShardDiscoveryRoots(options.modules);
   const discovery = await measurePhase(
     "core.launcher.discover",
-    () => discoverTestFiles(MODULE_ROOT),
+    () => discoverTestFiles(MODULE_ROOT, customRoots),
   );
   if (discovery.files.length === 0) {
     throw new Error("分片发现没有找到任何测试文件，拒绝假绿");
@@ -858,7 +875,15 @@ async function runParallel(
   // 清单的 startedAt/endedAt 是 wall clock（报告按时间排序），
   // durationMs 由两者相减；分片内部耗时仍用 measurePhase（performance.now）。
   const startedAt = Date.now();
-  const shardPlan = await createShardPlan(options);
+  const fullShardPlan = await createShardPlan(options);
+  const activeShards = selectShardsByIndex(fullShardPlan, options.shardIndices);
+  const shardPlan: ShardPlan = {
+    ...fullShardPlan,
+    shards: activeShards,
+    selectedFiles: [
+      ...new Set(activeShards.flatMap((shard) => shard.files)),
+    ].sort(),
+  };
   let resources: TestRunResources | undefined;
   let exitCode = 0;
   let failure: unknown;
@@ -873,10 +898,15 @@ async function runParallel(
       options,
       resourceView,
     );
+    const sliceNote = options.shardIndices
+      ? `，执行分片 ${
+        options.shardIndices.join(",")
+      }/${fullShardPlan.shardCount}`
+      : "";
     console.log(
       `[test-launcher] 分片计划已保存：${planPath}（文件 ${shardPlan.selectedFiles.length} 个，排除 perf ${shardPlan.excludedFiles.length} 个，并发 ${
         Math.min(options.jobs, shardPlan.shards.length)
-      }）`,
+      }${sliceNote}）`,
     );
     const outcome = await runShardsWithConcurrency(
       resources,
@@ -1070,7 +1100,15 @@ async function runDryRun(options: LauncherOptions): Promise<number> {
     ));
     return 0;
   }
-  const shardPlan = await createShardPlan(options);
+  const fullShardPlan = await createShardPlan(options);
+  const activeShards = selectShardsByIndex(fullShardPlan, options.shardIndices);
+  const shardPlan: ShardPlan = {
+    ...fullShardPlan,
+    shards: activeShards,
+    selectedFiles: [
+      ...new Set(activeShards.flatMap((shard) => shard.files)),
+    ].sort(),
+  };
   const resourcePlan = dryRunResourcePlan(plan, shardPlan, reportDir);
   console.log(JSON.stringify(
     {

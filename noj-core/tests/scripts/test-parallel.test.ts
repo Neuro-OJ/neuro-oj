@@ -9,6 +9,7 @@ import { assertEquals, assertThrows } from "jsr:@std/assert@^1";
 import {
   parseJobArgs,
   parseShardArgs,
+  parseShardIndexSpec,
 } from "../../scripts/test-parallel-args.ts";
 import {
   DEFAULT_JOB_COUNT,
@@ -68,4 +69,13 @@ Deno.test("test-parallel: 自定义上限可被显式传入（便于资源受限
     "超过上限",
   );
   assertEquals(parseJobArgs([], 1, 1), 1);
+});
+
+Deno.test("test-parallel: --shard-index 校验合法范围、去重与格式", () => {
+  assertEquals(parseShardIndexSpec("1", 4), [1]);
+  assertEquals(parseShardIndexSpec("2,4", 4), [2, 4]);
+  assertThrows(() => parseShardIndexSpec("", 4), Error, "不能为空");
+  assertThrows(() => parseShardIndexSpec("0", 4), Error, "≥1 的整数");
+  assertThrows(() => parseShardIndexSpec("5", 4), Error, "超出分片总数");
+  assertThrows(() => parseShardIndexSpec("2,2", 4), Error, "重复指定");
 });

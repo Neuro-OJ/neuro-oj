@@ -87,7 +87,7 @@ class WasiSchedulingTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
     def test_snapshot_mismatch_still_fails(self):
-        for shard in ("standard", "analysis"):
+        for shard in ("standard", "analysis", "all"):
             with self.subTest(shard=shard):
                 result, _ = self.run_check(shard, "snapshot")
                 self.assertNotEqual(result.returncode, 0)

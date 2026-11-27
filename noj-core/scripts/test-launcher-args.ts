@@ -11,7 +11,11 @@
  * - `--dry-run`：只输出选择与资源计划，不读取 `TEST_*`、不创建任何外部资源。
  */
 import { resolve } from "node:path";
-import { parseJobArgs, parseShardArgs } from "./test-parallel-args.ts";
+import {
+  parseJobArgs,
+  parseShardArgs,
+  parseShardIndexSpec,
+} from "./test-parallel-args.ts";
 import {
   DEFAULT_JOB_COUNT,
   DEFAULT_SHARD_COUNT,
@@ -43,6 +47,10 @@ export interface LauncherOptions {
   domain?: string;
   /** 分片数：全部所选测试划分成多少片（默认 4）。 */
   shardCount: number;
+  /** 可选：仅执行完整计划中的指定 1-based 分片（用于 CI 多机并行）。 */
+  shardIndices?: number[];
+  /** 可选：仅发现指定目标模块及迁移入口（用于 PR 增量 CI）。 */
+  modules?: string[];
   /** 并行度：同时运行多少片（默认 2）。 */
   jobs: number;
   dryRun: boolean;
@@ -320,6 +328,8 @@ export function parseLauncherArgs(args: string[]): LauncherOptions {
 
   let shardCount = DEFAULT_SHARD_COUNT;
   let jobs = DEFAULT_JOB_COUNT;
+  let shardIndexRaw: string | undefined;
+  let modulesRaw: string | undefined;
   let shardsProvided = false;
   let jobsProvided = false;
   let dryRun = false;
@@ -360,6 +370,18 @@ export function parseLauncherArgs(args: string[]): LauncherOptions {
       jobsProvided = true;
       continue;
     }
+    if (arg === "--shard-index") {
+      const raw = rest[++i];
+      if (raw === undefined) throw new Error("--shard-index 缺少数值");
+      shardIndexRaw = raw;
+      continue;
+    }
+    if (arg === "--modules") {
+      const raw = rest[++i];
+      if (raw === undefined) throw new Error("--modules 缺少模块列表");
+      modulesRaw = raw;
+      continue;
+    }
     testArgs.push(arg);
   }
 
@@ -371,11 +393,41 @@ export function parseLauncherArgs(args: string[]): LauncherOptions {
     if (jobsProvided) {
       throw new Error("--jobs 只适用于 parallel 测试入口");
     }
+    if (shardIndexRaw !== undefined) {
+      throw new Error("--shard-index 只适用于 parallel 测试入口");
+    }
+    if (modulesRaw !== undefined) {
+      throw new Error("--modules 只适用于 parallel 测试入口");
+    }
+  }
+  const shardIndices = shardIndexRaw !== undefined
+    ? parseShardIndexSpec(shardIndexRaw, shardCount)
+    : undefined;
+  let modules: string[] | undefined;
+  if (modulesRaw !== undefined) {
+    const parsed = [
+      ...new Set(modulesRaw.split(",").map((m) => m.trim()).filter(Boolean)),
+    ];
+    if (parsed.length === 0) {
+      throw new Error("--modules 不能为空");
+    }
+    for (const target of parsed) {
+      if (!resolveDomainTarget(target)) {
+        throw new Error(
+          `--modules 包含未知模块：${target}（可选：${
+            domainTargetNames().join("、")
+          }）`,
+        );
+      }
+    }
+    modules = parsed;
   }
   return {
     mode,
     domain,
     shardCount,
+    ...(shardIndices ? { shardIndices } : {}),
+    ...(modules ? { modules } : {}),
     jobs,
     dryRun,
     runPerf,
