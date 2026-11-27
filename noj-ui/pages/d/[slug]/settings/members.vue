@@ -245,7 +245,7 @@ useSeoMeta({ title: '成员管理 - 域设置' });
       </p>
 
       <!-- 搜索与条数筛选卡片栏 -->
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel p-3.5 shadow-card">
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel dark:bg-bg-panel p-3.5 shadow-card">
         <form class="flex flex-wrap items-center gap-2 grow max-w-md" @submit.prevent="onSearch">
           <UInput
             v-model="search"
@@ -274,7 +274,7 @@ useSeoMeta({ title: '成员管理 - 域设置' });
       </div>
 
       <!-- 成员表格 -->
-      <div class="rounded-lg border border-border bg-white dark:bg-bg-panel shadow-card overflow-hidden">
+      <div class="rounded-lg border border-border bg-bg-panel dark:bg-bg-panel shadow-card overflow-hidden">
         <AdminTable
           :columns="[
             { key: 'username', label: '账号' },
@@ -325,7 +325,7 @@ useSeoMeta({ title: '成员管理 - 域设置' });
       </div>
 
       <!-- 分页栏 -->
-      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-white dark:bg-bg-panel px-4 py-3 shadow-card text-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-bg-panel dark:bg-bg-panel px-4 py-3 shadow-card text-sm">
         <p class="text-xs text-text-muted tabular-nums">
           共 <strong class="text-text">{{ totalCount }}</strong> 位成员 · 第 {{ page }} / {{ totalPages }} 页
         </p>

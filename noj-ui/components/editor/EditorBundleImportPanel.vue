@@ -55,7 +55,7 @@ async function handleFile(file: File) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4 bg-white border border-border rounded px-6 py-5">
+  <div class="flex flex-col gap-4 bg-bg-panel border border-border rounded px-6 py-5">
     <div>
       <h2 class="text-sm font-semibold text-text">上传题目包</h2>
       <p class="mt-1 text-xs text-text-secondary leading-relaxed">

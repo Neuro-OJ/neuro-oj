@@ -91,7 +91,7 @@ function statusIcon(status: string) {
 <template>
   <section
     v-if="cases.length"
-    class="overflow-hidden rounded-xl border border-border bg-white"
+    class="overflow-hidden rounded-xl border border-border bg-bg-panel"
     aria-labelledby="submission-case-results-title"
   >
     <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-bg-page px-4 py-3">

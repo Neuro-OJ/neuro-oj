@@ -1,389 +1,314 @@
 <template>
-    <div class="w-full max-w-[380px] relative">
-        <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
-        <div class="bg-white border border-border rounded-lg p-8">
-            <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">{{ t('auth.register') }}</h1>
+  <div class="w-full max-w-[380px] relative">
+    <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
+    <div class="bg-bg-panel border border-border rounded-lg p-8">
+      <h1
+        class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">{{ t('auth.register') }}</h1>
 
-            <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
-            <div
-                v-if="registerRestricted"
-                class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-md text-13px text-amber-800"
-            >
-                <div class="flex items-start gap-2">
-                    <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 mt-0.5 text-amber-600" />
-                    <span>{{ registerRestricted }}</span>
-                </div>
-            </div>
+      <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
+      <div
+        v-if="registerRestricted"
+        class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-md text-13px text-amber-800"
+      >
+        <div class="flex items-start gap-2">
+          <UIcon name="i-lucide-triangle-alert" class="size-4 shrink-0 mt-0.5 text-amber-600" />
+          <span>{{ registerRestricted }}</span>
+        </div>
+      </div>
 
-            <p class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
-            <form @submit.prevent="handleRegister">
-                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
-                    <AuthTextInput
-                        id="username"
-                        v-model="form.username"
-                        :label="t('auth.username')"
-                        :placeholder="t('auth.usernamePlaceholder')"
-                        autocomplete="username"
-                        :disabled="loading"
-                        :error="fieldErrors.username"
-                        @focus="fieldErrors.username = ''"
-                    >
-                        <template #icon><UIcon name="i-lucide-user" class="size-4.5" /></template>
-                    </AuthTextInput>
-                </div>
+      <p
+        class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
+      <form @submit.prevent="handleRegister">
+        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
+          <AuthTextInput
+            id="username"
+            v-model="form.username"
+            :label="t('auth.username')"
+            :placeholder="t('auth.usernamePlaceholder')"
+            autocomplete="username"
+            :disabled="loading"
+            :error="fieldErrors.username"
+            @focus="fieldErrors.username = ''"
+          >
+            <template #icon>
+              <UIcon name="i-lucide-user" class="size-4.5" />
+            </template>
+          </AuthTextInput>
+        </div>
 
-                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
-                    <AuthTextInput
-                        id="email"
-                        v-model="form.email"
-                        type="email"
-                        :label="t('auth.email')"
-                        :placeholder="t('auth.emailPlaceholder')"
-                        autocomplete="email"
-                        :disabled="loading || isEmailLocked"
-                        :error="fieldErrors.email"
-                        @focus="fieldErrors.email = ''"
-                    >
-                        <template #icon><UIcon name="i-lucide-mail" class="size-4.5" /></template>
-                    </AuthTextInput>
-                </div>
+        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
+          <AuthTextInput
+            id="email"
+            v-model="form.email"
+            type="email"
+            :label="t('auth.email')"
+            :placeholder="t('auth.emailPlaceholder')"
+            autocomplete="email"
+            :disabled="loading || isEmailLocked"
+            :error="fieldErrors.email"
+            @focus="fieldErrors.email = ''"
+          >
+            <template #icon>
+              <UIcon name="i-lucide-mail" class="size-4.5" />
+            </template>
+          </AuthTextInput>
+        </div>
 
-                <!-- TODO 验证码 -->
+        <!-- TODO 验证码 -->
 
-                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
-                    <AuthPasswordField
-                        id="password"
-                        v-model="form.password"
-                        :label="t('auth.password')"
-                        :placeholder="t('auth.passwordPlaceholder')"
-                        autocomplete="new-password"
-                        :disabled="loading"
-                        :error="fieldErrors.password"
-                        @focus="fieldErrors.password = ''"
-                        @blur="validatePasswordField"
-                    />
-                </div>
+        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
+          <AuthPasswordField
+            id="password"
+            v-model="form.password"
+            :label="t('auth.password')"
+            :placeholder="t('auth.passwordPlaceholder')"
+            autocomplete="new-password"
+            :disabled="loading"
+            :error="fieldErrors.password"
+            @focus="fieldErrors.password = ''"
+            @blur="validatePasswordField"
+          />
+        </div>
 
-                <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
-                    <AuthPasswordField
-                        id="confirmPassword"
-                        v-model="form.confirmPassword"
-                        :label="t('auth.confirmPassword')"
-                        :placeholder="t('auth.confirmPasswordPlaceholder')"
-                        autocomplete="new-password"
-                        :disabled="loading"
-                        :error="fieldErrors.confirmPassword"
-                        @focus="fieldErrors.confirmPassword = ''"
-                    />
-                </div>
+        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
+          <AuthPasswordField
+            id="confirmPassword"
+            v-model="form.confirmPassword"
+            :label="t('auth.confirmPassword')"
+            :placeholder="t('auth.confirmPasswordPlaceholder')"
+            autocomplete="new-password"
+            :disabled="loading"
+            :error="fieldErrors.confirmPassword"
+            @focus="fieldErrors.confirmPassword = ''"
+          />
+        </div>
 
-                <!-- PIPL 合规硬门槛：未同意条款不可注册 -->
-                <div class="mb-5 flex items-start gap-2">
-                    <UCheckbox
-                        v-model="acceptedLegal"
-                        :disabled="loading"
-                        aria-label="同意服务条款与隐私政策"
-                        data-testid="accepted-legal"
-                    />
-                    <span class="text-sm text-text-secondary leading-relaxed">
+        <!-- PIPL 合规硬门槛：未同意条款不可注册 -->
+        <div class="mb-5 flex items-start gap-2">
+          <UCheckbox
+            v-model="acceptedLegal"
+            :disabled="loading"
+            aria-label="同意服务条款与隐私政策"
+            data-testid="accepted-legal"
+          />
+          <span class="text-sm text-text-secondary leading-relaxed">
                         我已年满 14 周岁，或在监护人陪同下已阅读并同意
                         <NuxtLink to="/legal/terms" target="_blank" class="text-primary no-underline hover:underline">《服务条款》</NuxtLink>
                         与
                         <NuxtLink to="/legal/privacy" target="_blank" class="text-primary no-underline hover:underline">《隐私政策》</NuxtLink>
                     </span>
-                </div>
+        </div>
 
-                <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"  :disabled="loading || !!registerRestricted || !acceptedLegal">
+        <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"
+          :disabled="loading || !!registerRestricted || !acceptedLegal">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? t('auth.registering') : t('auth.register') }}
                 </UButton>
-            </form>
+      </form>
 
-            <div v-if="oauthProviders.length" class="mt-5 flex flex-col gap-2">
-                <div class="flex items-center gap-3 text-xs text-text-muted">
-                    <span class="h-px flex-1 bg-border" />
-                    <span>{{ t('auth.thirdPartyRegister') }}</span>
-                    <span class="h-px flex-1 bg-border" />
-                </div>
-                <UButton
-                    v-for="provider in oauthProviders"
-                    :key="provider.id"
-                    color="neutral"
-                    variant="outline"
-                    block
-                    :disabled="oauthLoading || !acceptedLegal"
-                    @click="startOAuth(provider.id)"
-                >{{ t('auth.registerWith', { name: provider.name }) }}</UButton>
-            </div>
+      <div v-if="oauthProviders.length" class="mt-5 flex flex-col gap-2">
+        <div class="flex items-center gap-3 text-xs text-text-muted">
+          <span class="h-px flex-1 bg-border" />
+          <span>{{ t('auth.thirdPartyRegister') }}</span>
+          <span class="h-px flex-1 bg-border" />
+        </div>
+        <UButton
+          v-for="provider in oauthProviders"
+          :key="provider.id"
+          color="neutral"
+          variant="outline"
+          block
+          :disabled="oauthLoading || !acceptedLegal"
+          @click="startOAuth(provider.id)"
+        >{{ t('auth.registerWith', { name: provider.name }) }}</UButton>
+      </div>
 
-            <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.3s_both]">
+      <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.3s_both]">
                 {{ t('auth.haveAccount') }} <NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.loginNow') }}</NuxtLink>
             </p>
-        </div>
     </div>
+  </div>
 </template>
 
 <script setup lang="ts">
-import { validatePassword, validatePasswordMatch, validateEmail } from "~/utils/auth/validatePassword"
-import { extractApiError } from "~/utils/server/apiError"
-import { submitRegistration } from "~/utils/auth/registerFlow"
-import { workspaceInvitationToken, workspacePath } from "~/utils/domain/workspace/workspace"
-import type { WorkspaceInvitationPreview } from "~/utils/domain/workspace/workspace"
+import { validateEmail, validatePassword, validatePasswordMatch } from '~/utils/auth/validatePassword';
+import { extractApiError } from '~/utils/server/apiError';
+import { submitRegistration } from '~/utils/auth/registerFlow';
+import { workspaceInvitationToken, workspacePath } from '~/utils/domain/workspace/workspace';
+import type { WorkspaceInvitationPreview } from '~/utils/domain/workspace/workspace';
 
-definePageMeta({ layout: "auth" })
+definePageMeta({ layout: 'auth' });
 
-const router = useRouter()
-const route = useRoute()
-const auth = useAuth()
-const { api } = useApi()
-const invitationToken = ref("")
-const invitation = ref<WorkspaceInvitationPreview | null>(null)
+const router = useRouter();
+const route = useRoute();
+const auth = useAuth();
+const { api } = useApi();
+const invitationToken = ref('');
+const invitation = ref<WorkspaceInvitationPreview | null>(null);
 const isEmailLocked = computed(() =>
-    invitation.value?.mode === 'email' && typeof invitation.value.email === 'string' && invitation.value.email.length > 0
-)
-const { t } = useI18n()
-const oauthProviders = ref<Array<{ id: string; name: string }>>([])
-const oauthLoading = ref(false)
+  invitation.value?.mode === 'email' && typeof invitation.value.email === 'string' && invitation.value.email.length > 0
+);
+const { t } = useI18n();
+const oauthProviders = ref<Array<{ id: string; name: string }>>([]);
+const oauthLoading = ref(false);
 
 // issue #426：注册受限原因（空串表示可正常注册）
-const registerRestricted = ref("正在检查注册政策…")
+const registerRestricted = ref('正在检查注册政策…');
 
 onMounted(async () => {
-    try {
-        invitationToken.value = workspaceInvitationToken(route.hash) ?? ""
-        if (new URLSearchParams(route.hash.replace(/^#/, "")).has("invitation") && !invitationToken.value) throw new Error("邀请链接无效")
-        if (invitationToken.value) {
-            const preview = (await api.post<{ data: WorkspaceInvitationPreview }>(
-                "/api/v1/auth/domain-invitation",
-                { token: invitationToken.value },
-                { silent: true }
-            )).data
-            invitation.value = preview
-            if (preview.mode === 'email' && typeof preview.email === 'string') {
-                form.email = preview.email
-            }
-        }
-        const [providers, status] = await Promise.all([
-            auth.getOAuthProviders(),
-            auth.getRegisterStatus(),
-        ])
-        oauthProviders.value = invitationToken.value ? [] : providers
-        if (status.reason === "register_disabled") {
-            registerRestricted.value = t('auth.registerDisabled')
-        } else if (status.reason === "email_unconfigured") {
-            registerRestricted.value = t('auth.emailUnconfigured')
-        } else if (status.reason === "admin_only") {
-            registerRestricted.value = "此实例由平台管理员开设账号"
-        } else if (status.reason === "invitation_required" && !invitation.value?.can_register) {
-            registerRestricted.value = "注册需要有效邀请"
-        } else if (invitation.value && !invitation.value.can_register) {
-            registerRestricted.value = "此邀请不能用于创建账号，请使用已有账号登录"
-        } else {
-            registerRestricted.value = ""
-        }
-    } catch (cause) {
-        oauthProviders.value = []
-        registerRestricted.value = extractApiError(cause).message
+  try {
+    invitationToken.value = workspaceInvitationToken(route.hash) ?? '';
+    if (new URLSearchParams(route.hash.replace(/^#/, '')).has('invitation') && !invitationToken.value) {
+      throw new Error('邀请链接无效');
     }
-})
+    if (invitationToken.value) {
+      const preview = (await api.post<{ data: WorkspaceInvitationPreview }>(
+        '/api/v1/auth/domain-invitation',
+        { token: invitationToken.value },
+        { silent: true },
+      )).data;
+      invitation.value = preview;
+      if (preview.mode === 'email' && typeof preview.email === 'string') {
+        form.email = preview.email;
+      }
+    }
+    const [providers, status] = await Promise.all([
+      auth.getOAuthProviders(),
+      auth.getRegisterStatus(),
+    ]);
+    oauthProviders.value = invitationToken.value ? [] : providers;
+    if (status.reason === 'register_disabled') {
+      registerRestricted.value = t('auth.registerDisabled');
+    } else if (status.reason === 'email_unconfigured') {
+      registerRestricted.value = t('auth.emailUnconfigured');
+    } else if (status.reason === 'admin_only') {
+      registerRestricted.value = '此实例由平台管理员开设账号';
+    } else if (status.reason === 'invitation_required' && !invitation.value?.can_register) {
+      registerRestricted.value = '注册需要有效邀请';
+    } else if (invitation.value && !invitation.value.can_register) {
+      registerRestricted.value = '此邀请不能用于创建账号，请使用已有账号登录';
+    } else {
+      registerRestricted.value = '';
+    }
+  } catch (cause) {
+    oauthProviders.value = [];
+    registerRestricted.value = extractApiError(cause).message;
+  }
+});
 
 function startOAuth(provider: string) {
-    // PIPL：注册页 OAuth 属新建账号入口，须先同意条款（后端亦强校验）
-    if (!acceptedLegal.value) {
-        setError("请先阅读并同意《服务条款》与《隐私政策》")
-        return
-    }
-    oauthLoading.value = true
-    window.location.assign(
-        `/api/v1/auth/oauth/${encodeURIComponent(provider)}?accepted_legal=true`
-    )
+  // PIPL：注册页 OAuth 属新建账号入口，须先同意条款（后端亦强校验）
+  if (!acceptedLegal.value) {
+    setError('请先阅读并同意《服务条款》与《隐私政策》');
+    return;
+  }
+  oauthLoading.value = true;
+  window.location.assign(
+    `/api/v1/auth/oauth/${encodeURIComponent(provider)}?accepted_legal=true`,
+  );
 }
 
 const form = reactive({
-    username: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-})
-const loading = ref(false)
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+});
+const loading = ref(false);
 
 // 已同意服务条款与隐私政策（PIPL 硬门槛；未勾选禁止提交）
-const acceptedLegal = ref(false)
+const acceptedLegal = ref(false);
 
-const { error, setError, clearError } = useFormError(3000)
+const { error, setError, clearError } = useFormError(3000);
 
 const fieldErrors = reactive({
-    username: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-})
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+});
 
 function validate(): boolean {
-    let valid = true
-    fieldErrors.username = ""
-    fieldErrors.email = ""
-    fieldErrors.password = ""
-    fieldErrors.confirmPassword = ""
+  let valid = true;
+  fieldErrors.username = '';
+  fieldErrors.email = '';
+  fieldErrors.password = '';
+  fieldErrors.confirmPassword = '';
 
-    if (!form.username.trim()) {
-        fieldErrors.username = "请输入用户名"
-        valid = false
-    } else if (!/^[a-zA-Z0-9_]{3,30}$/.test(form.username.trim())) {
-        fieldErrors.username = "用户名仅允许字母、数字和下划线，长度 3-30"
-        valid = false
+  if (!form.username.trim()) {
+    fieldErrors.username = '请输入用户名';
+    valid = false;
+  } else if (!/^[a-zA-Z0-9_]{3,30}$/.test(form.username.trim())) {
+    fieldErrors.username = '用户名仅允许字母、数字和下划线，长度 3-30';
+    valid = false;
+  }
+
+  const emailError = validateEmail(form.email);
+  if (emailError) {
+    fieldErrors.email = emailError;
+    valid = false;
+  }
+
+  if (!validatePasswordField()) {
+    valid = false;
+  }
+
+  if (!form.confirmPassword) {
+    fieldErrors.confirmPassword = '请确认密码';
+    valid = false;
+  } else {
+    const matchError = validatePasswordMatch(form.password, form.confirmPassword);
+    if (matchError) {
+      fieldErrors.confirmPassword = matchError;
+      valid = false;
     }
+  }
 
-    const emailError = validateEmail(form.email)
-    if (emailError) {
-        fieldErrors.email = emailError
-        valid = false
-    }
-
-    if (!validatePasswordField()) {
-        valid = false
-    }
-
-    if (!form.confirmPassword) {
-        fieldErrors.confirmPassword = "请确认密码"
-        valid = false
-    } else {
-        const matchError = validatePasswordMatch(form.password, form.confirmPassword)
-        if (matchError) {
-            fieldErrors.confirmPassword = matchError
-            valid = false
-        }
-    }
-
-    return valid
+  return valid;
 }
 
 function validatePasswordField(): boolean {
-    const pwResult = validatePassword(form.password, {
-        username: form.username.trim(),
-        email: form.email.trim(),
-    })
-    fieldErrors.password = pwResult.valid ? "" : pwResult.message
-    return pwResult.valid
+  const pwResult = validatePassword(form.password, {
+    username: form.username.trim(),
+    email: form.email.trim(),
+  });
+  fieldErrors.password = pwResult.valid ? '' : pwResult.message;
+  return pwResult.valid;
 }
 
 async function handleRegister() {
-    setError("")
+  setError('');
 
-    if (!validate()) return
+  if (!validate()) return;
 
-    if (!acceptedLegal.value) {
-        setError("请先阅读并同意《服务条款》与《隐私政策》")
-        return
+  if (!acceptedLegal.value) {
+    setError('请先阅读并同意《服务条款》与《隐私政策》');
+    return;
+  }
+
+  loading.value = true;
+  try {
+    // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/auth/registerFlow.ts）
+    const result = await submitRegistration(
+      {
+        register: (username, email, password, accepted) =>
+          auth.register(username, email, password, accepted, invitationToken.value || undefined),
+        login: (username, password) => auth.login(username, password),
+      },
+      form.username.trim(),
+      form.email.trim(),
+      form.password,
+      acceptedLegal.value,
+    );
+    if (result) {
+      const destination = new URL(result.destination, window.location.origin);
+      if (invitation.value) destination.searchParams.set('redirect', workspacePath(invitation.value.domain_slug));
+      router.replace(destination.pathname + destination.search);
     }
-
-    loading.value = true
-    try {
-        // 注册 → 自动登录 → 按邮件发送结果跳转（流程逻辑见 utils/auth/registerFlow.ts）
-        const result = await submitRegistration(
-            {
-                register: (username, email, password, accepted) =>
-                    auth.register(username, email, password, accepted, invitationToken.value || undefined),
-                login: (username, password) => auth.login(username, password),
-            },
-            form.username.trim(),
-            form.email.trim(),
-            form.password,
-            acceptedLegal.value,
-        )
-        if (result) {
-            const destination = new URL(result.destination, window.location.origin)
-            if (invitation.value) destination.searchParams.set("redirect", workspacePath(invitation.value.domain_slug))
-            router.replace(destination.pathname + destination.search)
-        }
-    } catch (e: unknown) {
-        setError(extractApiError(e).message)
-    } finally {
-        loading.value = false
-    }
+  } catch (e: unknown) {
+    setError(extractApiError(e).message);
+  } finally {
+    loading.value = false;
+  }
 }
 </script>
-
-<style>
-/* Vue Transition: slide (用于 error banner) */
-.slide-enter-active {
-    transition: all 0.3s ease-out;
-}
-.slide-leave-active {
-    transition: all 0.2s ease-in;
-}
-.slide-enter-from {
-    transform: translateX(-50%) translateY(-20px);
-    opacity: 0;
-}
-.slide-leave-to {
-    transform: translateX(-50%) translateY(-20px);
-    opacity: 0;
-}
-
-/* Vue Transition: drop (用于 field errors) */
-.drop-enter-active {
-    animation: dropIn 0.25s ease both;
-}
-.drop-leave-active {
-    animation: dropOut 0.2s ease both;
-}
-
-@keyframes dropIn {
-    from {
-        opacity: 0;
-        transform: translateY(-8px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-@keyframes dropOut {
-    from {
-        opacity: 1;
-        transform: translateY(0);
-    }
-    to {
-        opacity: 0;
-        transform: translateY(8px);
-    }
-}
-
-/* Vue Transition: fade (保留用于可能的将来 overlay) */
-.fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.2s;
-}
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
-
-/* Vue Transition: icon (用于密码可见切换) */
-.icon-enter-active,
-.icon-leave-active {
-    transition: opacity 0.18s linear, transform 0.18s linear;
-}
-.icon-enter-from {
-    opacity: 0;
-    transform: translate(-6px, -6px);
-}
-.icon-leave-to {
-    opacity: 0;
-    transform: translate(6px, 6px);
-}
-
-/* @keyframes fadeInUp (用于入场动画) */
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(12px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-</style>

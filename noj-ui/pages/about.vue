@@ -80,7 +80,7 @@ function formatNumber(n?: number): string {
             :href="repoUrl"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-4 py-2 text-sm font-medium text-text no-underline hover:bg-bg-sunken transition-colors shadow-xs"
+            class="inline-flex items-center gap-1.5 rounded-md border border-border bg-bg-panel px-4 py-2 text-sm font-medium text-text no-underline hover:bg-bg-sunken transition-colors shadow-xs"
           >
             <UIcon name="i-lucide-github" class="size-4" />
             GitHub
@@ -105,7 +105,7 @@ function formatNumber(n?: number): string {
       <div
         v-for="item in statItems"
         :key="item.key"
-        class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col items-center gap-2 text-center"
+        class="bg-bg-panel border border-border rounded-xl shadow-card p-5 flex flex-col items-center gap-2 text-center"
       >
         <UIcon :name="item.icon" class="size-5 text-primary" />
         <template v-if="item.value !== undefined">
@@ -125,7 +125,7 @@ function formatNumber(n?: number): string {
         与传统 OJ 的核心区别
       </h2>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
+        <article class="bg-bg-panel border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
           <div class="w-10 h-10 rounded-lg bg-primary-bg text-primary flex items-center justify-center shrink-0">
             <UIcon name="i-lucide-grid" class="size-5" />
           </div>
@@ -138,7 +138,7 @@ function formatNumber(n?: number): string {
           </p>
         </article>
 
-        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
+        <article class="bg-bg-panel border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
           <div class="w-10 h-10 rounded-lg bg-primary-bg text-primary flex items-center justify-center shrink-0">
             <UIcon name="i-lucide-box" class="size-5" />
           </div>
@@ -151,7 +151,7 @@ function formatNumber(n?: number): string {
           </p>
         </article>
 
-        <article class="bg-white border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
+        <article class="bg-bg-panel border border-border rounded-xl shadow-card p-5 flex flex-col gap-3 hover:shadow-dropdown hover:-translate-y-0.5 transition-all">
           <div class="w-10 h-10 rounded-lg bg-primary-bg text-primary flex items-center justify-center shrink-0">
             <UIcon name="i-lucide-monitor" class="size-5" />
           </div>
@@ -172,7 +172,7 @@ function formatNumber(n?: number): string {
         <UIcon name="i-lucide-server" class="size-4.5 text-primary" />
         技术架构
       </h2>
-      <div class="bg-white border border-border rounded-xl shadow-card p-6">
+      <div class="bg-bg-panel border border-border rounded-xl shadow-card p-6">
         <div class="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-3">
           <div class="flex-1 bg-bg-page border border-border rounded-lg px-4 py-3.5">
             <div class="font-semibold text-text flex items-center gap-1.5 mb-1">
@@ -232,7 +232,7 @@ function formatNumber(n?: number): string {
         <UIcon name="i-lucide-github" class="size-4.5 text-primary" />
         开源社区
       </h2>
-      <div class="bg-white border border-border rounded-xl shadow-card p-6">
+      <div class="bg-bg-panel border border-border rounded-xl shadow-card p-6">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <p class="text-sm text-text-secondary">
             本项目在 GitHub 上开源（AGPL-3.0），欢迎 Star、Issue 和 Pull Request。
@@ -290,35 +290,35 @@ function formatNumber(n?: number): string {
         常见问题
       </h2>
       <div class="flex flex-col gap-2 max-w-[760px]">
-        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+        <details class="group rounded-xl border border-border bg-bg-panel px-5 py-3.5">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
             如何开始做题？
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
           </summary>
           <p class="mt-2 text-sm leading-relaxed text-text-secondary">注册并登录后，进入「题库」选择题目，点击「去解题」进入做题页，选择语言并提交代码即可。</p>
         </details>
-        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+        <details class="group rounded-xl border border-border bg-bg-panel px-5 py-3.5">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
             提交后状态一直显示 Pending？
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
           </summary>
           <p class="mt-2 text-sm leading-relaxed text-text-secondary">评测任务进入队列后由评测 Worker 依次处理，可在「评测队列」页查看实时状态；评测完成后提交详情会自动更新。</p>
         </details>
-        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+        <details class="group rounded-xl border border-border bg-bg-panel px-5 py-3.5">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
             密码有什么要求？
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
           </summary>
           <p class="mt-2 text-sm leading-relaxed text-text-secondary">密码至少 8 位，需同时包含大小写字母和数字，且不能与用户名或邮箱前缀相同。</p>
         </details>
-        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+        <details class="group rounded-xl border border-border bg-bg-panel px-5 py-3.5">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
             如何参加竞赛？
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />
           </summary>
           <p class="mt-2 text-sm leading-relaxed text-text-secondary">在「竞赛大厅」查看进行中或未开始的竞赛，点击报名；开赛后即可进入做题页参赛。</p>
         </details>
-        <details class="group rounded-xl border border-border bg-white px-5 py-3.5">
+        <details class="group rounded-xl border border-border bg-bg-panel px-5 py-3.5">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-text select-none [&::-webkit-details-marker]:hidden">
             支持哪些评测语言？
             <UIcon name="i-lucide-chevron-down" class="size-4 text-text-muted transition-transform group-open:rotate-180" />

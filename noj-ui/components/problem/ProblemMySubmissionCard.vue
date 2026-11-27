@@ -41,7 +41,7 @@ watch(
 </script>
 
 <template>
-  <section class="rounded-xl border border-border bg-white p-5">
+  <section class="rounded-xl border border-border bg-bg-panel p-5">
     <div class="mb-3 flex items-center justify-between gap-3">
       <h2 class="text-sm font-semibold text-text">我的提交</h2>
       <NuxtLink

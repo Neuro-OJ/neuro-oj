@@ -219,7 +219,7 @@ await Promise.all([load("pending"), load("resolved"), load("dismissed")])
 
     <!-- 举报卡片 -->
     <div v-else class="space-y-3">
-      <article v-for="row in lists[activeTab]" :key="row.report.id" class="rounded-lg border border-border bg-white p-5 shadow-card">
+      <article v-for="row in lists[activeTab]" :key="row.report.id" class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
         <!-- 头部：工单ID + 类型 + 时间 -->
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
           <div class="flex flex-wrap items-center gap-2 text-xs text-text-muted">

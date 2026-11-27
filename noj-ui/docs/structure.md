@@ -52,7 +52,7 @@ components/
 ├── community/         8  社区与私信（CommentCard / ReportModal / Index / PostDetail / 通知与举报详情）
 ├── ranking/           4  榜单与签到（RankBadge / CheckinCard / CheckinLeaderboard / CheckinContributionGraph）
 ├── search/            2  搜索（SearchPalette / SearchResultItem）
-├── auth/              3  认证（AuthFormCard / AuthTextInput / AuthPasswordField）
+├── auth/              9  认证与账号设置（AuthFormCard / AuthTextInput / AuthPasswordField / UserByokSettings / Auth*SettingsSection）
 ├── legal/             1  合规（LegalConsentModal）
 ├── editor/           13  出题编辑器（Editor* 工具栏/侧栏/运行时 / MonacoEditor / ProblemSampleEditor）
 ├── admin/            14  后台骨架（Admin* 表格/表单/抽屉/命令面板/实例导航 / 回调目录 / LLM 别名）

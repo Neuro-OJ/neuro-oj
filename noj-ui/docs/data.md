@@ -30,12 +30,12 @@
 `CLIENT_ONLY_ROUTES`（改清单改这里，别在页面里散着写）。当前覆盖：
 
 - 实例管理与所有 `/admin/**`（依赖客户端状态，SSR 无意义且可能暴露敏感数据）。
-- 题目编辑器 `/problems/*/edit`、`/problems/new/*`、`/my/problems`。
-- 域内作答与比赛 `/d/*/solve/*`、`/d/*/contests/*/solve/*`。
-- 设置与队列 `/settings`、`/d/*/queue`、`/d/*/settings/*`。
-- 社区通知与举报
-  `/messages`、`/community/notifications*`、`/community/reports/*`（含域内同名路径）。
-- 本人提交目录 `/submissions`。
+- 题目编辑与绑定：`/d/*/editor/**`、`/d/*/problems/new`、`/d/*/problem-bindings`。
+- 域内作答与评测任务：`/d/*/solve/*`、`/d/*/contests/*/solve/*`、`/d/*/submission-jobs/**`、`/d/*/queue`。
+- 题单/教务编辑：`/d/*/trainings/new`、`/d/*/trainings/*/edit`、`/d/*/classrooms/*/contest-remediation`。
+- 设置与成员：`/settings`、`/join`、`/d/*/members`、`/d/*/settings`、`/d/*/settings/announcements`、`/d/*/settings/community`。
+- 社区管理、通知与举报：`/community/notifications*`、`/community/reports/*`（含域内 `/d/*/community/manage`、`/d/*/community/notifications*`、`/d/*/community/reports/*`）。
+- 跨域提交详情：`/my/submissions/**`（列表 `/my/submissions` 保持 SSR）。
 
 ## 路由守卫
 

@@ -165,7 +165,7 @@ const columns: AdminColumn[] = [
       <template #actions="{ row }">
         <div class="flex items-center justify-end">
           <button
-            class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-error-text bg-white border-[1.5px] border-border rounded cursor-pointer transition-all hover:border-error-text disabled:opacity-50 disabled:cursor-not-allowed"
+            class="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-semibold text-error-text bg-bg-panel border-[1.5px] border-border rounded cursor-pointer transition-all hover:border-error-text disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="deleting"
             title="删除"
             @click="confirmDelete(row as unknown as IpBan)"

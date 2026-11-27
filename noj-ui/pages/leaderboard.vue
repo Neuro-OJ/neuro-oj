@@ -95,7 +95,7 @@ function setCheckinMonth(month: string) {
       </template>
 
       <!-- 榜单表格 -->
-      <div class="bg-white border border-border rounded-lg shadow-card overflow-x-auto">
+      <div class="bg-bg-panel border border-border rounded-lg shadow-card overflow-x-auto">
         <table class="w-full border-collapse">
           <thead>
             <tr>

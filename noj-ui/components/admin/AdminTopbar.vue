@@ -81,7 +81,7 @@ const currentBreadcrumb = computed(() => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 flex items-center justify-between h-14 px-4 sm:px-6 bg-white/95 backdrop-blur border-b border-border transition-colors">
+  <header class="sticky top-0 z-40 flex items-center justify-between h-14 px-4 sm:px-6 bg-bg-panel/95 backdrop-blur border-b border-border transition-colors">
     <!-- 左侧：侧栏切换与面包屑 -->
     <div class="flex items-center gap-3 min-w-0">
       <button
@@ -118,7 +118,7 @@ const currentBreadcrumb = computed(() => {
           <UIcon name="i-lucide-search" class="size-3.5" />
           <span>快速直达管理功能...</span>
         </div>
-        <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-white border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">
+        <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-bg-panel border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">
           Ctrl K
         </kbd>
       </button>

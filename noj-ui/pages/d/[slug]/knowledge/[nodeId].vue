@@ -222,7 +222,7 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
           aria-label="知识点关系"
           class="grid gap-4 sm:grid-cols-2"
         >
-          <div v-if="node.requires.length" class="rounded-xl border border-border bg-white p-4">
+          <div v-if="node.requires.length" class="rounded-xl border border-border bg-bg-panel p-4">
             <h2 class="mb-2 text-sm font-semibold text-text">前置知识点</h2>
             <ul class="flex flex-wrap gap-2">
               <li v-for="id in node.requires" :key="id">
@@ -235,7 +235,7 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
               </li>
             </ul>
           </div>
-          <div v-if="node.dependents.length" class="rounded-xl border border-border bg-white p-4">
+          <div v-if="node.dependents.length" class="rounded-xl border border-border bg-bg-panel p-4">
             <h2 class="mb-2 text-sm font-semibold text-text">后续知识点</h2>
             <ul class="flex flex-wrap gap-2">
               <li v-for="id in node.dependents" :key="id">
@@ -251,7 +251,7 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
         </section>
 
         <!-- 讲解：仅内容包提供 doc 时显示；markdown + 公式走既有净化管线 -->
-        <section v-if="node.doc" aria-labelledby="knowledge-doc" class="rounded-xl border border-border bg-white p-5 sm:p-6">
+        <section v-if="node.doc" aria-labelledby="knowledge-doc" class="rounded-xl border border-border bg-bg-panel p-5 sm:p-6">
           <h2 id="knowledge-doc" class="mb-4 text-lg font-semibold text-text">讲解</h2>
           <MarkdownRenderer :content="node.doc" />
           <div v-if="firstProblem" class="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
@@ -260,7 +260,7 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
           </div>
         </section>
 
-        <section aria-labelledby="knowledge-ladder" class="overflow-hidden rounded-xl border border-border bg-white">
+        <section aria-labelledby="knowledge-ladder" class="overflow-hidden rounded-xl border border-border bg-bg-panel">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
             <h2 id="knowledge-ladder" class="font-semibold text-text">题目阶梯</h2>
             <span class="text-xs text-text-muted tabular-nums">

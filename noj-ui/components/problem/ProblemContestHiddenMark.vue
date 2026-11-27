@@ -17,7 +17,7 @@ import { CONTEST_HIDDEN_TIP } from '~/utils/domain/contest/contestHidden'
 <template>
   <UTooltip :text="CONTEST_HIDDEN_TIP" :delay-duration="100">
     <span
-      class="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-white/80 px-1.5 py-0.5 text-[10px] font-medium text-text-secondary"
+      class="inline-flex shrink-0 items-center gap-1 rounded border border-border bg-bg-panel/80 px-1.5 py-0.5 text-[10px] font-medium text-text-secondary"
     >
       <UIcon name="i-lucide-eye-off" class="size-3" />
       已收编

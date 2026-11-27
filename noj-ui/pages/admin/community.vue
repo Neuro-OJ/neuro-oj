@@ -452,7 +452,7 @@ await load()
       </div>
     </div>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+    <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">部署预设</h2></div>
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <USelect v-model="preset" :items="[{ label: '公开社区', value: 'public' }, { label: '私域社区', value: 'private' }, { label: '只读知识库', value: 'knowledge' }]" :disabled="applyingPreset" class="min-w-[140px]" />
@@ -461,7 +461,7 @@ await load()
       </div>
     </section>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+    <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">独立开关</h2></div>
       <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="item in BOOLEAN_SETTINGS" :key="item.settingKey" class="flex items-center justify-between gap-3 rounded border p-3" :class="isBooleanDirty(item.configKey) ? 'border-amber-400 bg-amber-50/40' : 'border-border'">
@@ -499,7 +499,7 @@ await load()
       </div>
     </section>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+    <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-flag" class="size-4.5" /><h2 class="font-semibold">待审内容</h2></div>
       <div v-if="loadingPending" class="py-6 text-sm text-text-secondary">加载中…</div>
       <div v-else-if="pendingPosts.length === 0" class="py-6 text-sm text-text-secondary">暂无待审内容。</div>
@@ -520,7 +520,7 @@ await load()
       </div>
     </section>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+    <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-message-square" class="size-4.5" /><h2 class="font-semibold">待审评论</h2></div>
       <div v-if="loadingPendingComments" class="py-6 text-sm text-text-secondary">加载中…</div>
       <div v-else-if="pendingComments.length === 0" class="py-6 text-sm text-text-secondary">暂无待审评论。</div>
@@ -540,7 +540,7 @@ await load()
       </div>
     </section>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+    <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-flag" class="size-4.5" /><h2 class="font-semibold">待处理举报</h2></div>
       <div v-if="reports.length === 0" class="py-6 text-sm text-text-secondary">暂无待处理举报。</div>
       <div v-else class="mt-4 space-y-3">
@@ -555,7 +555,7 @@ await load()
       </div>
     </section>
 
-    <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+    <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
       <div class="flex items-center gap-2"><UIcon name="i-lucide-shield-check" class="size-4.5" /><h2 class="font-semibold">处罚管理（社区禁言）</h2></div>
       <div class="mt-4 grid gap-4 lg:grid-cols-2">
         <div>
@@ -565,7 +565,7 @@ await load()
               <UIcon name="i-lucide-search" class="absolute left-2.5 top-2.5 text-text-secondary size-3.5" />
               <input v-model="sanctionUserQuery" class="w-full rounded border border-border py-2 pl-8 pr-3 text-sm" placeholder="搜索用户名（至少 2 个字符）" @input="searchSanctionUser">
             </div>
-            <ul v-if="sanctionUserResults.length > 0" class="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded border border-border bg-white shadow-modal">
+            <ul v-if="sanctionUserResults.length > 0" class="absolute z-10 mt-1 max-h-40 w-full overflow-y-auto rounded border border-border bg-bg-panel shadow-modal">
               <li v-for="u in sanctionUserResults" :key="u.id" class="cursor-pointer px-3 py-2 text-sm hover:bg-primary-bg" @mousedown.prevent="selectSanctionUser(u)">{{ u.username }}</li>
             </ul>
           </div>

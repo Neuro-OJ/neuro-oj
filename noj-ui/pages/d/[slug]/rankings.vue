@@ -26,7 +26,7 @@ useSeoMeta({ title: '域排行榜' });
         <span class="text-sm font-medium text-text">我的当前排名</span>
       </div>
       <div class="flex items-center gap-4 text-xs tabular-nums">
-        <span class="rounded bg-white/80 px-2.5 py-1 font-semibold text-primary border border-border shadow-2xs">
+        <span class="rounded bg-bg-panel/80 px-2.5 py-1 font-semibold text-primary border border-border shadow-2xs">
           第 <strong class="text-sm">{{ mine.data.value.data.rank }}</strong> 名
         </span>
         <span class="text-text-secondary">

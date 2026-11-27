@@ -94,7 +94,7 @@ onMounted(() => {
     <p v-else-if="error" class="mt-8 py-12 text-center text-text-secondary">{{ error }}</p>
 
     <template v-else-if="report">
-      <div class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
+      <div class="mt-4 rounded-lg border border-border bg-bg-panel p-6 shadow-card">
         <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-4">
           <div class="flex items-center gap-2">
             <UIcon name="i-lucide-flag" class="text-primary size-5" />

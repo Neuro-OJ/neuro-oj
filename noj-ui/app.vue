@@ -1,62 +1,43 @@
 <template>
-    <UApp>
-        <NuxtLayout>
-            <NuxtPage />
-        </NuxtLayout>
-    </UApp>
+  <UApp>
+    <NuxtLayout>
+      <NuxtPage />
+    </NuxtLayout>
+  </UApp>
 </template>
 
 <script setup lang="ts">
-import { useBanStatus } from "~/composables/useBanStatus"
+import { useBanStatus } from '~/composables/useBanStatus';
+import { resolvePageTitle } from '~/utils/page-title';
 
-const { fetch } = useBanStatus()
-const { isLoggedIn } = useAuth()
-const { t } = useI18n()
+const { fetch } = useBanStatus();
+const { isLoggedIn } = useAuth();
+const { t } = useI18n();
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
-  fetch(false)
+  fetch(false);
 }
 
 // 登录/登出状态变化时重新获取封禁状态（SPA 导航不会重载页面，需手动刷新）
 watch(isLoggedIn, () => {
   if (import.meta.client) {
-    fetch()
+    fetch();
   }
-})
+});
 
 // ─── 页面级标题（WCAG 2.4.2）：按路由路径生成描述性 <title>，替代全站统一标题 ───
-const route = useRoute()
-
-const TITLE_RULES: { match: string; key: string }[] = [
-  { match: "/login", key: "auth.login" },
-  { match: "/register", key: "auth.register" },
-  { match: "/problems", key: "problem.title" },
-  { match: "/submissions", key: "submission.title" },
-  { match: "/contests", key: "contest.title" },
-  { match: "/community", key: "nav.community" },
-  { match: "/leaderboard", key: "nav.ranking" },
-  { match: "/about", key: "nav.about" },
-  { match: "/", key: "nav.home" },
-]
-
-function resolvePageTitle(path: string): string {
-  // 精确匹配优先，其次前缀匹配（动态路由如 /problems/1001、/submissions/{id}）
-  const exact = TITLE_RULES.find((r) => r.match === path)
-  if (exact) return `${t(exact.key)} - Neuro OJ`
-  const byPrefix = TITLE_RULES.find((r) => r.match !== "/" && path.startsWith(r.match))
-  return byPrefix ? `${t(byPrefix.key)} - Neuro OJ` : "Neuro OJ"
-}
+const route = useRoute();
 
 useHead({
-  title: computed(() => resolvePageTitle(route.path)),
+  title: computed(() => resolvePageTitle(route.path, t)),
   htmlAttrs: { lang: 'zh-CN' },
   meta: [
     { property: 'og:title', content: 'Neuro OJ' },
     { property: 'og:description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },
     { property: 'og:type', content: 'website' },
   ],
-})
+});
 </script>
 
 <style>

@@ -26,7 +26,7 @@ const items = computed<Item[]>(() => [
 </script>
 
 <template>
-  <aside class="w-12 flex-shrink-0 bg-white border-r border-border flex flex-col items-center py-2 gap-1">
+  <aside class="w-12 flex-shrink-0 bg-bg-panel border-r border-border flex flex-col items-center py-2 gap-1">
     <button
       v-for="item in items"
       :key="item.key"
