@@ -84,11 +84,8 @@ export type {
 } from "./types/contests.ts";
 export { assertContestExists } from "./services/contest-anti-cheat.ts";
 export {
-  comparePredictionVectors,
   DEFAULT_SIMILARITY_THRESHOLD,
   detectSimilarPairs,
-  detectSimilarPredictions,
-  extractSortablePythonSource,
   findSimilarSubmissions,
   fingerprint,
   MAX_SIMILAR_PAIR_LIMIT,
@@ -99,12 +96,8 @@ export {
 export type {
   ContestSimilarSubmissionsResult,
   DetectSimilarPairsOptions,
-  DetectSimilarPredictionsOptions,
   FindSimilarSubmissionsOptions,
   FingerprintSet,
-  PredictionCandidate,
-  PredictionComparisonMetrics,
-  PredictionSimilarityPair,
   SimilarityCandidate,
   SimilarSubmissionPair,
 } from "./services/contest-similarity.ts";

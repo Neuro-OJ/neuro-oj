@@ -58,6 +58,11 @@ class RpcClient:
                 self._pending[call_id] = q
         return q
 
+    def is_pending(self, call_id: str) -> bool:
+        """检查 `call_id` 是否为当前活跃的 pending 调用。"""
+        with self._lock:
+            return call_id in self._pending
+
     def pop_pending(self, call_id: str) -> Queue | None:
         """取出并移除 pending 队列（响应到达或超时清理时调用）。"""
         with self._lock:

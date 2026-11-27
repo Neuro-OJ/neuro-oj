@@ -57,22 +57,11 @@ export {
 } from "./contest-similarity/normalize.ts";
 export { fingerprint, similarity } from "./contest-similarity/fingerprint.ts";
 export { detectSimilarPairs } from "./contest-similarity/detect.ts";
-export {
-  comparePredictionVectors,
-  detectSimilarPredictions,
-} from "./contest-similarity/prediction.ts";
-export { extractSortablePythonSource } from "./contest-similarity/artifact-source.ts";
 export type {
   DetectSimilarPairsOptions,
   SimilarityCandidate,
   SimilarSubmissionPair,
 } from "./contest-similarity/types.ts";
-export type {
-  DetectSimilarPredictionsOptions,
-  PredictionCandidate,
-  PredictionComparisonMetrics,
-  PredictionSimilarityPair,
-} from "./contest-similarity/prediction.ts";
 export type { FingerprintSet } from "./contest-similarity/fingerprint.ts";
 
 /** `findSimilarSubmissions()` 的可选项。 */

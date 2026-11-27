@@ -1,6 +1,7 @@
 // 产物 ZIP 内 Python 源码提取与确定性拼接（供复核与代码查重）。
 
-import { DEFAULT_MAX_RAW_CODE_CHARS } from "./lexicon.ts";
+/** 默认最大源码提取字符数（与代码相似度单份源码预算保持一致）。 */
+export const DEFAULT_MAX_ARTIFACT_SOURCE_CHARS = 64 * 1024;
 
 const IGNORED_PATH_SEGMENTS = new Set([
   "__pycache__",
@@ -23,11 +24,11 @@ function isExcludedPath(filePath: string): boolean {
 
 /**
  * 过滤产物 ZIP 中的虚拟环境、缓存、测试及非 `.py` 文件，按路径字典序确定性拼接源码，
- * 并截断至 `maxChars`（默认 `DEFAULT_MAX_RAW_CODE_CHARS`）。
+ * 并截断至 `maxChars`（默认 `DEFAULT_MAX_ARTIFACT_SOURCE_CHARS`）。
  */
 export function extractSortablePythonSource(
   files: Record<string, string>,
-  maxChars: number = DEFAULT_MAX_RAW_CODE_CHARS,
+  maxChars: number = DEFAULT_MAX_ARTIFACT_SOURCE_CHARS,
 ): string {
   const paths = Object.keys(files)
     .filter((p) => !isExcludedPath(p))

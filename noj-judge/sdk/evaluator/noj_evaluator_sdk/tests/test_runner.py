@@ -768,6 +768,33 @@ class TestSolutionLogCapture(unittest.TestCase):
             sys.stderr = orig_stderr
             h.teardown()
 
+    def test_unknown_call_id_logs_dropped_without_metadata_growth(self):
+        """未知 call_id 的 log 帧（含空 data + truncated=True）必须被直接丢弃，不得累积字典状态。"""
+        h = IpcHarness()
+        try:
+            for idx in range(500):
+                h.send_host_response(
+                    {
+                        "type": "log",
+                        "stream": "stdout",
+                        "data": "",
+                        "call_id": f"forged-{idx}",
+                        "truncated": True,
+                    }
+                )
+            # 触发一次合法调用并等待返回，确保前面所有 forged log 帧均已被 reader 线程消费
+            t1, res1, _ = h.start_call("solve", 1)
+            f1 = h.wait_for_frames(1)[0]
+            h.send_host_response({"type": "result", "id": f1["id"], "value": 42})
+            t1.join(timeout=2)
+            self.assertEqual(res1["v"], 42)
+
+            self.assertEqual(len(h.runner._call_log_truncated), 0)
+            self.assertEqual(len(h.runner._call_logs), 0)
+            self.assertEqual(len(h.runner._call_log_bytes), 0)
+        finally:
+            h.teardown()
+
 
 class TestChunkedLargePayloadRpc(unittest.TestCase):
     """P2-1: 超过 1 MiB 的 call 参数与 result 返回值透明分片传输与重组。"""

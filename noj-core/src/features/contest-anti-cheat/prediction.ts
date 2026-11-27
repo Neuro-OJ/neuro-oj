@@ -1,6 +1,6 @@
 // 预测提交向量查重：一致率、Cohen's Kappa 与共同错误重合度（抗高准确率误报）。
 
-import { BadRequestError } from "../../../../shared/base/errors.ts";
+import { BadRequestError } from "../../shared/base/errors.ts";
 
 /** 参与预测结果查重的提交候选。 */
 export interface PredictionCandidate {

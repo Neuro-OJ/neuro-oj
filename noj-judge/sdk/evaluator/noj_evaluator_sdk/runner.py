@@ -66,6 +66,7 @@ MISSING_FUNCTION_REASON = "not_registered"
 
 MAX_CALL_LOG_BYTES = 8 * 1024
 MAX_TOTAL_LOG_BYTES = 1 * 1024 * 1024
+MAX_LOG_CHUNKS_PER_BUCKET = 256
 
 _HOOK_INSTALLED = False
 
@@ -175,6 +176,9 @@ class SolutionRunner:
         return logs
 
     def _append_log(self, key: str, data: str, frame_truncated: bool) -> None:
+        # 仅接受启动期空桶（""）或当前活跃 pending call 的日志，防止恶意伪造大量未知 call_id 耗尽内存
+        if key != "" and not self._rpc.is_pending(key):
+            return
         with self._log_lock:
             if frame_truncated:
                 self._call_log_truncated[key] = True
@@ -195,7 +199,10 @@ class SolutionRunner:
                 chunk_bytes = len(chunk.encode("utf-8"))
                 self._call_log_truncated[key] = True
             if chunk:
-                self._call_logs.setdefault(key, []).append(chunk)
+                bucket = self._call_logs.setdefault(key, [])
+                if len(bucket) >= MAX_LOG_CHUNKS_PER_BUCKET:
+                    bucket[:] = ["".join(bucket)]
+                bucket.append(chunk)
                 self._call_log_bytes[key] = used + chunk_bytes
                 self._total_log_bytes += chunk_bytes
 

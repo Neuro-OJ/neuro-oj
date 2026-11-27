@@ -11,6 +11,7 @@ import type { FeatureDefinition } from "./shared/feature.ts";
 import * as artifactRetention from "./features/artifact-retention/index.ts";
 import * as byok from "./features/byok/index.ts";
 import * as checkin from "./features/checkin/index.ts";
+import * as contestAntiCheat from "./features/contest-anti-cheat/index.ts";
 import * as evaluationFeedback from "./features/evaluation-feedback/index.ts";
 import * as knowledge from "./features/knowledge/index.ts";
 import * as legal from "./features/legal/index.ts";
@@ -27,4 +28,5 @@ export const FEATURES: readonly FeatureDefinition[] = [
   byok.feature,
   evaluationFeedback.feature,
   artifactRetention.feature,
+  contestAntiCheat.feature,
 ];
