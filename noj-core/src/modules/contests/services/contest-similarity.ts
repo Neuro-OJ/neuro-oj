@@ -33,36 +33,32 @@ import { getDb } from "../../../shared/db/connection.ts";
 import { submissions, users } from "../../../shared/db/schema.ts";
 import { assertContestExists } from "./contest-anti-cheat.ts";
 import {
+  collectSimilarPairs,
   DEFAULT_MAX_RAW_CODE_CHARS,
   DEFAULT_MAX_SIMILARITY_SUBMISSIONS,
   MIN_PAIRABLE_CODE_CHARS,
-} from "./contest-similarity/lexicon.ts";
-import { collectSimilarPairs } from "./contest-similarity/detect.ts";
-import type {
-  SimilarityCandidate,
-  SimilarSubmissionPair,
-} from "./contest-similarity/types.ts";
-
+  resolveLimit,
+  resolveThreshold,
+  type SimilarityCandidate,
+  type SimilarSubmissionPair,
+} from "../../../features/contest-anti-cheat/index.ts";
 import { BadRequestError } from "../../../shared/base/errors.ts";
-import { resolveLimit, resolveThreshold } from "./contest-similarity/detect.ts";
 
-// 算法与纯函数拆在同目录 `contest-similarity/` 下，此处仅保留查询入口与门面导出。
+// 算法引擎已迁入 `src/features/contest-anti-cheat/`，此处仅保留竞赛查询入口与存量门面兼容导出。
 export {
   DEFAULT_SIMILARITY_THRESHOLD,
+  detectSimilarPairs,
+  fingerprint,
   MAX_SIMILAR_PAIR_LIMIT,
-} from "./contest-similarity/lexicon.ts";
-export {
   normalizeCode,
-  normalizeCodeBlocks,
-} from "./contest-similarity/normalize.ts";
-export { fingerprint, similarity } from "./contest-similarity/fingerprint.ts";
-export { detectSimilarPairs } from "./contest-similarity/detect.ts";
+  similarity,
+} from "../../../features/contest-anti-cheat/index.ts";
 export type {
   DetectSimilarPairsOptions,
+  FingerprintSet,
   SimilarityCandidate,
   SimilarSubmissionPair,
-} from "./contest-similarity/types.ts";
-export type { FingerprintSet } from "./contest-similarity/fingerprint.ts";
+} from "../../../features/contest-anti-cheat/index.ts";
 
 /** `findSimilarSubmissions()` 的可选项。 */
 export interface FindSimilarSubmissionsOptions {

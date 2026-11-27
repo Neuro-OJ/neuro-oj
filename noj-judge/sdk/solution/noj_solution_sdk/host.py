@@ -702,8 +702,8 @@ def _execute_call_forked(
             sel.close()
         except Exception:
             pass
-        if final_frame is None:
-            _kill_pid_group(pid)
+        # 无论成功、异常还是超时，统一清理子进程所属进程组，防止后台派生子进程残留
+        _kill_pid_group(pid)
         _, wait_status = os.waitpid(pid, 0)
         with _ACTIVE_CHILD_LOCK:
             _ACTIVE_CHILD_PID = None

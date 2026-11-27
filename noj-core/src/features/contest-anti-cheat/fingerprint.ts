@@ -1,6 +1,6 @@
 // 指纹与相似度：哈希、k-gram、winnowing 指纹、Jaccard 相似度。
 
-import { BadRequestError } from "../../../../shared/base/errors.ts";
+import { BadRequestError } from "../../shared/base/errors.ts";
 import { DEFAULT_K, DEFAULT_WINDOW } from "./lexicon.ts";
 
 /** 32 位 FNV-1a，用于把 token 字符串压成定长数值。 */

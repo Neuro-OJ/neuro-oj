@@ -1,6 +1,6 @@
 // 配对检测：分桶、逐对比较、阈值过滤与结果排序（纯函数，不访问数据库）。
 
-import { BadRequestError } from "../../../../shared/base/errors.ts";
+import { BadRequestError } from "../../shared/base/errors.ts";
 import {
   DEFAULT_K,
   DEFAULT_MAX_TOKENS,

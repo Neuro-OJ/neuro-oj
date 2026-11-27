@@ -727,6 +727,48 @@ class TestHostProcess(unittest.TestCase):
         finally:
             self._cleanup(proc, path)
 
+    def test_fork_per_call_cleans_up_descendant_processes_after_success(self):
+        """fork_per_call 正常返回后，也必须清理子进程派生的后台后代进程组。"""
+        entry = textwrap.dedent("""
+            import subprocess
+            from noj_solution_sdk import register
+
+            @register
+            def spawn_and_return():
+                p = subprocess.Popen(["sleep", "20"])
+                return p.pid
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        descendant_pid = None
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(
+                proc, {"type": "call", "id": "bg-1", "fn": "spawn_and_return", "args": []}
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["id"], "bg-1")
+            descendant_pid = resp["value"]
+            self.assertIsInstance(descendant_pid, int)
+
+            deadline = time.monotonic() + 2.0
+            alive = True
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(descendant_pid, 0)
+                    time.sleep(0.05)
+                except ProcessLookupError:
+                    alive = False
+                    break
+            self.assertFalse(alive, f"后台子进程 {descendant_pid} 在调用成功后仍残留")
+        finally:
+            if isinstance(descendant_pid, int):
+                try:
+                    os.kill(descendant_pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            self._cleanup(proc, path)
+
 
 if __name__ == "__main__":
     unittest.main()

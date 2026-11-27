@@ -1,6 +1,9 @@
 import { assert, assertEquals } from "jsr:@std/assert@^1";
-import { detectSimilarPairs, normalizeCodeBlocks } from "../../index.ts";
-import { collectSimilarPairs } from "../../services/contest-similarity/detect.ts";
+import {
+  collectSimilarPairs,
+  detectSimilarPairs,
+  normalizeCodeBlocks,
+} from "./index.ts";
 
 const BUBBLE_SOLUTION = `def solve(n, nums):
     for i in range(n):

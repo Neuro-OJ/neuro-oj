@@ -21,3 +21,23 @@ export {
   DEFAULT_MAX_ARTIFACT_SOURCE_CHARS,
   extractSortablePythonSource,
 } from "./artifact-source.ts";
+export {
+  DEFAULT_MAX_RAW_CODE_CHARS,
+  DEFAULT_MAX_SIMILARITY_SUBMISSIONS,
+  DEFAULT_SIMILARITY_THRESHOLD,
+  MAX_SIMILAR_PAIR_LIMIT,
+  MIN_PAIRABLE_CODE_CHARS,
+} from "./lexicon.ts";
+export { normalizeCode, normalizeCodeBlocks } from "./normalize.ts";
+export { fingerprint, type FingerprintSet, similarity } from "./fingerprint.ts";
+export {
+  collectSimilarPairs,
+  detectSimilarPairs,
+  resolveLimit,
+  resolveThreshold,
+} from "./detect.ts";
+export type {
+  DetectSimilarPairsOptions,
+  SimilarityCandidate,
+  SimilarSubmissionPair,
+} from "./types.ts";

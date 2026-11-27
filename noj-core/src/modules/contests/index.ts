@@ -90,7 +90,6 @@ export {
   fingerprint,
   MAX_SIMILAR_PAIR_LIMIT,
   normalizeCode,
-  normalizeCodeBlocks,
   similarity,
 } from "./services/contest-similarity.ts";
 export type {
