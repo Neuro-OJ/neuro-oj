@@ -799,6 +799,30 @@ class TestHostProcess(unittest.TestCase):
         finally:
             self._cleanup(proc, path)
 
+    def test_shared_mode_self_referential_return_rejected_immediately(self):
+        """shared 模式下返回自引用容器，必须在估算/序列化阶段立即返回 Rejected 而非超时。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+
+            @register
+            def cyclic():
+                a = []
+                a.append(a)
+                return a
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "shared"])
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(
+                proc, {"type": "call", "id": "cyc-1", "fn": "cyclic", "args": []}
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["id"], "cyc-1")
+            self.assertEqual(resp["code"], "Rejected")
+        finally:
+            self._cleanup(proc, path)
+
 
 if __name__ == "__main__":
     unittest.main()

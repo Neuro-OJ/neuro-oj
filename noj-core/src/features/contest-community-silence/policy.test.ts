@@ -1,15 +1,12 @@
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
   COMMUNITY_SILENCE_MODES,
-  isValidContestConfig,
-} from "../../types/contests.ts";
-import { normalizeContestConfig } from "../../services/contest-input.ts";
-import {
   doesContestSilenceActor,
   resolveCommunitySilenceMode,
-} from "../../services/problem-secrecy.ts";
+} from "./index.ts";
+import { isValidContestConfig } from "../../modules/contests/index.ts";
 
-Deno.test("contest-silence-policy: community_silence_mode 校验与规范化", () => {
+Deno.test("contest-community-silence: community_silence_mode 校验与解析", () => {
   for (const mode of COMMUNITY_SILENCE_MODES) {
     assertEquals(
       isValidContestConfig("kaggle", {
@@ -17,16 +14,6 @@ Deno.test("contest-silence-policy: community_silence_mode 校验与规范化", (
         community_silence_mode: mode,
       }),
       true,
-    );
-    assertEquals(
-      normalizeContestConfig("kaggle", {
-        scoreboard_scope: "self",
-        community_silence_mode: mode,
-      }),
-      {
-        scoreboard_scope: "self",
-        community_silence_mode: mode,
-      },
     );
   }
   assertEquals(
@@ -49,7 +36,7 @@ Deno.test("contest-silence-policy: community_silence_mode 校验与规范化", (
   );
 });
 
-Deno.test("contest-silence-policy: pending/ended 不静默，running 按模式与参赛状态分流", () => {
+Deno.test("contest-community-silence: pending/ended 不静默，running 按模式与参赛状态分流", () => {
   for (const status of ["pending", "ended"] as const) {
     for (const silenceMode of COMMUNITY_SILENCE_MODES) {
       for (const isParticipant of [false, true]) {
@@ -66,7 +53,6 @@ Deno.test("contest-silence-policy: pending/ended 不静默，running 按模式�
     }
   }
 
-  // secrecy_enabled=false 时不静默
   assertEquals(
     doesContestSilenceActor({
       secrecyEnabled: false,
@@ -76,8 +62,6 @@ Deno.test("contest-silence-policy: pending/ended 不静默，running 按模式�
     }),
     false,
   );
-
-  // running + secrecy_enabled=true 按三种模式分流
   assertEquals(
     doesContestSilenceActor({
       secrecyEnabled: true,

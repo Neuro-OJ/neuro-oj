@@ -8,20 +8,8 @@ import { DEFAULT_DOMAIN_ID } from "../../../shared/workspace/types.ts";
 import type { AnyColumn } from "drizzle-orm";
 import { getDb } from "../../../shared/db/connection.ts";
 import type { Executor } from "../../../shared/db/executor.ts";
-import {
-  contestParticipants,
-  contestProblems,
-  contests,
-} from "../../../shared/db/schema.ts";
-import {
-  COMMUNITY_SILENCE_MODES,
-  type CommunitySilenceMode,
-  type ContestStatus,
-} from "../types/contests.ts";
-import {
-  runningWindowCondition,
-  unendedWindowCondition,
-} from "./contest-window.ts";
+import { contestProblems, contests } from "../../../shared/db/schema.ts";
+import { unendedWindowCondition } from "./contest-window.ts";
 
 /** 触发保密的一场比赛（足够渲染"已被关联到竞赛 …"提示）。 */
 export type PublicContestSecrecyRef = {
@@ -145,47 +133,17 @@ export async function isProblemInUnendedPublicContest(
   return rows.length > 0;
 }
 
-/** 解析比赛配置中的赛时社区静默模式，缺省或未知值回落为 domain_all。 */
-export function resolveCommunitySilenceMode(
-  config: unknown,
-): CommunitySilenceMode {
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    return "domain_all";
-  }
-  const raw = (config as Record<string, unknown>).community_silence_mode;
-  return typeof raw === "string" &&
-      COMMUNITY_SILENCE_MODES.includes(raw as CommunitySilenceMode)
-    ? (raw as CommunitySilenceMode)
-    : "domain_all";
-}
-
-/** 纯逻辑判定单场保密比赛在当前状态下是否应静默指定用户。 */
-export function doesContestSilenceActor(input: {
-  secrecyEnabled: boolean;
-  status: ContestStatus;
-  silenceMode: CommunitySilenceMode;
-  isParticipant: boolean;
-}): boolean {
-  if (!input.secrecyEnabled || input.status !== "running") return false;
-  if (input.silenceMode === "none") return false;
-  if (input.silenceMode === "contest_participants") return input.isParticipant;
-  return true;
-}
-
 /**
- * 判定指定域（或全站）当前是否存在会静默该用户的进行中保密比赛。
+ * 判定全站当前是否存在任何尚未结束的保密比赛（含 pending 筹备期与 running 进行期）。
  *
- * 仅在比赛进行期间（`running`，排除 `pending` 筹备期与 `ended` 赛后期）按比赛配置的
- * `community_silence_mode`（`none` / `contest_participants` / `domain_all`）生效；
- * 题目级保密门控仍覆盖筹备期与赛期全程。
+ * 供赛时社区全局静默（决策 1）复用：普通用户在有未结束保密比赛时禁止发讨论帖和动态。
+ *
+ * @returns 存在未结束保密比赛时为 true。
  */
 export async function hasUnendedPublicContest(
   domainId?: string,
   executor: Executor = getDb(),
-  actorId?: string | null,
 ): Promise<boolean> {
-  const modeExpr =
-    sql`COALESCE(${contests.config}->>'community_silence_mode', 'domain_all')`;
   const rows = await executor
     .select({ contestId: contests.id })
     .from(contests)
@@ -199,14 +157,7 @@ export async function hasUnendedPublicContest(
         )
         : undefined,
       eq(contests.secrecy_enabled, true),
-      runningWindowCondition(contests.start_time, contests.end_time),
-      sql`${modeExpr} <> 'none'`,
-      actorId
-        ? sql`(${modeExpr} = 'domain_all' OR (${modeExpr} = 'contest_participants' AND EXISTS (
-          SELECT 1 FROM ${contestParticipants} cp
-          WHERE cp.contest_id = ${contests.id} AND cp.user_id = ${actorId}
-        )))`
-        : sql`${modeExpr} = 'domain_all'`,
+      unendedWindowCondition(contests.end_time),
     ))
     .limit(1);
   return rows.length > 0;

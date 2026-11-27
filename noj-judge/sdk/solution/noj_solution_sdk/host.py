@@ -336,18 +336,17 @@ def _execute_call(call_id: str, fn_name: str, args: list) -> None:
         _CURRENT_CALL_ID = None
 
     max_payload = get_max_payload_bytes()
-    if estimate_min_frame_size(result, limit=max_payload) > max_payload:
-        _write_frame(
-            {
-                "type": "error",
-                "id": call_id,
-                "code": "Rejected",
-                "message": f"return value 过大（超出分片载荷上限 {max_payload} 字节）",
-            }
-        )
-        return
-
     try:
+        if estimate_min_frame_size(result, limit=max_payload) > max_payload:
+            _write_frame(
+                {
+                    "type": "error",
+                    "id": call_id,
+                    "code": "Rejected",
+                    "message": f"return value 过大（超出分片载荷上限 {max_payload} 字节）",
+                }
+            )
+            return
         encoded = encode_value(result)
     except Exception as e:
         _write_frame(
@@ -499,17 +498,17 @@ def _run_forked_child(
 
         child_log_stream.flush()
         max_payload = get_max_payload_bytes()
-        if estimate_min_frame_size(result, limit=max_payload) > max_payload:
-            _child_write(
-                {
-                    "type": "error",
-                    "id": call_id,
-                    "code": "Rejected",
-                    "message": f"return value 过大（超出分片载荷上限 {max_payload} 字节）",
-                }
-            )
-            os._exit(0)
         try:
+            if estimate_min_frame_size(result, limit=max_payload) > max_payload:
+                _child_write(
+                    {
+                        "type": "error",
+                        "id": call_id,
+                        "code": "Rejected",
+                        "message": f"return value 过大（超出分片载荷上限 {max_payload} 字节）",
+                    }
+                )
+                os._exit(0)
             encoded = encode_value(result)
         except Exception as e:
             _child_write(

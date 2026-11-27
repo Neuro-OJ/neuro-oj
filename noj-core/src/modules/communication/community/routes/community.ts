@@ -59,10 +59,8 @@ import {
   updateComment,
   updatePost,
 } from "../services/community/community.ts";
-import {
-  hasUnendedPublicContest,
-  isProblemInUnendedPublicContest,
-} from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { isProblemInUnendedPublicContest } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { isActorSilencedByRunningContest } from "../../../../features/contest-community-silence/index.ts";
 import { withDefaultCommunity } from "../services/community/domain-community.ts";
 import type {
   CommunityCapability,
@@ -218,7 +216,7 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
   // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
   // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
   const contestSilence = !(loggedIn && moderatorFlag(c)) &&
-    await hasUnendedPublicContest(
+    await isActorSilencedByRunningContest(
       DEFAULT_DOMAIN_ID,
       undefined,
       c.get("userId") ?? null,
@@ -325,7 +323,7 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const blockedByContest = inUnendedPublicContest && !moderator;
   // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
   const blockedBySilence = !moderator && !blockedByContest &&
-    await hasUnendedPublicContest(
+    await isActorSilencedByRunningContest(
       DEFAULT_DOMAIN_ID,
       undefined,
       c.get("userId") ?? null,

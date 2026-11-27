@@ -243,7 +243,13 @@ class SolutionRunner:
         # 1. 参数校验与大载荷下界预检（仅拒绝必然超限的大对象，边界由分片编码精确判定）
         for i, arg in enumerate(args):
             validate_type(arg, f"arg[{i}]")
-        if estimate_min_frame_size(list(args), limit=self._max_payload_bytes) > self._max_payload_bytes:
+        try:
+            min_size = estimate_min_frame_size(
+                list(args), limit=self._max_payload_bytes
+            )
+        except RecursionError as e:
+            raise RejectedError(f"call 参数包含循环引用，无法序列化: {e}") from e
+        if min_size > self._max_payload_bytes:
             raise RejectedError(
                 f"call 参数过大（超出分片载荷上限 {self._max_payload_bytes} 字节）"
             )

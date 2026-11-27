@@ -7,10 +7,8 @@ import {
 } from "../../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "../../../../problems/contracts/cross-module/services_problem-resolve.ts";
 import { endedWindowCondition } from "../../../../contests/contracts/cross-module/services_contest-window.ts";
-import {
-  hasUnendedPublicContest,
-  unendedPublicContestForProblem,
-} from "../../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { unendedPublicContestForProblem } from "../../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { isActorSilencedByRunningContest } from "../../../../../features/contest-community-silence/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
@@ -40,7 +38,7 @@ export async function assertNotContestSilenced(
 ): Promise<void> {
   if (moderator) return;
   if (
-    await hasUnendedPublicContest(
+    await isActorSilencedByRunningContest(
       communityDomainId(scope),
       communityDb(scope),
       actorId ?? scope?.actorId ?? null,

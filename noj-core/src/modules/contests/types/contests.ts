@@ -17,12 +17,11 @@ export const RANKING_VISIBILITIES = [
 ] as const;
 export type RankingVisibility = typeof RANKING_VISIBILITIES[number];
 
-export const COMMUNITY_SILENCE_MODES = [
-  "none",
-  "contest_participants",
-  "domain_all",
-] as const;
-export type CommunitySilenceMode = typeof COMMUNITY_SILENCE_MODES[number];
+import {
+  COMMUNITY_SILENCE_MODES,
+  type CommunitySilenceMode,
+} from "../../../features/contest-community-silence/index.ts";
+export { COMMUNITY_SILENCE_MODES, type CommunitySilenceMode };
 
 /**
  * 类 Kaggle 赛制配置。

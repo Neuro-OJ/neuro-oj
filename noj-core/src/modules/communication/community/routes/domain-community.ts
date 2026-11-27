@@ -40,7 +40,7 @@ import {
   resolveCommunityProblem,
 } from "../services/community/community-scope.ts";
 import { domainCommunityGovernanceRouter } from "./domain-governance.ts";
-import { hasUnendedPublicContest } from "../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { isActorSilencedByRunningContest } from "../../../../features/contest-community-silence/index.ts";
 import {
   enforceReportRateLimit,
 } from "../../../platform/contracts/cross-module/system_services_hardening-rate-limit.ts";
@@ -115,7 +115,7 @@ domainCommunityRouter.get(
           moderate: s.moderator,
         },
         contest_silence: !s.moderator &&
-          await hasUnendedPublicContest(
+          await isActorSilencedByRunningContest(
             s.domainId,
             s.executor,
             s.actorId ?? null,
