@@ -193,29 +193,40 @@ export async function collectBaseTouches(
   base: string,
   wanted: ReadonlySet<string>,
 ): Promise<{ touches: Map<string, CommitTouch[]>; commitCount: number }> {
+  // 解析必须用完整 40 位 %H，避免受本地 core.abbrev=4 等配置影响；展示时再截短。
   const { stdout } = await runGit(root, [
     "log",
-    "--format=%h%x09%s",
+    "--format=%H%x09%s",
     "--name-only",
     "-m",
     `${mergeBase}..${base}`,
   ]);
   const touches = new Map<string, CommitTouch[]>();
   const seenCommits = new Set<string>();
-  let current: CommitTouch | null = null;
+  const seenByFile = new Map<string, Set<string>>();
+  let current: { fullSha: string; touch: CommitTouch } | null = null;
 
   for (const line of stdout.split("\n")) {
     if (line === "") continue;
-    const header = line.match(/^([0-9a-f]{7,40})\t(.*)$/);
+    const header = line.match(/^([0-9a-f]{40})\t(.*)$/);
     if (header !== null) {
-      current = { sha: header[1], subject: header[2] };
-      seenCommits.add(current.sha);
+      const fullSha = header[1];
+      current = {
+        fullSha,
+        touch: { sha: fullSha.slice(0, 7), subject: header[2] },
+      };
+      seenCommits.add(fullSha);
       continue;
     }
     if (current === null || !wanted.has(line)) continue;
-    const list = touches.get(line) ?? [];
-    if (!list.some((item) => item.sha === current!.sha)) list.push(current);
-    touches.set(line, list);
+    const fileSeen = seenByFile.get(line) ?? new Set<string>();
+    if (!fileSeen.has(current.fullSha)) {
+      fileSeen.add(current.fullSha);
+      seenByFile.set(line, fileSeen);
+      const list = touches.get(line) ?? [];
+      list.push(current.touch);
+      touches.set(line, list);
+    }
   }
 
   return { touches, commitCount: seenCommits.size };

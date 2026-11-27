@@ -1267,3 +1267,56 @@ Deno.test({
     }
   },
 });
+
+Deno.test("检查项 B：含点号的无扩展名导入（.post/.global/.xml）继续探测源码后缀", async () => {
+  const tree = memoryTree({
+    "noj-ui/tests/server/AuthCookies.spec.ts": [
+      `const a = await import("~/server/api/auth/logout.post");`,
+      `const b = await import("~/middleware/default-workspace.global");`,
+      `const c = await import("~/server/routes/sitemap.xml");`,
+      `const d = await import("~/server/api/auth/missing.post");`,
+    ].join("\n"),
+    "noj-ui/server/api/auth/logout.post.ts": "export default () => {};\n",
+    "noj-ui/middleware/default-workspace.global.ts":
+      "export default () => {};\n",
+    "noj-ui/server/routes/sitemap.xml.ts": "export default () => {};\n",
+  });
+
+  const { broken } = await checkBrokenReferences({
+    tree,
+    files: ["noj-ui/tests/server/AuthCookies.spec.ts"],
+  });
+  assertEquals(broken.length, 1);
+  assertEquals(broken[0].specifier, "~/server/api/auth/missing.post");
+});
+
+Deno.test("检查项 A：core.abbrev=4 时仍以完整哈希解析目标分支历史", async () => {
+  const repo = await createRepo();
+  try {
+    await git(repo, ["config", "core.abbrev", "4"]);
+    await writeFile(repo, TARGET, lines(8, "middleware"));
+    await commitAll(repo, "feat(ui): 初始中间件");
+
+    await git(repo, ["checkout", "-q", "-b", "feature"]);
+    await writeFile(repo, TARGET, lines(3, "middleware"));
+    await commitAll(repo, "feat(ui): 改写中间件");
+
+    await git(repo, ["checkout", "-q", "main"]);
+    await writeFile(repo, TARGET, lines(8, "middleware") + "// main 新增\n");
+    await commitAll(repo, "fix(ui): main 侧补丁");
+
+    await git(repo, ["checkout", "-q", "feature"]);
+    const result = await runChecks({
+      root: repo,
+      base: "main",
+      ignoreSignatures: true,
+    });
+    const overwrites = result.findings.filter((finding) =>
+      finding.check === "A"
+    );
+    assertEquals(overwrites.length, 1);
+    assertEquals(overwrites[0].path, TARGET);
+  } finally {
+    await cleanup(repo);
+  }
+});

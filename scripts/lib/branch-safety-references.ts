@@ -281,8 +281,10 @@ async function probeReference(
   exists: (relativePath: string) => Promise<boolean>,
 ): Promise<boolean> {
   if (await exists(relativePath)) return true;
-  const name = relativePath.split("/").pop() ?? "";
-  if (/\.[a-z0-9]+$/i.test(name)) return false;
+  const lower = (relativePath.split("/").pop() ?? "").toLowerCase();
+  // 仅当末尾已是已知源码/数据扩展名时停止补后缀；含点号的无扩展名导入
+  // （如 logout.post / default-workspace.global / sitemap.xml）继续探测后缀。
+  if (PATH_EXTENSIONS.some((ext) => lower.endsWith(ext))) return false;
   for (const suffix of PROBE_SUFFIXES) {
     if (await exists(relativePath + suffix)) return true;
   }
