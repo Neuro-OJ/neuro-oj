@@ -18,6 +18,12 @@
 
 ## 2. PR 工作流（所有变更）
 
+- **PR 描述必须按模板填写**：开 PR 前先读
+  [`.github/pull_request_template.md`](../../.github/pull_request_template.md)，完整保留
+  其章节结构（关联 Issue、变更摘要、变更类型、影响范围、验证清单）并如实勾选。使用
+  `gh pr create --body` / `--body-file` 会直接覆盖网页端默认模板，**不得省略模板或改用
+  自由格式**（无关联 Issue 填「无」，不适用项保持未勾选或注明原因）。
+
 下例用 `<base>` 占位集成分支，先 `git branch -r` 确认（2026-11 时为 `main`）。
 
 ```bash
