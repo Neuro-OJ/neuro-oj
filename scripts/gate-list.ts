@@ -80,6 +80,10 @@ export const GATE_SELF_TESTS: string[] = [
   // 一键部署脚本：校验失败必须中止、参数与版本标签必须原样交给 noj-cli install。
   "scripts/deploy/install-sh_test.ts",
   "scripts/gen-api-contracts_test.ts",
+  // 分支安全自检（2026-11-22）：A/C/D 的判定依赖真实 git 历史，测试用临时仓库
+  // 夹具覆盖「静默覆盖 / 断链引用 / 签名开关 / 提交信息白名单」，以及 pre-push 的
+  // 「多引用 / 非当前分支 / 脏工作区 / 旧分支无任务放行」与钩子安装路径。
+  "scripts/check-branch-safety_test.ts",
 ];
 
 /**

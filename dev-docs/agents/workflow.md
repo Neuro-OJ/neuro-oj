@@ -38,6 +38,23 @@ jj squash
 jj git push -b <branch-name>
 ```
 
+提交/推送前自检（2026-11-22 起）：
+
+```bash
+deno task check:branch-safety                       # 默认对照 origin/main
+deno task check:branch-safety --base fefab742       # 指定 base（提交/标签都行）
+```
+
+它对照目标分支检查四件事：目标分支分叉后改过、本分支也改过的文件（静默覆盖）、
+解析不到文件的导入与仓库内路径、提交签名、提交信息格式。有 error 退出码为 1，
+warn/info 只打印。**AI 每次提交前必须跑一次，并把 warn 如实报告给用户**，不得
+自行判定为噪声忽略。
+
+本地 `.git/hooks/pre-push`（`node scripts/install-git-hooks.mjs` 安装）读取 git 传入的
+待推送引用，按 `remote-sha..local-sha` 逐个检查；一次推多个分支、或推的分支不是当前
+检出分支时，检查对象仍是待推送的提交树，不受工作区未提交改动影响。旧分支没有
+`check:branch-safety` 任务时钩子只打印一行并放行。手动复核单个分支仍用上面的命令。
+
 ### 大规模变更：先报后果，再动手（2026-11-22）
 
 用户提出「全仓统一 X」「重排整个目录」「批量重命名」这类**最终结果是全仓或大面积**

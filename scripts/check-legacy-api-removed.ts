@@ -28,10 +28,10 @@ export const REMOVED_WRITE_PREFIXES = [
   "/api/v1/problems",
 ];
 
-/** 必须保持不存在的机制文件。 */
+/** 必须保持不存在的机制文件（branch-safety: ignore —— 这些路径本来就不该存在）。 */
 export const REMOVED_MECHANISM_FILES = [
-  "noj-core/src/modules/http/retired-endpoints.json",
-  "noj-core/src/modules/http/retired-endpoints.ts",
+  "noj-core/src/modules/http/retired-endpoints.json", // branch-safety: ignore
+  "noj-core/src/modules/http/retired-endpoints.ts", // branch-safety: ignore
 ];
 
 /** 必须消失的开关标识。 */
