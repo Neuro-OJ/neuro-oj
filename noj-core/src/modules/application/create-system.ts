@@ -2,7 +2,6 @@ import { createApp } from "../../app.ts";
 import { closeDbForShutdown } from "../../shared/db/connection.ts";
 import { startQueueSweeper } from "../evaluations/mq/sweeper.ts";
 import { startResultConsumerPool } from "../evaluations/mq/consumer.ts";
-import { startArtifactRetentionTask } from "../evaluations/services/submissions/artifact-retention.ts";
 import { startSubmissionJobWorker } from "../evaluations/services/versioning/dispatch-job-item.ts";
 import {
   closeRedisForShutdown,
@@ -366,9 +365,6 @@ export async function startCore() {
 
     // 启动搜索索引任务保留清理（#698 N1：已成功的 search.index 任务保留 7 天）
     backgroundTasks.add(startSearchTaskRetentionTask());
-
-    // 启动提交产物分层保留清理任务（opt-in，默认关闭）
-    backgroundTasks.add(startArtifactRetentionTask());
 
     // NOJ-030：监听 SIGTERM/SIGINT，先停止接收新请求与任务领取，再等全部
     // 在途工作结束，最后关闭 Redis/DB；任一失败或超时都以非零码退出。

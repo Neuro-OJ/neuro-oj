@@ -1,5 +1,5 @@
 /**
- * 提交产物分层保留策略纯逻辑单测（零数据库依赖）。
+ * 提交产物分层保留策略与分页/持锁重评/回滚调度单测（零数据库依赖）。
  */
 import { assertEquals } from "jsr:@std/assert@^1";
 import {
@@ -8,7 +8,8 @@ import {
   DEFAULT_ARTIFACT_RETENTION_POLICY,
   evaluateArtifactRetention,
   resolveArtifactRetentionPolicyFromEnv,
-} from "../../services/submissions/artifact-retention.ts";
+  runArtifactRetentionSweep,
+} from "./service.ts";
 
 const NOW_MS = Date.parse("2026-11-27T00:00:00.000Z");
 const DAY_MS = 86_400_000;
@@ -87,7 +88,6 @@ Deno.test("artifact-retention: Tier 0 严格保护进行中竞赛及赛后宽限
   assertEquals(running.eligible, false);
   assertEquals(running.tier, "protected_active_contest");
 
-  // 竞赛结束 3 天（< 7 天宽限期）仍受保护
   const inGrace = evaluateArtifactRetention(
     makeCandidate({
       contest_id: "c-2",
@@ -101,7 +101,6 @@ Deno.test("artifact-retention: Tier 0 严格保护进行中竞赛及赛后宽限
   assertEquals(inGrace.eligible, false);
   assertEquals(inGrace.tier, "protected_active_contest");
 
-  // 竞赛结束 10 天（过 7 天宽限期后才过了 3 天 < 14 天非最佳保留期）暂不清理
   const afterGraceNotExpired = evaluateArtifactRetention(
     makeCandidate({
       contest_id: "c-3",
@@ -115,7 +114,6 @@ Deno.test("artifact-retention: Tier 0 严格保护进行中竞赛及赛后宽限
   assertEquals(afterGraceNotExpired.eligible, false);
   assertEquals(afterGraceNotExpired.tier, "non_best");
 
-  // 竞赛结束 25 天（7 天宽限期 + 14 天保留期 = 21 天，已过期）允许清理
   const afterGraceExpired = evaluateArtifactRetention(
     makeCandidate({
       contest_id: "c-4",
@@ -205,4 +203,143 @@ Deno.test("artifact-retention: 环境变量解析与安全钳制", () => {
   assertEquals(custom.enabled, true);
   assertEquals(custom.nonBestRetentionDays, 30);
   assertEquals(custom.bestRetentionDays, 3650);
+});
+
+Deno.test("artifact-retention: keyset 游标越过前排受保护记录触达后续过期产物", async () => {
+  const dataset: ArtifactRetentionCandidate[] = [
+    // 前 3 条均处于进行中竞赛（受保护），若不翻页则会卡死 batchSize=2 的清理
+    makeCandidate({
+      id: "sub-01",
+      contest_id: "c-live",
+      contest_end_time: daysAhead(1),
+      created_at: daysAgo(40),
+    }),
+    makeCandidate({
+      id: "sub-02",
+      contest_id: "c-live",
+      contest_end_time: daysAhead(1),
+      created_at: daysAgo(39),
+    }),
+    makeCandidate({
+      id: "sub-03",
+      is_accepted: true,
+      created_at: daysAgo(38),
+    }),
+    // 第 4、5 条为过期非最佳产物，必须被游标推进清理到
+    makeCandidate({
+      id: "sub-04",
+      created_at: daysAgo(30),
+      judge_finished_at: daysAgo(30),
+    }),
+    makeCandidate({
+      id: "sub-05",
+      created_at: daysAgo(29),
+      judge_finished_at: daysAgo(29),
+    }),
+  ];
+
+  const prunedIds: string[] = [];
+  const summary = await runArtifactRetentionSweep({
+    policy: ENABLED_POLICY,
+    batchSize: 2,
+    dryRun: false,
+    nowMs: NOW_MS,
+    fetchPage: (cursor, limit) => {
+      const filtered = cursor === null
+        ? dataset
+        : dataset.filter((row) =>
+          row.created_at > cursor.createdAt ||
+          (row.created_at === cursor.createdAt && row.id > cursor.id)
+        );
+      return Promise.resolve(filtered.slice(0, limit));
+    },
+    pruneCandidate: (row) => {
+      prunedIds.push(row.id);
+      return Promise.resolve({ outcome: "deleted" });
+    },
+  });
+
+  assertEquals(summary.scanned, 5);
+  assertEquals(summary.skipped_protected, 3);
+  assertEquals(summary.pruned, 2);
+  assertEquals(summary.deleted_objects, 2);
+  assertEquals(prunedIds, ["sub-04", "sub-05"]);
+});
+
+Deno.test("artifact-retention: 持锁重评发现并发重测已转为受保护或存储失败回滚时不误删", async () => {
+  const state = new Map<string, ArtifactRetentionCandidate>([
+    [
+      "sub-rejudged",
+      makeCandidate({
+        id: "sub-rejudged",
+        created_at: daysAgo(30),
+        judge_finished_at: daysAgo(30),
+      }),
+    ],
+    [
+      "sub-flaky",
+      makeCandidate({
+        id: "sub-flaky",
+        created_at: daysAgo(29),
+        judge_finished_at: daysAgo(29),
+      }),
+    ],
+  ]);
+
+  let flakyAttempts = 0;
+  const runOnce = () =>
+    runArtifactRetentionSweep({
+      policy: ENABLED_POLICY,
+      batchSize: 10,
+      dryRun: false,
+      nowMs: NOW_MS,
+      fetchPage: (cursor, limit) => {
+        const rows = [...state.values()].filter((r) =>
+          r.artifact_storage_url !== null &&
+          (cursor === null ||
+            r.created_at > cursor.createdAt ||
+            (r.created_at === cursor.createdAt && r.id > cursor.id))
+        );
+        return Promise.resolve(rows.slice(0, limit));
+      },
+      pruneCandidate: (row) => {
+        if (row.id === "sub-rejudged") {
+          // 模拟持锁期间并发重测完成，提交变为通过 → 持锁重评跳过
+          const fresh = {
+            ...row,
+            is_accepted: true,
+            judge_finished_at: daysAgo(0),
+          };
+          state.set(row.id, fresh);
+          if (
+            !evaluateArtifactRetention(fresh, ENABLED_POLICY, NOW_MS).eligible
+          ) {
+            return Promise.resolve({ outcome: "skipped" });
+          }
+        }
+        if (row.id === "sub-flaky") {
+          flakyAttempts++;
+          if (flakyAttempts === 1) {
+            // 首次存储异常触发事务回滚，artifact_storage_url 保持未清空
+            return Promise.reject(new Error("S3 temporary outage"));
+          }
+          state.set(row.id, { ...row, artifact_storage_url: null });
+          return Promise.resolve({ outcome: "deleted" });
+        }
+        return Promise.resolve({ outcome: "deleted" });
+      },
+    });
+
+  const first = await runOnce();
+  assertEquals(first.pruned, 0);
+  assertEquals(first.skipped_protected, 1);
+  assertEquals(first.failed, 1);
+  assertEquals(state.get("sub-rejudged")?.artifact_storage_url !== null, true);
+  assertEquals(state.get("sub-flaky")?.artifact_storage_url !== null, true);
+
+  // 第二轮重试：sub-rejudged 已被保护跳过，sub-flaky 成功回收
+  const second = await runOnce();
+  assertEquals(second.pruned, 1);
+  assertEquals(second.deleted_objects, 1);
+  assertEquals(state.get("sub-flaky")?.artifact_storage_url, null);
 });

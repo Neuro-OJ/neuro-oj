@@ -10,7 +10,7 @@ import {
   DEFAULT_CONTEST_GRACE_DAYS,
   pruneExpiredSubmissionArtifacts,
   resolveArtifactRetentionPolicyFromEnv,
-} from "../src/modules/evaluations/services/submissions/artifact-retention.ts";
+} from "../src/features/artifact-retention/index.ts";
 
 interface CliOptions {
   apply: boolean;

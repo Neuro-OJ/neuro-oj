@@ -684,6 +684,49 @@ class TestHostProcess(unittest.TestCase):
             finally:
                 self._cleanup(proc, path)
 
+    def test_fork_per_call_concurrent_thread_capabilities_match_ids(self):
+        """fork_per_call 子进程内 8 线程并发调用 24 次 call_capability，响应按 call_id 严格匹配不串包。"""
+        entry = textwrap.dedent("""
+            from concurrent.futures import ThreadPoolExecutor
+            from noj_solution_sdk import register, call_capability
+
+            @register
+            def parallel_echo():
+                tokens = [f"tok-{i}" for i in range(24)]
+                with ThreadPoolExecutor(max_workers=8) as pool:
+                    results = list(pool.map(lambda t: call_capability("echo", t), tokens))
+                return [results[i] == tokens[i] for i in range(len(tokens))]
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(
+                proc, {"type": "call", "id": "conc-1", "fn": "parallel_echo", "args": []}
+            )
+            seen = 0
+            while True:
+                frame = self._read_frame(proc)
+                if frame["type"] == "capability":
+                    self.assertEqual(frame["name"], "echo")
+                    seen += 1
+                    self._send_frame(
+                        proc,
+                        {
+                            "type": "result",
+                            "id": frame["id"],
+                            "value": frame["args"][0],
+                        },
+                    )
+                elif frame["type"] == "result":
+                    self.assertEqual(frame["id"], "conc-1")
+                    self.assertEqual(seen, 24)
+                    self.assertEqual(frame["value"], [True] * 24)
+                    break
+                else:
+                    self.fail(f"未预期帧: {frame}")
+        finally:
+            self._cleanup(proc, path)
+
 
 if __name__ == "__main__":
     unittest.main()

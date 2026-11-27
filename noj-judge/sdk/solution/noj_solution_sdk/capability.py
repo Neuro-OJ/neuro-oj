@@ -12,6 +12,7 @@ noj_solution_sdk capability 调用层。
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from typing import Any, Callable, TextIO
 
@@ -51,6 +52,7 @@ class CapabilityError(Exception):
 # 共享 RPC 状态：pending 注册、写帧、响应分发、关闭唤醒
 _rpc = RpcClient()
 _SYNC_TRANSPORT: tuple[Callable[[dict], None], Callable[[], dict]] | None = None
+_SYNC_TRANSPORT_LOCK = threading.Lock()
 
 
 def _set_sync_transport(
@@ -126,12 +128,19 @@ def call_capability(name: str, *args: Any) -> Any:
     except _RejectedTypeError as e:
         raise CapabilityRejectedError(str(e)) from e
 
-    # 4. fork 子进程同步管道模式：直接发帧并阻塞读父进程转发的响应
+    # 4. fork 子进程同步管道模式：串行化发帧与读帧，并按 call_id 匹配响应，防止多线程错乱消费
     if _SYNC_TRANSPORT is not None:
         send_fn, recv_fn = _SYNC_TRANSPORT
         try:
-            send_fn(frame)
-            response = recv_fn()
+            with _SYNC_TRANSPORT_LOCK:
+                send_fn(frame)
+                while True:
+                    response = recv_fn()
+                    if (
+                        response.get("type") == "_shutdown"
+                        or response.get("id") == call_id
+                    ):
+                        break
         except Exception as e:
             raise CapabilityConnectionError(f"子进程 capability 通道断开: {e}") from e
         return _handle_response(response)
