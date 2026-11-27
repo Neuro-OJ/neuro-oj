@@ -40,26 +40,27 @@ Closes #
 - [ ] `noj-core` 后端
 - [ ] `noj-ui` 前端
 - [ ] `noj-judge` 评测 Worker
+- [ ] `noj-llm-gateway` LLM 代理
+- [ ] `noj-cli` 生产运维 CLI
+- [ ] `noj-tests` 跨模块 E2E 测试
 - [ ] 数据库迁移（新建或修改 `drizzle/` 文件）
 - [ ] 公共 API（端点 / 请求 / 响应结构变化）
 - [ ] 配置 / 环境变量（`.env.example` 已更新）
-- [ ] 文档（README / noj-docs）
+- [ ] 文档（`README` / `AGENTS.md` / `dev-docs` / `noj-docs`）
 
 ## 验证清单
 
-<!-- 提交前自查，确保所有项打勾。CI 会强制跑一遍，但本地先过能省一轮 CI 时间。 -->
+<!-- 提交前自查，确保适用项打勾；不适用项保持未勾选。 -->
 
-- [ ] `deno fmt` 已运行（noj-core / noj-ui）
-- [ ] `deno lint` 已运行
-- [ ] `cargo fmt && cargo clippy` 已运行（noj-judge）
-- [ ] 本地 `deno task test` 通过
+- [ ] 已在对应模块目录运行 `deno fmt --check` 与 `deno lint`（不在仓库根目录直接跑全仓 `deno fmt`）
+- [ ] `cargo fmt && cargo clippy` 已运行（`noj-judge`）
+- [ ] 本地测试已通过（按对应模块 `deno task` / `cargo nextest` 运行）
 - [ ] 新功能 / 修复有对应测试
 - [ ] 数据库 schema 变更已通过 `deno task db:generate` 生成迁移
 - [ ] 提交信息符合 Conventional Commits（`<type>(<scope>): 中文描述`）
 - [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
-- [ ] 相关文档已同步（AGENTS / CLAUDE / docs / noj-docs）
+- [ ] 相关文档已同步（`AGENTS.md` / `dev-docs` / `noj-docs`）
 - [ ] 注释与实现一致
-- [ ] 新增/修改行为有对应测试
 - [ ] GPG 签名可用
 
 ## 截图 / 录屏（可选）
