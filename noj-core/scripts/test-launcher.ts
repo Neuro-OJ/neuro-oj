@@ -66,10 +66,10 @@ import {
   FEATURE_TEST_ROOT,
   type FileDurationBaseline,
   loadFileDurationBaseline,
-  MIGRATION_TEST_FILE,
   selectShardsByIndex,
   type Shard,
   type ShardPlan,
+  SHARED_TEST_ROOTS,
 } from "./test-parallel-shards.ts";
 import { measurePhase } from "../../scripts/lib/test-timing.ts";
 import type { TestRunManifest } from "../../scripts/test-performance-report.ts";
@@ -540,13 +540,13 @@ async function loadBaseline(): Promise<FileDurationBaseline> {
   return baseline;
 }
 
-/** 计算分片发现根：增量模式保守纳入迁移测试与 features 切片测试，防止跨切片回归漏跑。 */
+/** 计算分片发现根：增量模式保守纳入共享 tests/ 与 features 切片测试，防止跨切片回归漏跑。 */
 export function resolveShardDiscoveryRoots(
   modules?: readonly string[],
 ): string[] | undefined {
   if (!modules || modules.length === 0) return undefined;
   return [
-    MIGRATION_TEST_FILE,
+    ...SHARED_TEST_ROOTS,
     FEATURE_TEST_ROOT,
     ...modules.flatMap((target) => testRootsForDomain(target)),
   ];
