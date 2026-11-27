@@ -2,8 +2,7 @@
   <div class="w-full max-w-[380px] relative">
     <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
     <div class="bg-bg-panel border border-border rounded-lg p-8">
-      <h1
-        class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">{{ t('auth.register') }}</h1>
+      <h1 class="text-22px font-bold text-center mb-6 text-text">{{ t('auth.register') }}</h1>
 
       <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
       <div
@@ -19,7 +18,7 @@
       <p
         class="mb-4 text-sm text-text-secondary">{{ t('auth.registerPolicyPrefix') }}<NuxtLink to="/legal/privacy" target="_blank" class="text-primary underline">{{ t('auth.registerPolicy') }}</NuxtLink>。</p>
       <form @submit.prevent="handleRegister">
-        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
+        <div class="mb-7">
           <AuthTextInput
             id="username"
             v-model="form.username"
@@ -36,7 +35,7 @@
           </AuthTextInput>
         </div>
 
-        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
+        <div class="mb-7">
           <AuthTextInput
             id="email"
             v-model="form.email"
@@ -56,7 +55,7 @@
 
         <!-- TODO 验证码 -->
 
-        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
+        <div class="mb-7">
           <AuthPasswordField
             id="password"
             v-model="form.password"
@@ -70,7 +69,7 @@
           />
         </div>
 
-        <div class="mb-7 animate-[fadeInUp_0.5s_ease_0.2s_both]">
+        <div class="mb-7">
           <AuthPasswordField
             id="confirmPassword"
             v-model="form.confirmPassword"
@@ -99,7 +98,7 @@
                     </span>
         </div>
 
-        <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.25s_both]" type="submit"
+        <UButton color="primary" size="md" block type="submit"
           :disabled="loading || !!registerRestricted || !acceptedLegal">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? t('auth.registering') : t('auth.register') }}
@@ -123,7 +122,7 @@
         >{{ t('auth.registerWith', { name: provider.name }) }}</UButton>
       </div>
 
-      <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.3s_both]">
+      <p class="text-center mt-5 text-sm text-text-secondary">
                 {{ t('auth.haveAccount') }} <NuxtLink to="/login" class="text-primary no-underline font-semibold hover:underline">{{ t('auth.loginNow') }}</NuxtLink>
             </p>
     </div>

@@ -54,69 +54,71 @@ async function join() {
 useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
 </script>
 <template>
-  <AsyncContent v-if="domain" :status="viewError ? 'error' : viewStatus === 'pending' ? 'loading' : view ? 'data' : 'empty'"
+  <AsyncContent v-if="domain"
+    :status="viewError ? 'error' : viewStatus === 'pending' ? 'loading' : view ? 'data' : 'empty'"
     :error="viewError ? '首页数据读取失败，请重试' : undefined" @retry="refreshView()">
-  <div :key="domain.id + ':' + (user?.id ?? 'guest')" class="space-y-5">
-    <!-- 头部核心区：域命令头与紧凑签到 -->
-    <section class="overflow-hidden rounded-md border border-border bg-bg-panel">
-      <div class="flex flex-col lg:flex-row">
-        <WorkspaceHero :title="domain.name" :description="domain.description" :slug="domain.slug" />
-        <HomeCheckinPanel :initial-check-in="section<{ data: { checked_in: boolean; streak: number } }>('checkin')?.data" />
-      </div>
-    </section>
+    <div :key="domain.id + ':' + (user?.id ?? 'guest')" class="space-y-3">
+      <!-- 头部核心区：域命令头与紧凑签到 -->
+      <section class="overflow-hidden rounded-lg border border-border bg-bg-panel">
+        <div class="flex flex-col lg:flex-row">
+          <WorkspaceHero :title="domain.name" :description="domain.description" :slug="domain.slug" />
+          <HomeCheckinPanel
+            :initial-check-in="section<{ data: { checked_in: boolean; streak: number } }>('checkin')?.data" />
+        </div>
+      </section>
 
-    <!-- 加入空间引导条（非成员且非仅邀请，排除默认主域） -->
-    <section
-      v-if="domain.slug !== 'main' && !domain.is_member && domain.status === 'active' && domain.configuration.join_policy !== 'invite'"
-      class="flex flex-wrap items-center justify-between gap-4 rounded-md border border-primary/25 bg-primary-bg/60 px-5 py-3.5 text-sm"
-      aria-label="加入空间"
-    >
-      <div class="flex items-center gap-2.5">
-        <UIcon name="i-lucide-user-plus" class="size-4 text-primary shrink-0" />
-        <span class="text-text font-medium">加入 {{ domain.name }} 开启本空间解题、教学与竞赛权限</span>
-      </div>
-      <div class="flex items-center gap-2.5">
-        <template v-if="isLoggedIn">
-          <UInput
-            v-if="domain.configuration.join_policy === 'approval'"
-            v-model="reason"
-            size="sm"
-            placeholder="简要说明加入理由"
-            aria-label="加入理由"
-            class="w-56"
-          />
-          <UButton
-            size="sm"
-            color="primary"
-            :loading="joining"
-            @click="join"
-          >
+      <!-- 加入空间引导条（非成员且非仅邀请，排除默认主域） -->
+      <section
+        v-if="domain.slug !== 'main' && !domain.is_member && domain.status === 'active' && domain.configuration.join_policy !== 'invite'"
+        class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-primary-bg/60 px-3 py-2 text-[13px]"
+        aria-label="加入空间"
+      >
+        <div class="flex items-center gap-2.5">
+          <UIcon name="i-lucide-user-plus" class="size-4 text-primary shrink-0" />
+          <span class="text-text font-medium">加入 {{ domain.name }} 开启本空间解题、教学与竞赛权限</span>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <template v-if="isLoggedIn">
+            <UInput
+              v-if="domain.configuration.join_policy === 'approval'"
+              v-model="reason"
+              size="sm"
+              placeholder="简要说明加入理由"
+              aria-label="加入理由"
+              class="w-56"
+            />
+            <UButton
+              size="sm"
+              color="primary"
+              :loading="joining"
+              @click="join"
+            >
             {{ domain.configuration.join_policy === 'approval' ? '申请加入' : '加入此空间' }}
           </UButton>
-        </template>
-        <UButton
-          v-else
-          size="sm"
-          color="primary"
-          :to="{ path: '/login', query: { redirect: workspacePath(domain.slug) } }"
-        >
+          </template>
+          <UButton
+            v-else
+            size="sm"
+            color="primary"
+            :to="{ path: '/login', query: { redirect: workspacePath(domain.slug) } }"
+          >
           登录后加入
         </UButton>
+        </div>
+      </section>
+
+      <!-- 主体：左侧评测流，右侧公告与教学待办 -->
+      <div class="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_400px]">
+        <HomeLatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
+        <div class="space-y-3">
+          <div class="overflow-hidden rounded-lg border border-border bg-bg-panel empty:hidden">
+            <AnnouncementSection :domain-slug="domain.slug" :initial-data="announcements" />
+          </div>
+          <div class="overflow-hidden rounded-lg border border-border bg-bg-panel empty:hidden">
+            <WorkspaceHomeContent :initial-data="dashboard" />
+          </div>
+        </div>
       </div>
-    </section>
-
-    <!-- 空间公告 -->
-    <div class="overflow-hidden rounded-md border border-border bg-bg-panel">
-      <AnnouncementSection :domain-slug="domain.slug" :initial-data="announcements" />
     </div>
-
-    <!-- 教学待办与进行中任务 -->
-    <div class="overflow-hidden rounded-md border border-border bg-bg-panel">
-      <WorkspaceHomeContent :initial-data="dashboard" />
-    </div>
-
-    <!-- 最新评测 -->
-    <HomeLatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
-  </div>
   </AsyncContent>
 </template>

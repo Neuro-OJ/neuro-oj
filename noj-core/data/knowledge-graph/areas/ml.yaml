@@ -19,6 +19,7 @@ nodes:
     summary: 在损失中加入参数范数惩罚以抑制过拟合，L2 使权重收缩，L1 还能产生稀疏解用于特征选择
     syllabus: [ioai, noai]
     requires: [ml.logistic-regression, data.overfitting]
+    doc: docs/ml.regularization.md
   - id: ml.knn
     name: K 近邻
     summary: 依据距离度量找出样本的最近邻，用邻居的投票或均值做预测，无需训练即可直接分类与回归
@@ -29,6 +30,7 @@ nodes:
     summary: 递归选择划分特征把样本空间切分为纯度高的小区域，可解释性强，是集成树模型的基本单元
     syllabus: [ioai, noai, lmcc]
     requires: [math.information-theory, ai.ml-paradigms]
+    doc: docs/ml.decision-tree.md
   - id: ml.svm
     name: 支持向量机
     summary: 寻找最大间隔分离超平面，并借助核函数把线性分类扩展到非线性场景的分类模型

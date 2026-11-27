@@ -155,4 +155,5 @@ export {
   problemDifficulty,
   problemKnowledge,
   userKnowledgeMastery,
+  userKnowledgePlacements,
 } from "./knowledge.ts";

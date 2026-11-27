@@ -21,31 +21,29 @@ const tasks = await useAsyncData(
 watch(mode, () => {
   if (enabled.value) void tasks.refresh();
 });
-const dashboard = computed(() =>
-  tasks.data.value ?? (mode.value === defaultMode ? props.initialData : null)
-);
+const dashboard = computed(() => tasks.data.value ?? (mode.value === defaultMode ? props.initialData : null));
 useEducationNotifications(async () => {
   if (enabled.value) await tasks.refresh();
 }, enabled);
 </script>
 <template>
-  <section v-if="enabled" class="px-5 py-5 sm:px-6" aria-label="教学与学习">
-    <div class="flex flex-wrap items-center gap-3">
-      <h2 class="mr-auto text-sm font-semibold text-text">教学与学习</h2>
-      <USelect v-model="mode" size="sm"
+  <section v-if="enabled" aria-label="教学与学习">
+    <div class="flex flex-wrap items-center gap-2 border-b border-border bg-bg-sunken/50 px-3 py-1">
+      <h2 class="mr-auto text-xs font-semibold text-text-secondary">教学与学习</h2>
+      <USelect v-model="mode" size="xs"
         :items="[{label:'我的学习',value:'my-learning'},{label:'教学任务',value:'teaching'}]"
         aria-label="首页教学视角" />
-      <UButton :to="{ path: workspacePath(slug!, 'classrooms'), query: { view: mode } }" variant="ghost" size="sm"
-        trailing-icon="i-lucide-arrow-right">进入班级研练中心</UButton>
+      <UButton :to="{ path: workspacePath(slug!, 'classrooms'), query: { view: mode } }" variant="link"
+        size="xs">班级 →</UButton>
     </div>
     <AsyncContent
       :status="tasks.error.value ? 'error' : dashboard?.data.assignments.length ? 'data' : tasks.status.value === 'pending' ? 'loading' : 'empty'"
       :error="tasks.error.value ? extractApiError(tasks.error.value).message : undefined"
       empty-text="当前没有进行中的任务" @retry="tasks.refresh()">
-      <ul class="mt-2 divide-y divide-border">
+      <ul class="divide-y divide-border-subtle">
         <li v-for="task in dashboard?.data.assignments.slice(0,3)" :key="task.id">
           <NuxtLink :to="workspacePath(slug!, `assignments/${task.id}`)"
-            class="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-sm no-underline hover:text-primary">
+            class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-1.5 text-[13px] no-underline hover:bg-bg-sunken/60 hover:text-primary">
             <span
               class="min-w-0 flex-1 break-words font-medium">{{ task.title }}<span class="ml-2 text-xs font-normal text-text-muted">{{ task.classroom_name }}</span></span>
             <span

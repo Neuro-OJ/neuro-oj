@@ -13,6 +13,7 @@ import { resolvePageTitle } from '~/utils/page-title';
 const { fetch } = useBanStatus();
 const { isLoggedIn } = useAuth();
 const { t } = useI18n();
+const { theme: siteTheme } = useSiteTheme();
 
 // 首次加载时获取封禁状态
 if (import.meta.client) {
@@ -28,10 +29,9 @@ watch(isLoggedIn, () => {
 
 // ─── 页面级标题（WCAG 2.4.2）：按路由路径生成描述性 <title>，替代全站统一标题 ───
 const route = useRoute();
-
 useHead({
   title: computed(() => resolvePageTitle(route.path, t)),
-  htmlAttrs: { lang: 'zh-CN' },
+  htmlAttrs: { lang: 'zh-CN', 'data-theme': siteTheme },
   meta: [
     { property: 'og:title', content: 'Neuro OJ' },
     { property: 'og:description', content: 'Neuro OJ — 面向 AI 领域认证与竞赛（IOAI / NOAI / LMCC）的在线评测平台' },
@@ -41,117 +41,123 @@ useHead({
 </script>
 
 <style>
-:root {
-  /* 1. 品牌与交互 */
-  --c-primary: #0369a1;
-  --c-primary-dark: #075985;
-  --c-primary-light: #0284c7;
-  --c-primary-bg: #f0f9ff;
-  --c-primary-hover-bg: #e0f2fe;
-  --c-primary-active-bg: #bae6fd;
-  --c-primary-text: #0369a1;
+:root,
+.editor-light {
+  /* 浅色基线 token：实际生效的深色终端主题在 assets/css/main.css 的 html:root
+     中整体覆盖；这里保留覆盖未涉及的 token 与编辑器局部变量。 */
 
-  /* 2. 深色基底保留变量（供暗色块或兼容类引用） */
-  --c-bg-dark: #0b1120;
-  --c-bg-dark-2: #111827;
-  --c-bg-dark-3: #070b14;
+  /* 1. 品牌与交互（钴蓝） */
+  --c-primary: #5e6ad2;
+  --c-primary-dark: #4c57c0;
+  --c-primary-light: #7c85de;
+  --c-primary-bg: #f4f5fd;
+  --c-primary-hover-bg: #eaecfa;
+  --c-primary-active-bg: #d5d9f5;
+  --c-primary-text: #5059c7;
+
+  /* 2. 深色基底 */
+  --c-bg-dark: #0a0a0a;
+  --c-bg-dark-2: #1a1a18;
+  --c-bg-dark-3: #0d0d0c;
 
   /* 3. 状态文本与评测信号 */
-  --c-success-text: #047857;
-  --c-info-text: #0369a1;
+  --c-success-text: #17803d;
+  --c-info-text: #5059c7;
   --c-warning-text: #b45309;
-  --c-error-text: #be123c;
-  --c-signal: #047857;
-  --c-signal-deep: #065f46;
-  --c-signal-rgb: 4, 120, 87;
-  --c-signal-dark: #00e07a;
-  --c-signal-deep-dark: #00d68a;
-  --c-signal-dark-rgb: 0, 224, 122;
+  --c-warning-bg: #fdf5e6;
+  --c-warning-border: #f0d9a8;
+  --c-error-text: #dc3545;
+  --c-signal: #17803d;
+  --c-signal-deep: #126b33;
+  --c-signal-rgb: 23, 128, 61;
+  --c-signal-dark: #4fd27a;
+  --c-signal-deep-dark: #3fbf69;
+  --c-signal-dark-rgb: 79, 210, 122;
   --c-on-signal: #ffffff;
 
-  /* 4. 表面与边框（Precision Instrument） */
-  --c-text: #0f172a;
-  --c-text-secondary: #475569;
-  --c-text-muted: #64748b;
+  /* 4. 表面与边框（暖中性灰） */
+  --c-text: #171717;
+  --c-text-secondary: #525252;
+  --c-text-muted: #6b6b6b; /* 白底 5.3:1，满足辅助文字 4.5:1 */
   --c-text-on-color: #ffffff;
-  --c-text-on-dark: #f8fafc;
-  --c-border: #e2e8f0;
-  --c-border-subtle: #e2e8f0;
-  --c-border-strong: #cbd5e1;
-  --c-bg-page: #f7f8fa;
+  --c-text-on-dark: #ededed;
+  --c-border: #ebebeb;
+  --c-border-subtle: #f2f2f2;
+  --c-border-strong: #d6d6d6;
+  --c-bg-page: #fafafa;
   --c-bg-panel: #ffffff;
   --c-bg-card: #ffffff;
   --c-bg-elevated: #ffffff;
-  --c-bg-sunken: #f1f5f9;
+  --c-bg-sunken: #f5f5f5;
   --c-white: #ffffff;
 
-  /* 5. 评测结果与难度语义色板 */
-  --c-verdict-accepted: #047857;
-  --c-verdict-accepted-bg: #ecfdf5;
-  --c-verdict-partial: #b45309;
-  --c-verdict-partial-bg: #fffbeb;
-  --c-verdict-wrong: #be123c;
-  --c-verdict-wrong-bg: #fff1f2;
+  /* 5. 评测结果与难度 */
+  --c-verdict-accepted: #17803d;
+  --c-verdict-accepted-bg: #ecf8f0;
+  --c-verdict-partial: #a16207;
+  --c-verdict-partial-bg: #fdf7e3;
+  --c-verdict-wrong: #dc3545;
+  --c-verdict-wrong-bg: #fdf0f1;
   --c-verdict-limit: #c2410c;
-  --c-verdict-limit-bg: #fff7ed;
-  --c-verdict-judging: #0369a1;
-  --c-verdict-judging-bg: #f0f9ff;
-  --c-verdict-pending: #64748b;
-  --c-verdict-pending-bg: #f1f5f9;
-  --c-diff-easy: #047857;
+  --c-verdict-limit-bg: #fff3ea;
+  --c-verdict-judging: #5e6ad2;
+  --c-verdict-judging-bg: #f4f5fd;
+  --c-verdict-pending: #8f8f8f;
+  --c-verdict-pending-bg: #f5f5f5;
+  --c-diff-easy: #17803d;
   --c-diff-medium: #b45309;
-  --c-diff-hard: #be123c;
+  --c-diff-hard: #dc3545;
 
-  --header-h: 64px;
+  --header-h: 48px;
 }
 
 /* 编辑器暗色主题：唯一真正切换 --c-* 的暗色区域。color-scheme 随之置为 dark，
    让区域内原生表单控件、滚动条与实际渲染的明暗保持一致（全站其余部分为亮色）。 */
 .editor-dark {
   color-scheme: dark;
-  --c-bg-page: #0b1120;
-  --c-bg-panel: #111827;
-  --c-bg-card: #111827;
-  --c-bg-elevated: #182235;
-  --c-bg-sunken: #070b14;
-  --c-white: #111827;
-  --c-border: #1e293b;
-  --c-border-subtle: #1e293b;
-  --c-border-strong: #334155;
-  --c-text: #f8fafc;
-  --c-text-secondary: #94a3b8;
-  --c-text-muted: #64748b;
-  --c-primary: #38bdf8;
-  --c-primary-dark: #0ea5e9;
-  --c-primary-light: #7dd3fc;
-  --c-primary-hover-bg: rgba(56, 189, 248, 0.2);
-  --c-primary-bg: rgba(56, 189, 248, 0.12);
-  --c-primary-active-bg: rgba(56, 189, 248, 0.28);
-  --c-primary-text: #38bdf8;
-  --c-signal: #00e07a;
-  --c-signal-deep: #00d68a;
-  --c-signal-rgb: 0, 224, 122;
-  --c-on-signal: #0b1120;
-  --c-success-text: #00e07a;
-  --c-info-text: #38bdf8;
-  --c-warning-text: #fbbf24;
-  --c-error-text: #fb7185;
-  --c-text-on-dark: #f8fafc;
-  --c-verdict-accepted: #00e07a;
-  --c-verdict-accepted-bg: rgba(0, 224, 122, 0.12);
-  --c-verdict-partial: #fbbf24;
-  --c-verdict-partial-bg: rgba(251, 191, 36, 0.12);
-  --c-verdict-wrong: #fb7185;
-  --c-verdict-wrong-bg: rgba(251, 113, 133, 0.12);
-  --c-verdict-limit: #fb923c;
-  --c-verdict-limit-bg: rgba(251, 146, 60, 0.12);
-  --c-verdict-judging: #38bdf8;
-  --c-verdict-judging-bg: rgba(56, 189, 248, 0.12);
-  --c-verdict-pending: #94a3b8;
-  --c-verdict-pending-bg: rgba(148, 163, 184, 0.12);
-  --c-diff-easy: #34d399;
-  --c-diff-medium: #fbbf24;
-  --c-diff-hard: #fb7185;
+  --c-bg-page: #0a0a0a;
+  --c-bg-panel: #111111;
+  --c-bg-card: #111111;
+  --c-bg-elevated: #1a1a1a;
+  --c-bg-sunken: #000000;
+  --c-white: #111111;
+  --c-border: #262626;
+  --c-border-subtle: #1f1f1f;
+  --c-border-strong: #383838;
+  --c-text: #ededed;
+  --c-text-secondary: #a1a1a1;
+  --c-text-muted: #8f8f8f; /* 暗底 ≥ 4.5:1 */
+  --c-primary: #8d95f2;
+  --c-primary-dark: #737ce8;
+  --c-primary-light: #b2b8f7;
+  --c-primary-hover-bg: rgba(141, 149, 242, 0.18);
+  --c-primary-bg: rgba(141, 149, 242, 0.1);
+  --c-primary-active-bg: rgba(141, 149, 242, 0.26);
+  --c-primary-text: #8d95f2;
+  --c-signal: #4fd27a;
+  --c-signal-deep: #3fbf69;
+  --c-signal-rgb: 79, 210, 122;
+  --c-on-signal: #0a0a0a;
+  --c-success-text: #4fd27a;
+  --c-info-text: #8d95f2;
+  --c-warning-text: #e8b04a;
+  --c-error-text: #f07487;
+  --c-text-on-dark: #ededed;
+  --c-verdict-accepted: #4fd27a;
+  --c-verdict-accepted-bg: rgba(79, 210, 122, 0.12);
+  --c-verdict-partial: #e8b04a;
+  --c-verdict-partial-bg: rgba(232, 176, 74, 0.12);
+  --c-verdict-wrong: #f07487;
+  --c-verdict-wrong-bg: rgba(240, 116, 135, 0.12);
+  --c-verdict-limit: #f0964a;
+  --c-verdict-limit-bg: rgba(240, 150, 74, 0.12);
+  --c-verdict-judging: #8d95f2;
+  --c-verdict-judging-bg: rgba(141, 149, 242, 0.12);
+  --c-verdict-pending: #a1a1a1;
+  --c-verdict-pending-bg: rgba(161, 161, 161, 0.12);
+  --c-diff-easy: #4fd27a;
+  --c-diff-medium: #e8b04a;
+  --c-diff-hard: #f07487;
 }
 
 /* CSS 变量（设计 Token）统一在 :root 中定义，main.css 的 @theme 通过 var() 引用。

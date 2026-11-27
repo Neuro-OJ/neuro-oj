@@ -40,7 +40,6 @@ export const REMOVED_FLAGS = ["retireLegacyEndpoints", "ENDPOINT_RETIRED"];
 const SCAN_DIRS = [
   "noj-ui",
   "noj-cli",
-  "noj-vscode-extension",
   "noj-core/src",
 ];
 /** 指标/告警定义里出现的是**路径正则串**（PromQL label），不是 API 调用。 */

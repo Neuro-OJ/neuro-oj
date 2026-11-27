@@ -34,7 +34,7 @@ const contentStatus = computed(() => {
 </script>
 <template>
   <NuxtLayout name="default">
-    <div class="mx-auto w-full px-4 py-6 sm:px-6" :class="containerClass">
+    <div class="mx-auto w-full px-4 pt-3 pb-8 sm:px-6" :class="containerClass">
       <AsyncContent
         :status="contentStatus"
         :error="error ? (apiError?.message || '读取空间失败') : undefined" empty-text="空间不存在或不可访问"
@@ -50,16 +50,20 @@ const contentStatus = computed(() => {
           </div>
         </template>
         <template #error="{ error: errorMsg }">
-          <div v-if="isForbidden" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-            <span class="flex items-center justify-center size-11 rounded bg-amber-500/10 text-amber-500 text-xl font-bold">
+          <div v-if="isForbidden" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted"
+            role="alert">
+            <span
+              class="flex items-center justify-center size-11 rounded bg-amber-500/10 text-amber-500 text-xl font-bold">
               <UIcon name="i-lucide-shield-alert" class="size-[22px]" />
             </span>
             <p class="font-medium text-text">没有访问此空间的权限</p>
             <p class="text-sm text-text-secondary">{{ errorMsg || '请联系空间管理员或尝试以有权账号登录' }}</p>
             <UButton to="/workspaces" color="neutral" variant="outline" size="sm">返回空间列表</UButton>
           </div>
-          <div v-else-if="isNotFound" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-            <span class="flex items-center justify-center size-11 rounded bg-bg-sunken text-text-muted text-xl font-bold">
+          <div v-else-if="isNotFound" class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted"
+            role="alert">
+            <span
+              class="flex items-center justify-center size-11 rounded bg-bg-sunken text-text-muted text-xl font-bold">
               <UIcon name="i-lucide-file-question" class="size-[22px]" />
             </span>
             <p class="font-medium text-text">空间不存在</p>
@@ -67,10 +71,11 @@ const contentStatus = computed(() => {
             <UButton to="/workspaces" color="neutral" variant="outline" size="sm">返回空间列表</UButton>
           </div>
           <div v-else class="flex flex-col items-center justify-center gap-4 px-6 py-20 text-text-muted" role="alert">
-            <span class="flex items-center justify-center size-11 rounded bg-error-text/10 text-error-text text-xl font-bold">
+            <span
+              class="flex items-center justify-center size-11 rounded bg-error-text/10 text-error-text text-xl font-bold">
               <UIcon name="i-lucide-alert-circle" class="size-[22px]" />
             </span>
-            <p class="font-medium text-text">{{ errorMsg ?? "读取空间失败" }}</p>
+            <p class="font-medium text-text">{{ errorMsg ?? '读取空间失败' }}</p>
             <UButton color="primary" variant="outline" size="sm" @click="refresh()">重试</UButton>
           </div>
         </template>

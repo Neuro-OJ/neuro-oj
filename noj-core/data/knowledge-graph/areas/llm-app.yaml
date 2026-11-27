@@ -23,6 +23,7 @@ nodes:
     summary: 引导模型先写出中间推理步骤再给出答案，可显著提升算术、常识与多步推理任务的表现，也可用于检查推理过程
     syllabus: [lmcc]
     requires: [llm-app.in-context-learning]
+    doc: docs/llm-app.chain-of-thought.md
   - id: llm-app.vector-retrieval
     name: 向量检索与重排
     summary: 把文本编码为向量后按相似度检索相关片段，并用重排模型精排结果，为问答与检索系统提供有依据的上下文
@@ -69,6 +70,7 @@ nodes:
     summary: 让模型输出结构化的调用请求以使用检索、计算器、代码执行等外部工具，并解析返回结果继续推理，是智能体行动的关键
     syllabus: [lmcc]
     requires: [llm-infer.structured-output, llm-app.prompt-design]
+    doc: docs/llm-app.tool-use.md
   - id: llm-app.agent-applications
     name: 智能体应用搭建
     summary: 把角色设定、记忆与工具调用组合成可运行的智能体，按“观察—思考—行动”循环完成文档问答、数据分析等实际任务

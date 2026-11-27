@@ -7,11 +7,13 @@ nodes:
     summary: 处理重复值、异常值与缺失数据，可用删除、均值或中位数填充、模型插补等手段保证数据质量
     syllabus: [ioai, noai]
     requires: [prog.pandas, math.statistics]
+    doc: docs/data.preprocessing.md
   - id: data.normalization
     name: 归一化与标准化
     summary: 把特征缩放到统一量纲，如最小最大缩放到区间内或减均值除标准差，避免尺度差异干扰模型
     syllabus: [ioai, noai]
     requires: [prog.numpy, math.statistics]
+    doc: docs/data.normalization.md
   - id: data.split
     name: 数据集划分（训练、验证、测试）
     summary: 按比例把数据分为训练、验证与测试集，必要时分层抽样，使模型评估结果可靠且不泄露信息

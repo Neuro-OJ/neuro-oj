@@ -2,10 +2,10 @@
   <div class="w-full max-w-[380px] relative">
     <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
     <div class="bg-bg-panel border border-border rounded-lg p-8">
-      <h1 class="text-22px font-bold text-center mb-6 text-text animate-[fadeInUp_0.5s_ease_both]">修改密码</h1>
+      <h1 class="text-22px font-bold text-center mb-6 text-text">修改密码</h1>
 
       <form @submit.prevent="handleSubmit">
-        <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.05s_both]">
+        <div class="relative mb-7">
           <label for="oldPassword" class="block text-sm font-semibold text-text mb-1">原密码</label>
           <div class="relative flex items-center">
             <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
@@ -36,7 +36,7 @@
           </Transition>
         </div>
 
-        <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.1s_both]">
+        <div class="relative mb-7">
           <label for="newPassword" class="block text-sm font-semibold text-text mb-1">新密码</label>
           <div class="relative flex items-center">
             <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
@@ -68,7 +68,7 @@
           </Transition>
         </div>
 
-        <div class="relative mb-7 animate-[fadeInUp_0.5s_ease_0.15s_both]">
+        <div class="relative mb-7">
           <label for="confirmPassword" class="block text-sm font-semibold text-text mb-1">确认密码</label>
           <div class="relative flex items-center">
             <UIcon name="i-lucide-lock" class="absolute left-[10px] text-text-muted pointer-events-none size-4.5" />
@@ -99,14 +99,13 @@
           </Transition>
         </div>
 
-        <UButton color="primary" size="md" block class="animate-[fadeInUp_0.5s_ease_0.2s_both]" type="submit"
-          :disabled="loading">
+        <UButton color="primary" size="md" block class="" type="submit" :disabled="loading">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? '提交中...' : '提交' }}
                 </UButton>
       </form>
 
-      <p class="text-center mt-5 text-sm text-text-secondary animate-[fadeInUp_0.5s_ease_0.25s_both]">
+      <p class="text-center mt-5 text-sm text-text-secondary">
         <button type="button"
           class="bg-transparent border-0 text-primary text-sm cursor-pointer p-0 font-semibold hover:underline"
           @click="handleLogout">使用其他账号登录</button>

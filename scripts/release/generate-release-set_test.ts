@@ -40,6 +40,7 @@ Deno.test("generateReleaseSet: 汇总七个镜像、迁移级别并绑定 Releas
       gatewayMigrationsDir: gateway,
     });
     assertEquals(result.release, "v0.10.5");
+    assertEquals(result.ide_version, "v0.10.5");
     assertEquals(result.migration_level, "core:0121,gateway:20261021115820");
     assertEquals(result.components.solution_ai.digest, digest("7"));
   } finally {

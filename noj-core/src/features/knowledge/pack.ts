@@ -397,8 +397,42 @@ function findCycles(adjacency: Map<string, string[]>): string[][] {
 }
 
 /** 讲解文档根目录：`<官方内容包目录>/docs`。 */
-export function resolveDocsDir(): string {
-  return join(resolveOfficialPackDir(), "docs");
+export function resolveDocsDir(
+  packDir: string = resolveOfficialPackDir(),
+): string {
+  return join(packDir, "docs");
+}
+
+/**
+ * 校验内容包内声明 `doc` 的节点都对应真实非空 Markdown 文件且未越界 `docs/`。
+ */
+export async function validatePackDocs(pack: KnowledgePack): Promise<string[]> {
+  const errors: string[] = [];
+  const docsRoot = resolve(resolveDocsDir(pack.dir));
+  for (const area of pack.areas) {
+    for (const node of area.nodes) {
+      if (!node.doc) continue;
+      const relative = normalizePackRelativePath(node.doc);
+      if (!relative) {
+        errors.push(`知识点 "${node.id}" 的 doc 路径非法：${node.doc}`);
+        continue;
+      }
+      const target = resolve(docsRoot, relative.replace(/^docs\//, ""));
+      if (target === docsRoot || !target.startsWith(`${docsRoot}${SEP}`)) {
+        errors.push(`知识点 "${node.id}" 的 doc 越出 docs 目录：${node.doc}`);
+        continue;
+      }
+      try {
+        const text = await Deno.readTextFile(target);
+        if (text.trim().length === 0) {
+          errors.push(`知识点 "${node.id}" 的讲解文件为空：${node.doc}`);
+        }
+      } catch {
+        errors.push(`知识点 "${node.id}" 声明的讲解文件不存在：${node.doc}`);
+      }
+    }
+  }
+  return errors;
 }
 
 /**

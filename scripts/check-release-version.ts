@@ -1,7 +1,7 @@
 /**
  * 发布阶段版本校验（0.11 RC 发布身份约束）。
  *
- * 背景：`check-version-consistency.ts` 只断言 7 个模块清单**彼此一致**，刻意不绑定
+ * 背景：`check-version-consistency.ts` 只断言 6 个模块清单**彼此一致**，刻意不绑定
  * Release 标签（模块版本与发布标签是两套语义）。它能拦住"清单之间漂移"，但拦不住
  * "标签是 v0.11.0，源码清单却还写着 0.10.5"——而那正是 0.10.6 之后 412 个提交
  * 没有发生任何版本跃迁时的状态：门禁全绿、产物身份却与发布说明错位。
@@ -78,7 +78,7 @@ export function compareReleaseVersion(
     return [
       `Release 标签 ${tag} 的基础版本是 ${tagVersion.base}，` +
       `但模块清单写的是 ${manifestVersion}（基础版本 ${manifest.base}）。` +
-      `发布前请把 7 个清单的 version 同步为 ${tagVersion.base}。`,
+      `发布前请把 6 个清单的 version 同步为 ${tagVersion.base}。`,
     ];
   }
   return [];

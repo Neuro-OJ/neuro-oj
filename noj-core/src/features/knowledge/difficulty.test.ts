@@ -39,6 +39,7 @@ import {
 import {
   calibrateDifficulty,
   isPassingScore,
+  loadNodeProblemCounts,
   loadPassedProblems,
   passRatio,
   passScoreOf,
@@ -665,6 +666,14 @@ Deno.test({
       (item: { id: string }) => item.id === f.nodeId,
     );
     assertEquals(node.problem_count, 2);
+    // 批量计数与单节点阶梯保持一致（含空节点返回 0）。
+    const batchCounts = await loadNodeProblemCounts(
+      [f.nodeId, "nonexistent.node"],
+      f.domain.id,
+      null,
+    );
+    assertEquals(batchCounts.get(f.nodeId), 2);
+    assertEquals(batchCounts.get("nonexistent.node"), 0);
     // 台阶仍只有两条，next 逻辑不受覆盖影响。
     assertEquals(data.items.length, 2);
   },

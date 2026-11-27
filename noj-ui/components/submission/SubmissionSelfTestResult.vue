@@ -46,6 +46,7 @@ const statuses = {
         kind="self-test"
         :target-id="record.id"
         :slug="slug"
+        :problem-id="record.reference?.problem_id"
         :status="record.status"
         result-visibility="cases"
         :resource-available="record.resource_available"

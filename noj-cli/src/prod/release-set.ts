@@ -47,7 +47,7 @@ export interface ReleaseSet {
   };
   components: Record<ReleaseSetComponentName, ReleaseSetComponent>;
   cli_version: string;
-  ide_version: string;
+  ide_version?: string;
   sdk_standard: typeof SDK_STANDARD;
 }
 
@@ -130,18 +130,21 @@ export function validateReleaseSet(
   const cliVersion = validateReleaseTag(
     requiredString(root, "cli_version", "根"),
   );
-  const ideVersion = validateReleaseTag(
-    requiredString(root, "ide_version", "根"),
-  );
   if (cliVersion.replace(/^v/, "") !== release.replace(/^v/, "")) {
     throw new Error(
       `发布集 cli_version ${cliVersion} 与 release ${release} 不一致`,
     );
   }
-  if (ideVersion.replace(/^v/, "") !== release.replace(/^v/, "")) {
-    throw new Error(
-      `发布集 ide_version ${ideVersion} 与 release ${release} 不一致`,
+  let ideVersion: string | undefined;
+  if (root.ide_version !== undefined) {
+    ideVersion = validateReleaseTag(
+      requiredString(root, "ide_version", "根"),
     );
+    if (ideVersion.replace(/^v/, "") !== release.replace(/^v/, "")) {
+      throw new Error(
+        `发布集 ide_version ${ideVersion} 与 release ${release} 不一致`,
+      );
+    }
   }
   if (root.sdk_standard !== SDK_STANDARD) {
     throw new Error(`发布集 sdk_standard 必须为 ${SDK_STANDARD}`);
@@ -156,7 +159,7 @@ export function validateReleaseSet(
     },
     components: normalizedComponents,
     cli_version: cliVersion,
-    ide_version: ideVersion,
+    ...(ideVersion !== undefined ? { ide_version: ideVersion } : {}),
     sdk_standard: SDK_STANDARD,
   };
 }

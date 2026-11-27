@@ -77,7 +77,9 @@ function statusLabel(status: string) {
 function statusClass(status: string) {
   if (status === 'RUNNING') return 'bg-primary-bg text-primary';
   if (status === 'PENDING' || status === 'IGN') return 'bg-bg-page text-text-muted';
-  return isSubmissionCasePassed(status) ? 'bg-green-50 text-success-text' : 'bg-red-50 text-error-text';
+  return isSubmissionCasePassed(status)
+    ? 'bg-verdict-accepted-bg text-verdict-accepted'
+    : 'bg-verdict-wrong-bg text-verdict-wrong';
 }
 
 function statusIcon(status: string) {
@@ -116,12 +118,12 @@ function statusIcon(status: string) {
       <table class="w-full min-w-[680px] border-collapse text-sm">
         <thead>
           <tr class="border-b border-border text-left text-xs font-semibold text-text-muted">
-            <th scope="col" class="px-4 py-3">测试点</th>
-            <th scope="col" class="px-4 py-3">状态</th>
-            <th v-if="hasScores" scope="col" class="px-4 py-3">得分</th>
-            <th scope="col" class="px-4 py-3">耗时</th>
-            <th scope="col" class="px-4 py-3">内存</th>
-            <th scope="col" class="px-4 py-3">输出</th>
+            <th scope="col" class="px-3 py-2">测试点</th>
+            <th scope="col" class="px-3 py-2">状态</th>
+            <th v-if="hasScores" scope="col" class="px-3 py-2">得分</th>
+            <th scope="col" class="px-3 py-2">耗时</th>
+            <th scope="col" class="px-3 py-2">内存</th>
+            <th scope="col" class="px-3 py-2">输出</th>
           </tr>
         </thead>
         <tbody>
@@ -136,11 +138,11 @@ function statusIcon(status: string) {
               @keydown.enter.prevent="toggleExpand(item)"
               @keydown.space.prevent="toggleExpand(item)"
             >
-              <th scope="row" class="px-4 py-3 text-left font-mono text-xs font-medium text-text">
+              <th scope="row" class="px-3 py-2 text-left font-mono text-xs font-medium text-text">
                 {{ item.displayLabel ?? item.caseId }}
                 <span v-if="item.visibility === 'hidden'" class="ml-1 text-[11px] font-sans text-text-muted">隐藏</span>
               </th>
-              <td class="px-4 py-3">
+              <td class="px-3 py-1.5">
                 <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold"
                   :class="statusClass(item.status)">
                   <UIcon :name="statusIcon(item.status)" class="size-3.5" :class="item.status === 'RUNNING' ? 'animate-spin' : ''" />
@@ -148,14 +150,14 @@ function statusIcon(status: string) {
                 </span>
               </td>
               <td v-if="hasScores"
-                class="px-4 py-3 text-xs tabular-nums">{{ item.score ?? '—' }} / {{ item.maxScore ?? '—' }}</td>
-              <td class="whitespace-nowrap px-4 py-3 font-mono text-xs text-text-secondary">
+                class="px-3 py-1.5 text-xs tabular-nums">{{ item.score ?? '—' }} / {{ item.maxScore ?? '—' }}</td>
+              <td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-text-secondary">
                 {{ formatTime(item.timeMs) }}
               </td>
-              <td class="whitespace-nowrap px-4 py-3 font-mono text-xs text-text-secondary">
+              <td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-text-secondary">
                 {{ formatMemory(item.memoryKb) }}
               </td>
-              <td class="px-4 py-3 text-xs text-text-secondary">
+              <td class="px-3 py-1.5 text-xs text-text-secondary">
                 <span v-if="item.visibility === 'hidden'" class="inline-flex items-center gap-1 text-text-muted">
                   <UIcon name="i-lucide-lock" class="size-3.5" />
                   隐藏用例不展示输出
@@ -181,7 +183,7 @@ function statusIcon(status: string) {
               v-if="expandedId === item.caseId && (hasOutput(item) || hasDiagnostic(item))"
               class="border-b border-border bg-bg-page/50"
             >
-              <td :colspan="hasScores?6:5" class="px-4 py-4">
+              <td :colspan="hasScores?6:5" class="px-3 py-1.5">
                 <div class="grid gap-4">
                   <div
                     v-if="hasDiagnostic(item)"

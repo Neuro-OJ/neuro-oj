@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { resolveWorkspaceWidth } from '~/utils/workspace-layout'
+import { resolveWorkspaceWidth } from '~/utils/workspace-layout';
 
 /**
  * 全站面包屑导航（#512）。
@@ -12,25 +12,25 @@ import { resolveWorkspaceWidth } from '~/utils/workspace-layout'
  *   保证与主容器左边缘严格对齐。
  */
 
-const items = useBreadcrumbItems()
-const route = useRoute()
+const items = useBreadcrumbItems();
+const route = useRoute();
 
 const maxWidth = computed(() => {
-  const explicit = route.meta?.breadcrumbWidth as string | undefined
-  if (explicit) return explicit
-  if (route.meta?.workspaceWidth || route.meta?.problemWorkspace) {
-    return resolveWorkspaceWidth(route.meta).maxWidth
+  // 工作区页面一律与容器同宽，避免页面里遗留的 breadcrumbWidth 与新容器宽度错位。
+  if (route.meta?.layout === 'workspace' || route.meta?.workspaceWidth || route.meta?.problemWorkspace) {
+    return resolveWorkspaceWidth(route.meta).maxWidth;
   }
-  return '1040px'
-})
+  const explicit = route.meta?.breadcrumbWidth as string | undefined;
+  return explicit ?? '1040px';
+});
 
 /** 末层为当前页，不可点击并带 aria-current="page"。 */
 const crumbs = computed(() =>
   items.value.map((item, index) => ({
     ...item,
     active: index === items.value.length - 1,
-  })),
-)
+  }))
+);
 </script>
 
 <template>
@@ -38,7 +38,7 @@ const crumbs = computed(() =>
   <nav
     v-if="items.length > 1"
     aria-label="面包屑"
-    class="mx-auto w-full px-4 pt-4 sm:px-6"
+    class="mx-auto w-full px-4 pt-3 sm:px-6"
     :style="{ maxWidth }"
   >
     <ol class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">

@@ -12,6 +12,7 @@ import {
   loadPackFromDir,
   resolveOfficialPackDir,
   validatePack,
+  validatePackDocs,
 } from "../noj-core/src/features/knowledge/pack.ts";
 
 const dir = resolveOfficialPackDir();
@@ -24,8 +25,12 @@ try {
   Deno.exit(1);
 }
 
-const errors = validatePack(pack);
+const errors = [...validatePack(pack), ...(await validatePackDocs(pack))];
 const nodes = pack.areas.reduce((sum, area) => sum + area.nodes.length, 0);
+const docsCount = pack.areas.reduce(
+  (sum, area) => sum + area.nodes.filter((n) => Boolean(n.doc)).length,
+  0,
+);
 if (errors.length > 0) {
   console.error(
     `[知识图谱内容包] 校验失败：${pack.id}@${pack.version}（${dir}）`,
@@ -34,5 +39,5 @@ if (errors.length > 0) {
   Deno.exit(1);
 }
 console.log(
-  `[知识图谱内容包] 校验通过：${pack.id}@${pack.version}，领域 ${pack.areas.length} 个，节点 ${nodes} 个`,
+  `[知识图谱内容包] 校验通过：${pack.id}@${pack.version}，领域 ${pack.areas.length} 个，节点 ${nodes} 个，讲解 ${docsCount} 篇`,
 );

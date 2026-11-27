@@ -1,11 +1,11 @@
 # =============================================================================
-# Neuro OJ 生产镜像发布：预发布候选 → 安全门禁 → 镜像/CLI/IDE 资产就绪 → 按标签发布
+# Neuro OJ 生产镜像发布：预发布候选 → 安全门禁 → 镜像/CLI 资产就绪 → 按标签发布
 #
 # 触发条件：GitHub Release prereleased（预发布）或 workflow_dispatch。
 # 普通 push / pull_request / 直接 published 不发布生产镜像。
 #
 # 就绪窗口控制（issue #431）：Release 先以 GitHub pre-release 触发本工作流，
-# 完成镜像构建、扫描、签名、验证与 noj-cli / VS Code 插件资产上传，最后的
+# 完成镜像构建、扫描、签名、验证与 noj-cli 资产上传，最后的
 # publish-release 任务生成 release-set.json 并按版本标签类型收尾：
 # - 稳定标签（vX.Y.Z）：转正为正式 Release（--prerelease=false --latest）；
 # - 预发布标签（vX.Y.Z-rc.N / -alpha.N / -beta.N）：保持 prerelease=true，
@@ -145,54 +145,6 @@ jobs:
             env.prod.example.sha256 \
             install.sh \
             install.sh.sha256 \
-            --clobber
-
-  publish-ide:
-    name: 发布 VS Code 插件
-    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
-    needs: verify-release
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 安装 Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: noj-vscode-extension/package-lock.json
-      - name: 安装依赖、类型检查与单元测试
-        working-directory: noj-vscode-extension
-        run: |
-          npm ci
-          npm run check
-          npm test
-      - name: 打包 VSIX 并发布 Release 资产
-        working-directory: noj-vscode-extension
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
-        run: |
-          set -Eeuo pipefail
-          [[ "$VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || {
-            echo "::error::版本必须是合法 Release tag：$VERSION"
-            exit 1
-          }
-          asset="neuro-oj-vscode-${VERSION#v}.vsix"
-          [[ "${asset:0:1}" != "." ]] || { echo "::error::资产名不得以点号开头：$asset"; exit 1; }
-          npx @vscode/vsce package -o "$asset"
-          sha256sum "$asset" > "${asset}.sha256"
-          test "$(awk '{print $1}' "${asset}.sha256")" = "$(sha256sum "$asset" | awk '{print $1}')"
-          [[ -f "$asset" && -f "${asset}.sha256" ]] || {
-            echo "::error::缺少待发布 VSIX 资产：$asset"
-            exit 1
-          }
-          gh release upload "$VERSION" \
-            "$asset" \
-            "${asset}.sha256" \
             --clobber
 
   supply-chain-check:
@@ -559,7 +511,6 @@ jobs:
     needs: [
       verify-release,
       publish-cli,
-      publish-ide,
       performance-gate,
       functional-gate,
       e2e-gate,
@@ -604,7 +555,7 @@ jobs:
           VERSION: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           set -Eeuo pipefail
-          # 此时镜像标签、签名、SBOM/来源证明、noj-cli、IDE VSIX 与 release-set.json 均已就绪。
+          # 此时镜像标签、签名、SBOM/来源证明、noj-cli 与 release-set.json 均已就绪。
           # 仅无预发布后缀的稳定版本（vX.Y.Z）转正为正式 Latest Release；
           # 带 SemVer 预发布后缀的标签（如 v0.11.0-rc.1 / -alpha.1 / -beta.1）保持
           # prerelease=true，避免 v0.10.x 的 `noj-cli update --latest` 或默认 `install` 误选 RC。

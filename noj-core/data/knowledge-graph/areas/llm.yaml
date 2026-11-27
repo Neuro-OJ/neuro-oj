@@ -17,6 +17,7 @@ nodes:
     summary: 掌握子词切分的基本思想与合并规则，能理解词表大小和切分方式如何影响上下文长度与模型表现
     syllabus: [lmcc, ioai]
     requires: [data.tokenization]
+    doc: docs/llm.tokenizers.md
   - id: llm.scaling-laws
     name: 扩展法则
     summary: 理解损失随参数量、数据量和计算量增长的幂律关系，能据此估算在固定算力下如何配置模型与数据
@@ -32,6 +33,7 @@ nodes:
     summary: 比较三类大模型架构的注意力可见范围与适用场景，能根据生成式或理解式任务选择合适的结构
     syllabus: [lmcc, ioai]
     requires: [dl.transformer]
+    doc: docs/llm.architectures.md
   - id: llm.positional-encoding
     name: 位置编码（绝对位置、RoPE、ALiBi）
     summary: 理解模型如何感知词序，掌握 RoPE 与 ALiBi 的编码思路及它们对外推和长文本处理的影响

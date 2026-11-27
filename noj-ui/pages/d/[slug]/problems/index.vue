@@ -30,8 +30,8 @@ const { data, status, error, refresh } = await useAsyncData(
 );
 const rows = computed(() => data.value?.items ?? []);
 const columns = computed(() => [
-  { accessorKey: 'reference', header: '#', meta: { class: { th: 'w-20', td: 'align-top font-mono tabular-nums' } } },
-  { accessorKey: 'title', header: '题目', meta: { class: { th: 'min-w-36', td: 'min-w-36 whitespace-normal' } } },
+  { accessorKey: 'reference', header: '#', meta: { class: { th: 'w-16', td: 'font-mono tabular-nums' } } },
+  { accessorKey: 'title', header: '题目', meta: { class: { th: 'min-w-36 w-full', td: 'min-w-36 max-w-0' } } },
   { accessorKey: 'difficulty', header: '难度' },
   ...['tags', 'time', 'memory', 'rate', ...(user.value ? ['progress'] : [])].map((key) => ({
     accessorKey: key,
@@ -58,13 +58,13 @@ const manageItems = computed(() => [
 useSeoMeta({ title: '题库' });
 </script>
 <template>
-  <div class="space-y-5">
-    <LibraryPageHeader title="题库" :description="`${domain?.name ?? ''} · 算法与 AI 在线评测`" icon="i-lucide-book-open" :count="`共 ${data?.total ?? '—'} 道题`">
+  <div class="space-y-3">
+    <LibraryPageHeader title="题库" :description="domain?.name ?? ''" :count="`${data?.total ?? '—'} 题`">
       <template #actions>
         <UButton v-if="domain?.status==='active' && (can('problem:write_any'))"
-          :to="`/d/${slug}/problems/new`" size="sm" icon="i-lucide-plus">创建题目</UButton>
+          :to="`/d/${slug}/problems/new`" size="xs" icon="i-lucide-plus">创建题目</UButton>
         <UDropdownMenu v-if="manageItems.length" :items="manageItems">
-          <UButton color="neutral" variant="outline" size="sm" trailing-icon="i-lucide-chevron-down">管理题库</UButton>
+          <UButton color="neutral" variant="outline" size="xs" trailing-icon="i-lucide-chevron-down">管理</UButton>
         </UDropdownMenu>
       </template>
     </LibraryPageHeader>
@@ -80,55 +80,57 @@ useSeoMeta({ title: '题库' });
     <AsyncContent :status="error ? 'error' : status === 'pending' ? 'loading' : rows.length ? 'data' : 'empty'"
       :error="error ? extractApiError(error).message : undefined" empty-text="暂无符合条件的题目" @retry="refresh()">
       <template #loading>
-        <TableSkeleton :rows="8" :columns="['w-16', 'flex-1', 'w-14', 'w-28', 'w-14', 'w-14', 'w-16']" />
+        <TableSkeleton :rows="12" :columns="['w-16', 'flex-1', 'w-14', 'w-28', 'w-14', 'w-14', 'w-16']" />
       </template>
-      <div class="overflow-x-auto rounded-md border border-border bg-bg-panel">
-        <UTable :columns="columns" :data="rows" :ui="{th:'whitespace-nowrap bg-bg-sunken/70 px-3 py-2.5 text-xs font-semibold text-text-secondary',td:'px-3 py-2.5 text-sm',tr:'transition-colors hover:bg-bg-sunken/40'}">
+      <div class="overflow-x-auto rounded-lg border border-border bg-bg-panel">
+        <UTable :columns="columns" :data="rows"
+          :ui="{tr:'transition-colors hover:bg-bg-sunken/50', td:'px-3 py-1.5 text-[13px]'}">
           <template #reference-cell="{row}">
             <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="whitespace-nowrap text-xs text-primary no-underline hover:underline"><ProblemIdBadge :display-id="row.original.reference.display_ref" /></NuxtLink>
+              class="whitespace-nowrap font-mono text-xs text-text-secondary no-underline hover:text-primary">{{ row.original.reference.display_ref }}</NuxtLink>
           </template>
           <template #title-cell="{row}">
-            <div :class="{'contest-protected': row.original.contest_protection?.length}">
-            <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
-              class="break-words font-medium leading-relaxed text-text no-underline transition-colors hover:text-primary">{{ row.original.title }}</NuxtLink>
-            <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-text-muted">
+            <div class="flex min-w-0 items-center gap-2"
+              :class="{'contest-protected !p-0.5': row.original.contest_protection?.length}">
+              <NuxtLink :to="workspaceProblemPath(slug!,row.original.reference.display_ref)"
+                class="truncate font-medium text-text no-underline hover:text-primary hover:underline">{{ row.original.title }}</NuxtLink>
               <span
-                class="rounded-sm border border-primary/20 bg-primary-bg px-1.5 text-primary">{{ {oi:'OI',ai:'AI / LLM',objective:'客观题'}[row.original.kind] }}</span>
-              <span v-if="row.original.judge_backend" class="rounded-sm border border-border px-1.5 font-mono text-text-secondary">{{ row.original.judge_backend }}</span>
-              <span v-if="user && row.original.best_score != null" class="text-success-text tabular-nums sm:hidden">{{ (row.original.best_score / 100).toFixed(2) }} 分</span>
-              <span v-if="row.original.contest_protection?.length" class="inline-flex items-center gap-1 font-medium text-text-secondary"><UIcon name="i-lucide-lock-keyhole" class="size-3" />比赛赛题 · 受保护</span>
-            </div>
+                class="shrink-0 font-mono text-[11px] text-text-muted">{{ {oi:'OI',ai:'AI',objective:'客观'}[row.original.kind] }}<template v-if="row.original.judge_backend">·{{ row.original.judge_backend }}</template></span>
+              <span v-if="row.original.contest_protection?.length"
+                class="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-text-secondary"
+                title="比赛赛题 · 受保护"><UIcon name="i-lucide-lock-keyhole" class="size-3" />赛题</span>
+              <span v-if="user && row.original.best_score != null"
+                class="font-mono text-[11px] text-success-text sm:hidden">{{ (row.original.best_score / 100).toFixed(2) }}</span>
             </div>
           </template>
           <template
             #difficulty-cell="{row}"><ProblemDifficultyBadge v-if="row.original.difficulty" :difficulty="row.original.difficulty" /><span v-else class="text-xs text-text-muted">—</span></template>
           <template #tags-cell="{row}">
-            <div class="flex max-w-44 flex-wrap items-center gap-1">
-              <button v-for="label in (row.original.tags ?? []).slice(0, 2)" :key="label.id" type="button"
-                class="rounded-sm border border-primary/20 bg-primary-bg px-2 py-0.5 text-xs text-primary transition-colors hover:bg-primary-hover-bg"
+            <div class="flex max-w-64 items-center gap-1 overflow-hidden">
+              <button v-for="label in (row.original.tags ?? []).slice(0, 3)" :key="label.id" type="button"
+                class="shrink-0 rounded-[4px] bg-bg-sunken px-1.5 text-[11px] leading-5 text-text-secondary transition-colors hover:bg-primary-bg hover:text-primary"
                 @click="controls.setFilter('tag',label.id)">{{ label.name }}</button>
               <span
-                v-if="(row.original.tags?.length ?? 0) > 2"
-                class="rounded-sm border border-border bg-bg-sunken px-1.5 py-0.5 text-[11px] tabular-nums text-text-muted"
-                :title="(row.original.tags ?? []).slice(2).map((t) => t.name).join('、')"
-              >+{{ row.original.tags!.length - 2 }}</span>
+                v-if="(row.original.tags?.length ?? 0) > 3"
+                class="shrink-0 font-mono text-[11px] text-text-muted"
+                :title="(row.original.tags ?? []).slice(3).map((t) => t.name).join('、')"
+              >+{{ row.original.tags!.length - 3 }}</span>
               <span v-if="row.original.has_hidden_algorithm_tags"
-                class="text-xs text-text-muted">通过后显示算法标签</span>
+                class="text-[11px] text-text-muted">通过后显示</span>
               <span v-else-if="!row.original.tags?.length" class="text-text-muted">—</span>
             </div>
           </template>
           <template
-            #time-cell="{row}"><span class="whitespace-nowrap text-xs tabular-nums text-text-secondary">{{ row.original.kind === 'objective' ? '即时' : row.original.limits?.time_limit_ms != null ? `${row.original.limits.time_limit_ms}ms` : '—' }}</span></template>
+            #time-cell="{row}"><span class="whitespace-nowrap font-mono text-xs text-text-secondary">{{ row.original.kind === 'objective' ? '即时' : row.original.limits?.time_limit_ms != null ? `${row.original.limits.time_limit_ms}ms` : '—' }}</span></template>
           <template
-            #memory-cell="{row}"><span class="whitespace-nowrap text-xs tabular-nums text-text-secondary">{{ row.original.limits?.memory_limit_mb != null ? `${row.original.limits.memory_limit_mb}MB` : '—' }}</span></template>
+            #memory-cell="{row}"><span class="whitespace-nowrap font-mono text-xs text-text-secondary">{{ row.original.limits?.memory_limit_mb != null ? `${row.original.limits.memory_limit_mb}MB` : '—' }}</span></template>
           <template
-            #rate-cell="{row}"><span class="text-xs tabular-nums text-text-secondary" :title="`${row.original.accepted_submissions ?? 0} 次通过 / ${row.original.valid_submissions ?? 0} 次有效提交`">{{ row.original.valid_submissions ? `${((row.original.accepted_submissions ?? 0)*100/row.original.valid_submissions).toFixed(1)}%` : '—' }}</span></template>
+            #rate-cell="{row}"><span class="font-mono text-xs text-text-secondary" :title="`${row.original.accepted_submissions ?? 0} 次通过 / ${row.original.valid_submissions ?? 0} 次有效提交`">{{ row.original.valid_submissions ? `${((row.original.accepted_submissions ?? 0)*100/row.original.valid_submissions).toFixed(1)}%` : '—' }}<span v-if="row.original.valid_submissions" class="ml-1 text-text-muted">{{ row.original.accepted_submissions ?? 0 }}/{{ row.original.valid_submissions }}</span></span></template>
           <template
-            #progress-cell="{row}"><span class="inline-flex items-center gap-1 whitespace-nowrap text-xs" :class="row.original.progress==='solved' ? 'text-success-text' : 'text-text-muted'"><UIcon :name="row.original.progress === 'solved' ? 'i-lucide-circle-check' : row.original.progress === 'attempted' ? 'i-lucide-circle-alert' : 'i-lucide-circle'" class="size-3.5" />{{ {solved:'已通过',attempted:'尝试未通过',unseen:'未尝试'}[row.original.progress ?? 'unseen'] }}<template v-if="row.original.best_score != null"> · {{ (row.original.best_score / 100).toFixed(2) }} 分</template></span></template>
+            #progress-cell="{row}"><span class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs" :class="row.original.progress==='solved' ? 'text-success-text' : row.original.progress==='attempted' ? 'text-warning-text' : 'text-text-muted'"><span class="size-1.5 rounded-full" :class="row.original.progress==='solved' ? 'bg-success-text' : row.original.progress==='attempted' ? 'bg-warning-text' : 'bg-border-strong'" />{{ {solved:'通过',attempted:'尝试',unseen:'—'}[row.original.progress ?? 'unseen'] }}<span v-if="row.original.best_score != null" class="font-mono">{{ (row.original.best_score / 100).toFixed(2) }}</span></span></template>
         </UTable>
       </div>
-      <PaginationNav v-if="data && data.total>30" class="mt-5" :current-page="page"
+      <PaginationNav v-if="data && data.total>30" class="mt-3" :current-page="page"
         :total-pages="Math.ceil(data.total/30)" @page-change="controls.setFilter('page',String($event))" />
     </AsyncContent>
   </div>

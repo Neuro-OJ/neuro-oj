@@ -12,6 +12,7 @@ nodes:
     summary: 用状态、动作、转移概率与奖励描述序贯决策问题，理解马尔可夫性质并能写出环境的状态转移
     syllabus: [ioai]
     requires: [rl.agent-environment, math.probability]
+    doc: docs/rl.mdp.md
   - id: rl.return-discount
     name: 回报与折扣因子
     summary: 掌握累积回报的定义与折扣因子的作用，理解它如何权衡近期与远期收益并影响最优行为
@@ -27,6 +28,7 @@ nodes:
     summary: 理解状态价值与动作价值衡量长期回报期望的含义，能写出贝尔曼期望方程并手工计算小例子的价值
     syllabus: [ioai]
     requires: [rl.return-discount, rl.policy]
+    doc: docs/rl.value-functions.md
   - id: rl.dynamic-programming
     name: 动态规划求解 MDP
     summary: 掌握策略评估与策略迭代、价值迭代的更新公式，能在已知模型的小型 MDP 上求出最优策略

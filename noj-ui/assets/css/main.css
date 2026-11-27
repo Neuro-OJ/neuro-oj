@@ -7,7 +7,8 @@
 
 /* 赛题保护仅标记元数据，条纹之外保留文字说明以便辨认。 */
 .contest-protected {
-  background: repeating-linear-gradient(135deg, #f3f4f6 0 8px, #e5e7eb 8px 16px);
+  /* 条纹取语义底色，随终端主题与编辑器亮色区域切换，正文对比度不受影响。 */
+  background: repeating-linear-gradient(135deg, var(--c-bg-sunken) 0 8px, var(--c-bg-elevated) 8px 16px);
   border-radius: 4px;
   padding: 0.5rem;
 }
@@ -21,17 +22,17 @@
 @theme inline {
   /* 主色（天青蓝 Brand Azure）：基础 + 完整色阶（Nuxt UI color="primary" 需要 300/600 等档位） */
   --color-primary: var(--c-primary);
-  --color-primary-50: #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-200: #bae6fd;
-  --color-primary-300: #7dd3fc;
-  --color-primary-400: #38bdf8;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  --color-primary-800: #075985;
-  --color-primary-900: #0c4a6e;
-  --color-primary-950: #082f49;
+  --color-primary-50: #f4f5fd;
+  --color-primary-100: #eaecfa;
+  --color-primary-200: #d5d9f5;
+  --color-primary-300: #b2b8f0;
+  --color-primary-400: #8d95e6;
+  --color-primary-500: #7c85de;
+  --color-primary-600: #5e6ad2;
+  --color-primary-700: #4c57c0;
+  --color-primary-800: #3f489e;
+  --color-primary-900: #363d80;
+  --color-primary-950: #22264d;
 
   /* 语义主色变体（现有 bg-primary-dark 等工具类依赖） */
   --color-primary-dark: var(--c-primary-dark);
@@ -94,39 +95,41 @@
   --color-error-text: var(--c-error-text);
   /* 状态基础色 + 300/600 档（Nuxt UI color="success/error" 等需要） */
   --color-success: var(--c-success-text);
-  --color-success-300: #6ee7b7;
-  --color-success-600: #047857;
+  --color-success-300: #6fc58c;
+  --color-success-600: var(--c-success-text);
   --color-info: var(--c-info-text);
-  --color-info-300: #7dd3fc;
-  --color-info-600: #0369a1;
+  --color-info-300: #9aaeef;
+  --color-info-600: var(--c-info-text);
   --color-warning: var(--c-warning-text);
   --color-warning-300: #fcd34d;
-  --color-warning-600: #b45309;
-  /* 警示横幅底色/描边：保持视觉统一 */
-  --color-warning-bg: #fffbeb;
-  --color-warning-border: #fde68a;
+  --color-warning-600: var(--c-warning-text);
+  /* 警示横幅底色/描边：走 --c-* token，随主题切换 */
+  --color-warning-bg: var(--c-warning-bg);
+  --color-warning-border: var(--c-warning-border);
   --color-error: var(--c-error-text);
   --color-error-300: #fda4af;
-  --color-error-600: #be123c;
+  --color-error-600: var(--c-error-text);
 
-  /* 圆角：严格 3 档近直角（4px / 6px / 10px） */
+  /* 圆角：工具型近直角（2px / 3px / 4px / 6px） */
   --radius: 6px;
+  --radius-xs: 3px;
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 10px;
+  --radius-lg: 8px;
   --radius-xl: 10px;
+  --radius-2xl: 12px;
 
   /* 阴影：卡片极轻微、浮层保留明确层次 */
-  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-dropdown: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
-  --shadow-modal: 0 24px 48px -12px rgba(15, 23, 42, 0.18);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-dropdown: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --shadow-modal: 0 24px 48px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.06);
 
   /* 加载动画：spin 0.8s（对齐现有 animate-spin-slow） */
   --animate-spin-slow: spin 0.8s linear infinite;
 
-  /* 离线系统无衬线 + 等宽字体栈 */
-  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, -apple-system, sans-serif;
-  --font-mono: "SF Mono", "Fira Code", "Consolas", "Noto Sans Mono CJK SC", monospace;
+  /* Geist / Geist Mono 随包自托管（@fontsource-variable），中文回退系统字体 */
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
 
   /* 自定义字号刻度（对齐项目中使用的任意字号，命名 token 便于统一管理）
    * Tailwind v4 中 --text-<name> 自动生成 text-<name> 工具类 */
@@ -155,36 +158,32 @@
 
 /* ---- 背景微质感装饰 (Clean Cyber Azure Grid) ---- */
 @utility bg-tech-grid {
-  background-image: radial-gradient(rgba(2, 132, 199, 0.06) 1px, transparent 1px);
-  background-size: 28px 28px;
+  background-image: none;
 }
 
 /* ---- native 输入框焦点样式（品牌天青蓝）---- */
 @utility input-base-focus {
   border-color: var(--c-primary);
-  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+  box-shadow: 0 0 0 2px rgba(44, 76, 202, 0.15);
 }
 
 /* ---- 榜单微质感徽章 (Top 3 Metallic Accent) ---- */
 @utility rank-badge-gold {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(251, 191, 36, 0.28));
-  border: 1px solid rgba(245, 158, 11, 0.45);
-  color: #b45309;
-  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.15);
+  background: #fbf5e1;
+  border: 1px solid #ecd898;
+  color: #8f6a00;
 }
 
 @utility rank-badge-silver {
-  background: linear-gradient(135deg, rgba(148, 163, 184, 0.18), rgba(203, 213, 225, 0.35));
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  color: #334155;
-  box-shadow: 0 1px 3px rgba(100, 116, 139, 0.1);
+  background: #f0efea;
+  border: 1px solid #cdccc5;
+  color: #52524c;
 }
 
 @utility rank-badge-bronze {
-  background: linear-gradient(135deg, rgba(194, 65, 12, 0.14), rgba(234, 88, 12, 0.22));
-  border: 1px solid rgba(194, 65, 12, 0.35);
-  color: #9a3412;
-  box-shadow: 0 1px 3px rgba(194, 65, 12, 0.1);
+  background: #fbefe6;
+  border: 1px solid #e8c4a8;
+  color: #9a4a12;
 }
 
 /* ---- 独立卡片专用立体感（白色专用面板底，彻底与浅蓝页面底分离） ---- */
@@ -211,6 +210,8 @@
 /* ---- 全局去噪工作台底座与浏览器原生表面换肤 ---- */
 @layer base {
   html {
+    /* 基准 14px：Geist 字面偏大，14px 与 Linear/Vercel 正文一致 */
+    font-size: 14px;
     font-family: var(--font-sans);
     scrollbar-gutter: stable;
   }
@@ -261,38 +262,51 @@
 
 /* ---- 将设计 token 映射到 Nuxt UI 语义变量，保持组件默认观感 ---- */
 :root,
+.editor-light,
 .editor-dark {
   /* Nuxt UI primary 使用品牌天青蓝（Sky 700）：主按钮、选中 Tab、进行中状态 */
   --ui-primary: var(--c-primary);
-  --ui-color-primary-50: #f0f9ff;
-  --ui-color-primary-100: #e0f2fe;
-  --ui-color-primary-200: #bae6fd;
-  --ui-color-primary-300: #7dd3fc;
-  --ui-color-primary-400: #38bdf8;
-  --ui-color-primary-500: #0284c7;
-  --ui-color-primary-600: #0369a1;
-  --ui-color-primary-700: #075985;
-  --ui-color-primary-800: #0c4a6e;
-  --ui-color-primary-900: #082f49;
-  --ui-color-primary-950: #082f49;
+  --ui-color-primary-50: #f4f5fd;
+  --ui-color-primary-100: #eaecfa;
+  --ui-color-primary-200: #d5d9f5;
+  --ui-color-primary-300: #b2b8f0;
+  --ui-color-primary-400: #8d95e6;
+  --ui-color-primary-500: #7c85de;
+  --ui-color-primary-600: #5e6ad2;
+  --ui-color-primary-700: #4c57c0;
+  --ui-color-primary-800: #3f489e;
+  --ui-color-primary-900: #363d80;
+  --ui-color-primary-950: #22264d;
   /* Nuxt UI success 使用评测信号绿（Emerald 700）：成功/通过状态组件 */
-  --ui-color-success-50: #ecfdf5;
-  --ui-color-success-100: #d1fae5;
-  --ui-color-success-200: #a7f3d0;
-  --ui-color-success-300: #6ee7b7;
-  --ui-color-success-400: #34d399;
-  --ui-color-success-500: #059669;
-  --ui-color-success-600: #047857;
-  --ui-color-success-700: #065f46;
-  --ui-color-success-800: #064e3b;
-  --ui-color-success-900: #022c22;
-  --ui-color-success-950: #022c22;
+  --ui-color-success-50: #ecf8f0;
+  --ui-color-success-100: #d3efdc;
+  --ui-color-success-200: #a7dfb9;
+  --ui-color-success-300: #6fc58c;
+  --ui-color-success-400: #3fa864;
+  --ui-color-success-500: #24904c;
+  --ui-color-success-600: #17803d;
+  --ui-color-success-700: #126b33;
+  --ui-color-success-800: #10552a;
+  --ui-color-success-900: #0e4524;
+  --ui-color-success-950: #062612;
+  /* Nuxt UI neutral 映射为暖中性灰 */
+  --ui-color-neutral-50: #fafafa;
+  --ui-color-neutral-100: #f5f5f5;
+  --ui-color-neutral-200: #ebebeb;
+  --ui-color-neutral-300: #d6d6d6;
+  --ui-color-neutral-400: #a8a8a8;
+  --ui-color-neutral-500: #8f8f8f;
+  --ui-color-neutral-600: #666666;
+  --ui-color-neutral-700: #4d4d4d;
+  --ui-color-neutral-800: #2e2e2e;
+  --ui-color-neutral-900: #171717;
+  --ui-color-neutral-950: #0a0a0a;
   --ui-radius: var(--radius);
   --ui-bg: var(--c-bg-panel);
   --ui-bg-muted: var(--c-bg-sunken);
   --ui-bg-elevated: var(--c-bg-panel);
   --ui-border: var(--c-border);
-  --ui-border-accented: var(--c-border);
+  --ui-border-accented: var(--c-border-strong);
   --ui-text: var(--c-text);
   --ui-text-muted: var(--c-text-muted);
   --ui-text-dimmed: var(--c-text-muted);
@@ -568,4 +582,546 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ==========================================================================
+   终端风格：等宽为主、琥珀色交互、高对比判定色，分深色（默认）与浅色两套。
+   app.vue 在 SSR 阶段按 noj-theme cookie 写入 html[data-theme]（见 utils/site-theme.ts）。
+   app.vue 的 :root 是浅色基线；深色用 html:root:not([data-theme="light"])、浅色用
+   html[data-theme="light"]，特异性都高于 :root，不依赖样式表加载顺序。
+   ========================================================================== */
+
+/* ---- 深色：墨黑底 ---- */
+html:root:not([data-theme="light"]) {
+  color-scheme: dark;
+  --c-bg-page: #0a0c0d;
+  --c-bg-panel: #101315;
+  --c-bg-card: #101315;
+  --c-bg-elevated: #161a1d;
+  --c-bg-sunken: #060708;
+  --c-bg-dark: #060708;
+  --c-white: #101315;
+  --c-border: #1e2428;
+  --c-border-subtle: #171b1e;
+  --c-border-strong: #2c343a;
+  --c-text: #d7e0e6;
+  --c-text-secondary: #9aa6ae;
+  --c-text-muted: #818d95; /* 在 panel / elevated / neutral-200 上均 ≥ 4.5:1 */
+  --c-text-on-dark: #d7e0e6;
+  --c-primary: #ffb224;
+  --c-primary-dark: #f59e0b;
+  --c-primary-light: #ffc85c;
+  --c-primary-bg: rgba(255, 178, 36, 0.1);
+  --c-primary-hover-bg: rgba(255, 178, 36, 0.16);
+  --c-primary-active-bg: rgba(255, 178, 36, 0.24);
+  --c-primary-text: #ffb224;
+  --c-signal: #3ddc84;
+  --c-signal-deep: #2fbf6f;
+  --c-signal-rgb: 61, 220, 132;
+  --c-on-signal: #0a0c0d;
+  --c-success-text: #3ddc84;
+  --c-info-text: #ffb224;
+  --c-warning-text: #e6c84a;
+  --c-warning-bg: rgba(230, 200, 74, 0.1);
+  --c-warning-border: rgba(230, 200, 74, 0.35);
+  --c-error-text: #ff5f6d;
+  --c-verdict-accepted: #3ddc84;
+  --c-verdict-accepted-bg: rgba(61, 220, 132, 0.12);
+  --c-verdict-partial: #e6c84a;
+  --c-verdict-partial-bg: rgba(230, 200, 74, 0.12);
+  --c-verdict-wrong: #ff5f6d;
+  --c-verdict-wrong-bg: rgba(255, 95, 109, 0.12);
+  --c-verdict-limit: #ff9a3c;
+  --c-verdict-limit-bg: rgba(255, 154, 60, 0.12);
+  --c-verdict-judging: #ffb224;
+  --c-verdict-judging-bg: rgba(255, 178, 36, 0.12);
+  --c-verdict-pending: #8a959c;
+  --c-verdict-pending-bg: rgba(138, 149, 156, 0.12);
+  --c-diff-easy: #3ddc84;
+  --c-diff-medium: #e6c84a;
+  --c-diff-hard: #ff5f6d;
+  --font-sans: "Geist Mono Variable", "JetBrains Mono", ui-monospace, "PingFang SC", "Microsoft YaHei", monospace;
+  --radius: 3px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
+  --shadow-card: none;
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px #2c343a;
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.7), 0 0 0 1px #2c343a;
+  --ui-text-inverted: #0a0c0d;
+  --ui-bg-inverted: #d7e0e6;
+  --ui-color-neutral-50: #060708;
+  --ui-color-neutral-100: #101315;
+  --ui-color-neutral-200: #1e2428;
+  --ui-color-neutral-300: #2c343a;
+  --ui-color-neutral-400: #4a555c;
+  --ui-color-neutral-500: #818d95;
+  --ui-color-neutral-600: #8a959c;
+  --ui-color-neutral-700: #9aa6ae;
+  --ui-color-neutral-800: #c2ccd2;
+  --ui-color-neutral-900: #d7e0e6;
+  --ui-color-neutral-950: #eef3f6;
+}
+
+/* ---- 浅色：纸白底，同一套终端排版；琥珀加深到白底可读，判定色取 700–800 档 ---- */
+html[data-theme="light"],
+html[data-theme="light"] .editor-light {
+  color-scheme: light;
+  --c-bg-page: #f7f7f5;
+  --c-bg-panel: #ffffff;
+  --c-bg-card: #ffffff;
+  --c-bg-elevated: #ffffff;
+  --c-bg-sunken: #efefec;
+  --c-white: #ffffff;
+  --c-border: #e3e3df;
+  --c-border-subtle: #ececea;
+  --c-border-strong: #cfcfca;
+  --c-text: #16181a;
+  --c-text-secondary: #4a5157;
+  --c-text-muted: #5a6268; /* 白底 6.2:1，最深的 neutral-200 底 4.8:1 */
+  --c-primary: #b45309;
+  --c-primary-dark: #9a4a08;
+  --c-primary-light: #d97706;
+  --c-primary-bg: rgba(180, 83, 9, 0.07);
+  --c-primary-hover-bg: rgba(180, 83, 9, 0.12);
+  --c-primary-active-bg: rgba(180, 83, 9, 0.18);
+  --c-primary-text: #9a4a08;
+  --c-signal: #15803d;
+  --c-signal-deep: #166534;
+  --c-signal-rgb: 21, 128, 61;
+  --c-on-signal: #ffffff;
+  --c-success-text: #166534;
+  --c-info-text: #9a4a08;
+  --c-warning-text: #854d0e;
+  --c-warning-bg: #fdf5e6;
+  --c-warning-border: #f0d9a8;
+  --c-error-text: #b91c1c;
+  --c-verdict-accepted: #166534;
+  --c-verdict-accepted-bg: rgba(22, 101, 52, 0.08);
+  --c-verdict-partial: #854d0e;
+  --c-verdict-partial-bg: rgba(133, 77, 14, 0.08);
+  --c-verdict-wrong: #b91c1c;
+  --c-verdict-wrong-bg: rgba(185, 28, 28, 0.07);
+  --c-verdict-limit: #9a3412;
+  --c-verdict-limit-bg: rgba(154, 52, 18, 0.08);
+  --c-verdict-judging: #9a4a08;
+  --c-verdict-judging-bg: rgba(180, 83, 9, 0.08);
+  --c-verdict-pending: #5a6268;
+  --c-verdict-pending-bg: rgba(90, 98, 104, 0.08);
+  --c-diff-easy: #166534;
+  --c-diff-medium: #854d0e;
+  --c-diff-hard: #b91c1c;
+  --font-sans: "Geist Mono Variable", "JetBrains Mono", ui-monospace, "PingFang SC", "Microsoft YaHei", monospace;
+  --radius: 3px;
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
+  --shadow-card: none;
+  --shadow-dropdown: 0 8px 24px rgba(0, 0, 0, 0.08), 0 0 0 1px #cfcfca;
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.14), 0 0 0 1px #cfcfca;
+  --ui-text-inverted: #ffffff;
+  --ui-bg-inverted: #16181a;
+  --ui-color-neutral-50: #f7f7f5;
+  --ui-color-neutral-100: #efefec;
+  --ui-color-neutral-200: #e3e3df;
+  --ui-color-neutral-300: #cfcfca;
+  --ui-color-neutral-400: #9a9f9c;
+  --ui-color-neutral-500: #5a6268;
+  --ui-color-neutral-600: #4a5157;
+  --ui-color-neutral-700: #353b40;
+  --ui-color-neutral-800: #22262a;
+  --ui-color-neutral-900: #16181a;
+  --ui-color-neutral-950: #0b0c0d;
+}
+
+/* ---- 深色终端下重映射 Tailwind 调色板 ----
+   页面里仍有不少浅色语义配对（如 bg-amber-50 + text-amber-800 的提示条、bg-red-50 的
+   错误块）。这里把彩色 50–300 改成「本色 500 混入面板底」的暗色调，600–900 改成本色
+   400 混白的亮色调，配对关系不变、对比度在深色底上成立；灰阶直接落到终端 token。
+   400 / 500 保持原值（圆点、实心按钮仍用标准色）。 */
+html:root:not([data-theme="light"]) {
+  --color-red-50: color-mix(in oklab, var(--color-red-500) 10%, var(--c-bg-panel));
+  --color-red-100: color-mix(in oklab, var(--color-red-500) 16%, var(--c-bg-panel));
+  --color-red-200: color-mix(in oklab, var(--color-red-500) 30%, var(--c-bg-panel));
+  --color-red-300: color-mix(in oklab, var(--color-red-500) 45%, var(--c-bg-panel));
+  --color-red-600: var(--color-red-400);
+  --color-red-700: color-mix(in oklab, var(--color-red-400) 80%, #fff);
+  --color-red-800: color-mix(in oklab, var(--color-red-400) 65%, #fff);
+  --color-red-900: color-mix(in oklab, var(--color-red-400) 50%, #fff);
+  --color-orange-50: color-mix(in oklab, var(--color-orange-500) 10%, var(--c-bg-panel));
+  --color-orange-100: color-mix(in oklab, var(--color-orange-500) 16%, var(--c-bg-panel));
+  --color-orange-200: color-mix(in oklab, var(--color-orange-500) 30%, var(--c-bg-panel));
+  --color-orange-300: color-mix(in oklab, var(--color-orange-500) 45%, var(--c-bg-panel));
+  --color-orange-600: var(--color-orange-400);
+  --color-orange-700: color-mix(in oklab, var(--color-orange-400) 80%, #fff);
+  --color-orange-800: color-mix(in oklab, var(--color-orange-400) 65%, #fff);
+  --color-orange-900: color-mix(in oklab, var(--color-orange-400) 50%, #fff);
+  --color-amber-50: color-mix(in oklab, var(--color-amber-500) 10%, var(--c-bg-panel));
+  --color-amber-100: color-mix(in oklab, var(--color-amber-500) 16%, var(--c-bg-panel));
+  --color-amber-200: color-mix(in oklab, var(--color-amber-500) 30%, var(--c-bg-panel));
+  --color-amber-300: color-mix(in oklab, var(--color-amber-500) 45%, var(--c-bg-panel));
+  --color-amber-600: var(--color-amber-400);
+  --color-amber-700: color-mix(in oklab, var(--color-amber-400) 80%, #fff);
+  --color-amber-800: color-mix(in oklab, var(--color-amber-400) 65%, #fff);
+  --color-amber-900: color-mix(in oklab, var(--color-amber-400) 50%, #fff);
+  --color-yellow-50: color-mix(in oklab, var(--color-yellow-500) 10%, var(--c-bg-panel));
+  --color-yellow-100: color-mix(in oklab, var(--color-yellow-500) 16%, var(--c-bg-panel));
+  --color-yellow-200: color-mix(in oklab, var(--color-yellow-500) 30%, var(--c-bg-panel));
+  --color-yellow-300: color-mix(in oklab, var(--color-yellow-500) 45%, var(--c-bg-panel));
+  --color-yellow-600: var(--color-yellow-400);
+  --color-yellow-700: color-mix(in oklab, var(--color-yellow-400) 80%, #fff);
+  --color-yellow-800: color-mix(in oklab, var(--color-yellow-400) 65%, #fff);
+  --color-yellow-900: color-mix(in oklab, var(--color-yellow-400) 50%, #fff);
+  --color-lime-50: color-mix(in oklab, var(--color-lime-500) 10%, var(--c-bg-panel));
+  --color-lime-100: color-mix(in oklab, var(--color-lime-500) 16%, var(--c-bg-panel));
+  --color-lime-200: color-mix(in oklab, var(--color-lime-500) 30%, var(--c-bg-panel));
+  --color-lime-300: color-mix(in oklab, var(--color-lime-500) 45%, var(--c-bg-panel));
+  --color-lime-600: var(--color-lime-400);
+  --color-lime-700: color-mix(in oklab, var(--color-lime-400) 80%, #fff);
+  --color-lime-800: color-mix(in oklab, var(--color-lime-400) 65%, #fff);
+  --color-lime-900: color-mix(in oklab, var(--color-lime-400) 50%, #fff);
+  --color-green-50: color-mix(in oklab, var(--color-green-500) 10%, var(--c-bg-panel));
+  --color-green-100: color-mix(in oklab, var(--color-green-500) 16%, var(--c-bg-panel));
+  --color-green-200: color-mix(in oklab, var(--color-green-500) 30%, var(--c-bg-panel));
+  --color-green-300: color-mix(in oklab, var(--color-green-500) 45%, var(--c-bg-panel));
+  --color-green-600: var(--color-green-400);
+  --color-green-700: color-mix(in oklab, var(--color-green-400) 80%, #fff);
+  --color-green-800: color-mix(in oklab, var(--color-green-400) 65%, #fff);
+  --color-green-900: color-mix(in oklab, var(--color-green-400) 50%, #fff);
+  --color-emerald-50: color-mix(in oklab, var(--color-emerald-500) 10%, var(--c-bg-panel));
+  --color-emerald-100: color-mix(in oklab, var(--color-emerald-500) 16%, var(--c-bg-panel));
+  --color-emerald-200: color-mix(in oklab, var(--color-emerald-500) 30%, var(--c-bg-panel));
+  --color-emerald-300: color-mix(in oklab, var(--color-emerald-500) 45%, var(--c-bg-panel));
+  --color-emerald-600: var(--color-emerald-400);
+  --color-emerald-700: color-mix(in oklab, var(--color-emerald-400) 80%, #fff);
+  --color-emerald-800: color-mix(in oklab, var(--color-emerald-400) 65%, #fff);
+  --color-emerald-900: color-mix(in oklab, var(--color-emerald-400) 50%, #fff);
+  --color-teal-50: color-mix(in oklab, var(--color-teal-500) 10%, var(--c-bg-panel));
+  --color-teal-100: color-mix(in oklab, var(--color-teal-500) 16%, var(--c-bg-panel));
+  --color-teal-200: color-mix(in oklab, var(--color-teal-500) 30%, var(--c-bg-panel));
+  --color-teal-300: color-mix(in oklab, var(--color-teal-500) 45%, var(--c-bg-panel));
+  --color-teal-600: var(--color-teal-400);
+  --color-teal-700: color-mix(in oklab, var(--color-teal-400) 80%, #fff);
+  --color-teal-800: color-mix(in oklab, var(--color-teal-400) 65%, #fff);
+  --color-teal-900: color-mix(in oklab, var(--color-teal-400) 50%, #fff);
+  --color-cyan-50: color-mix(in oklab, var(--color-cyan-500) 10%, var(--c-bg-panel));
+  --color-cyan-100: color-mix(in oklab, var(--color-cyan-500) 16%, var(--c-bg-panel));
+  --color-cyan-200: color-mix(in oklab, var(--color-cyan-500) 30%, var(--c-bg-panel));
+  --color-cyan-300: color-mix(in oklab, var(--color-cyan-500) 45%, var(--c-bg-panel));
+  --color-cyan-600: var(--color-cyan-400);
+  --color-cyan-700: color-mix(in oklab, var(--color-cyan-400) 80%, #fff);
+  --color-cyan-800: color-mix(in oklab, var(--color-cyan-400) 65%, #fff);
+  --color-cyan-900: color-mix(in oklab, var(--color-cyan-400) 50%, #fff);
+  --color-sky-50: color-mix(in oklab, var(--color-sky-500) 10%, var(--c-bg-panel));
+  --color-sky-100: color-mix(in oklab, var(--color-sky-500) 16%, var(--c-bg-panel));
+  --color-sky-200: color-mix(in oklab, var(--color-sky-500) 30%, var(--c-bg-panel));
+  --color-sky-300: color-mix(in oklab, var(--color-sky-500) 45%, var(--c-bg-panel));
+  --color-sky-600: var(--color-sky-400);
+  --color-sky-700: color-mix(in oklab, var(--color-sky-400) 80%, #fff);
+  --color-sky-800: color-mix(in oklab, var(--color-sky-400) 65%, #fff);
+  --color-sky-900: color-mix(in oklab, var(--color-sky-400) 50%, #fff);
+  --color-blue-50: color-mix(in oklab, var(--color-blue-500) 10%, var(--c-bg-panel));
+  --color-blue-100: color-mix(in oklab, var(--color-blue-500) 16%, var(--c-bg-panel));
+  --color-blue-200: color-mix(in oklab, var(--color-blue-500) 30%, var(--c-bg-panel));
+  --color-blue-300: color-mix(in oklab, var(--color-blue-500) 45%, var(--c-bg-panel));
+  --color-blue-600: var(--color-blue-400);
+  --color-blue-700: color-mix(in oklab, var(--color-blue-400) 80%, #fff);
+  --color-blue-800: color-mix(in oklab, var(--color-blue-400) 65%, #fff);
+  --color-blue-900: color-mix(in oklab, var(--color-blue-400) 50%, #fff);
+  --color-indigo-50: color-mix(in oklab, var(--color-indigo-500) 10%, var(--c-bg-panel));
+  --color-indigo-100: color-mix(in oklab, var(--color-indigo-500) 16%, var(--c-bg-panel));
+  --color-indigo-200: color-mix(in oklab, var(--color-indigo-500) 30%, var(--c-bg-panel));
+  --color-indigo-300: color-mix(in oklab, var(--color-indigo-500) 45%, var(--c-bg-panel));
+  --color-indigo-600: var(--color-indigo-400);
+  --color-indigo-700: color-mix(in oklab, var(--color-indigo-400) 80%, #fff);
+  --color-indigo-800: color-mix(in oklab, var(--color-indigo-400) 65%, #fff);
+  --color-indigo-900: color-mix(in oklab, var(--color-indigo-400) 50%, #fff);
+  --color-violet-50: color-mix(in oklab, var(--color-violet-500) 10%, var(--c-bg-panel));
+  --color-violet-100: color-mix(in oklab, var(--color-violet-500) 16%, var(--c-bg-panel));
+  --color-violet-200: color-mix(in oklab, var(--color-violet-500) 30%, var(--c-bg-panel));
+  --color-violet-300: color-mix(in oklab, var(--color-violet-500) 45%, var(--c-bg-panel));
+  --color-violet-600: var(--color-violet-400);
+  --color-violet-700: color-mix(in oklab, var(--color-violet-400) 80%, #fff);
+  --color-violet-800: color-mix(in oklab, var(--color-violet-400) 65%, #fff);
+  --color-violet-900: color-mix(in oklab, var(--color-violet-400) 50%, #fff);
+  --color-purple-50: color-mix(in oklab, var(--color-purple-500) 10%, var(--c-bg-panel));
+  --color-purple-100: color-mix(in oklab, var(--color-purple-500) 16%, var(--c-bg-panel));
+  --color-purple-200: color-mix(in oklab, var(--color-purple-500) 30%, var(--c-bg-panel));
+  --color-purple-300: color-mix(in oklab, var(--color-purple-500) 45%, var(--c-bg-panel));
+  --color-purple-600: var(--color-purple-400);
+  --color-purple-700: color-mix(in oklab, var(--color-purple-400) 80%, #fff);
+  --color-purple-800: color-mix(in oklab, var(--color-purple-400) 65%, #fff);
+  --color-purple-900: color-mix(in oklab, var(--color-purple-400) 50%, #fff);
+  --color-fuchsia-50: color-mix(in oklab, var(--color-fuchsia-500) 10%, var(--c-bg-panel));
+  --color-fuchsia-100: color-mix(in oklab, var(--color-fuchsia-500) 16%, var(--c-bg-panel));
+  --color-fuchsia-200: color-mix(in oklab, var(--color-fuchsia-500) 30%, var(--c-bg-panel));
+  --color-fuchsia-300: color-mix(in oklab, var(--color-fuchsia-500) 45%, var(--c-bg-panel));
+  --color-fuchsia-600: var(--color-fuchsia-400);
+  --color-fuchsia-700: color-mix(in oklab, var(--color-fuchsia-400) 80%, #fff);
+  --color-fuchsia-800: color-mix(in oklab, var(--color-fuchsia-400) 65%, #fff);
+  --color-fuchsia-900: color-mix(in oklab, var(--color-fuchsia-400) 50%, #fff);
+  --color-pink-50: color-mix(in oklab, var(--color-pink-500) 10%, var(--c-bg-panel));
+  --color-pink-100: color-mix(in oklab, var(--color-pink-500) 16%, var(--c-bg-panel));
+  --color-pink-200: color-mix(in oklab, var(--color-pink-500) 30%, var(--c-bg-panel));
+  --color-pink-300: color-mix(in oklab, var(--color-pink-500) 45%, var(--c-bg-panel));
+  --color-pink-600: var(--color-pink-400);
+  --color-pink-700: color-mix(in oklab, var(--color-pink-400) 80%, #fff);
+  --color-pink-800: color-mix(in oklab, var(--color-pink-400) 65%, #fff);
+  --color-pink-900: color-mix(in oklab, var(--color-pink-400) 50%, #fff);
+  --color-rose-50: color-mix(in oklab, var(--color-rose-500) 10%, var(--c-bg-panel));
+  --color-rose-100: color-mix(in oklab, var(--color-rose-500) 16%, var(--c-bg-panel));
+  --color-rose-200: color-mix(in oklab, var(--color-rose-500) 30%, var(--c-bg-panel));
+  --color-rose-300: color-mix(in oklab, var(--color-rose-500) 45%, var(--c-bg-panel));
+  --color-rose-600: var(--color-rose-400);
+  --color-rose-700: color-mix(in oklab, var(--color-rose-400) 80%, #fff);
+  --color-rose-800: color-mix(in oklab, var(--color-rose-400) 65%, #fff);
+  --color-rose-900: color-mix(in oklab, var(--color-rose-400) 50%, #fff);
+  --color-slate-50: var(--c-bg-sunken);
+  --color-slate-100: var(--c-bg-elevated);
+  --color-slate-200: var(--c-border);
+  --color-slate-300: var(--c-border-strong);
+  --color-slate-600: var(--c-text-secondary);
+  --color-slate-700: var(--c-text-secondary);
+  --color-slate-800: var(--c-text);
+  --color-slate-900: var(--c-text);
+  --color-gray-50: var(--c-bg-sunken);
+  --color-gray-100: var(--c-bg-elevated);
+  --color-gray-200: var(--c-border);
+  --color-gray-300: var(--c-border-strong);
+  --color-gray-600: var(--c-text-secondary);
+  --color-gray-700: var(--c-text-secondary);
+  --color-gray-800: var(--c-text);
+  --color-gray-900: var(--c-text);
+  --color-zinc-50: var(--c-bg-sunken);
+  --color-zinc-100: var(--c-bg-elevated);
+  --color-zinc-200: var(--c-border);
+  --color-zinc-300: var(--c-border-strong);
+  --color-zinc-600: var(--c-text-secondary);
+  --color-zinc-700: var(--c-text-secondary);
+  --color-zinc-800: var(--c-text);
+  --color-zinc-900: var(--c-text);
+  --color-neutral-50: var(--c-bg-sunken);
+  --color-neutral-100: var(--c-bg-elevated);
+  --color-neutral-200: var(--c-border);
+  --color-neutral-300: var(--c-border-strong);
+  --color-neutral-600: var(--c-text-secondary);
+  --color-neutral-700: var(--c-text-secondary);
+  --color-neutral-800: var(--c-text);
+  --color-neutral-900: var(--c-text);
+  --color-stone-50: var(--c-bg-sunken);
+  --color-stone-100: var(--c-bg-elevated);
+  --color-stone-200: var(--c-border);
+  --color-stone-300: var(--c-border-strong);
+  --color-stone-600: var(--c-text-secondary);
+  --color-stone-700: var(--c-text-secondary);
+  --color-stone-800: var(--c-text);
+  --color-stone-900: var(--c-text);
+}
+html:root:not([data-theme="light"]) .bg-white {
+  background-color: var(--c-bg-panel);
+}
+
+/* 编辑器亮色区域（.editor-light）恢复 Tailwind 原始调色板，抵消上面 html:root 的深色重映射；
+   取值来自 tailwindcss/theme.css，与 Tailwind 版本一致。 */
+.editor-light {
+  color-scheme: light;
+  color: var(--c-text); /* body 的 color 已按深色 token 计算，需在区域内重新解析 */
+  --ui-text-inverted: #fff;
+  --ui-bg-inverted: var(--ui-color-neutral-900);
+  --color-red-50: oklch(97.1% 0.013 17.38);
+  --color-red-100: oklch(93.6% 0.032 17.717);
+  --color-red-200: oklch(88.5% 0.062 18.334);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-600: oklch(57.7% 0.245 27.325);
+  --color-red-700: oklch(50.5% 0.213 27.518);
+  --color-red-800: oklch(44.4% 0.177 26.899);
+  --color-red-900: oklch(39.6% 0.141 25.723);
+  --color-orange-50: oklch(98% 0.016 73.684);
+  --color-orange-100: oklch(95.4% 0.038 75.164);
+  --color-orange-200: oklch(90.1% 0.076 70.697);
+  --color-orange-300: oklch(83.7% 0.128 66.29);
+  --color-orange-600: oklch(64.6% 0.222 41.116);
+  --color-orange-700: oklch(55.3% 0.195 38.402);
+  --color-orange-800: oklch(47% 0.157 37.304);
+  --color-orange-900: oklch(40.8% 0.123 38.172);
+  --color-amber-50: oklch(98.7% 0.022 95.277);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-600: oklch(66.6% 0.179 58.318);
+  --color-amber-700: oklch(55.5% 0.163 48.998);
+  --color-amber-800: oklch(47.3% 0.137 46.201);
+  --color-amber-900: oklch(41.4% 0.112 45.904);
+  --color-yellow-50: oklch(98.7% 0.026 102.212);
+  --color-yellow-100: oklch(97.3% 0.071 103.193);
+  --color-yellow-200: oklch(94.5% 0.129 101.54);
+  --color-yellow-300: oklch(90.5% 0.182 98.111);
+  --color-yellow-600: oklch(68.1% 0.162 75.834);
+  --color-yellow-700: oklch(55.4% 0.135 66.442);
+  --color-yellow-800: oklch(47.6% 0.114 61.907);
+  --color-yellow-900: oklch(42.1% 0.095 57.708);
+  --color-lime-50: oklch(98.6% 0.031 120.757);
+  --color-lime-100: oklch(96.7% 0.067 122.328);
+  --color-lime-200: oklch(93.8% 0.127 124.321);
+  --color-lime-300: oklch(89.7% 0.196 126.665);
+  --color-lime-600: oklch(64.8% 0.2 131.684);
+  --color-lime-700: oklch(53.2% 0.157 131.589);
+  --color-lime-800: oklch(45.3% 0.124 130.933);
+  --color-lime-900: oklch(40.5% 0.101 131.063);
+  --color-green-50: oklch(98.2% 0.018 155.826);
+  --color-green-100: oklch(96.2% 0.044 156.743);
+  --color-green-200: oklch(92.5% 0.084 155.995);
+  --color-green-300: oklch(87.1% 0.15 154.449);
+  --color-green-600: oklch(62.7% 0.194 149.214);
+  --color-green-700: oklch(52.7% 0.154 150.069);
+  --color-green-800: oklch(44.8% 0.119 151.328);
+  --color-green-900: oklch(39.3% 0.095 152.535);
+  --color-emerald-50: oklch(97.9% 0.021 166.113);
+  --color-emerald-100: oklch(95% 0.052 163.051);
+  --color-emerald-200: oklch(90.5% 0.093 164.15);
+  --color-emerald-300: oklch(84.5% 0.143 164.978);
+  --color-emerald-600: oklch(59.6% 0.145 163.225);
+  --color-emerald-700: oklch(50.8% 0.118 165.612);
+  --color-emerald-800: oklch(43.2% 0.095 166.913);
+  --color-emerald-900: oklch(37.8% 0.077 168.94);
+  --color-teal-50: oklch(98.4% 0.014 180.72);
+  --color-teal-100: oklch(95.3% 0.051 180.801);
+  --color-teal-200: oklch(91% 0.096 180.426);
+  --color-teal-300: oklch(85.5% 0.138 181.071);
+  --color-teal-600: oklch(60% 0.118 184.704);
+  --color-teal-700: oklch(51.1% 0.096 186.391);
+  --color-teal-800: oklch(43.7% 0.078 188.216);
+  --color-teal-900: oklch(38.6% 0.063 188.416);
+  --color-cyan-50: oklch(98.4% 0.019 200.873);
+  --color-cyan-100: oklch(95.6% 0.045 203.388);
+  --color-cyan-200: oklch(91.7% 0.08 205.041);
+  --color-cyan-300: oklch(86.5% 0.127 207.078);
+  --color-cyan-600: oklch(60.9% 0.126 221.723);
+  --color-cyan-700: oklch(52% 0.105 223.128);
+  --color-cyan-800: oklch(45% 0.085 224.283);
+  --color-cyan-900: oklch(39.8% 0.07 227.392);
+  --color-sky-50: oklch(97.7% 0.013 236.62);
+  --color-sky-100: oklch(95.1% 0.026 236.824);
+  --color-sky-200: oklch(90.1% 0.058 230.902);
+  --color-sky-300: oklch(82.8% 0.111 230.318);
+  --color-sky-600: oklch(58.8% 0.158 241.966);
+  --color-sky-700: oklch(50% 0.134 242.749);
+  --color-sky-800: oklch(44.3% 0.11 240.79);
+  --color-sky-900: oklch(39.1% 0.09 240.876);
+  --color-blue-50: oklch(97% 0.014 254.604);
+  --color-blue-100: oklch(93.2% 0.032 255.585);
+  --color-blue-200: oklch(88.2% 0.059 254.128);
+  --color-blue-300: oklch(80.9% 0.105 251.813);
+  --color-blue-600: oklch(54.6% 0.245 262.881);
+  --color-blue-700: oklch(48.8% 0.243 264.376);
+  --color-blue-800: oklch(42.4% 0.199 265.638);
+  --color-blue-900: oklch(37.9% 0.146 265.522);
+  --color-indigo-50: oklch(96.2% 0.018 272.314);
+  --color-indigo-100: oklch(93% 0.034 272.788);
+  --color-indigo-200: oklch(87% 0.065 274.039);
+  --color-indigo-300: oklch(78.5% 0.115 274.713);
+  --color-indigo-600: oklch(51.1% 0.262 276.966);
+  --color-indigo-700: oklch(45.7% 0.24 277.023);
+  --color-indigo-800: oklch(39.8% 0.195 277.366);
+  --color-indigo-900: oklch(35.9% 0.144 278.697);
+  --color-violet-50: oklch(96.9% 0.016 293.756);
+  --color-violet-100: oklch(94.3% 0.029 294.588);
+  --color-violet-200: oklch(89.4% 0.057 293.283);
+  --color-violet-300: oklch(81.1% 0.111 293.571);
+  --color-violet-600: oklch(54.1% 0.281 293.009);
+  --color-violet-700: oklch(49.1% 0.27 292.581);
+  --color-violet-800: oklch(43.2% 0.232 292.759);
+  --color-violet-900: oklch(38% 0.189 293.745);
+  --color-purple-50: oklch(97.7% 0.014 308.299);
+  --color-purple-100: oklch(94.6% 0.033 307.174);
+  --color-purple-200: oklch(90.2% 0.063 306.703);
+  --color-purple-300: oklch(82.7% 0.119 306.383);
+  --color-purple-600: oklch(55.8% 0.288 302.321);
+  --color-purple-700: oklch(49.6% 0.265 301.924);
+  --color-purple-800: oklch(43.8% 0.218 303.724);
+  --color-purple-900: oklch(38.1% 0.176 304.987);
+  --color-fuchsia-50: oklch(97.7% 0.017 320.058);
+  --color-fuchsia-100: oklch(95.2% 0.037 318.852);
+  --color-fuchsia-200: oklch(90.3% 0.076 319.62);
+  --color-fuchsia-300: oklch(83.3% 0.145 321.434);
+  --color-fuchsia-600: oklch(59.1% 0.293 322.896);
+  --color-fuchsia-700: oklch(51.8% 0.253 323.949);
+  --color-fuchsia-800: oklch(45.2% 0.211 324.591);
+  --color-fuchsia-900: oklch(40.1% 0.17 325.612);
+  --color-pink-50: oklch(97.1% 0.014 343.198);
+  --color-pink-100: oklch(94.8% 0.028 342.258);
+  --color-pink-200: oklch(89.9% 0.061 343.231);
+  --color-pink-300: oklch(82.3% 0.12 346.018);
+  --color-pink-600: oklch(59.2% 0.249 0.584);
+  --color-pink-700: oklch(52.5% 0.223 3.958);
+  --color-pink-800: oklch(45.9% 0.187 3.815);
+  --color-pink-900: oklch(40.8% 0.153 2.432);
+  --color-rose-50: oklch(96.9% 0.015 12.422);
+  --color-rose-100: oklch(94.1% 0.03 12.58);
+  --color-rose-200: oklch(89.2% 0.058 10.001);
+  --color-rose-300: oklch(81% 0.117 11.638);
+  --color-rose-600: oklch(58.6% 0.253 17.585);
+  --color-rose-700: oklch(51.4% 0.222 16.935);
+  --color-rose-800: oklch(45.5% 0.188 13.697);
+  --color-rose-900: oklch(41% 0.159 10.272);
+  --color-slate-50: oklch(98.4% 0.003 247.858);
+  --color-slate-100: oklch(96.8% 0.007 247.896);
+  --color-slate-200: oklch(92.9% 0.013 255.508);
+  --color-slate-300: oklch(86.9% 0.022 252.894);
+  --color-slate-600: oklch(44.6% 0.043 257.281);
+  --color-slate-700: oklch(37.2% 0.044 257.287);
+  --color-slate-800: oklch(27.9% 0.041 260.031);
+  --color-slate-900: oklch(20.8% 0.042 265.755);
+  --color-gray-50: oklch(98.5% 0.002 247.839);
+  --color-gray-100: oklch(96.7% 0.003 264.542);
+  --color-gray-200: oklch(92.8% 0.006 264.531);
+  --color-gray-300: oklch(87.2% 0.01 258.338);
+  --color-gray-600: oklch(44.6% 0.03 256.802);
+  --color-gray-700: oklch(37.3% 0.034 259.733);
+  --color-gray-800: oklch(27.8% 0.033 256.848);
+  --color-gray-900: oklch(21% 0.034 264.665);
+  --color-zinc-50: oklch(98.5% 0 none);
+  --color-zinc-100: oklch(96.7% 0.001 286.375);
+  --color-zinc-200: oklch(92% 0.004 286.32);
+  --color-zinc-300: oklch(87.1% 0.006 286.286);
+  --color-zinc-600: oklch(44.2% 0.017 285.786);
+  --color-zinc-700: oklch(37% 0.013 285.805);
+  --color-zinc-800: oklch(27.4% 0.006 286.033);
+  --color-zinc-900: oklch(21% 0.006 285.885);
+  --color-neutral-50: oklch(98.5% 0 none);
+  --color-neutral-100: oklch(97% 0 none);
+  --color-neutral-200: oklch(92.2% 0 none);
+  --color-neutral-300: oklch(87% 0 none);
+  --color-neutral-600: oklch(43.9% 0 none);
+  --color-neutral-700: oklch(37.1% 0 none);
+  --color-neutral-800: oklch(26.9% 0 none);
+  --color-neutral-900: oklch(20.5% 0 none);
+  --color-stone-50: oklch(98.5% 0.001 106.423);
+  --color-stone-100: oklch(97% 0.001 106.424);
+  --color-stone-200: oklch(92.3% 0.003 48.717);
+  --color-stone-300: oklch(86.9% 0.005 56.366);
+  --color-stone-600: oklch(44.4% 0.011 73.639);
+  --color-stone-700: oklch(37.4% 0.01 67.558);
+  --color-stone-800: oklch(26.8% 0.007 34.298);
+  --color-stone-900: oklch(21.6% 0.006 56.043);
+}
+.editor-light .bg-white {
+  background-color: #fff;
+}
+
+/* 终端风格（深浅通用）：页面标题带提示符，表头大写等宽。
+   提示符用空替代文本（/ ""），不计入标题的可访问名称，读屏与 getByRole 仍得到原标题。 */
+html main h1::before {
+  content: "> " / "";
+  color: var(--c-primary);
+}
+html thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }

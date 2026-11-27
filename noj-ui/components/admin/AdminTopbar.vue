@@ -1,87 +1,89 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue"
-import { commitDisplay, formatBuiltAt, normalizeVersion } from "~/utils/buildInfo"
+import { computed, onMounted } from 'vue';
+import { commitDisplay, formatBuiltAt, normalizeVersion } from '~/utils/buildInfo';
 
 const props = defineProps<{
-  sidebarOpen: boolean
-  isMobile: boolean
-}>()
+  sidebarOpen: boolean;
+  isMobile: boolean;
+}>();
 
 const emit = defineEmits<{
-  "toggle-sidebar": []
-  "open-command-palette": []
-}>()
+  'toggle-sidebar': [];
+  'open-command-palette': [];
+}>();
 
-const route = useRoute()
-const { user, fetchUser } = useAuth()
+const route = useRoute();
+const { user, fetchUser } = useAuth();
 
 // 兼容部署前创建的旧 session：头像字段未知时刷新一次完整用户资料
 // （后台布局不挂载 UserMenu，需在此自行补齐，否则头像永远回落为首字母）。
 onMounted(() => {
   if (user.value && user.value.avatar_url === undefined) {
-    void fetchUser()
+    void fetchUser();
   }
-})
-const runtimeConfig = useRuntimeConfig()
+});
+const runtimeConfig = useRuntimeConfig();
 
-const buildInfo = computed(() => (runtimeConfig.public.buildInfo as any) ?? {})
-const isDev = import.meta.dev
+const buildInfo = computed(() => (runtimeConfig.public.buildInfo as any) ?? {});
+const isDev = import.meta.dev;
 
 const envBadge = computed(() => {
   if (isDev) {
     return {
-      label: "本地开发",
-      dotClass: "bg-primary animate-pulse",
-      chipClass: "bg-primary-bg text-primary border-primary/20",
+      label: '本地开发',
+      dotClass: 'bg-primary animate-pulse',
+      chipClass: 'bg-primary-bg text-primary border-primary/20',
       title: `本地开发环境（构建时间：${formatBuiltAt(buildInfo.value.builtAt)}）`,
-    }
+    };
   }
-  const version = normalizeVersion(buildInfo.value.version)
-  const commit = commitDisplay(buildInfo.value.commit)
-  const displayLabel = version !== "unknown" ? `生产环境 · ${version}` : "生产环境"
+  const version = normalizeVersion(buildInfo.value.version);
+  const commit = commitDisplay(buildInfo.value.commit);
+  const displayLabel = version !== 'unknown' ? `生产环境 · ${version}` : '生产环境';
   return {
     label: displayLabel,
-    dotClass: "bg-emerald-500",
-    chipClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    dotClass: 'bg-emerald-500',
+    chipClass:
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800',
     title: `生产环境 · ${version} (${commit}) · 构建于 ${formatBuiltAt(buildInfo.value.builtAt)}`,
-  }
-})
+  };
+});
 
 interface RouteMetaMap {
-  group: string
-  label: string
+  group: string;
+  label: string;
 }
 
 const ROUTE_MAP: Record<string, RouteMetaMap> = {
-  "/admin": { group: "概览监控", label: "仪表盘" },
-  "/admin/tags": { group: "公共分类", label: "标签管理" },
-  "/admin/judge-images": { group: "评测与算力", label: "评测镜像" },
-  "/admin/llm/quotas": { group: "评测与算力", label: "LLM 配额" },
-  "/admin/community": { group: "社区与风控", label: "社区管理" },
-  "/admin/reports": { group: "社区与风控", label: "举报中心" },
-  "/admin/announcements": { group: "社区与风控", label: "全站公告" },
-  "/admin/users": { group: "用户与安全", label: "用户管理" },
-  "/admin/blacklist": { group: "用户与安全", label: "黑名单管理" },
-  "/admin/legal": { group: "用户与安全", label: "法律与合规" },
-  "/admin/instance": { group: "系统运维", label: "实例与域治理" },
-  "/admin/settings": { group: "系统运维", label: "系统设置" },
-  "/admin/audit-logs": { group: "系统运维", label: "审计日志" },
-}
+  '/admin': { group: '概览监控', label: '仪表盘' },
+  '/admin/tags': { group: '公共分类', label: '标签管理' },
+  '/admin/judge-images': { group: '评测与算力', label: '评测镜像' },
+  '/admin/llm/quotas': { group: '评测与算力', label: 'LLM 配额' },
+  '/admin/community': { group: '社区与风控', label: '社区管理' },
+  '/admin/reports': { group: '社区与风控', label: '举报中心' },
+  '/admin/announcements': { group: '社区与风控', label: '全站公告' },
+  '/admin/users': { group: '用户与安全', label: '用户管理' },
+  '/admin/blacklist': { group: '用户与安全', label: '黑名单管理' },
+  '/admin/legal': { group: '用户与安全', label: '法律与合规' },
+  '/admin/instance': { group: '系统运维', label: '实例与域治理' },
+  '/admin/settings': { group: '系统运维', label: '系统设置' },
+  '/admin/audit-logs': { group: '系统运维', label: '审计日志' },
+};
 
 const currentBreadcrumb = computed(() => {
-  const path = route.path
-  if (ROUTE_MAP[path]) return ROUTE_MAP[path]
+  const path = route.path;
+  if (ROUTE_MAP[path]) return ROUTE_MAP[path];
   for (const [prefix, meta] of Object.entries(ROUTE_MAP)) {
-    if (prefix !== "/admin" && path.startsWith(prefix)) {
-      return meta
+    if (prefix !== '/admin' && path.startsWith(prefix)) {
+      return meta;
     }
   }
-  return { group: "管理后台", label: "控制台" }
-})
+  return { group: '管理后台', label: '控制台' };
+});
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 flex items-center justify-between h-14 px-4 sm:px-6 bg-bg-panel/95 backdrop-blur border-b border-border transition-colors">
+  <header
+    class="sticky top-0 z-40 flex items-center justify-between h-14 px-4 sm:px-6 bg-bg-panel/95 backdrop-blur border-b border-border transition-colors">
     <!-- 左侧：侧栏切换与面包屑 -->
     <div class="flex items-center gap-3 min-w-0">
       <button
@@ -118,7 +120,8 @@ const currentBreadcrumb = computed(() => {
           <UIcon name="i-lucide-search" class="size-3.5" />
           <span>快速直达管理功能...</span>
         </div>
-        <kbd class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-bg-panel border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">
+        <kbd
+          class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-bg-panel border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">
           Ctrl K
         </kbd>
       </button>

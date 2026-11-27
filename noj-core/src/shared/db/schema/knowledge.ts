@@ -283,3 +283,30 @@ export const userKnowledgeMastery = pgTable(
     ),
   }),
 );
+
+/**
+ * 用户 × 知识点摸底自评/诊断解锁（`user_knowledge_placements`）。
+ *
+ * 独立于 `user_knowledge_mastery`，仅表示“用户通过摸底勾选或评测已具备该前置能力”，
+ * 用于冷启动直接点亮技能树与放行下游推荐，不虚构刷题数或污染班级掌握矩阵。
+ */
+export const userKnowledgePlacements = pgTable(
+  "user_knowledge_placements",
+  {
+    user_id: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    node_id: text("node_id").notNull().references(() => knowledgeNodes.id, {
+      onDelete: "cascade",
+    }),
+    source: text("source").notNull().default("self_assessed"),
+    created_at: text("created_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.user_id, table.node_id] }),
+    sourceCheck: check(
+      "user_knowledge_placements_source_check",
+      sql`${table.source} IN ('self_assessed', 'diagnostic_passed')`,
+    ),
+  }),
+);
