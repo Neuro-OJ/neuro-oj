@@ -76,8 +76,10 @@ jobs:
               - 'noj-ui/deno.lock'
               - '**/deno.json'
               - '**/deno.jsonc'
-              - 'noj-docs/package.json'
-              - 'noj-docs/package-lock.json'
+              - '**/package.json'
+              - '**/package-lock.json'
+              - '**/pyproject.toml'
+              - '**/requirements*.txt'
               - '.github/workflows/security.yml'
               - 'scripts/security/**'
             codeql:

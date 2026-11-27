@@ -534,11 +534,7 @@ jobs:
 
       - name: 单元测试与覆盖率门禁 (≥60%)
         working-directory: noj-ui
-        run: |
-          set -euo pipefail
-          rm -rf coverage
-          deno test -A --ignore=tests/browser tests/ --coverage=coverage
-          deno coverage --threshold=60 coverage
+        run: deno task test:coverage
 
       - name: 缓存 Playwright 浏览器
         id: pw-cache
