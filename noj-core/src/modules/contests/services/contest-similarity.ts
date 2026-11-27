@@ -51,14 +51,28 @@ export {
   DEFAULT_SIMILARITY_THRESHOLD,
   MAX_SIMILAR_PAIR_LIMIT,
 } from "./contest-similarity/lexicon.ts";
-export { normalizeCode } from "./contest-similarity/normalize.ts";
+export {
+  normalizeCode,
+  normalizeCodeBlocks,
+} from "./contest-similarity/normalize.ts";
 export { fingerprint, similarity } from "./contest-similarity/fingerprint.ts";
 export { detectSimilarPairs } from "./contest-similarity/detect.ts";
+export {
+  comparePredictionVectors,
+  detectSimilarPredictions,
+} from "./contest-similarity/prediction.ts";
+export { extractSortablePythonSource } from "./contest-similarity/artifact-source.ts";
 export type {
   DetectSimilarPairsOptions,
   SimilarityCandidate,
   SimilarSubmissionPair,
 } from "./contest-similarity/types.ts";
+export type {
+  DetectSimilarPredictionsOptions,
+  PredictionCandidate,
+  PredictionComparisonMetrics,
+  PredictionSimilarityPair,
+} from "./contest-similarity/prediction.ts";
 export type { FingerprintSet } from "./contest-similarity/fingerprint.ts";
 
 /** `findSimilarSubmissions()` 的可选项。 */

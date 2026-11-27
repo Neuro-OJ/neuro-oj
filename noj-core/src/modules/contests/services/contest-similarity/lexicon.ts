@@ -25,16 +25,10 @@ export const DEFAULT_WINDOW = 4;
 /**
  * 默认参与计算的提交数上限（超出即报错，见 findSimilarSubmissions）。
  *
- * 取值依据（本地实测，单桶、全部同题同语言）：
- * - 100 份普通规模提交（约 37 token）≈ 10ms；
- * - 200 份病态提交（每份撞满 6000 token 上限且内容两两相同）≈ 1.8s / 50MB；
- * - 400 份同样的病态提交 ≈ 7.0s / 110MB。
- *
- * 计算在请求线程内同步执行，会阻塞同一 Deno isolate 的其它请求，因此默认值
- * 取 200（病态情形仍在 2s 内），把「整场竞赛」的大规模分析引导到 problem_id
- * 逐题进行。需要更大范围时由调用方显式提高 maxSubmissions。
+ * 采用指纹倒排索引剪枝后仅对实际共享指纹的候选对求交，不再做全桶 O(n²) 两两遍历，
+ * 因此默认上限由 200 提升至 1000（覆盖绝大多数单题百人至千人提交规模）。
  */
-export const DEFAULT_MAX_SIMILARITY_SUBMISSIONS = 200;
+export const DEFAULT_MAX_SIMILARITY_SUBMISSIONS = 1000;
 
 /** 默认返回的相似对上限。 */
 export const DEFAULT_PAIR_LIMIT = 50;

@@ -67,6 +67,7 @@ fn dual_task() -> JudgeTask {
                 image: "noj-judge-test-runner:latest".to_string(),
                 call_timeout_ms: 1_000,
                 memory_limit_mb: 256,
+                isolation_mode: None,
             }),
         }
         .into(),
@@ -663,6 +664,7 @@ async fn evaluate_dual_end_to_end() {
             image: "noj-judge-test-runner:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
 
@@ -734,6 +736,7 @@ except Exception as e:
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 100, // 题目级默认：100ms
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
     // solution 代码：sleep_solution 睡 300ms（> 100ms 默认超时）
@@ -820,6 +823,7 @@ result.accept(score=10, details={'cases': out})
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000, // 题目级默认宽松；验证调用级 50ms 覆盖
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\ndef fast_solution():\n    return 42\n";
@@ -903,6 +907,7 @@ except Exception as e:
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000, // 题目级默认宽松；验证 cap_reg 上报的 100ms 生效
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
     // solution：延迟 1s 调用 slow_cap（确保 evaluator 已完成 cap_reg 上报），
@@ -981,6 +986,7 @@ while True:
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
 
@@ -1046,6 +1052,7 @@ runner.call('sleep_solution')
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 100, // 100ms 调用超时
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
     // solution：sleep_solution 睡 300ms（> 100ms 调用超时）
@@ -1121,6 +1128,7 @@ except SolutionTimeoutError:
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 100,
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
     let code = "import time\ndef sleep_solution():\n    time.sleep(0.3)\n    return 1\n";
@@ -1201,6 +1209,7 @@ except Exception as e:
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
     let artifact_zip = build_artifact_zip();

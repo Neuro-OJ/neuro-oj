@@ -40,7 +40,7 @@ flowchart TD
    `/workspace/main.c` 或 `/workspace/main.cpp`，编译器与入口由 worker 固定；
 2. **第 2 层：题目运行时配置（`runtime_config`）**： 题目出题人在 Web 编辑器或
    `problem.json` 中明确声明 Evaluator 与 Solution 分别使用的具体镜像名称、CPU
-   配额、内存配额以及 Evaluator 的启动指令（缺省为
+   配额、内存配额、Solution 调用隔离模式（`solution.isolation_mode` 可选 `"shared"` 或 `"fork_per_call"`）以及 Evaluator 的启动指令（缺省为
    `python3 /workspace/evaluate.py`）；
 3. **第 3 层：镜像白名单与纵深防御（Whitelist & Prefix Verification）**：
    - **业务层准入**：`noj-core` 在创建或更新题目时，比对 `judge_images`
@@ -171,9 +171,7 @@ v2 另有标准库边界、locale、流切换、文件 IO 和整数解析成本�
   沙箱工作区 `/workspace`；
 - **统一入口约定**：系统一律以约定入口 **`python3 /workspace/submission.py`**
   启动选手程序；
-- **存储自洁与重测限制**：为避免海量模型权重迅速撑爆存储集群，选手上传的 ZIP
-  产物在沙箱评测完毕后**即刻触发物理垃圾回收**。因此，此类产物题**不支持管理员执行
-  Rejudge 重测**。
+- **存储保留与重测**：选手上传的 ZIP 产物保留至提交被显式删除，支持管理员按版本重测（对象缺失时重测条目记为 `ARTIFACT_MISSING` 并保留原有有效成绩）。
 
 ---
 

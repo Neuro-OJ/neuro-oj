@@ -31,6 +31,11 @@ class RpcClient:
         self._out = out if out is not None else sys.stdout
         self._closed = False
 
+    def set_out(self, out: TextIO) -> None:
+        """在输出锁保护下切换 NDJSON 协议输出流。"""
+        with self._out_lock:
+            self._out = out
+
     def write_frame(self, frame: dict) -> None:
         """写 NDJSON 帧到 stdout（一行 + 换行），线程安全。"""
         line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))

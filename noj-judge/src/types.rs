@@ -94,6 +94,9 @@ pub struct SolutionRuntime {
     /// 单次 SDK 调用的时间上限（毫秒）。
     pub call_timeout_ms: u64,
     pub memory_limit_mb: u64,
+    /// 调用级隔离模式：缺省/shared 为常驻共享；fork_per_call 为按调用 fork 隔离。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub isolation_mode: Option<String>,
 }
 
 /// LLM 评测任务字段（与 noj-core 的 JudgeTaskLlm 对齐）。

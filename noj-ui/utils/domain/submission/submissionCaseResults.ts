@@ -22,6 +22,8 @@ export interface SubmissionCaseResult {
   input: string | null;
   expectedOutput: string | null;
   actualOutput: string | null;
+  stdout?: string | null;
+  stdoutTruncated?: boolean;
 }
 
 export interface SubmissionCaseProgress {
@@ -131,6 +133,8 @@ function normalizeCase(
     input: isHidden ? null : asString(raw.input),
     expectedOutput: isHidden ? null : asString(raw.expected_output) ?? asString(raw.expected),
     actualOutput: isHidden ? null : asString(raw.actual_output) ?? asString(raw.actual),
+    ...(!isHidden && typeof raw.stdout === 'string' ? { stdout: raw.stdout } : {}),
+    ...(!isHidden && typeof raw.stdout_truncated === 'boolean' ? { stdoutTruncated: raw.stdout_truncated } : {}),
   };
 }
 

@@ -26,7 +26,7 @@
 
 ### 我选了 C++ / C / JavaScript 提交，为什么无法评测？
 
-当前评测运行时仅完整支持 Python（多语言评测为项目的决策性不做项）。`cpp` / `c` / `javascript` 是提交接口预留的语言标识，尚无评测运行时，请使用 Python 提交。
+当前 AI 双容器题（`judge_type=dual`）仅支持 **Python**；传统算法题（`judge_type=oi`）支持 **C / C++**（原生 `go-judge` 与 WASM `noj-wasm-v2` 双后端）。JavaScript 暂无评测运行时。请在 AI 题中使用 Python 提交，在 OI 题中使用 C / C++ 提交。
 
 ## 运营者 {#operators}
 

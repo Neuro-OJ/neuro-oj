@@ -304,4 +304,26 @@ describe('DomainContestForm', () => {
       3,
     );
   });
+
+  it('调整赛时社区静默策略时写入 community_silence_mode 并保留既有 submission_limits', async () => {
+    const existing = makeExisting({
+      type: 'kaggle',
+      config: { scoreboard_scope: 'self', submission_limits: { p1: 5 } },
+    });
+    const view = await renderForm(existing);
+
+    const silenceSelect = view.findAll('select').find((select) => select.text().includes('仅静默本场参赛选手'));
+    expect(silenceSelect).toBeDefined();
+    await silenceSelect!.setValue('contest_participants');
+
+    await view.find('form').trigger('submit');
+    await flushPromises();
+
+    expect(api.update).toHaveBeenCalledTimes(1);
+    expect(api.update.mock.calls[0][2].config).toEqual({
+      scoreboard_scope: 'self',
+      community_silence_mode: 'contest_participants',
+      submission_limits: { p1: 5 },
+    });
+  });
 });

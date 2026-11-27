@@ -17,6 +17,13 @@ export const RANKING_VISIBILITIES = [
 ] as const;
 export type RankingVisibility = typeof RANKING_VISIBILITIES[number];
 
+export const COMMUNITY_SILENCE_MODES = [
+  "none",
+  "contest_participants",
+  "domain_all",
+] as const;
+export type CommunitySilenceMode = typeof COMMUNITY_SILENCE_MODES[number];
+
 /**
  * 类 Kaggle 赛制配置。
  * `submission_limits` 为可选字段：`{ "<problem_id>": <number> }`，
@@ -27,6 +34,8 @@ export interface KaggleContestConfig {
   penalty_minutes?: number;
   /** Kaggle 默认本人榜，赛前可选择完整榜。 */
   scoreboard_scope?: "self" | "full";
+  /** 赛时社区静默策略：默认 domain_all（兼容存量比赛）。 */
+  community_silence_mode?: CommunitySilenceMode;
 }
 
 export type ContestConfig = KaggleContestConfig;
@@ -61,6 +70,12 @@ export function isValidContestConfig(
     values.scoreboard_scope !== undefined &&
     (_type !== "kaggle" ||
       !["self", "full"].includes(values.scoreboard_scope as string))
+  ) return false;
+  if (
+    values.community_silence_mode !== undefined &&
+    !COMMUNITY_SILENCE_MODES.includes(
+      values.community_silence_mode as CommunitySilenceMode,
+    )
   ) return false;
   if (values.submission_limits !== undefined) {
     if (

@@ -115,7 +115,11 @@ domainCommunityRouter.get(
           moderate: s.moderator,
         },
         contest_silence: !s.moderator &&
-          await hasUnendedPublicContest(s.domainId, s.executor),
+          await hasUnendedPublicContest(
+            s.domainId,
+            s.executor,
+            s.actorId ?? null,
+          ),
       })),
     }),
 );

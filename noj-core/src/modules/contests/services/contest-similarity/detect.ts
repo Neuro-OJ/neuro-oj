@@ -10,7 +10,7 @@ import {
   MAX_SIMILAR_PAIR_LIMIT,
 } from "./lexicon.ts";
 import { fingerprint } from "./fingerprint.ts";
-import { normalizeCode } from "./normalize.ts";
+import { normalizeCode, normalizeCodeBlocks } from "./normalize.ts";
 import type {
   DetectSimilarPairsOptions,
   SimilarSubmissionPair,
@@ -101,6 +101,102 @@ export function detectSimilarPairs(
   return collectSimilarPairs(submissions, options).pairs;
 }
 
+interface Prepared {
+  candidate: SimilarityCandidate;
+  globalPrints: ReadonlySet<number>;
+  blockPrints: ReadonlySet<number>;
+}
+
+interface InvertedMatch {
+  i: number;
+  j: number;
+  score: number;
+  shared: number;
+  sizeA: number;
+  sizeB: number;
+}
+
+function matchByInvertedIndex(
+  bucket: readonly Prepared[],
+  selectPrints: (item: Prepared) => ReadonlySet<number>,
+  threshold: number,
+  skipSameUser: boolean,
+  maxDocFreqRatio?: number,
+): InvertedMatch[] {
+  const n = bucket.length;
+  if (n < 2) return [];
+
+  const postings = new Map<number, number[]>();
+  const rawSizes = new Array<number>(n);
+  const distinctUsers = new Set<string>();
+  for (let i = 0; i < n; i++) {
+    const item = bucket[i]!;
+    distinctUsers.add(item.candidate.user_id);
+    const prints = selectPrints(item);
+    rawSizes[i] = prints.size;
+    for (const fp of prints) {
+      let list = postings.get(fp);
+      if (!list) {
+        list = [i];
+        postings.set(fp, list);
+      } else {
+        list.push(i);
+      }
+    }
+  }
+
+  const effectiveSizes = rawSizes.slice();
+  const applyDfFilter = maxDocFreqRatio !== undefined &&
+    Number.isFinite(maxDocFreqRatio) &&
+    maxDocFreqRatio > 0 &&
+    maxDocFreqRatio < 1 &&
+    distinctUsers.size >= 10;
+  const maxAllowedDocs = applyDfFilter
+    ? Math.max(2, Math.floor(n * maxDocFreqRatio!))
+    : n;
+
+  const pairShared = new Map<number, number>();
+  for (const list of postings.values()) {
+    if (applyDfFilter && list.length > maxAllowedDocs) {
+      for (const idx of list) {
+        effectiveSizes[idx]!--;
+      }
+      continue;
+    }
+    if (list.length < 2) continue;
+    for (let a = 0; a < list.length; a++) {
+      const i = list[a]!;
+      for (let b = a + 1; b < list.length; b++) {
+        const j = list[b]!;
+        if (
+          skipSameUser &&
+          bucket[i]!.candidate.user_id === bucket[j]!.candidate.user_id
+        ) {
+          continue;
+        }
+        const key = i * n + j;
+        pairShared.set(key, (pairShared.get(key) ?? 0) + 1);
+      }
+    }
+  }
+
+  const matches: InvertedMatch[] = [];
+  for (const [key, shared] of pairShared.entries()) {
+    const i = Math.floor(key / n);
+    const j = key % n;
+    const sizeA = effectiveSizes[i]!;
+    const sizeB = effectiveSizes[j]!;
+    if (sizeA <= 0 || sizeB <= 0) continue;
+    const smaller = Math.min(sizeA, sizeB);
+    const larger = Math.max(sizeA, sizeB);
+    if (smaller / larger < threshold) continue;
+    const score = similarityFromCounts(shared, sizeA, sizeB);
+    if (score < threshold) continue;
+    matches.push({ i, j, score, shared, sizeA, sizeB });
+  }
+  return matches;
+}
+
 /** `detectSimilarPairs()` 的带统计实现（服务层复用以生成响应元信息）。 */
 export function collectSimilarPairs(
   submissions: readonly SimilarityCandidate[],
@@ -112,12 +208,7 @@ export function collectSimilarPairs(
   const window = options.window ?? DEFAULT_WINDOW;
   const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
   const skipSameUser = options.skipSameUser ?? true;
-
-  interface Prepared {
-    candidate: SimilarityCandidate;
-    tokens: string[];
-    prints: ReadonlySet<number>;
-  }
+  const maxDocFreqRatio = options.maxDocFreqRatio;
 
   const buckets = new Map<string, Prepared[]>();
   let participating = 0;
@@ -127,57 +218,87 @@ export function collectSimilarPairs(
     const sliced = tokens.length > maxTokens
       ? tokens.slice(0, maxTokens)
       : tokens;
-    const prints = new Set(fingerprint(sliced, k, window));
-    if (prints.size === 0) continue;
+    const globalPrints = new Set(fingerprint(sliced, k, window));
+    if (globalPrints.size === 0) continue;
+
+    const blocks = normalizeCodeBlocks(candidate.code, candidate.language);
+    const blockPrints = new Set<number>();
+    let budget = maxTokens;
+    for (const block of blocks) {
+      if (budget <= 0) break;
+      const chunk = block.length > budget ? block.slice(0, budget) : block;
+      budget -= chunk.length;
+      for (const fp of fingerprint(chunk, k, window)) {
+        blockPrints.add(fp);
+      }
+    }
+
     participating += 1;
     const key = bucketKey(candidate);
     const bucket = buckets.get(key);
-    const prepared: Prepared = { candidate, tokens: sliced, prints };
+    const prepared: Prepared = { candidate, globalPrints, blockPrints };
     if (bucket) bucket.push(prepared);
     else buckets.set(key, [prepared]);
   }
 
   const found: SimilarSubmissionPair[] = [];
   for (const bucket of buckets.values()) {
-    for (let i = 0; i < bucket.length; i++) {
-      for (let j = i + 1; j < bucket.length; j++) {
-        const left = bucket[i]!;
-        const right = bucket[j]!;
-        if (
-          skipSameUser && left.candidate.user_id === right.candidate.user_id
-        ) {
-          continue;
-        }
-        const smaller = Math.min(left.prints.size, right.prints.size);
-        const larger = Math.max(left.prints.size, right.prints.size);
-        if (smaller / larger < threshold) continue;
-        const shared = countShared(left.prints, right.prints);
-        const score = similarityFromCounts(
-          shared,
-          left.prints.size,
-          right.prints.size,
-        );
-        if (score < threshold) continue;
-        const [first, second] = orderPair(left.candidate, right.candidate);
-        const firstPrints = first === left.candidate ? left : right;
-        const secondPrints = first === left.candidate ? right : left;
-        found.push({
-          submission_a_id: first.submission_id,
-          user_a_id: first.user_id,
-          username_a: first.username ?? null,
-          submitted_at_a: first.created_at ?? null,
-          submission_b_id: second.submission_id,
-          user_b_id: second.user_id,
-          username_b: second.username ?? null,
-          submitted_at_b: second.created_at ?? null,
-          problem_id: first.problem_id,
-          language: first.language,
-          similarity: round4(score),
-          shared_fingerprints: shared,
-          fingerprint_count_a: firstPrints.prints.size,
-          fingerprint_count_b: secondPrints.prints.size,
-        });
+    const n = bucket.length;
+    if (n < 2) continue;
+
+    const merged = new Map<
+      number,
+      InvertedMatch & { strategy: "global" | "block_local" }
+    >();
+    for (
+      const match of matchByInvertedIndex(
+        bucket,
+        (item) => item.globalPrints,
+        threshold,
+        skipSameUser,
+        maxDocFreqRatio,
+      )
+    ) {
+      merged.set(match.i * n + match.j, { ...match, strategy: "global" });
+    }
+    for (
+      const match of matchByInvertedIndex(
+        bucket,
+        (item) => item.blockPrints,
+        threshold,
+        skipSameUser,
+        maxDocFreqRatio,
+      )
+    ) {
+      const key = match.i * n + match.j;
+      const prev = merged.get(key);
+      if (!prev || match.score > prev.score) {
+        merged.set(key, { ...match, strategy: "block_local" });
       }
+    }
+
+    for (const match of merged.values()) {
+      const left = bucket[match.i]!;
+      const right = bucket[match.j]!;
+      const [first, second] = orderPair(left.candidate, right.candidate);
+      const firstIsLeft = first === left.candidate;
+      found.push({
+        submission_a_id: first.submission_id,
+        user_a_id: first.user_id,
+        username_a: first.username ?? null,
+        submitted_at_a: first.created_at ?? null,
+        submission_b_id: second.submission_id,
+        user_b_id: second.user_id,
+        username_b: second.username ?? null,
+        submitted_at_b: second.created_at ?? null,
+        problem_id: first.problem_id,
+        language: first.language,
+        similarity: round4(match.score),
+        shared_fingerprints: match.shared,
+        fingerprint_count_a: firstIsLeft ? match.sizeA : match.sizeB,
+        fingerprint_count_b: firstIsLeft ? match.sizeB : match.sizeA,
+        match_strategy: match.strategy,
+      });
     }
   }
 
@@ -194,19 +315,6 @@ export function collectSimilarPairs(
     participating,
     skipped: submissions.length - participating,
   };
-}
-
-/** 统计两个指纹集合的交集大小（遍历较小集合）。 */
-function countShared(
-  a: ReadonlySet<number>,
-  b: ReadonlySet<number>,
-): number {
-  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
-  let shared = 0;
-  for (const value of small) {
-    if (large.has(value)) shared++;
-  }
-  return shared;
 }
 
 /** 由交集大小与两侧规模还原 Jaccard（避免二次求交）。 */

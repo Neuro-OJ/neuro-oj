@@ -11,6 +11,11 @@ export const DOMAIN_CONTEST_TYPES = [
   { value: 'ioi_strict', label: 'IOI 严格', description: 'OI 题；每题最后提交，只展示汇总判定和分数。' },
   { value: 'acm', label: 'ACM/ICPC', description: 'OI 题；首次 AC 与此前失败罚时，支持封榜。' },
 ] as const;
+export const DOMAIN_CONTEST_SILENCE_MODES = [
+  { value: 'domain_all', label: '静默本域全部普通用户（默认）' },
+  { value: 'contest_participants', label: '仅静默本场参赛选手' },
+  { value: 'none', label: '不静默社区（仅保护赛题）' },
+] as const;
 /** 赛前默认值；发布后规则由服务器锁定。 */
 export function domainContestDefaults(
   type: ContestType,

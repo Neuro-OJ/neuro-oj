@@ -796,6 +796,7 @@ mod tests {
                 image: "img".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
+                isolation_mode: None,
             }),
         };
         assert_eq!(config.evaluator.time_limit_ms, 1000);

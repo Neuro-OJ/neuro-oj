@@ -299,3 +299,65 @@ Deno.test("projection: 仅公开标准摘要和 fuel，不暴露隐藏测试或�
     legacy: false,
   });
 });
+
+Deno.test("projection: 非竞赛路径非管理员剥离隐藏用例 stdout/stderr，管理员全量保留", () => {
+  const input = {
+    id: "sub-log",
+    user_id: "user-a",
+    details: {
+      cases: [
+        { case_id: "v1", hidden: false, stdout: "vis-out", stderr: "vis-err" },
+        {
+          case_id: "h1",
+          hidden: true,
+          stdout: "hid-out",
+          stdout_truncated: true,
+          stderr: "hid-err",
+        },
+      ],
+    },
+    result: {
+      details: {
+        cases: [
+          { case_id: "v1", visibility: "visible", stdout: "vis-out" },
+          {
+            case_id: "h1",
+            visibility: "hidden",
+            stdout: "hid-out",
+            stderr: "hid-err",
+          },
+        ],
+      },
+    },
+  };
+  const ownerProj = applySubmissionProjection(input, {
+    viewerId: "user-a",
+    isAdmin: false,
+    isOwner: true,
+    contest: null,
+  });
+  const topCases =
+    (ownerProj.details as { cases: Array<Record<string, unknown>> }).cases;
+  assertEquals(topCases[0].stdout, "vis-out");
+  assertEquals(topCases[1].stdout, undefined);
+  assertEquals(topCases[1].stdout_truncated, undefined);
+  assertEquals(topCases[1].stderr, undefined);
+  const nestedCases =
+    ((ownerProj.result as Record<string, unknown>).details as {
+      cases: Array<Record<string, unknown>>;
+    }).cases;
+  assertEquals(nestedCases[0].stdout, "vis-out");
+  assertEquals(nestedCases[1].stdout, undefined);
+
+  const adminProj = applySubmissionProjection(input, {
+    viewerId: "admin",
+    isAdmin: true,
+    isOwner: false,
+    contest: null,
+  });
+  assertEquals(
+    (adminProj.details as { cases: Array<Record<string, unknown>> }).cases[1]
+      .stdout,
+    "hid-out",
+  );
+});

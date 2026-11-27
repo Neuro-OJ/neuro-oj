@@ -710,5 +710,134 @@ class TestShutdownWakeups(unittest.TestCase):
                 h.teardown()
 
 
+class TestSolutionLogCapture(unittest.TestCase):
+    """Solution log 帧按 call_id 隔离捕获、默认不泄题写 stderr、超 8 KiB 截断。"""
+
+    def test_call_logs_isolated_by_call_id_and_not_written_to_stderr_by_default(self):
+        h = IpcHarness()
+        orig_stderr = sys.stderr
+        stderr_buf = io.StringIO()
+        sys.stderr = stderr_buf
+        try:
+            # import 期无 call_id 的日志
+            h.send_host_response({"type": "log", "stream": "stdout", "data": "boot-log\n"})
+
+            t1, res1, _ = h.start_call("solve", 1)
+            f1 = h.wait_for_frames(1)[0]
+            h.send_host_response({"type": "log", "stream": "stdout", "data": "call1-a\n", "call_id": f1["id"]})
+            h.send_host_response({"type": "log", "stream": "stdout", "data": "call1-b", "call_id": f1["id"]})
+            h.send_host_response({"type": "result", "id": f1["id"], "value": 10})
+            t1.join(timeout=2)
+
+            self.assertEqual(res1["v"], 10)
+            self.assertEqual(h.runner.last_call_logs, "call1-a\ncall1-b")
+            self.assertFalse(h.runner.last_call_logs_truncated)
+            self.assertEqual(stderr_buf.getvalue(), "")
+            self.assertEqual(h.runner.pop_logs(), "boot-log\n")
+
+            # 抛 SystemError 时仍能读取该 call_id 的日志
+            t2, _, err2 = h.start_call("solve", 2)
+            f2 = h.wait_for_frames(2)[1]
+            h.send_host_response({"type": "log", "stream": "stdout", "data": "before-crash\n", "call_id": f2["id"]})
+            h.send_host_response({"type": "error", "id": f2["id"], "code": "Exception", "message": "boom"})
+            t2.join(timeout=2)
+
+            self.assertIn("e", err2)
+            self.assertEqual(h.runner.last_call_logs, "before-crash\n")
+        finally:
+            sys.stderr = orig_stderr
+            h.teardown()
+
+    def test_call_logs_truncated_at_8kb_and_optional_stderr_forwarding(self):
+        orig_stderr = sys.stderr
+        stderr_buf = io.StringIO()
+        sys.stderr = stderr_buf
+        h = IpcHarness()
+        h.runner._forward_solution_logs_to_stderr = True
+        try:
+            t1, _, _ = h.start_call("solve")
+            f1 = h.wait_for_frames(1)[0]
+            h.send_host_response({"type": "log", "stream": "stdout", "data": "a" * 9000, "call_id": f1["id"]})
+            h.send_host_response({"type": "result", "id": f1["id"], "value": 1})
+            t1.join(timeout=2)
+
+            self.assertTrue(h.runner.last_call_logs_truncated)
+            self.assertEqual(len(h.runner.last_call_logs.encode("utf-8")), 8 * 1024)
+            self.assertIn("a" * 100, stderr_buf.getvalue())
+        finally:
+            sys.stderr = orig_stderr
+            h.teardown()
+
+
+class TestChunkedLargePayloadRpc(unittest.TestCase):
+    """P2-1: 超过 1 MiB 的 call 参数与 result 返回值透明分片传输与重组。"""
+
+    def test_large_call_and_large_result_roundtrip_via_chunks(self):
+        from noj_sdk_common.chunking import ChunkReassembler, encode_chunked_frames
+        from noj_sdk_common.serialization import MAX_FRAME_BYTES, encode_value
+
+        h = IpcHarness()
+        try:
+            big_arg = "A" * (1_300_000)
+            t, res, err = h.start_call("echo_big", big_arg, timeout_ms=4321)
+
+            # 等待多个 chunk 帧写出，且每条物理 NDJSON 行严格 <= 1 MiB
+            deadline = time.monotonic() + 3.0
+            frames = []
+            while time.monotonic() < deadline:
+                raw_lines = [
+                    ln
+                    for ln in h.runner_stdout_buf.getvalue().splitlines()
+                    if ln.strip()
+                ]
+                if raw_lines:
+                    frames = [json.loads(ln) for ln in raw_lines]
+                    if frames[0].get("type") == "chunk" and len(frames) == frames[0].get("total"):
+                        for ln in raw_lines:
+                            self.assertLessEqual(len(ln.encode("utf-8")), MAX_FRAME_BYTES)
+                        break
+                time.sleep(0.01)
+
+            self.assertGreaterEqual(len(frames), 2)
+            self.assertEqual(frames[0]["type"], "chunk")
+            self.assertEqual(frames[0]["kind"], "call")
+            self.assertEqual(frames[0]["timeout_ms"], 4321)
+
+            reassembler = ChunkReassembler()
+            call_frame = None
+            for f in frames:
+                call_frame = reassembler.feed(f)
+            self.assertIsNotNone(call_frame)
+            assert call_frame is not None
+            self.assertEqual(call_frame["fn"], "echo_big")
+            self.assertEqual(call_frame["args"][0], big_arg)
+
+            # 模拟 host 返回 > 1 MiB bytes（经 base64 编码 + 分片）
+            big_bytes = b"Z" * (1_100_000)
+            resp_chunks = encode_chunked_frames(
+                {"type": "result", "id": call_frame["id"], "value": encode_value(big_bytes)}
+            )
+            self.assertGreaterEqual(len(resp_chunks), 2)
+            for cf in resp_chunks:
+                h.send_host_response(cf)
+
+            t.join(timeout=3.0)
+            self.assertFalse(t.is_alive())
+            self.assertNotIn("e", err)
+            self.assertEqual(res["v"], big_bytes)
+        finally:
+            h.teardown()
+
+    def test_oversize_payload_above_chunk_limit_rejected(self):
+        h = IpcHarness()
+        try:
+            # 构造超出 16 MiB 默认上限的载荷，预检应直接抛出 RejectedError
+            huge = "x" * (17 * 1024 * 1024)
+            with self.assertRaises(RejectedError):
+                h.runner.call("echo_big", huge)
+        finally:
+            h.teardown()
+
+
 if __name__ == "__main__":
     unittest.main()

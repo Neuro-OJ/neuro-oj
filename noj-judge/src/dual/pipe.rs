@@ -69,6 +69,18 @@ pub(crate) async fn write_timeout_frame(
     forward_frame(writer, &frame).await
 }
 
+/// 向 Solution host 发送调用取消帧，以便 fork_per_call 模式立刻 SIGKILL 超时子进程。
+pub(crate) async fn write_cancel_frame(
+    writer: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,
+    id: &str,
+) -> Result<PipeWriteOutcome> {
+    let frame = serde_json::json!({
+        "type": "cancel",
+        "id": id,
+    });
+    forward_frame(writer, &frame).await
+}
+
 /// 转发一个 NDJSON 帧到对端 stdin（默认 3s 短超时）。
 pub(crate) async fn forward_frame(
     writer: &mut std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Unpin>>,

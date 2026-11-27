@@ -88,19 +88,19 @@ def check_frame_size(frame_str: str) -> None:
         )
 
 
-def estimate_frame_size(value: Any) -> int:
+def estimate_frame_size(value: Any, limit: int = MAX_FRAME_BYTES) -> int:
     """估算 value 序列化后帧字节数的上界（不复制数据，超限即短路）。
 
     用于在 `encode_value`（bytes → base64 膨胀 ~1.33×）之前预检超大返回值，
     避免对必然超限的大对象（如 handler 返回 1 GB dict）先吃完整序列化内存。
-    估算为宽松上界（≥ 实际序列化字节数），因此"估算 > MAX_FRAME_BYTES 即拒绝"
-    不会误伤合法值；边界附近仍由 `check_frame_size` 做最终判定。
+    估算为宽松上界（≥ 实际序列化字节数），因此"估算 > limit 即拒绝"
+    不会误伤合法值；边界附近仍由 `check_frame_size` 或分片编码做最终判定。
     """
     total = 0
 
     def walk(v: Any) -> None:
         nonlocal total
-        if total > MAX_FRAME_BYTES:
+        if total > limit:
             return
         if isinstance(v, str):
             total += len(v.encode("utf-8")) + 2  # JSON 引号
@@ -114,7 +114,7 @@ def estimate_frame_size(value: Any) -> int:
             for item in v:
                 total += 1  # 逗号
                 walk(item)
-                if total > MAX_FRAME_BYTES:
+                if total > limit:
                     return
         elif isinstance(v, dict):
             total += 2  # {}
@@ -124,7 +124,7 @@ def estimate_frame_size(value: Any) -> int:
                 else:
                     total += len(k.encode("utf-8")) + 4  # 引号 + 冒号
                 walk(kv)
-                if total > MAX_FRAME_BYTES:
+                if total > limit:
                     return
         else:
             total += 64  # 未知类型兜底

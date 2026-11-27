@@ -218,7 +218,11 @@ router.get("/config", optionalAuthMiddleware, async (c) => {
   // 赛时社区全局静默：供前端预先禁用发帖/评论/编辑入口（服务层仍强制，此处仅展示）。
   // 审核员免静默；匿名用户本就不能写入，统一按非审核员口径返回。
   const contestSilence = !(loggedIn && moderatorFlag(c)) &&
-    await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
+    await hasUnendedPublicContest(
+      DEFAULT_DOMAIN_ID,
+      undefined,
+      c.get("userId") ?? null,
+    );
   // 新用户预审：告知前端"此人现在发的内容会进 pending 队列"，让编辑区在提交前
   // 就给出提示（提交后也只会收到 status=pending，缺少预期会让用户以为发布失败）。
   const underReview = loggedIn && config.new_user_review_hours > 0 &&
@@ -321,7 +325,11 @@ router.get("/solutions/eligibility", authMiddleware, async (c) => {
   const blockedByContest = inUnendedPublicContest && !moderator;
   // 赛时社区全局静默：任一公开赛未结束时，非赛题题解同样暂停发布（与 createPost 同口径）
   const blockedBySilence = !moderator && !blockedByContest &&
-    await hasUnendedPublicContest(DEFAULT_DOMAIN_ID);
+    await hasUnendedPublicContest(
+      DEFAULT_DOMAIN_ID,
+      undefined,
+      c.get("userId") ?? null,
+    );
   const canCreate = config.solutions_enabled &&
     (!config.read_only || moderator) &&
     (await hasDefaultCommunityPermission(c, "community:create")) &&

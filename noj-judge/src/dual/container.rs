@@ -76,6 +76,7 @@ pub struct DualContainer {
     pub evaluator_id: Option<String>,
     pub solution_id: Option<String>,
     /// 本实例 ID（`noj-{hash12}`），由 config 显式注入，用于实例标签。
+    #[allow(dead_code)]
     pub instance_id: String,
 }
 
@@ -96,6 +97,7 @@ impl DualContainer {
     /// /workspace tmpfs 使用历史默认上限 [`DEFAULT_WORKSPACE_MB`]；需要更大
     /// 工作区（如预测提交）时改用 [`Self::create_evaluator_with_workspace`]。
     /// `instance_id`：由 `Config::instance_id` 显式传入（不再读取全局易变值）。
+    #[allow(dead_code)]
     pub async fn create_evaluator(
         docker: &Docker,
         image: &str,
@@ -149,6 +151,7 @@ impl DualContainer {
     }
 
     /// 在现有 DualContainer 上追加 Solution 容器（复用本实例 ID）。
+    #[allow(dead_code)]
     pub async fn create_solution(
         &mut self,
         image: &str,
@@ -169,6 +172,67 @@ impl DualContainer {
         info!("Solution 容器创建: {}", id);
         self.solution_id = Some(id);
         Ok(())
+    }
+
+    /// 并发创建 Evaluator 与 Solution 容器，任一方失败立即销毁已成功创建的容器防孤儿。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_pair(
+        docker: &Docker,
+        evaluator_image: &str,
+        evaluator_memory_mb: u64,
+        evaluator_network_mode: &str,
+        solution_image: &str,
+        solution_memory_mb: u64,
+        cpu_limit_millicores: u64,
+        instance_id: &str,
+    ) -> Result<Self> {
+        let eval_fut = create_container_with_security(
+            docker,
+            evaluator_image,
+            evaluator_memory_mb,
+            "evaluator",
+            evaluator_network_mode,
+            cpu_limit_millicores,
+            DEFAULT_WORKSPACE_MB,
+            instance_id,
+        );
+        let sol_fut = create_container_with_security(
+            docker,
+            solution_image,
+            solution_memory_mb,
+            "solution",
+            "none",
+            cpu_limit_millicores,
+            DEFAULT_WORKSPACE_MB,
+            instance_id,
+        );
+        match tokio::join!(eval_fut, sol_fut) {
+            (Ok(eval_id), Ok(sol_id)) => {
+                info!(
+                    "双容器并发创建成功: evaluator={}, solution={}",
+                    eval_id, sol_id
+                );
+                Ok(Self {
+                    docker: docker.clone(),
+                    evaluator_id: Some(eval_id),
+                    solution_id: Some(sol_id),
+                    instance_id: instance_id.to_string(),
+                })
+            }
+            (Ok(eval_id), Err(e)) => {
+                if !remove_container_force(docker, &eval_id).await {
+                    warn!("并发创建回滚销毁 Evaluator 容器失败: {}", eval_id);
+                }
+                Err(e).context("创建 Solution 容器失败")
+            }
+            (Err(e), Ok(sol_id)) => {
+                if !remove_container_force(docker, &sol_id).await {
+                    warn!("并发创建回滚销毁 Solution 容器失败: {}", sol_id);
+                }
+                Err(e).context("创建 Evaluator 容器失败")
+            }
+            (Err(e), Err(_)) => Err(e).context("创建 Evaluator 容器失败"),
+        }
     }
 
     /// 显式销毁两个容器（先 Solution 后 Evaluator）。

@@ -1,13 +1,16 @@
 # 竞赛系统（Contests）
 
-Neuro OJ 深度适配 AI 认证与数据科学竞赛，内置专为模型评测打造的**类 Kaggle
-分数赛**模式。系统具备毫秒级实时榜单推送、题目按比赛保密、多级封榜隔离以及赛后成绩快照发布等企业级赛事保障机制。
+Neuro OJ 同时支持 AI 认证竞赛与传统算法竞赛，原生提供 **Kaggle 分数赛（`kaggle`）、OI（`oi`）、IOI（`ioi`）、IOI 严格（`ioi_strict`）与 ACM/ICPC（`acm`）** 五种赛制。系统具备实时榜单推送、题目按比赛保密、多级赛时社区静默（`config.community_silence_mode` 支持 `domain_all` / `contest_participants` / `none`，仅赛期进行中生效）、封榜隔离以及赛后成绩快照发布等赛事保障机制。
 
 ---
 
 ## 赛制与评分模型
 
-当前竞赛系统原生支持 **Kaggle 分数赛** 模式（`type='kaggle'`）。
+当前竞赛系统原生支持五种赛制：
+- **Kaggle 分数赛（`type='kaggle'`）**：支持 AI 题与客观题，每题取最高分累加；
+- **OI（`type='oi'`）**：支持 OI 题与客观题，取每题最后一次有效提交，赛时隐藏结果与榜单；
+- **IOI（`type='ioi'`）** / **IOI 严格（`type='ioi_strict'`）**：面向 OI 题，取每题最后一次有效提交，分别展示测试点明细或仅展示汇总判定与分数；
+- **ACM/ICPC（`type='acm'`）**：面向 OI 题，按首次 AC 时间与此前失败罚时（`penalty_minutes`）排名，支持赛末封榜。
 
 ### 1. 核心计分规则
 

@@ -19,7 +19,7 @@ use super::config::{
 };
 use super::frames::{drain_eval_tail, handle_eval_chunk, handle_sol_chunk};
 use super::payload::{self, ResultPayload};
-use super::pipe::{write_timeout_frame, PipeWriteOutcome};
+use super::pipe::{write_cancel_frame, write_timeout_frame, PipeWriteOutcome};
 use super::SOLUTION_ENTRY_FILE;
 
 /// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
@@ -76,25 +76,18 @@ pub async fn evaluate_dual_with_cpu_limit(
     } else {
         "none"
     };
-    let mut dual = DualContainer::create_evaluator(
+    // 1–2. 并发创建 Evaluator 与 Solution 容器（失败时内部回滚已创建方）
+    let dual = DualContainer::create_pair(
         &docker,
         &runtime_config.evaluator.image,
         runtime_config.evaluator.memory_limit_mb,
         network_mode,
-        cpu_limit_millicores,
-        instance_id,
-    )
-    .await
-    .context("创建 Evaluator 容器失败")?;
-
-    // 2. 创建 Solution 容器
-    dual.create_solution(
         &solution.image,
         solution.memory_limit_mb,
         cpu_limit_millicores,
+        instance_id,
     )
-    .await
-    .context("创建 Solution 容器失败")?;
+    .await?;
 
     // `create_evaluator` / `create_solution` 成功返回时必然已写入容器 ID，
     // `ok_or_else` 只是不可达的兜底；保留其为错误返回而非 panic。
@@ -112,37 +105,41 @@ pub async fn evaluate_dual_with_cpu_limit(
     // `dual.destroy().await`。否则 `?` 提前返回会触发 `DualContainer::drop`，而 Drop
     // 里的 `tokio::spawn` 在 drain 阶段会被运行时就绪销毁强杀 → 孤儿容器残留。
     let evaluation = async {
-        // 3. 注入支持包到 Evaluator 容器（evaluate.py 等评测脚本）
-        if let Some(pkg_path) = support_pkg_path {
-            info!("注入支持包到 Evaluator 容器: {:?}", pkg_path);
-            inject_support_package_to_evaluator(&docker, &evaluator_id, pkg_path)
-                .await
-                .context("注入支持包到 Evaluator 容器失败")?;
-        } else {
-            info!("无支持包，跳过注入");
-        }
-
-        // 4. 注入用户代码/artifact 到 Solution 容器
+        // 3–4. 并发注入支持包（Evaluator）与用户代码/artifact（Solution）
         let solution_entry_file = if artifact_zip_path.is_some() {
             "submission.py"
         } else {
             SOLUTION_ENTRY_FILE
         };
-        if let Some(artifact_path) = artifact_zip_path {
-            info!("注入 artifact zip 到 Solution 容器: {:?}", artifact_path);
-            inject_support_package_to_evaluator(&docker, &solution_id, artifact_path)
+        let eval_inject = async {
+            if let Some(pkg_path) = support_pkg_path {
+                info!("注入支持包到 Evaluator 容器: {:?}", pkg_path);
+                inject_support_package_to_evaluator(&docker, &evaluator_id, pkg_path)
+                    .await
+                    .context("注入支持包到 Evaluator 容器失败")
+            } else {
+                info!("无支持包，跳过注入");
+                Ok(())
+            }
+        };
+        let sol_inject = async {
+            if let Some(artifact_path) = artifact_zip_path {
+                info!("注入 artifact zip 到 Solution 容器: {:?}", artifact_path);
+                inject_support_package_to_evaluator(&docker, &solution_id, artifact_path)
+                    .await
+                    .context("注入 artifact zip 到 Solution 容器失败")
+            } else {
+                inject_file_to_container(
+                    &docker,
+                    &solution_id,
+                    SOLUTION_ENTRY_FILE,
+                    user_code.as_bytes(),
+                )
                 .await
-                .context("注入 artifact zip 到 Solution 容器失败")?;
-        } else {
-            inject_file_to_container(
-                &docker,
-                &solution_id,
-                SOLUTION_ENTRY_FILE,
-                user_code.as_bytes(),
-            )
-            .await
-            .context("注入用户代码到 Solution 容器失败")?;
-        }
+                .context("注入用户代码到 Solution 容器失败")
+            }
+        };
+        tokio::try_join!(eval_inject, sol_inject)?;
 
         // 5. 构造 Evaluator 环境变量（LLM 任务注入 gateway 地址、eval_token 与提交标识）
         let evaluator_env = task_llm
@@ -151,27 +148,33 @@ pub async fn evaluate_dual_with_cpu_limit(
             })
             .unwrap_or_default();
 
-        // 6. 启动 Evaluator exec
-        let evaluator_exec = start_exec(&docker, &evaluator_id, evaluator_cmd, evaluator_env)
-            .await
-            .context("启动 Evaluator exec 失败")?;
-
-        // 7. 启动 Solution exec（Solution 容器不注入任何 NOJ_LLM_* 环境变量）
+        // 6–7. 并发启动 Evaluator exec 与 Solution exec（Solution 不注入 NOJ_LLM_*）
         let solution_entry_path = format!("/workspace/{}", solution_entry_file);
-        let solution_exec = start_exec(
-            &docker,
-            &solution_id,
-            vec![
-                "python3".to_string(),
-                "-m".to_string(),
-                "noj_solution_sdk.host".to_string(),
-                "--entry".to_string(),
-                solution_entry_path,
-            ],
-            vec![],
-        )
-        .await
-        .context("启动 Solution exec 失败")?;
+        let mut solution_cmd = vec![
+            "python3".to_string(),
+            "-m".to_string(),
+            "noj_solution_sdk.host".to_string(),
+            "--entry".to_string(),
+            solution_entry_path,
+            "--default-call-timeout-ms".to_string(),
+            solution.call_timeout_ms.to_string(),
+        ];
+        if solution.isolation_mode.as_deref() == Some("fork_per_call") {
+            solution_cmd.push("--isolation-mode".to_string());
+            solution_cmd.push("fork_per_call".to_string());
+        }
+        let eval_start = async {
+            start_exec(&docker, &evaluator_id, evaluator_cmd, evaluator_env)
+                .await
+                .context("启动 Evaluator exec 失败")
+        };
+        let sol_start = async {
+            start_exec(&docker, &solution_id, solution_cmd, vec![])
+                .await
+                .context("启动 Solution exec 失败")
+        };
+        let (evaluator_exec, solution_exec) = tokio::try_join!(eval_start, sol_start)?;
+        let startup_ms = started.elapsed().as_millis() as u64;
 
         // 8. 运行主循环
         // 调用级超时追踪器（题目级 call_timeout_ms 作为缺省回退值；
@@ -201,7 +204,7 @@ pub async fn evaluate_dual_with_cpu_limit(
             );
         }
 
-        Ok::<_, anyhow::Error>((result, memory_peak_kb, solution_time_ms))
+        Ok::<_, anyhow::Error>((result, memory_peak_kb, solution_time_ms, startup_ms))
     }
     .await;
 
@@ -210,13 +213,14 @@ pub async fn evaluate_dual_with_cpu_limit(
         warn!("DualContainer 销毁警告: {}", e);
     }
 
-    let (result, memory_peak_kb, solution_time_ms) = evaluation?;
+    let (result, memory_peak_kb, solution_time_ms, startup_ms) = evaluation?;
 
     // 耗时口径：只统计 Solution 处理 evaluator 调用的时间，不含容器创建/销毁、
     // 文件注入、评测脚本自身与 LLM 调用；整段墙钟时间仅写日志供排查。
     let mut result = result?;
     info!(
         submission_id = task_submission_id,
+        startup_ms = startup_ms,
         wall_time_ms = started.elapsed().as_millis() as u64,
         solution_time_ms = ?solution_time_ms,
         "双容器评测耗时"
@@ -289,6 +293,12 @@ async fn expire_call_timeouts(
                 let outcome = write_timeout_frame(eval_input, &id).await?;
                 if outcome == PipeWriteOutcome::PeerGone {
                     eval_outcome = PipeWriteOutcome::PeerGone;
+                }
+                if sol_outcome != PipeWriteOutcome::PeerGone {
+                    let cancel_outcome = write_cancel_frame(sol_input, &id).await?;
+                    if cancel_outcome == PipeWriteOutcome::PeerGone {
+                        sol_outcome = PipeWriteOutcome::PeerGone;
+                    }
                 }
                 *sent_call_timeout = true;
             }

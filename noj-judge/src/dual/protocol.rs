@@ -24,6 +24,7 @@ pub const FRAME_CAP_REG: &str = "cap_reg";
 pub const FRAME_RESULT: &str = "result";
 pub const FRAME_ERROR: &str = "error";
 pub const FRAME_LOG: &str = "log";
+pub const FRAME_CHUNK: &str = "chunk";
 pub const FRAME_SHUTDOWN: &str = "shutdown";
 
 /// 最终结果标记行（evaluator stdout 中的独立一行）。

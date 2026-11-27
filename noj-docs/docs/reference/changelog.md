@@ -8,14 +8,9 @@
   题目通过率对所有人公开（竞赛进行中自动隐藏），出题人可查看评测状态分布与用例失败分布；
   题解支持官方标记并置顶，竞赛赛期自动隐藏题解（含发布入口）并在赛后提供复盘入口。
 - GitHub/OIDC 第三方登录：支持登录、首次登录设置本地密码，以及在设置页绑定/解绑第三方账号。
-- 类 Kaggle 竞赛：支持按题目最高分累计排名、每题提交次数限制和 SSE 实时排名；ICPC、IOI、OI 赛制尚未开放。
+- 多赛制竞赛：已支持 Kaggle 分数赛、OI、IOI、IOI 严格与 ACM/ICPC 五种赛制，支持每题提交次数限制、赛时分层社区静默与 SSE 实时排名。
 - 产物提交题：支持上传 zip 产物，并在 Solution / Solution AI 隔离容器中统一评测。
-- **移除用户自带模型（BYOK）**：用户不再能配置自己的 LLM Provider 与 API Key；
-  P 型题的 LLM 能力改由**平台 Provider**提供，题目只需声明调用预算。
-  用户此前自建的 Provider 与加密 Key 已删除（不可逆），`submissions.llm_provider_config_id`
-  列与设置页/编辑器入口一并移除。**升级到该版本前**请按
-  [生产部署文档](../operators/production-deploy.md#升级前检查题目引用的-llm-provider-是否为用户自建)
-  核查题目是否引用了用户自建 Provider。
+- LLM 能力演进：平台默认由域级/平台托管 Provider 提供调用能力并支持 BYOK 恢复接入，题目只需声明调用别名与预算。
 - **移除无域兼容路由**：`GET /api/v1/queue`、`GET /api/v1/queue/events`、
   `GET /api/v1/submissions/:id/events`、`POST /api/v1/problems/:id/self-test`、
   `GET /api/v1/problems/:id/self-tests`、`GET /api/v1/self-tests/:id` 与本人跨域

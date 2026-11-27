@@ -60,15 +60,40 @@ const JUDGE_CASE_ALLOWED_KEYS = new Set([
   "input",
   "expected_output",
   "actual_output",
+  "stdout",
+  "stdout_truncated",
+  "stderr",
+  "stderr_truncated",
 ]);
+
+/** 单个用例调试流（stdout/stderr）保留上限（字符）。 */
+const MAX_CASE_STREAM_CHARS = 4 * 1024;
+const CASE_STREAM_KEYS = [
+  "stdout",
+  "stdout_truncated",
+  "stderr",
+  "stderr_truncated",
+] as const;
 
 /** 单个值序列化后的最大字节数，超出即丢弃（防超大恶意字段）。 */
 const MAX_DETAIL_VALUE_BYTES = 64 * 1024;
+
+function stripCaseStreamFields(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+  const copy = { ...(value as Record<string, unknown>) };
+  for (const k of CASE_STREAM_KEYS) {
+    delete copy[k];
+  }
+  return copy;
+}
 
 /**
  * judge 结果 details 白名单化（F-11）。
  *
  * 仅保留安全键；每条用例只保留白名单字段；任一值超过 64KB 丢弃。
+ * `cases` 若因调试流日志超出 64KB，先剥离流日志再检查，避免丢失用例结果本身。
  */
 export function sanitizeJudgeDetails(
   details: Record<string, unknown>,
@@ -80,20 +105,27 @@ export function sanitizeJudgeDetails(
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(details)) {
     if (!JUDGE_DETAIL_ALLOWED_KEYS.has(key)) continue;
-    const normalized = key === "oi"
+    let normalized = key === "oi"
       ? (selfTest ? projectOiSelfTestDetails(value) : projectOiDetails(value))
       : key === "metering"
       ? projectMeteringDetails(value)
       : key === "cases" && Array.isArray(value)
       ? value.map(sanitizeCase)
       : value;
-    const serialized = JSON.stringify(normalized);
-    if (
-      serialized !== undefined &&
-      serialized.length >
-        (selfTest && key === "oi" ? 4 * 1024 * 1024 : MAX_DETAIL_VALUE_BYTES)
-    ) {
-      continue;
+    let serialized = JSON.stringify(normalized);
+    const limit = selfTest && key === "oi"
+      ? 4 * 1024 * 1024
+      : MAX_DETAIL_VALUE_BYTES;
+    if (serialized !== undefined && serialized.length > limit) {
+      if (key === "cases" && Array.isArray(normalized)) {
+        normalized = normalized.map(stripCaseStreamFields);
+        serialized = JSON.stringify(normalized);
+        if (serialized !== undefined && serialized.length > limit) {
+          continue;
+        }
+      } else {
+        continue;
+      }
     }
     result[key] = normalized;
   }
@@ -105,9 +137,37 @@ function sanitizeCase(value: unknown): unknown {
     return value;
   }
   const caseObj = value as Record<string, unknown>;
+  const isHidden = caseObj.hidden === true || caseObj.visibility === "hidden";
   const result: Record<string, unknown> = {};
   for (const [key, field] of Object.entries(caseObj)) {
-    if (JUDGE_CASE_ALLOWED_KEYS.has(key)) result[key] = field;
+    if (!JUDGE_CASE_ALLOWED_KEYS.has(key)) continue;
+    if (
+      isHidden &&
+      (CASE_STREAM_KEYS as readonly string[]).includes(key)
+    ) {
+      continue;
+    }
+    result[key] = field;
+  }
+  if (!isHidden) {
+    for (const stream of ["stdout", "stderr"] as const) {
+      if (stream in result) {
+        if (typeof result[stream] !== "string") {
+          delete result[stream];
+          delete result[`${stream}_truncated`];
+        } else if ((result[stream] as string).length > MAX_CASE_STREAM_CHARS) {
+          result[stream] = (result[stream] as string).slice(
+            0,
+            MAX_CASE_STREAM_CHARS,
+          );
+          result[`${stream}_truncated`] = true;
+        }
+      }
+      const truncKey = `${stream}_truncated` as const;
+      if (truncKey in result && typeof result[truncKey] !== "boolean") {
+        delete result[truncKey];
+      }
+    }
   }
   return result;
 }
