@@ -14,5 +14,12 @@ pre-commit:
 
 pre-push:
   commands:
+    # 分支安全自检：静默覆盖 / 断链引用 / 提交签名 / 提交信息（见 dev-docs/agents/workflow.md §2）
+    # 主路径是 scripts/install-git-hooks.mjs 直写的 .git/hooks/pre-push；这条只给用 lefthook
+    # 接管钩子的环境。use_stdin（lefthook 1.4.10+）把 git 的待推送引用原样透传给同一个入口，
+    # 没有它 lefthook 不会转发 stdin，检查器会读到空输入。
+    branch-safety:
+      run: deno task check:branch-safety --pushed-refs -
+      use_stdin: true
     typecheck:
       run: echo "本地 pre-push 不跑全量；CI 负责完整检查"
