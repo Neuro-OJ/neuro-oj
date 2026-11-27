@@ -60,6 +60,9 @@ export function normalizeContestConfig(
     ...(_type === "kaggle"
       ? { scoreboard_scope: value.scoreboard_scope ?? "self" }
       : {}),
+    ...(value.community_silence_mode
+      ? { community_silence_mode: value.community_silence_mode }
+      : {}),
   };
 }
 

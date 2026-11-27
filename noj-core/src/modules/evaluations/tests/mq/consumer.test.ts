@@ -299,3 +299,47 @@ Deno.test("mq/consumer: 统一标准摘要落库前保留，任意原始数据�
   assertEquals(metering.comparable, true);
   assertEquals(metering.hidden_data, undefined);
 });
+
+Deno.test("mq/consumer: sanitizeJudgeDetails 可见用例保留并截断 stdout，隐藏用例强制剥离", () => {
+  const longStdout = "s".repeat(5000);
+  const projected = sanitizeJudgeDetails({
+    cases: [
+      {
+        case_id: "vis-1",
+        status: "Accepted",
+        visibility: "visible",
+        stdout: longStdout,
+        stderr: "warn",
+      },
+      {
+        case_id: "hid-1",
+        status: "WrongAnswer",
+        hidden: true,
+        stdout: "secret-stdout",
+        stdout_truncated: false,
+        stderr: "secret-stderr",
+      },
+    ],
+  });
+  const cases = projected.cases as Array<Record<string, unknown>>;
+  assertEquals((cases[0].stdout as string).length, 4096);
+  assertEquals(cases[0].stdout_truncated, true);
+  assertEquals(cases[0].stderr, "warn");
+  assertEquals(cases[1].stdout, undefined);
+  assertEquals(cases[1].stdout_truncated, undefined);
+  assertEquals(cases[1].stderr, undefined);
+});
+
+Deno.test("mq/consumer: sanitizeJudgeDetails cases 超 64 KiB 时优先剥离流日志保住用例", () => {
+  const manyCases = Array.from({ length: 25 }, (_, i) => ({
+    case_id: `vis-${i}`,
+    status: "Accepted",
+    visibility: "visible",
+    stdout: "a".repeat(3500),
+  }));
+  const projected = sanitizeJudgeDetails({ cases: manyCases });
+  const cases = projected.cases as Array<Record<string, unknown>>;
+  assertEquals(cases.length, 25);
+  assertEquals(cases[0].stdout, undefined);
+  assertEquals(cases[0].case_id, "vis-0");
+});

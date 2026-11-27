@@ -15,11 +15,13 @@ export type ContestType = 'kaggle' | 'oi' | 'ioi' | 'ioi_strict' | 'acm';
 export type ContestKind = 'public' | 'invite';
 export type ContestStatus = 'pending' | 'running' | 'ended';
 export type RankingVisibility = 'public' | 'participants' | 'hidden';
+export type CommunitySilenceMode = 'none' | 'contest_participants' | 'domain_all';
 
 export interface ContestConfig {
   submission_limits?: Record<string, number>;
   penalty_minutes?: number;
   scoreboard_scope?: 'self' | 'full';
+  community_silence_mode?: CommunitySilenceMode;
 }
 
 export interface Contest {

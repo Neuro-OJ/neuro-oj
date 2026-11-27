@@ -28,6 +28,8 @@ pub(crate) const MSG_COMMAND_NOT_ALLOWED: &str =
     "评测环境配置错误：题目的评测命令不在评测机白名单内，请联系管理员检查题目运行时配置";
 pub(crate) const MSG_NETWORK_NOT_ALLOWED: &str =
     "评测环境配置错误：题目需要评测容器联网，但评测机未开启联网（JUDGE_ALLOW_EVALUATOR_NETWORK），请联系管理员";
+pub(crate) const MSG_ISOLATION_MODE_NOT_ALLOWED: &str =
+    "评测环境配置错误：非法的 Solution 隔离模式配置，请联系管理员检查题目运行时配置";
 
 /// NOJ-190：judge 侧对 MQ 消息中的镜像/命令/网络做白名单复验。
 ///
@@ -53,6 +55,16 @@ pub(crate) fn validate_runtime_config(
                 "submission {}: solution 镜像不在白名单前缀内: {}",
                 submission_id, solution.image
             )));
+        }
+        if let Some(mode) = solution.isolation_mode.as_deref() {
+            if mode != "shared" && mode != "fork_per_call" {
+                return Err(
+                    PublicJudgeError(MSG_ISOLATION_MODE_NOT_ALLOWED).with_detail(format!(
+                        "submission {}: 非法的 solution.isolation_mode: {}",
+                        submission_id, mode
+                    )),
+                );
+            }
         }
     }
 

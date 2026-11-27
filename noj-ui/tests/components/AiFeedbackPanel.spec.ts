@@ -272,6 +272,42 @@ describe('AI 评测可视化反馈组件', () => {
     expect(view.text()).toContain('缺少 JSON 尾括号');
   });
 
+  it('SubmissionCaseResults 仅对非隐藏用例展开展示调试输出 stdout', async () => {
+    const view = mount(SubmissionCaseResults, {
+      props: {
+        details: {
+          cases: [
+            {
+              case_id: 'vis-log',
+              status: 'Accepted',
+              visibility: 'visible',
+              stdout: 'visible-print-output',
+              stdout_truncated: true,
+            },
+            {
+              case_id: 'hid-log',
+              status: 'Accepted',
+              visibility: 'hidden',
+              stdout: 'hidden-print-secret',
+            },
+          ],
+        },
+      },
+      global: { stubs },
+    });
+
+    expect(view.text()).toContain('查看调试输出');
+    expect(view.text()).not.toContain('hidden-print-secret');
+
+    const rows = view.findAll('tbody tr');
+    await rows[0]!.trigger('click');
+    expect(view.text()).toContain('visible-print-output');
+    expect(view.text()).toContain('调试输出已截断');
+
+    await rows[1]!.trigger('click');
+    expect(view.text()).not.toContain('hidden-print-secret');
+  });
+
   it('useSubmissionFeedback 使用 useApi 请求反馈并在错误时降级为 null', async () => {
     const mockGet = vi.fn().mockResolvedValueOnce({ data: sampleFeedback }).mockRejectedValueOnce(new Error('503'));
     vi.stubGlobal('useApi', () => ({ api: { get: mockGet } }));

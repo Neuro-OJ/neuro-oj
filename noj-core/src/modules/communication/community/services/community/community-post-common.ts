@@ -7,10 +7,8 @@ import {
 } from "../../../../../shared/base/errors.ts";
 import { resolveProblemIdOrNull } from "../../../../problems/contracts/cross-module/services_problem-resolve.ts";
 import { endedWindowCondition } from "../../../../contests/contracts/cross-module/services_contest-window.ts";
-import {
-  hasUnendedPublicContest,
-  unendedPublicContestForProblem,
-} from "../../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { unendedPublicContestForProblem } from "../../../../contests/contracts/cross-module/services_problem-secrecy.ts";
+import { isActorSilencedByRunningContest } from "../../../../../features/contest-community-silence/index.ts";
 import type {
   CommunityConfig,
   CommunityPostStatus,
@@ -36,10 +34,15 @@ import {
 export async function assertNotContestSilenced(
   moderator: boolean,
   scope?: CommunityScope,
+  actorId?: string | null,
 ): Promise<void> {
   if (moderator) return;
   if (
-    await hasUnendedPublicContest(communityDomainId(scope), communityDb(scope))
+    await isActorSilencedByRunningContest(
+      communityDomainId(scope),
+      communityDb(scope),
+      actorId ?? scope?.actorId ?? null,
+    )
   ) {
     throw new ForbiddenError(
       "比赛期间当前域暂停公开发布讨论、题解与评论，参赛提问请使用赛中答疑",

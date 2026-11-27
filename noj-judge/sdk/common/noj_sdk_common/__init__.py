@@ -1,5 +1,12 @@
 """noj_sdk_common —— Evaluator / Solution SDK 共享实现。"""
 
+from .chunking import (
+    CHUNK_SLICE_BYTES,
+    DEFAULT_MAX_PAYLOAD_BYTES,
+    ChunkReassembler,
+    encode_chunked_frames,
+    get_max_payload_bytes,
+)
 from .rpc import RpcClient
 from .sanitize import (
     sanitize_message,
@@ -17,6 +24,11 @@ from .serialization import (
 )
 
 __all__ = [
+    "CHUNK_SLICE_BYTES",
+    "DEFAULT_MAX_PAYLOAD_BYTES",
+    "ChunkReassembler",
+    "encode_chunked_frames",
+    "get_max_payload_bytes",
     "RpcClient",
     "RejectedTypeError",
     "MAX_FRAME_BYTES",

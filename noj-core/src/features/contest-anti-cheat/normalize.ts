@@ -156,3 +156,85 @@ export function normalizeCode(
   const stripped = stripCommentsAndLiterals(raw, profile);
   return canonicalizeIdentifiers(tokenize(stripped), profile.keywords);
 }
+
+function splitPythonBlocks(stripped: string): string[] {
+  const lines = stripped.split("\n");
+  const blocks: string[] = [];
+  let current: string[] = [];
+  let parenDepth = 0;
+  for (const line of lines) {
+    const isTopLevelDef = parenDepth === 0 &&
+      /^(?:async\s+def|def|class)\b/.test(line);
+    if (isTopLevelDef && current.length > 0) {
+      blocks.push(current.join("\n"));
+      current = [line];
+    } else {
+      current.push(line);
+    }
+    for (const ch of line) {
+      if (ch === "(" || ch === "[" || ch === "{") parenDepth++;
+      else if (ch === ")" || ch === "]" || ch === "}") {
+        parenDepth = Math.max(0, parenDepth - 1);
+      }
+    }
+  }
+  if (current.length > 0) blocks.push(current.join("\n"));
+  return blocks;
+}
+
+function splitBraceBlocks(tokens: readonly string[]): string[][] {
+  const blocks: string[][] = [];
+  let current: string[] = [];
+  let braceDepth = 0;
+  for (const token of tokens) {
+    current.push(token);
+    if (token === "{") {
+      braceDepth++;
+    } else if (token === "}") {
+      braceDepth = Math.max(0, braceDepth - 1);
+      if (braceDepth === 0 && current.length > 0) {
+        blocks.push(current);
+        current = [];
+      }
+    }
+  }
+  if (current.length > 0) blocks.push(current);
+  return blocks;
+}
+
+/**
+ * 按顶层函数/类边界切分代码块，并在每块内部独立从 `v1` 开始位置化编号标识符。
+ *
+ * 用于抵抗「代码前部插入新变量」导致的全局编号漂移以及「调换函数定义顺序」造成的漏报。
+ */
+export function normalizeCodeBlocks(
+  code: string | null | undefined,
+  language: string | null | undefined,
+): string[][] {
+  const raw = (code ?? "").slice(0, DEFAULT_MAX_RAW_CODE_CHARS);
+  if (!raw.trim()) return [];
+  const profile = resolveProfile(language);
+  const stripped = stripCommentsAndLiterals(raw, profile);
+  const normalizedLang = (language ?? "").trim().toLowerCase();
+
+  if (
+    normalizedLang === "python" || normalizedLang === "python3" ||
+    normalizedLang === "py"
+  ) {
+    const rawBlocks = splitPythonBlocks(stripped);
+    const result: string[][] = [];
+    for (const block of rawBlocks) {
+      const tokens = tokenize(block);
+      if (tokens.length > 0) {
+        result.push(canonicalizeIdentifiers(tokens, profile.keywords));
+      }
+    }
+    return result;
+  }
+
+  const tokens = tokenize(stripped);
+  if (tokens.length === 0) return [];
+  return splitBraceBlocks(tokens)
+    .filter((block) => block.length > 0)
+    .map((block) => canonicalizeIdentifiers(block, profile.keywords));
+}

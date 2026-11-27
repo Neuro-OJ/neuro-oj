@@ -210,6 +210,18 @@ async function dispatchClaimedJobItem(
     }
     artifactByteSize = stat.sizeBytes;
     // 下载地址在派发阶段重新签发（重派允许换凭据，但不改目标版本）
+  } else if (
+    content.kind === "ai" &&
+    (content.submission_mode === "artifact" ||
+      content.submission_mode === "prediction")
+  ) {
+    await completeJobItem(item.id, {
+      leaseOwner: owner,
+      status: "failed",
+      reasonCode: "ARTIFACT_MISSING",
+      reasonMessage: "产物对象已超过保留期被清理，保留历史判定",
+    });
+    return "failed";
   }
 
   // 执行前预检（#33、§7、§5.4 第 1 步）：**提交模式/语言被目标版本接受、

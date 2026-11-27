@@ -20,6 +20,7 @@ fn sdk_runtime(evaluator_cmd: &str, time_limit_ms: u64) -> RuntimeConfig {
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 5000,
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     }
 }
@@ -140,6 +141,7 @@ async fn dual_container_failure_returns_err() {
             image: "noj-missing-image:latest".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 128,
+            isolation_mode: None,
         }),
     };
 

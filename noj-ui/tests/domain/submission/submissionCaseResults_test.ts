@@ -166,3 +166,28 @@ Deno.test('submissionCaseResults: 展示 OI 子任务测试点但不泄露答案
     }],
   );
 });
+
+Deno.test('submissionCaseResults: 可见用例保留 stdout 与截断标记，隐藏用例清除', () => {
+  const cases = normalizeSubmissionCases({
+    cases: [
+      {
+        case_id: 'v001',
+        status: 'Accepted',
+        visibility: 'visible',
+        stdout: 'debug line\n',
+        stdout_truncated: true,
+      },
+      {
+        case_id: 'h001',
+        status: 'Accepted',
+        visibility: 'hidden',
+        stdout: 'secret-debug',
+        stdout_truncated: false,
+      },
+    ],
+  });
+  assertEquals(cases[0]?.stdout, 'debug line\n');
+  assertEquals(cases[0]?.stdoutTruncated, true);
+  assertEquals(cases[1]?.stdout, undefined);
+  assertEquals(cases[1]?.stdoutTruncated, undefined);
+});

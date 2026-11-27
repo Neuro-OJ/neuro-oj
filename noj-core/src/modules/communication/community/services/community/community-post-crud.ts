@@ -197,7 +197,7 @@ export async function createPost(
   // （讨论、动态与题解）；仅审核员/管理员可发帖；参赛者提问严格收敛至赛中答疑。
   // 题解同样纳入：挂在非赛题下的题解正文可夹带赛题解法，按挂靠题目判定的
   // 保密门控（上方）无法识别。放在保密门控之后，使赛题题解仍得到更具体的 CONTEST_SECRECY。
-  await assertNotContestSilenced(moderator, scope);
+  await assertNotContestSilenced(moderator, scope, authorId);
   // 发布频率限制：配置的间隔秒数内禁止再次发布（0 为不限制）
   const postIntervalSeconds = getCommunityConfig().post_interval_seconds;
   if (postIntervalSeconds > 0) {
@@ -388,7 +388,7 @@ export async function updatePost(
     throw new ValidationError("已删除内容不能编辑");
   }
   // 赛时静默同样覆盖编辑（含题解）：否则可把赛前发布的帖子改写为完整解法向全场广播（N-01 残余）。
-  await assertNotContestSilenced(moderator, scope);
+  await assertNotContestSilenced(moderator, scope, actorId);
   const content = input.content === undefined
     ? current.post.content
     : input.content.trim();

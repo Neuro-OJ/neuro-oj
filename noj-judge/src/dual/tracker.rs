@@ -31,6 +31,14 @@ struct InFlightEntry {
     waiting: WaitingSide,
 }
 
+/// Solution log 单帧数据上限（64 KiB）与整次评测累计上限（1 MiB）。
+pub const MAX_SOLUTION_LOG_FRAME_BYTES: usize = 64 * 1024;
+pub const MAX_SOLUTION_LOG_TOTAL_BYTES: usize = 1024 * 1024;
+
+/// 分片帧单帧 `data` 上限（1 MiB）与单次评测 Solution → Evaluator 累计分片上限（64 MiB）。
+pub const MAX_CHUNK_FRAME_BYTES: usize = 1024 * 1024;
+pub const MAX_CHUNK_TOTAL_BYTES: usize = 64 * 1024 * 1024;
+
 /// 调用级超时追踪器。
 #[derive(Debug)]
 pub struct InFlightTracker {
@@ -45,6 +53,10 @@ pub struct InFlightTracker {
     busy_since: Option<Instant>,
     /// 是否登记过 evaluator → solution 调用（从未调用时不上报耗时）。
     solution_called: bool,
+    /// 已放行的 Solution log 累计字节数。
+    sol_log_bytes: usize,
+    /// 已放行的 Solution 分片累计字节数。
+    sol_chunk_bytes: usize,
 }
 
 impl InFlightTracker {
@@ -62,6 +74,8 @@ impl InFlightTracker {
             solution_busy: Duration::ZERO,
             busy_since: None,
             solution_called: false,
+            sol_log_bytes: 0,
+            sol_chunk_bytes: 0,
         }
     }
 
@@ -201,6 +215,105 @@ impl InFlightTracker {
             self.close_busy_if_idle(now);
         }
         out
+    }
+
+    /// 校验 Solution log 帧是否仍在宿主机配额内（单帧 <= 64 KiB，累计 <= 1 MiB）。
+    pub fn allow_solution_log(&mut self, frame: &Value) -> bool {
+        let len = frame
+            .get("data")
+            .and_then(Value::as_str)
+            .map(|s| s.len())
+            .unwrap_or(0);
+        if len > MAX_SOLUTION_LOG_FRAME_BYTES {
+            return false;
+        }
+        let next = self.sol_log_bytes.saturating_add(len);
+        if next > MAX_SOLUTION_LOG_TOTAL_BYTES {
+            return false;
+        }
+        self.sol_log_bytes = next;
+        true
+    }
+
+    /// 校验分片帧公共头部字段与单帧大小。
+    fn validate_chunk_envelope(frame: &Value) -> Option<(u64, u64, &str, &str, usize)> {
+        let seq = frame.get("seq").and_then(Value::as_u64)?;
+        let total = frame.get("total").and_then(Value::as_u64)?;
+        if total == 0 || seq >= total {
+            return None;
+        }
+        let kind = frame.get("kind").and_then(Value::as_str)?;
+        let id = frame.get("id").and_then(Value::as_str)?;
+        let data = frame.get("data").and_then(Value::as_str)?;
+        let data_len = data.len();
+        if data_len > MAX_CHUNK_FRAME_BYTES {
+            return None;
+        }
+        Some((seq, total, kind, id, data_len))
+    }
+
+    /// 处理并校验 Evaluator 发往 Solution 的 `chunk` 帧，控制 call 超时登记与响应追踪。
+    pub fn on_eval_chunk_frame(&mut self, frame: &Value, now: Instant) -> bool {
+        let Some((seq, total, kind, id, _)) = Self::validate_chunk_envelope(frame) else {
+            return false;
+        };
+        match kind {
+            "call" => {
+                if id.is_empty() {
+                    return false;
+                }
+                if seq == 0 {
+                    self.on_call_frame(frame, now);
+                }
+                true
+            }
+            "result" | "error" => {
+                if !self.inflight.contains_key(id) {
+                    return false;
+                }
+                if seq + 1 == total {
+                    self.resolve_response(id, now)
+                } else {
+                    true
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// 处理并校验 Solution 发往 Evaluator 的 `chunk` 帧（含 64 MiB 累计防 OOM 配额）。
+    pub fn on_sol_chunk_frame(&mut self, frame: &Value, now: Instant) -> bool {
+        let Some((seq, total, kind, id, data_len)) = Self::validate_chunk_envelope(frame) else {
+            return false;
+        };
+        let next = self.sol_chunk_bytes.saturating_add(data_len);
+        if next > MAX_CHUNK_TOTAL_BYTES {
+            return false;
+        }
+        match kind {
+            "capability" => {
+                if id.is_empty() {
+                    return false;
+                }
+                if seq == 0 {
+                    self.on_capability_frame(frame, now);
+                }
+                self.sol_chunk_bytes = next;
+                true
+            }
+            "result" | "error" => {
+                if !self.inflight.contains_key(id) {
+                    return false;
+                }
+                self.sol_chunk_bytes = next;
+                if seq + 1 == total {
+                    self.resolve_response(id, now)
+                } else {
+                    true
+                }
+            }
+            _ => false,
+        }
     }
 
     /// 当前最早 deadline（无 in-flight 返回 None）。

@@ -39,6 +39,9 @@ export interface EvaluatorRuntime {
   workspace_size_mb?: number;
 }
 
+/** Solution 容器执行隔离模式：shared（默认，常驻共享状态）或 fork_per_call（按调用 fork 隔离）。 */
+export type SolutionIsolationMode = "shared" | "fork_per_call";
+
 /** Solution 容器运行时配置。 */
 export interface SolutionRuntime {
   /** Docker 镜像名（须在 `judge_images` 白名单中且 kind='solution'） */
@@ -47,6 +50,8 @@ export interface SolutionRuntime {
   call_timeout_ms: number;
   /** Solution 容器内存上限（MB） */
   memory_limit_mb: number;
+  /** 可选调用级隔离模式；缺省等价 shared。 */
+  isolation_mode?: SolutionIsolationMode;
 }
 
 /** 双容器模式的 Runtime 配置。prediction 模式省略 solution（不创建 Solution 容器）。 */

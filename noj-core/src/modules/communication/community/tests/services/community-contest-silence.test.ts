@@ -30,7 +30,10 @@ import {
   updateComment,
   updatePost,
 } from "../../index.ts";
-import { createContest } from "../../../../contests/index.ts";
+import {
+  createContest,
+  registerForContest,
+} from "../../../../contests/index.ts";
 import { ForbiddenError } from "../../../../../shared/base/errors.ts";
 import {
   _resetSystemSettingsForTest,
@@ -207,7 +210,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "contest-silence: 赛前筹备期（pending）同样静默评论",
+  name: "contest-silence: 赛前筹备期（pending）不再全域静默普通评论",
   sanitizeResources: false,
   sanitizeOps: false,
   fn: async () => {
@@ -216,8 +219,43 @@ Deno.test({
       start_time: new Date(Date.now() + 3_600_000).toISOString(),
       end_time: new Date(Date.now() + 7_200_000).toISOString(),
     }).where(eq(contests.id, contestId));
+    const preContest = await createComment(userId, momentId, "赛前日常评论");
+    assertEquals(preContest.content, "赛前日常评论");
+  },
+});
+
+Deno.test({
+  name:
+    "contest-silence: community_silence_mode 支持 none 与 contest_participants",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await setup();
+
+    // none 模式：进行中也不静默普通讨论/评论
+    await getDb().update(contests).set({
+      config: { scoreboard_scope: "self", community_silence_mode: "none" },
+    }).where(eq(contests.id, contestId));
+    const noneComment = await createComment(userId, momentId, "none模式评论");
+    assertEquals(noneComment.content, "none模式评论");
+
+    // contest_participants 模式：未报名者放行，报名参赛者被静默
+    await getDb().update(contests).set({
+      config: {
+        scoreboard_scope: "self",
+        community_silence_mode: "contest_participants",
+      },
+    }).where(eq(contests.id, contestId));
+    const outsiderComment = await createComment(
+      userId,
+      momentId,
+      "未参赛者评论",
+    );
+    assertEquals(outsiderComment.content, "未参赛者评论");
+
+    await registerForContest(contestId, userId);
     await assertRejects(
-      () => createComment(userId, momentId, "赛前泄题"),
+      () => createComment(userId, momentId, "参赛者评论"),
       ForbiddenError,
       "比赛期间",
     );

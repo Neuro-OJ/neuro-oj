@@ -78,7 +78,13 @@ export function applySubmissionProjection<
     return structuredClone(submission);
   }
 
-  // 无竞赛上下文：维持公开提交现状（提交者本人/owner 全量）。
+  // 非管理员在任何路径（含无竞赛练习）均不得看到隐藏用例的 stdout/stderr。
+  stripHiddenCaseStreams(record.details);
+  if (record.result && typeof record.result === "object") {
+    stripHiddenCaseStreams((record.result as Record<string, unknown>).details);
+  }
+
+  // 无竞赛上下文：维持公开提交现状（提交者本人/owner 全量，已剥离隐藏用例流日志）。
   if (!ctx.contest) {
     return structuredClone(submission);
   }
@@ -277,4 +283,28 @@ function sanitizeContestDetails(details: unknown): unknown {
 
   const visibleCases = cases.filter((c) => !isHidden(c));
   return { ...obj, cases: visibleCases };
+}
+
+/** 剥离 details.cases 中所有隐藏用例的 stdout/stderr 调试流字段。 */
+function stripHiddenCaseStreams(details: unknown): unknown {
+  if (
+    typeof details !== "object" || details === null || Array.isArray(details)
+  ) {
+    return details;
+  }
+  const obj = details as Record<string, unknown>;
+  if (!Array.isArray(obj.cases)) return details;
+  for (const item of obj.cases) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) {
+      continue;
+    }
+    const c = item as Record<string, unknown>;
+    if (c.hidden === true || c.visibility === "hidden") {
+      delete c.stdout;
+      delete c.stdout_truncated;
+      delete c.stderr;
+      delete c.stderr_truncated;
+    }
+  }
+  return details;
 }

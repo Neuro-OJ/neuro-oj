@@ -87,7 +87,7 @@ Neuro OJ 通过双容器提供**有限的互联网能力**：
 
 - **双容器隔离**：用户代码与出题人评测代码运行在**独立容器**中——用户代码无法直接读取 evaluator 侧的测试数据或评分逻辑。
 - **沙箱约束**：solution 网络关闭（`network_mode none`，永远无网；evaluator 按题目配置可联网）、无特权（`cap_drop ALL`）、进程数受限，容器资源由 Judge Worker 统一控制。
-- **模块加载而非进程运行**：Solution Host 在容器内加载用户模块并保持存活（多次调用共享全局状态），用户函数的 `print()` 不是答案通道；当前 Solution stdout 是协议通道，普通 `print()` 文本不会作为评测输出展示。
+- **模块加载而非进程运行**：Solution Host 在容器内加载用户模块并保持存活（多次调用共享全局状态），用户函数的 `print()` 不是答案通道；`host.py` 通过 `os.dup(1)` 隔离协议 fd 后将 `print()` 封装为受配额约束（单帧 64 KiB、总计 1 MiB）的 `log` 帧，由 `SolutionRunner.last_call_logs` 按调用捕获，且仅可见用例允许展示 `stdout`。
 - **运行时基础**：当前为 Python 3.12 精简镜像，不预装额外包；题目依赖由出题人在 evaluator 中自行管理。
 
 ## 文档概览

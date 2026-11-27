@@ -20,8 +20,17 @@ import threading
 import uuid
 from typing import Any, Optional
 
+from noj_sdk_common.chunking import (
+    ChunkReassembler,
+    encode_chunked_frames,
+    get_max_payload_bytes,
+)
 from noj_sdk_common.rpc import RpcClient
 from noj_sdk_common.sanitize import sanitize_message, sanitize_traceback
+from noj_sdk_common.serialization import (
+    RejectedTypeError,
+    estimate_min_frame_size,
+)
 
 from .capability import _get_capability
 from .errors import (
@@ -54,6 +63,10 @@ from .serialization import (
 # 旧版 solution 镜像不带 reason，同样回退旧行为（混跑安全）。
 
 MISSING_FUNCTION_REASON = "not_registered"
+
+MAX_CALL_LOG_BYTES = 8 * 1024
+MAX_TOTAL_LOG_BYTES = 1 * 1024 * 1024
+MAX_LOG_CHUNKS_PER_BUCKET = 256
 
 _HOOK_INSTALLED = False
 
@@ -109,19 +122,96 @@ class SolutionRunner:
     生命周期与 evaluate.py 进程一致。单实例即可复用。
     """
 
-    def __init__(self, missing_function_as_zero: bool = True) -> None:
+    def __init__(
+        self,
+        missing_function_as_zero: bool = True,
+        forward_solution_logs_to_stderr: bool = False,
+        max_payload_bytes: Optional[int] = None,
+    ) -> None:
         """`missing_function_as_zero`：选手未定义被调用函数（`NotFoundError`）且
         evaluate.py 未捕获时，是否由 SDK 写出 0 分结果（默认开启）。关闭后恢复旧
         行为：进程异常退出、无 `---RESULT---`，judge 判为平台错误。
+        `forward_solution_logs_to_stderr`：默认关闭，防止隐藏用例日志进入评测
+        stderr 导致盲测泄题。
+        `max_payload_bytes`：允许分片传输的最大逻辑载荷（默认 16 MiB）。
         """
         if missing_function_as_zero:
             _install_missing_function_hook()
         self._rpc = RpcClient()
         self._closed = False
+        self._forward_solution_logs_to_stderr = forward_solution_logs_to_stderr
+        self._max_payload_bytes = (
+            get_max_payload_bytes()
+            if max_payload_bytes is None
+            else max(MAX_FRAME_BYTES, max_payload_bytes)
+        )
+        self._reassembler = ChunkReassembler(
+            max_payload_bytes=self._max_payload_bytes
+        )
+        self._log_lock = threading.Lock()
+        self._call_logs: dict[str, list[str]] = {}
+        self._call_log_bytes: dict[str, int] = {}
+        self._call_log_truncated: dict[str, bool] = {}
+        self._total_log_bytes = 0
+        self._last_call_logs = ""
+        self._last_call_logs_truncated = False
         self._reader_thread = threading.Thread(
             target=self._reader_loop, name="noj-evaluator-stdin-reader", daemon=True
         )
         self._reader_thread.start()
+
+    @property
+    def last_call_logs(self) -> str:
+        """最近一次 `call()` 期间 Solution 端产生的 stdout 日志（已做单次上限截断）。"""
+        return self._last_call_logs
+
+    @property
+    def last_call_logs_truncated(self) -> bool:
+        """最近一次 `call()` 期间的日志是否触发了截断。"""
+        return self._last_call_logs_truncated
+
+    def pop_logs(self, call_id: str = "") -> str:
+        """取出并清理指定 `call_id`（默认空串即模块加载期）的捕获日志。"""
+        logs, _ = self._consume_call_logs(call_id)
+        return logs
+
+    def _append_log(self, key: str, data: str, frame_truncated: bool) -> None:
+        # 仅接受启动期空桶（""）或当前活跃 pending call 的日志，防止恶意伪造大量未知 call_id 耗尽内存
+        if key != "" and not self._rpc.is_pending(key):
+            return
+        with self._log_lock:
+            if frame_truncated:
+                self._call_log_truncated[key] = True
+            rem_total = MAX_TOTAL_LOG_BYTES - self._total_log_bytes
+            used = self._call_log_bytes.get(key, 0)
+            rem_call = MAX_CALL_LOG_BYTES - used
+            allowed = min(rem_total, rem_call)
+            if allowed <= 0:
+                if data:
+                    self._call_log_truncated[key] = True
+                return
+            raw = data.encode("utf-8")
+            if len(raw) <= allowed:
+                chunk = data
+                chunk_bytes = len(raw)
+            else:
+                chunk = raw[:allowed].decode("utf-8", errors="ignore")
+                chunk_bytes = len(chunk.encode("utf-8"))
+                self._call_log_truncated[key] = True
+            if chunk:
+                bucket = self._call_logs.setdefault(key, [])
+                if len(bucket) >= MAX_LOG_CHUNKS_PER_BUCKET:
+                    bucket[:] = ["".join(bucket)]
+                bucket.append(chunk)
+                self._call_log_bytes[key] = used + chunk_bytes
+                self._total_log_bytes += chunk_bytes
+
+    def _consume_call_logs(self, key: str) -> tuple[str, bool]:
+        with self._log_lock:
+            chunks = self._call_logs.pop(key, [])
+            self._call_log_bytes.pop(key, None)
+            truncated = self._call_log_truncated.pop(key, False)
+            return "".join(chunks), truncated
 
     # ── 公开 API ────────────────────────────────────────
 
@@ -150,9 +240,19 @@ class SolutionRunner:
                     f"timeout_ms 必须是正整数或 None，实际 {timeout_ms!r}"
                 )
 
-        # 1. 参数校验
+        # 1. 参数校验与大载荷下界预检（仅拒绝必然超限的大对象，边界由分片编码精确判定）
         for i, arg in enumerate(args):
             validate_type(arg, f"arg[{i}]")
+        try:
+            min_size = estimate_min_frame_size(
+                list(args), limit=self._max_payload_bytes
+            )
+        except RecursionError as e:
+            raise RejectedError(f"call 参数包含循环引用，无法序列化: {e}") from e
+        if min_size > self._max_payload_bytes:
+            raise RejectedError(
+                f"call 参数过大（超出分片载荷上限 {self._max_payload_bytes} 字节）"
+            )
 
         # 2. 构造 call 帧
         call_id = uuid.uuid4().hex
@@ -167,12 +267,14 @@ class SolutionRunner:
 
         # 3. 注册 pending。若通道已断开，register_pending 直接返回预置哨兵帧的队列。
         q = self._rpc.register_pending(call_id)
+        self._last_call_logs = ""
+        self._last_call_logs_truncated = False
 
-        # 4. 写帧到 stdout。已关闭时跳过写（避免往断开的通道写帧），交由下方
+        # 4. 写帧到 stdout（> 1 MiB 自动透明分片）。已关闭时跳过写，交由下方
         #    q.get() 取到哨兵帧、按约定抛 ConnectionError。
         if not self._closed:
             try:
-                self._write_out(frame)
+                self._write_out(frame, allow_chunk=True)
             except RejectedError:
                 self._rpc.pop_pending(call_id)
                 raise
@@ -185,8 +287,11 @@ class SolutionRunner:
             self._rpc.pop_pending(call_id)
             raise ConnectionError(f"等待响应异常: {e}")
 
-        # 6. 处理响应
+        # 6. 处理响应（先归集本次调用期间的 log 帧，无论正常返回或抛异常均可读取）
         self._rpc.pop_pending(call_id)
+        logs, truncated = self._consume_call_logs(call_id)
+        self._last_call_logs = logs
+        self._last_call_logs_truncated = truncated
         return self._handle_response(response, fn)
 
     def close(self) -> None:
@@ -222,20 +327,31 @@ class SolutionRunner:
 
                     frame_type = frame.get("type")
 
+                    if frame_type == "chunk":
+                        reassembled = self._reassembler.feed(frame)
+                        if reassembled is None:
+                            continue
+                        frame = reassembled
+                        frame_type = frame.get("type")
+
                     if frame_type == "capability":
                         # solution 请求调用 capability：查注册表并同步执行（写响应帧）
                         self._handle_capability(frame)
                     elif frame_type in ("result", "error"):
                         self._rpc.deliver_response(frame)
                     elif frame_type == "log":
-                        # log 帧直接打到 stderr（judge 也会收集并截断）
-                        stream = frame.get("stream", "stdout")
                         data = frame.get("data", "")
-                        # 注意：log 流到 stdout 会污染协议帧，故日志统一走 stderr
-                        sys.stderr.write(data)
-                        if not data.endswith("\n"):
-                            sys.stderr.write("\n")
-                        sys.stderr.flush()
+                        if not isinstance(data, str):
+                            data = str(data)
+                        cid = frame.get("call_id")
+                        key = cid if isinstance(cid, str) else ""
+                        self._append_log(key, data, bool(frame.get("truncated")))
+                        # 默认不写入 stderr，避免隐藏用例日志进入评测输出泄题
+                        if self._forward_solution_logs_to_stderr:
+                            sys.stderr.write(data)
+                            if data and not data.endswith("\n"):
+                                sys.stderr.write("\n")
+                            sys.stderr.flush()
                     elif frame_type == "shutdown":
                         # host 主动关闭：停止读取，finally 统一唤醒 pending
                         break
@@ -252,8 +368,18 @@ class SolutionRunner:
             self._closed = True
             self._rpc.shutdown_pending()
 
-    def _write_out(self, frame: dict) -> None:
-        """线程安全写 NDJSON 帧到 stdout（受单帧 1 MiB 软上限约束）。"""
+    def _write_out(self, frame: dict, *, allow_chunk: bool = False) -> None:
+        """线程安全写 NDJSON 帧到 stdout（allow_chunk=True 时 > 1 MiB 自动分片）。"""
+        if allow_chunk:
+            try:
+                frames = encode_chunked_frames(
+                    frame, max_payload_bytes=self._max_payload_bytes
+                )
+            except RejectedTypeError as e:
+                raise RejectedError(str(e)) from e
+            for part in frames:
+                self._rpc.write_frame(part)
+            return
         line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
         check_frame_size(line)
         self._rpc.write_frame(frame)

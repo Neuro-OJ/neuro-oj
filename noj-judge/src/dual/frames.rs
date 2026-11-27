@@ -12,7 +12,7 @@ use super::payload::ResultPayload;
 use super::pipe::{forward_frame, PipeWriteOutcome};
 use super::protocol::{
     frame_type, EvaluatorLine, LineParser, FRAME_CALL, FRAME_CAPABILITY, FRAME_CAP_REG,
-    FRAME_ERROR, FRAME_LOG, FRAME_READY, FRAME_RESULT, FRAME_SHUTDOWN, RESULT_MARKER,
+    FRAME_CHUNK, FRAME_ERROR, FRAME_LOG, FRAME_READY, FRAME_RESULT, FRAME_SHUTDOWN, RESULT_MARKER,
 };
 use super::tracker::InFlightTracker;
 
@@ -110,6 +110,17 @@ pub(crate) async fn handle_eval_chunk(
                             }
                         }
                     }
+                    Some(FRAME_CHUNK) => {
+                        if tracker.on_eval_chunk_frame(&v, Instant::now()) {
+                            if forward_frame(sol_input, &v).await? == PipeWriteOutcome::PeerGone {
+                                return Ok(false);
+                            }
+                        } else {
+                            warn!("丢弃非法的 evaluator chunk 帧");
+                        }
+                        // 分片帧不写入 stdout_full，避免大载荷 base64 冲刷诊断日志
+                        continue;
+                    }
                     // log：合法帧，judge 收集但不转发（保持既有语义）
                     Some(FRAME_LOG) => {}
                     // 未知/非法 type：按协议记录 warn 并丢弃
@@ -187,8 +198,25 @@ pub(crate) async fn handle_sol_chunk(
                         }
                     }
                 }
-                // log / shutdown 等合法帧：保持既有转发语义（solution → evaluator）
-                Some(FRAME_LOG) | Some(FRAME_SHUTDOWN) => {
+                Some(FRAME_LOG) => {
+                    if tracker.allow_solution_log(&v) {
+                        if forward_frame(eval_input, &v).await? == PipeWriteOutcome::PeerGone {
+                            return Ok(false);
+                        }
+                    } else {
+                        tracing::debug!("Solution log 帧超出宿主配额，已丢弃");
+                    }
+                }
+                Some(FRAME_CHUNK) => {
+                    if tracker.on_sol_chunk_frame(&v, Instant::now()) {
+                        if forward_frame(eval_input, &v).await? == PipeWriteOutcome::PeerGone {
+                            return Ok(false);
+                        }
+                    } else {
+                        tracing::debug!("Solution chunk 帧非法或超出配额，已丢弃");
+                    }
+                }
+                Some(FRAME_SHUTDOWN) => {
                     if forward_frame(eval_input, &v).await? == PipeWriteOutcome::PeerGone {
                         return Ok(false);
                     }

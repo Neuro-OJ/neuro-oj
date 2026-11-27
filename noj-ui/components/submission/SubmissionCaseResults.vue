@@ -36,8 +36,12 @@ function hasDiagnostic(item: SubmissionCaseResult) {
   return item.visibility !== 'hidden' && (Boolean(item.errorType) || Boolean(item.reasoning));
 }
 
+function hasStdout(item: SubmissionCaseResult) {
+  return item.visibility !== 'hidden' && item.stdout != null && item.stdout !== '';
+}
+
 function canExpand(item: SubmissionCaseResult) {
-  return item.visibility !== 'hidden' && (hasOutput(item) || hasDiagnostic(item));
+  return item.visibility !== 'hidden' && (hasOutput(item) || hasDiagnostic(item) || hasStdout(item));
 }
 
 function toggleExpand(item: SubmissionCaseResult) {
@@ -164,7 +168,7 @@ function statusIcon(status: string) {
                 </span>
                 <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                   <UIcon
-                    v-if="hasOutput(item) || hasDiagnostic(item)"
+                    v-if="hasOutput(item) || hasDiagnostic(item) || hasStdout(item)"
                     :name="expandedId === item.caseId ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
                     class="size-3.5"
                   />
@@ -174,13 +178,14 @@ function statusIcon(status: string) {
                   </span>
                   <span v-if="hasOutput(item)">查看期望与实际输出</span>
                   <span v-else-if="hasDiagnostic(item)">查看诊断说明</span>
+                  <span v-else-if="hasStdout(item)">查看调试输出</span>
                   <span v-else class="text-text-muted">--</span>
                 </span>
               </td>
             </tr>
             <!-- 展开详情行（紧跟对应测试点下方） -->
             <tr
-              v-if="expandedId === item.caseId && (hasOutput(item) || hasDiagnostic(item))"
+              v-if="expandedId === item.caseId && (hasOutput(item) || hasDiagnostic(item) || hasStdout(item))"
               class="border-b border-border bg-bg-page/50"
             >
               <td :colspan="hasScores?6:5" class="px-3 py-1.5">
@@ -215,6 +220,17 @@ function statusIcon(status: string) {
                     </div>
                     <pre
                       class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.actualOutput ?? '--' }}</pre>
+                  </div>
+                  <!-- 调试输出 -->
+                  <div v-if="hasStdout(item)" class="min-w-0">
+                    <div class="mb-1.5 flex items-center justify-between">
+                      <p class="text-[11px] font-semibold text-text-muted">调试输出 (stdout)</p>
+                      <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-copy"
+                        @click.stop="copyText(item.stdout ?? null, '调试输出')">复制</UButton>
+                    </div>
+                    <pre
+                      class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-border bg-bg-sunken p-3 font-mono text-[11px] leading-relaxed text-text">{{ item.stdout }}</pre>
+                    <p v-if="item.stdoutTruncated" class="mt-1 text-[11px] text-warning-text">调试输出已截断</p>
                   </div>
                 </div>
               </td>

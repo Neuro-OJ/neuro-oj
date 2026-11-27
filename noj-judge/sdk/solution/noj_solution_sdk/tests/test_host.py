@@ -31,6 +31,8 @@ class TestHostProcess(unittest.TestCase):
         tmp.close()
 
         cmd = [sys.executable, "-m", HOST_PY, "--entry", tmp.name]
+        if args:
+            cmd.extend(args)
         proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
@@ -442,6 +444,382 @@ class TestHostProcess(unittest.TestCase):
             self.assertEqual(
                 resp["value"], {"__bytes__": base64.b64encode(b"resp").decode()}
             )
+        finally:
+            self._cleanup(proc, path)
+
+    # ── print() 日志隔离与配额 ───────────────────────────
+
+    def test_print_captured_as_log_frame_with_call_id_and_no_newline(self):
+        """print() 按行或 call 结束自动 flush 为 log 帧，携带 call_id 且早于 result 帧。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            @register
+            def solve(x):
+                print("a", "b")
+                print("no-nl", end="")
+                return x + 1
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            ready = self._read_frame(proc)
+            self.assertEqual(ready["type"], "ready")
+
+            self._send_frame(proc, {"type": "call", "id": "c-log", "fn": "solve", "args": [41]})
+            log1 = self._read_frame(proc)
+            log2 = self._read_frame(proc)
+            resp = self._read_frame(proc)
+            self.assertEqual(log1, {"type": "log", "stream": "stdout", "data": "a b\n", "call_id": "c-log"})
+            self.assertEqual(log2, {"type": "log", "stream": "stdout", "data": "no-nl", "call_id": "c-log"})
+            self.assertEqual(resp, {"type": "result", "id": "c-log", "value": 42})
+        finally:
+            self._cleanup(proc, path)
+
+    def test_user_cannot_forge_protocol_frame_via_print_or_fd1(self):
+        """恶意 print 伪造帧或 os.write(1, ...) 均无法冒充 result 协议帧。"""
+        entry = textwrap.dedent("""
+            import os
+            from noj_solution_sdk import register
+            @register
+            def solve():
+                print('{"type":"result","id":"c1","value":999}')
+                os.write(1, b'{"type":"result","id":"c1","value":888}\\n')
+                return 7
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c1", "fn": "solve", "args": []})
+            log_frame = self._read_frame(proc)
+            self.assertEqual(log_frame["type"], "log")
+            self.assertEqual(log_frame["call_id"], "c1")
+            self.assertIn("999", log_frame["data"])
+
+            resp = self._read_frame(proc)
+            self.assertEqual(resp, {"type": "result", "id": "c1", "value": 7})
+        finally:
+            self._cleanup(proc, path)
+
+    def test_log_total_quota_truncates_and_drops_excess_without_breaking_calls(self):
+        """累计输出超 1 MiB 触发 truncated=True，后续静默丢弃且不影响后续 call。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            @register
+            def flood():
+                print("x" * (1024 * 1024 + 256))
+                print("should-drop")
+                return "ok"
+            @register
+            def after():
+                print("dropped-after")
+                return 123
+        """)
+        proc, path = self._start_host(entry)
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(proc, {"type": "call", "id": "c-flood", "fn": "flood", "args": []})
+            total = 0
+            saw_truncated = False
+            while True:
+                frame = self._read_frame(proc)
+                if frame["type"] == "result":
+                    self.assertEqual(frame["id"], "c-flood")
+                    self.assertEqual(frame["value"], "ok")
+                    break
+                self.assertEqual(frame["type"], "log")
+                total += len(frame["data"].encode("utf-8"))
+                if frame.get("truncated"):
+                    saw_truncated = True
+            self.assertTrue(saw_truncated)
+            self.assertEqual(total, 1024 * 1024)
+
+            self._send_frame(proc, {"type": "call", "id": "c-after", "fn": "after", "args": []})
+            resp2 = self._read_frame(proc)
+            self.assertEqual(resp2, {"type": "result", "id": "c-after", "value": 123})
+        finally:
+            self._cleanup(proc, path)
+
+    # ── fork_per_call 隔离与超时强杀 ─────────────────────
+
+    def test_fork_per_call_isolates_global_state_and_prints(self):
+        """fork_per_call 下每次调用隔离全局状态，且 print() 仍按 call_id 正常回传。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            _counter = [0]
+            @register
+            def bump(tag):
+                _counter[0] += 1
+                print(f"{tag}:{_counter[0]}")
+                return _counter[0]
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+
+            self._send_frame(proc, {"type": "call", "id": "f1", "fn": "bump", "args": ["a"]})
+            l1 = self._read_frame(proc)
+            r1 = self._read_frame(proc)
+            self.assertEqual(l1, {"type": "log", "stream": "stdout", "data": "a:1\n", "call_id": "f1"})
+            self.assertEqual(r1, {"type": "result", "id": "f1", "value": 1})
+
+            self._send_frame(proc, {"type": "call", "id": "f2", "fn": "bump", "args": ["b"]})
+            l2 = self._read_frame(proc)
+            r2 = self._read_frame(proc)
+            self.assertEqual(l2, {"type": "log", "stream": "stdout", "data": "b:1\n", "call_id": "f2"})
+            self.assertEqual(r2, {"type": "result", "id": "f2", "value": 1})
+        finally:
+            self._cleanup(proc, path)
+
+    def test_fork_per_call_kills_infinite_loop_on_timeout_and_recovers(self):
+        """fork_per_call 下死循环经 timeout_ms 超时或 cancel 帧 SIGKILL 强杀后，后续调用仍恢复。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            @register
+            def spin():
+                while True:
+                    pass
+            @register
+            def ok():
+                return "alive"
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+
+            # 1. 本地 timeout_ms 强杀
+            self._send_frame(proc, {"type": "call", "id": "t1", "fn": "spin", "args": [], "timeout_ms": 150})
+            err = self._read_frame(proc)
+            self.assertEqual(err["type"], "error")
+            self.assertEqual(err["id"], "t1")
+            self.assertEqual(err["code"], "CallTimeout")
+
+            # 2. judge 发送 cancel 帧强杀
+            self._send_frame(proc, {"type": "call", "id": "t2", "fn": "spin", "args": []})
+            time.sleep(0.05)
+            self._send_frame(proc, {"type": "cancel", "id": "t2"})
+
+            # 3. 后续正常调用立即可用
+            self._send_frame(proc, {"type": "call", "id": "t3", "fn": "ok", "args": []})
+            resp = self._read_frame(proc)
+            self.assertEqual(resp, {"type": "result", "id": "t3", "value": "alive"})
+        finally:
+            self._cleanup(proc, path)
+
+    def test_fork_per_call_survives_child_crash_and_supports_capability(self):
+        """子进程 os._exit(1) 崩溃只影响当前调用，且 fork_per_call 支持 capability RPC。"""
+        entry = textwrap.dedent("""
+            import os
+            from noj_solution_sdk import register, call_capability
+            @register
+            def crash():
+                os._exit(1)
+            @register
+            def via_cap(x):
+                return call_capability("ping", x)
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+
+            self._send_frame(proc, {"type": "call", "id": "k1", "fn": "crash", "args": []})
+            err = self._read_frame(proc)
+            self.assertEqual(err["type"], "error")
+            self.assertEqual(err["id"], "k1")
+            self.assertEqual(err["code"], "Exception")
+
+            self._send_frame(proc, {"type": "call", "id": "k2", "fn": "via_cap", "args": ["hi"]})
+            cap = self._read_frame(proc)
+            self.assertEqual(cap["type"], "capability")
+            self.assertEqual(cap["name"], "ping")
+            self._send_frame(proc, {"type": "result", "id": cap["id"], "value": "pong"})
+
+            resp = self._read_frame(proc)
+            self.assertEqual(resp, {"type": "result", "id": "k2", "value": "pong"})
+        finally:
+            self._cleanup(proc, path)
+
+    def test_chunked_large_call_and_result_in_shared_and_fork_modes(self):
+        """P2-1: shared 与 fork_per_call 均支持 > 1 MiB 分片入参和 > 1 MiB 分片返回值。"""
+        from noj_sdk_common.chunking import ChunkReassembler, encode_chunked_frames
+        from noj_sdk_common.serialization import MAX_FRAME_BYTES
+
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+            @register
+            def transform(s):
+                return s + "_ok"
+        """)
+        big_text = "M" * (1_250_000)
+
+        for mode in ("shared", "fork_per_call"):
+            proc, path = self._start_host(entry, args=["--isolation-mode", mode])
+            try:
+                self._read_frame(proc)  # ready
+                call_chunks = encode_chunked_frames(
+                    {"type": "call", "id": f"big-{mode}", "fn": "transform", "args": [big_text]}
+                )
+                self.assertGreaterEqual(len(call_chunks), 2)
+                for cf in call_chunks:
+                    self._send_frame(proc, cf)
+
+                reassembler = ChunkReassembler()
+                reassembled = None
+                chunk_count = 0
+                while reassembled is None:
+                    raw_line = proc.stdout.readline()
+                    self.assertTrue(raw_line, f"{mode}: host 提前 EOF")
+                    self.assertLessEqual(
+                        len(raw_line.encode("utf-8")),
+                        MAX_FRAME_BYTES,
+                        f"{mode}: 单条 NDJSON 帧必须 <= 1 MiB",
+                    )
+                    frame = json.loads(raw_line)
+                    self.assertEqual(frame["type"], "chunk")
+                    chunk_count += 1
+                    reassembled = reassembler.feed(frame)
+
+                self.assertGreaterEqual(chunk_count, 2)
+                self.assertEqual(reassembled["type"], "result")
+                self.assertEqual(reassembled["id"], f"big-{mode}")
+                self.assertEqual(reassembled["value"], big_text + "_ok")
+            finally:
+                self._cleanup(proc, path)
+
+    def test_fork_per_call_concurrent_thread_capabilities_match_ids(self):
+        """fork_per_call 子进程内 8 线程并发调用 24 次 call_capability，响应按 call_id 严格匹配不串包。"""
+        entry = textwrap.dedent("""
+            from concurrent.futures import ThreadPoolExecutor
+            from noj_solution_sdk import register, call_capability
+
+            @register
+            def parallel_echo():
+                tokens = [f"tok-{i}" for i in range(24)]
+                with ThreadPoolExecutor(max_workers=8) as pool:
+                    results = list(pool.map(lambda t: call_capability("echo", t), tokens))
+                return [results[i] == tokens[i] for i in range(len(tokens))]
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(
+                proc, {"type": "call", "id": "conc-1", "fn": "parallel_echo", "args": []}
+            )
+            seen = 0
+            while True:
+                frame = self._read_frame(proc)
+                if frame["type"] == "capability":
+                    self.assertEqual(frame["name"], "echo")
+                    seen += 1
+                    self._send_frame(
+                        proc,
+                        {
+                            "type": "result",
+                            "id": frame["id"],
+                            "value": frame["args"][0],
+                        },
+                    )
+                elif frame["type"] == "result":
+                    self.assertEqual(frame["id"], "conc-1")
+                    self.assertEqual(seen, 24)
+                    self.assertEqual(frame["value"], [True] * 24)
+                    break
+                else:
+                    self.fail(f"未预期帧: {frame}")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_fork_per_call_cleans_up_descendant_processes_after_success(self):
+        """fork_per_call 正常返回后，也必须清理子进程派生的后台后代进程组。"""
+        entry = textwrap.dedent("""
+            import subprocess
+            from noj_solution_sdk import register
+
+            @register
+            def spawn_and_return():
+                p = subprocess.Popen(["sleep", "20"])
+                return p.pid
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        descendant_pid = None
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(
+                proc, {"type": "call", "id": "bg-1", "fn": "spawn_and_return", "args": []}
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "result")
+            self.assertEqual(resp["id"], "bg-1")
+            descendant_pid = resp["value"]
+            self.assertIsInstance(descendant_pid, int)
+
+            deadline = time.monotonic() + 2.0
+            alive = True
+            while time.monotonic() < deadline:
+                try:
+                    os.kill(descendant_pid, 0)
+                    time.sleep(0.05)
+                except ProcessLookupError:
+                    alive = False
+                    break
+            self.assertFalse(alive, f"后台子进程 {descendant_pid} 在调用成功后仍残留")
+        finally:
+            if isinstance(descendant_pid, int):
+                try:
+                    os.kill(descendant_pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            self._cleanup(proc, path)
+
+    def test_fork_per_call_timeout_before_setpgrp_falls_back_to_kill_pid(self):
+        """子进程在 after_in_child 阻塞（尚未 setpgrp）时超时，killpg 抛 ProcessLookupError 后必须回退直杀 PID。"""
+        entry = textwrap.dedent("""
+            import os
+            import time
+            from noj_solution_sdk import register
+
+            os.register_at_fork(after_in_child=lambda: time.sleep(2.0))
+
+            @register
+            def fast():
+                return "ok"
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+            started = time.monotonic()
+            self._send_frame(
+                proc,
+                {"type": "call", "id": "t-early", "fn": "fast", "args": [], "timeout_ms": 80},
+            )
+            resp = self._read_frame(proc)
+            elapsed = time.monotonic() - started
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["id"], "t-early")
+            self.assertEqual(resp["code"], "CallTimeout")
+            self.assertLess(elapsed, 1.0, f"未回退直杀 PID，等待耗时过长: {elapsed:.2f}s")
+        finally:
+            self._cleanup(proc, path)
+
+    def test_shared_mode_self_referential_return_rejected_immediately(self):
+        """shared 模式下返回自引用容器，必须在估算/序列化阶段立即返回 Rejected 而非超时。"""
+        entry = textwrap.dedent("""
+            from noj_solution_sdk import register
+
+            @register
+            def cyclic():
+                a = []
+                a.append(a)
+                return a
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "shared"])
+        try:
+            self._read_frame(proc)  # ready
+            self._send_frame(
+                proc, {"type": "call", "id": "cyc-1", "fn": "cyclic", "args": []}
+            )
+            resp = self._read_frame(proc)
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["id"], "cyc-1")
+            self.assertEqual(resp["code"], "Rejected")
         finally:
             self._cleanup(proc, path)
 

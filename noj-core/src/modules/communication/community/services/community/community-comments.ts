@@ -153,7 +153,7 @@ export async function createComment(
     throw new ValidationError("评论内容无效或过长");
   }
   // 赛时静默覆盖评论：评论挂在任意可见帖下即可向全场广播（N-01 残余）
-  await assertNotContestSilenced(moderator, scope);
+  await assertNotContestSilenced(moderator, scope, authorId);
   const post = await getPost(postId, authorId, moderator, scope);
   if (post.post.is_locked) throw new ForbiddenError("该内容已锁定");
   const db = communityDb(scope);
@@ -305,7 +305,7 @@ export async function updateComment(
     throw new ValidationError("已删除评论不能编辑");
   }
   // 赛时静默同样覆盖编辑：否则可把赛前评论改写为解法
-  await assertNotContestSilenced(moderator, scope);
+  await assertNotContestSilenced(moderator, scope, actorId);
   const content = contentInput.trim();
   if (!content || content.length > getCommunityConfig().comment_max_length) {
     throw new ValidationError("评论内容无效或过长");

@@ -48,7 +48,7 @@ flowchart TB
     subgraph SolBox["Solution 容器 (选手隔离沙箱)"]
         HostProc["Solution Host (协议加载守护进程)"]
         UserMain["main.py (选手提交源码)"]
-        SolOut["stdout: 响应协议帧 (非帧文本被丢弃)<br/>stderr: 容器内部错误"]
+        SolOut["stdout: 响应/log 协议帧 (fd 1 物理隔离)<br/>stderr: 容器内部错误"]
     end
 
     EvalMain --> EvalOut
@@ -82,9 +82,12 @@ Solution 容器负责隔离执行选手提交的解答：
 - **Solution Host 协议守护**：容器拉起 `noj_solution_sdk.host` 守护进程，以
   `--entry /workspace/main.py` 动态加载用户模块（模块名固定为
   `user_solution`），自动提取顶层导出的公共函数并进入事件监听循环；
-- **常驻内存特性**：在单次评测生命周期内，**Solution Host
-  是单例常驻的**。同一选手的模块实例在多次 `runner.call()`
-  之间**共享全局变量与内存状态**（系统不提供重启重置功能）。
+- **执行隔离模式（`isolation_mode`）**：`runtime_config.solution.isolation_mode`
+  支持 **`shared`**（默认）与 **`fork_per_call`**。`shared` 模式下 Solution Host
+  单例常驻，多次 `runner.call()` 之间共享全局变量与内存状态（适合多轮 Agent
+  题目）；配置为 `fork_per_call` 时，每次 `runner.call()` 在完成模块导入后按
+  `os.fork()` COW 派生独立子进程执行，既隔离跨用例全局状态污染，又能在单次调用超时或崩溃时立即
+  `SIGKILL` 强杀子进程并恢复后续测试点。
 
 ---
 
@@ -97,7 +100,7 @@ Solution 容器负责隔离执行选手提交的解答：
 | ---------------- | ------------- | ------------------ | ------------------------------------------------------------------ |
 | **函数未定义**   | `NotFound`    | `NotFoundError`    | 选手没有定义题面要求的顶层函数（如拼写错误）                       |
 | **执行崩溃抛错** | `Exception`   | `SystemError`      | 选手代码内部抛出未捕获异常（包含清洗后的 Traceback）               |
-| **非法返回类型** | `Rejected`    | `RejectedError`    | 选手返回了不可序列化的对象（如函数引用、生成器）或帧体积超过 1 MiB |
+| **非法返回类型** | `Rejected`    | `RejectedError`    | 选手返回了不可序列化的对象（如函数引用、生成器）或载荷体积超过分片上限（默认 16 MiB） |
 
 ::: warning 关键准则：调用失败 ≠ 提交失败
 上述异常是选手代码在执行**单次测试点**时产生的错误，**绝不等于本次提交失败**！
@@ -134,13 +137,18 @@ flowchart TD
 | **单函数调用超时** | `SolutionRunner` 内部计时 | 题目 `call_timeout_ms`<br>或单次参数 `timeout_ms` | 若出题人正常捕获，体现为 **`finished` + 0 分**；<br>若出题人未捕获导致评测脚本终止，落为 **`error`** |
 | **容器冷启动超时** | `noj-judge` 容器生命周期  | 系统级宿主配置                                    | **`error`**。评测环境未按期就绪                                                                      |
 
-### 提交结果中的「耗时」
+### 提交结果中的「耗时」与冷启动并行化
 
 双容器评测展示给做题人的耗时（`time_ms`）是 **Solution 处理 `runner.call`
 的累计时间**：所有调用从发出到返回（或超时）的区间取并集，并发调用不重复计时。
 它**不包含**容器创建与销毁、文件注入、`evaluate.py` 自身的计算以及 LLM
 调用等与选手代码无关的开销；评测脚本从未调用选手代码时不展示耗时。全局总超时
 `time_limit_ms` 仍按 Evaluator 整体运行的墙钟时间计算，二者口径不同。
+
+为了压缩每次评测的冷启动墙钟开销，`noj-judge` 对两个相互独立的容器执行三阶段并行准备：
+**并发创建容器**（`DualContainer::create_pair`，任一方失败立即回滚销毁成功方防孤儿）、
+**并发文件注入**（支持包注入 Evaluator 与代码/产物注入 Solution）、以及**并发 `start_exec`**；
+并在评测日志中额外输出 `startup_ms` 指标供冷启动延迟观测。容器销毁仍严格遵循「先 Solution 后 Evaluator」的安全顺序。
 
 ---
 

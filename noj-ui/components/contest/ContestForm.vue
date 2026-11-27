@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import type { DomainContest } from '~/composables/useDomainContests';
-import type { ContestPayload, ContestType } from '~/utils/domain/contest/contest-types';
+import type { CommunitySilenceMode, ContestPayload, ContestType } from '~/utils/domain/contest/contest-types';
 import type { DomainProblemSummary } from '~/utils/domain/problem/domain-problems';
-import { DOMAIN_CONTEST_TYPES, domainContestAllows, domainContestDefaults } from '~/utils/domain/contest/domain-contests';
+import {
+  DOMAIN_CONTEST_SILENCE_MODES,
+  DOMAIN_CONTEST_TYPES,
+  domainContestAllows,
+  domainContestDefaults,
+} from '~/utils/domain/contest/domain-contests';
 import { extractApiError } from '~/utils/server/apiError';
 const props = defineProps<{ slug: string; existing?: DomainContest }>();
 const api = useDomainContests();
@@ -30,6 +35,7 @@ const freezeMinutes = ref((props.existing?.freeze_duration_seconds ?? defaults.f
 const penalty = ref(props.existing?.config.penalty_minutes ?? 20);
 const scoreboard = ref<'self' | 'full'>(props.existing?.config.scoreboard_scope ?? 'self');
 const secrecy = ref(props.existing?.secrecy_enabled ?? true);
+const silenceMode = ref<CommunitySilenceMode>(props.existing?.config.community_silence_mode ?? 'domain_all');
 const selected = ref<Array<{ problem: DomainProblemSummary; score: number; label: string }>>([]);
 if (props.existing) {
   const existingId = props.existing.id;
@@ -68,7 +74,7 @@ const saving = ref(false);
 const error = ref('');
 const snapshot = () => JSON.stringify({ title: title.value, description: description.value, type: type.value, classrooms: classrooms.value,
   start: start.value, end: end.value, visibility: visibility.value, freeze: freezeMinutes.value,
-  penalty: penalty.value, scoreboard: scoreboard.value, secrecy: secrecy.value,
+  penalty: penalty.value, scoreboard: scoreboard.value, secrecy: secrecy.value, silenceMode: silenceMode.value,
   problems: selected.value.map(item => ({ id: item.problem.binding_id, label: item.label, score: item.score })),
 });
 const savedSnapshot = ref(snapshot());
@@ -103,9 +109,13 @@ async function save() {
       ),
     )
     : {};
-  const config: ContestPayload['config'] = Object.keys(preservedLimits).length > 0
-    ? { ...baseConfig, submission_limits: preservedLimits }
-    : baseConfig;
+  const config: ContestPayload['config'] = {
+    ...baseConfig,
+    ...(silenceMode.value !== 'domain_all' || props.existing?.config?.community_silence_mode !== undefined
+      ? { community_silence_mode: silenceMode.value }
+      : {}),
+    ...(Object.keys(preservedLimits).length > 0 ? { submission_limits: preservedLimits } : {}),
+  };
   const body: ContestPayload = {
     classroom_ids: [...classrooms.value],
     title: title.value,
@@ -194,6 +204,10 @@ async function save() {
         <AdminFormField label="赛题保护">
           <UCheckbox v-model="secrecy" label="从收录到比赛结束，仅允许从比赛入口作答" :disabled="locked" />
           <p class="mt-2 text-xs text-text-secondary">题目仍显示在题库和作业中；保护涵盖所有历史版本，开赛后不能更改。此前已阅读或下载的内容无法收回。</p>
+        </AdminFormField>
+        <AdminFormField v-if="secrecy" label="赛时社区静默">
+          <USelect v-model="silenceMode" :items="[...DOMAIN_CONTEST_SILENCE_MODES]" :disabled="locked" />
+          <p class="mt-2 text-xs text-text-secondary">仅在比赛进行期间生效，筹备期不静默社区。</p>
         </AdminFormField>
       </div>
       <UAlert v-if="locked" class="mt-4" title="已开赛，赛制与计分规则已锁定。当前仅修改名称和说明。" color="info" />

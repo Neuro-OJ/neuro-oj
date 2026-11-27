@@ -648,7 +648,7 @@ Deno.test({
     assertEquals(result.threshold, 0.8);
     assertEquals(result.limit, 50);
     // 默认提交数上限（规模保护），取值依据见 DEFAULT_MAX_SIMILARITY_SUBMISSIONS
-    assertEquals(result.max_submissions, 200);
+    assertEquals(result.max_submissions, 1000);
     // 命中：(a,b) 与 (c,b)，同一用户的 (a,c) 被跳过
     assertEquals(result.data.length, 2);
     assert(result.data.every((pair) => pair.user_a_id !== pair.user_b_id));

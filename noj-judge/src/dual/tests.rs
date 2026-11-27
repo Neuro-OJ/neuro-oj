@@ -680,6 +680,7 @@ fn test_clamp_runtime_config_caps_time_and_memory() {
             image: "noj-solution".to_string(),
             call_timeout_ms: 999_999,
             memory_limit_mb: 9999,
+            isolation_mode: None,
         }),
     };
     let clamped = clamp_runtime_config(&rc, 5000, 1000);
@@ -718,6 +719,7 @@ fn test_validate_runtime_config_rejects_bad_image() {
             image: "noj-solution".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 256,
+            isolation_mode: None,
         }),
     };
     let err =
@@ -746,6 +748,7 @@ fn test_validate_runtime_config_rejects_network_when_disallowed() {
             image: "noj-solution".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 256,
+            isolation_mode: None,
         }),
     };
     let err =
@@ -774,6 +777,7 @@ fn test_validate_runtime_config_rejects_command_not_in_whitelist() {
             image: "noj-solution".to_string(),
             call_timeout_ms: 1000,
             memory_limit_mb: 256,
+            isolation_mode: None,
         }),
     };
     let err =

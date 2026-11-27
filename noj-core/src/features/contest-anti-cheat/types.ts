@@ -34,6 +34,8 @@ export interface SimilarSubmissionPair {
   shared_fingerprints: number;
   fingerprint_count_a: number;
   fingerprint_count_b: number;
+  /** 命中最优分数的匹配通道：全局归一化或块级局部归一化。 */
+  match_strategy?: "global" | "block_local";
 }
 
 /** `detectSimilarPairs()` 的可选项。 */
@@ -50,4 +52,6 @@ export interface DetectSimilarPairsOptions {
   maxTokens?: number;
   /** 是否跳过「同一用户的两次提交」配对，默认 true。 */
   skipSameUser?: boolean;
+  /** 可选高频模板指纹过滤比例 (0, 1)；仅在桶内独立用户数 >= 10 时生效。 */
+  maxDocFreqRatio?: number;
 }

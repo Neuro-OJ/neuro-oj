@@ -218,6 +218,16 @@ export function validateRuntimeConfig(
         "runtime_config.solution.memory_limit_mb 必须为正整数",
       );
     }
+    if (
+      solution.isolation_mode !== undefined &&
+      solution.isolation_mode !== null &&
+      solution.isolation_mode !== "shared" &&
+      solution.isolation_mode !== "fork_per_call"
+    ) {
+      throw new BadRequestError(
+        "runtime_config.solution.isolation_mode 仅允许 shared / fork_per_call",
+      );
+    }
   }
 
   // evaluator.workspace_size_mb（可选，缺省由 judge 决定；prediction 模式用于
