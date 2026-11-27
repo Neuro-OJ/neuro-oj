@@ -28,36 +28,18 @@ import {
 } from "../../shared/base/errors.ts";
 import { unendedPublicContestForProblem } from "../../modules/access/index.ts";
 import type { Actor } from "../../modules/access/index.ts";
-import { type AuditMeta, recordAudit } from "../../modules/platform/index.ts";
+import { type AuditMeta, recordAudit } from "../../shared/audit/audit-log.ts";
 
-/** 标签 kind 枚举。 */
-export const TAG_KINDS = ["problem", "algorithm"] as const;
+import {
+  type CreateTagInput,
+  TAG_KINDS,
+  type TagKind,
+  type TagResponse,
+  type UpdateTagInput,
+} from "../../shared/api-contracts/features.ts";
 
-/** 标签 kind 类型：problem=题目标签，algorithm=算法标签。 */
-export type TagKind = typeof TAG_KINDS[number];
-
-/** 标签响应 DTO。 */
-export interface TagResponse {
-  id: string;
-  name: string;
-  kind: TagKind;
-  /** 关联题目数（管理页表格展示）。 */
-  problem_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** 创建标签的输入。 */
-export interface CreateTagInput {
-  name: string;
-  kind: string;
-}
-
-/** 更新标签的输入（字段可选，仅更新提供的字段）。 */
-export interface UpdateTagInput {
-  name?: string;
-  kind?: string;
-}
+export { TAG_KINDS };
+export type { CreateTagInput, TagKind, TagResponse, UpdateTagInput };
 
 /** 写操作的显式操作者与请求元信息（审计用）。 */
 export interface TagWriteContext {

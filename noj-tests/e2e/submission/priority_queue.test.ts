@@ -17,7 +17,6 @@ import {
   e2eTest,
   getAdminToken,
   getContestAnswerVersionId,
-  isE2E,
   pollSubmission,
   registerUser,
   submitCode,
@@ -101,7 +100,6 @@ async function submitInContest(code = CODE_SAMPLES.accepted): Promise<string> {
 }
 
 e2eTest("[e2e/priority-queue] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
@@ -116,8 +114,6 @@ e2eTest("[e2e/priority-queue] Setup", async () => {
 });
 
 e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
-  if (!isE2E) return;
-
   // medium：普通提交（此时题目尚未加入任何竞赛）
   const mediumId = await submitCode(
     userToken,
@@ -155,7 +151,6 @@ e2eTest("[e2e/priority-queue] high/medium/low 均能被消费", async () => {
 });
 
 e2eTest("[e2e/priority-queue] high 洪峰下 low 仍能完成（不饿死）", async () => {
-  if (!isE2E) return;
   if (!contestId) {
     throw new Error("竞赛未创建（用例 1 未成功执行）");
   }

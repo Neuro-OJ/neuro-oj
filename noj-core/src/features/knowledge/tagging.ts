@@ -14,16 +14,16 @@
 import { and, eq, sql } from "drizzle-orm";
 import { isUserAdmin } from "../../modules/access/contracts/cross-module/identity_services_security_permissions.ts";
 import { loadDomainProblemProtection } from "../../modules/access/index.ts";
-import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../shared/access/actor.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
+import { recordAudit } from "../../shared/audit/audit-log.ts";
+import { getSetting } from "../../shared/config/system-settings.ts";
 import {
-  getSetting,
   KNOWLEDGE_TAG_MODEL_ALIAS,
   listLlmGatewayModelAliases,
   platformCompletion,
   PlatformCompletionError,
   queryPlatformUsage,
-  recordAudit,
 } from "../../modules/platform/index.ts";
 import { enqueueTaskTx } from "../../shared/tasks/repository.ts";
 import { isTaskRescheduleResult } from "../../shared/tasks/contracts.ts";

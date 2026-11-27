@@ -3,25 +3,18 @@
 import { useToast } from '~/composables/useToast';
 import { extractApiError } from '~/utils/server/apiError';
 
+import type {
+  ByokState,
+  ByokTestResult,
+  UserLlmProviderInput,
+  UserLlmProviderView,
+} from '~/utils/generated/api-contracts';
+
 /**
  * 自带模型（BYOK）设置：保存一个 OpenAI 兼容 Provider，练习提交 LLM 题时可选用。
  *
  * Key 只写不读：服务端只返回脱敏值；留空保存表示保留原 Key。
  */
-interface ByokProvider {
-  provider_id: string;
-  base_url: string;
-  model: string;
-  api_key_masked: string;
-  enabled: boolean;
-  revision: number;
-  updated_at: string;
-}
-interface ByokState {
-  enabled: boolean;
-  allowed_hosts: string[];
-  provider: ByokProvider | null;
-}
 
 const { api } = useApi();
 const { toast } = useToast();
@@ -34,7 +27,7 @@ const testing = ref(false);
 const removing = ref(false);
 const form = reactive({ base_url: '', model: '', api_key: '', enabled: true });
 
-function fillForm(provider: ByokProvider | null) {
+function fillForm(provider: UserLlmProviderView | null) {
   form.base_url = provider?.base_url ?? '';
   form.model = provider?.model ?? '';
   form.api_key = '';
@@ -63,13 +56,13 @@ async function save() {
   }
   saving.value = true;
   try {
-    const body: Record<string, unknown> = {
+    const body: UserLlmProviderInput = {
       base_url: form.base_url.trim(),
       model: form.model.trim(),
       enabled: form.enabled,
     };
     if (form.api_key.trim()) body.api_key = form.api_key.trim();
-    const res = await api.put<{ data: ByokProvider }>('/api/v1/me/llm-provider', body, {
+    const res = await api.put<{ data: UserLlmProviderView }>('/api/v1/me/llm-provider', body, {
       headers: { 'If-Match': String(provider?.revision ?? 0) },
       silent: true,
     });
@@ -87,7 +80,7 @@ async function save() {
 async function test() {
   testing.value = true;
   try {
-    const res = await api.post<{ data: { status: 'ok' | 'failed'; message?: string } }>(
+    const res = await api.post<{ data: ByokTestResult }>(
       '/api/v1/me/llm-provider/test',
       undefined,
       { silent: true },

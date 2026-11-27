@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../shared/access/actor.ts";
 import {
   authMiddleware,
   optionalAuthMiddleware,

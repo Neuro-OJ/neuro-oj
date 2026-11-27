@@ -12,7 +12,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  isE2E,
   pollSubmission,
   registerUser,
   submitCode,
@@ -57,8 +56,6 @@ async function redisCli(
 }
 
 e2eTest("[e2e/mq-invalid] 非法消息不阻塞队列且被移出 processing", async () => {
-  if (!isE2E) return;
-
   await redisCli("LPUSH", QUEUE, "not-json");
 
   // 1) 正常提交仍能完成（消费者未因毒消息卡死）

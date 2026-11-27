@@ -2,86 +2,28 @@
  * AI 评测可视化反馈（LLM Trace、分项能力雷达图、Badcase 行级对比）纯函数工具。
  */
 
-export type FeedbackVisibility = 'hidden' | 'summary' | 'cases';
+import type {
+  EvaluationFeedback,
+  FeedbackBadcase,
+  FeedbackMetric,
+  FeedbackVisibility,
+  LlmModelBreakdown,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
+  LlmTraceMessage,
+} from '../../generated/api-contracts.ts';
 
-export interface FeedbackMetric {
-  key: string;
-  label: string;
-  score: number;
-  max_score: number;
-}
-
-export interface LlmModelBreakdown {
-  model: string;
-  calls: number;
-  total_tokens: number;
-  estimated_cost: number;
-}
-
-export interface LlmSummaryStats {
-  total_calls: number;
-  error_calls: number;
-  prompt_tokens: number;
-  completion_tokens: number;
-  cached_prompt_tokens: number;
-  total_tokens: number;
-  estimated_cost: number;
-  total_latency_ms: number;
-  avg_latency_ms: number;
-  p95_latency_ms: number;
-  models: LlmModelBreakdown[];
-}
-
-export interface LlmTraceMessage {
-  role: string;
-  content?: unknown;
-  name?: string;
-  tool_call_id?: string;
-  tool_calls?: unknown[];
-}
-
-export interface LlmTraceItem {
-  id: string;
-  seq: number;
-  model: string;
-  status: string;
-  error_code: string | null;
-  prompt_tokens: number;
-  completion_tokens: number;
-  cached_prompt_tokens: number;
-  total_tokens: number;
-  estimated_cost: number;
-  latency_ms: number;
-  offset_ms: number;
-  created_at: string;
-  request_params: Record<string, unknown>;
-  request_messages?: LlmTraceMessage[];
-}
-
-export interface FeedbackBadcase {
-  case_id: string;
-  status: string;
-  score: number | null;
-  max_score: number | null;
-  error_type: string | null;
-  reasoning: string | null;
-  input: string | null;
-  expected_output: string | null;
-  actual_output: string | null;
-  time_ms: number | null;
-  memory_kb: number | null;
-}
-
-export interface EvaluationFeedback {
-  visible: boolean;
-  visibility: FeedbackVisibility;
-  attempt_id: string | null;
-  gateway_available: boolean;
-  summary: LlmSummaryStats | null;
-  metrics: FeedbackMetric[];
-  traces: LlmTraceItem[];
-  badcases: FeedbackBadcase[];
-}
+export type LlmSummaryStats = LlmSubmissionSummaryStats;
+export type {
+  EvaluationFeedback,
+  FeedbackBadcase,
+  FeedbackMetric,
+  FeedbackVisibility,
+  LlmModelBreakdown,
+  LlmSubmissionSummaryStats,
+  LlmTraceItem,
+  LlmTraceMessage,
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;

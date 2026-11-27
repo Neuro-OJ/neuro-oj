@@ -7,9 +7,9 @@
  * 不会清除它。
  */
 import { eq } from "drizzle-orm";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
-import { recordAudit } from "../../modules/platform/index.ts";
-import type { AuditDetail } from "../../modules/platform/index.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
+import { recordAudit } from "../../shared/audit/audit-log.ts";
+import type { AuditDetail } from "../../shared/audit/types.ts";
 import { NotFoundError, ValidationError } from "../../shared/base/errors.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import { problemDifficulty, problems } from "../../shared/db/schema.ts";

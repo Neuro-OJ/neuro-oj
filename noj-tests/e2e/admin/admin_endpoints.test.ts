@@ -19,7 +19,6 @@ import {
   apiPut,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
   waitForServer,
 } from "../helper.ts";
@@ -28,14 +27,12 @@ import {
 const TS = Date.now().toString(36);
 
 e2eTest("[e2e/admin] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   // 确保 admin 可用
   await getAdminToken();
 });
 
 e2eTest("[e2e/admin] 1.1 dashboard/stats 返回统计数据", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
   const { status, body } = await apiGet(
     "/api/v1/admin/query/dashboard/stats",
@@ -61,7 +58,6 @@ e2eTest("[e2e/admin] 1.1 dashboard/stats 返回统计数据", async () => {
 });
 
 e2eTest("[e2e/admin] 1.2 普通用户无法访问 dashboard", async () => {
-  if (!isE2E) return;
   const token = await registerUser(
     `admt_noadmin_${TS}`,
     `admt_noadmin_${TS}@test.com`,
@@ -77,7 +73,6 @@ e2eTest("[e2e/admin] 1.2 普通用户无法访问 dashboard", async () => {
 });
 
 e2eTest("[e2e/admin] 2.1 系统设置 GET/PUT", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
 
   // GET 设置列表
@@ -137,7 +132,6 @@ e2eTest("[e2e/admin] 2.1 系统设置 GET/PUT", async () => {
 });
 
 e2eTest("[e2e/admin] 2.2 普通用户无法修改设置", async () => {
-  if (!isE2E) return;
   const token = await registerUser(
     `admt_nosettings_${TS}`,
     `admt_nosettings_${TS}@test.com`,
@@ -154,7 +148,6 @@ e2eTest("[e2e/admin] 2.2 普通用户无法修改设置", async () => {
 });
 
 e2eTest("[e2e/admin] 3.1 获取用户列表", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
   const { status, body } = await apiGet(
     "/api/v1/admin/identity/users",
@@ -168,7 +161,6 @@ e2eTest("[e2e/admin] 3.1 获取用户列表", async () => {
 });
 
 e2eTest("[e2e/admin] 3.2 黑名单 CRUD", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
   const testIp = `192.168.${Date.now() % 255}.1`;
 
@@ -203,7 +195,6 @@ e2eTest("[e2e/admin] 3.2 黑名单 CRUD", async () => {
 });
 
 e2eTest("[e2e/admin] 3.3 普通用户无法管理黑名单", async () => {
-  if (!isE2E) return;
   const token = await registerUser(
     `admt_noblack_${TS}`,
     `admt_noblack_${TS}@test.com`,
@@ -219,7 +210,6 @@ e2eTest("[e2e/admin] 3.3 普通用户无法管理黑名单", async () => {
 });
 
 e2eTest("[e2e/admin] 4.1 admin 提交详情", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
   // 测试获取提交列表和详情
   const { status } = await apiGet(
@@ -233,7 +223,6 @@ e2eTest("[e2e/admin] 4.1 admin 提交详情", async () => {
 });
 
 e2eTest("[e2e/admin] 4.2 普通用户无法删除提交", async () => {
-  if (!isE2E) return;
   const token = await registerUser(
     `admt_nodel_${TS}`,
     `admt_nodel_${TS}@test.com`,
@@ -249,7 +238,6 @@ e2eTest("[e2e/admin] 4.2 普通用户无法删除提交", async () => {
 });
 
 e2eTest("[e2e/admin] 4.3 乐观锁冲突返回 409", async () => {
-  if (!isE2E) return;
   const adminToken = await getAdminToken();
 
   // 选择一个运行时设置项并读取其 updated_at

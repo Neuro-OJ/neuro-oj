@@ -19,22 +19,11 @@ import {
   ServiceUnavailableError,
 } from "../../shared/base/errors.ts";
 
-/** 设置页读取到的 BYOK 状态。 */
-export interface ByokState {
-  /** 实例是否开启 BYOK（gateway 白名单非空） */
-  enabled: boolean;
-  /** 允许的上游主机（精确匹配，仅 https） */
-  allowed_hosts: string[];
-  /** 当前用户的自带模型；未配置为 null */
-  provider: UserLlmProviderView | null;
-}
-
-/** 连通性测试结果：上游类失败以 `failed` 返回，便于前端直接展示。 */
-export interface ByokTestResult {
-  status: "ok" | "failed";
-  code?: string;
-  message?: string;
-}
+import type {
+  ByokState,
+  ByokTestResult,
+} from "../../shared/api-contracts/features.ts";
+export type { ByokState, ByokTestResult };
 
 /** 连通性测试会真实调用上游（用户付费），按账号限流。 */
 const TEST_FAILURES: Record<string, string> = {

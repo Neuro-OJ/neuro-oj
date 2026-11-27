@@ -34,8 +34,8 @@ import {
   listOrphanedBootstrapRows,
   listRuntimeEnvConflicts,
   registerSettingsInvalidationListener,
-} from "../platform/services/system-settings.ts";
-import { startAuditLogRetentionTask } from "../platform/services/audit-log.ts";
+} from "../../shared/config/system-settings.ts";
+import { startAuditLogRetentionTask } from "../../shared/audit/audit-log.ts";
 import { describeLlmPlatformDefaultGap } from "../platform/gateway/services/llm.ts";
 import { getLogger } from "@logtape/logtape";
 import { describePlaceholderSecret } from "../../shared/security/secret-placeholders.ts";

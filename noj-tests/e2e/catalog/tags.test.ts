@@ -15,7 +15,6 @@ import {
   getAdminToken,
   getOrCreateUser,
   getProblemIdByNumber,
-  isE2E,
   pollSubmission,
   publishProblemVersion,
   requireJudgeCanary,
@@ -31,14 +30,12 @@ let problemId = "";
 let gatingProblemId = "";
 
 e2eTest("[e2e/tags] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   console.log("  ✓ 管理员已登录并完成强制改密");
 });
 
 e2eTest("[e2e/tags] 1.1 GET 标签列表", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet("/api/v1/tags");
   if (status !== 200) throw new Error("期望 200");
   const d = body as { data: unknown[] };
@@ -55,7 +52,6 @@ e2eTest("[e2e/tags] 1.1 GET 标签列表", async () => {
 });
 
 e2eTest("[e2e/tags] 1.2 管理员创建题目标签与算法标签", async () => {
-  if (!isE2E) return;
   const name = "E2E 标签 " + Date.now().toString(36);
   const res = await apiPost(
     "/api/v1/tags",
@@ -81,7 +77,6 @@ e2eTest("[e2e/tags] 1.2 管理员创建题目标签与算法标签", async () =>
 });
 
 e2eTest("[e2e/tags] 1.3 未认证创建标签被拒", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/tags", {
     name: "Hack " + Date.now().toString(36),
     kind: "problem",
@@ -91,7 +86,6 @@ e2eTest("[e2e/tags] 1.3 未认证创建标签被拒", async () => {
 });
 
 e2eTest("[e2e/tags] 1.4 普通用户创建标签被拒（默认仅 admin）", async () => {
-  if (!isE2E) return;
   const { token } = await getOrCreateUser(
     "e2e_tag_user",
     "e2e_tag_user",
@@ -108,7 +102,6 @@ e2eTest("[e2e/tags] 1.4 普通用户创建标签被拒（默认仅 admin）", as
 });
 
 e2eTest("[e2e/tags] 1.5 重复标签名冲突", async () => {
-  if (!isE2E) return;
   const name = "E2E 重复 " + Date.now().toString(36);
   await apiPost("/api/v1/tags", { name, kind: "problem" }, adminToken);
   const { status } = await apiPost(
@@ -121,7 +114,6 @@ e2eTest("[e2e/tags] 1.5 重复标签名冲突", async () => {
 });
 
 e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
-  if (!isE2E) return;
   // 创建默认域题目并带 tag_ids。
   const title = "E2E 标签题目 " + Date.now().toString(36);
   const res = await apiPost(
@@ -181,7 +173,6 @@ e2eTest("[e2e/tags] 2.1 题目打标签并筛选命中", async () => {
 });
 
 e2eTest("[e2e/tags] 2.2 标签与难度组合筛选", async () => {
-  if (!isE2E) return;
   const res = await apiGet(
     `/api/v1/problems?tag=${tagId}&difficulty=easy`,
     adminToken,
@@ -195,7 +186,6 @@ e2eTest("[e2e/tags] 2.2 标签与难度组合筛选", async () => {
 });
 
 e2eTest("[e2e/tags] 3.1 合并标签后关联正确", async () => {
-  if (!isE2E) return;
   // 目标标签
   const targetName = "E2E 合并目标 " + Date.now().toString(36);
   const targetRes = await apiPost(
@@ -230,7 +220,6 @@ e2eTest("[e2e/tags] 3.1 合并标签后关联正确", async () => {
 });
 
 e2eTest("[e2e/tags] 3.2 删除标签后题目不受影响", async () => {
-  if (!isE2E) return;
   const delRes = await apiDelete(`/api/v1/tags/${tagId}`, adminToken);
   if (delRes.status !== 204) throw new Error("删除标签失败: " + delRes.status);
 
@@ -245,7 +234,6 @@ e2eTest("[e2e/tags] 3.2 删除标签后题目不受影响", async () => {
 });
 
 e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见", async () => {
-  if (!isE2E) return;
   // 门控需要编程题（客观题禁止算法标签，打标会 400）：用经典 stdin/stdout
   // 样例题 P1001（A+B）使用标准 stdin/stdout 格式，适合作为 AC 判定载体。
   gatingProblemId = await getProblemIdByNumber(1001);
@@ -303,7 +291,6 @@ e2eTest("[e2e/tags] 4.1 算法标签门控：匿名与未通过用户不可见",
 });
 
 e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
-  if (!isE2E) return;
   // 启动器已在本次运行前完成 canary；这里只校验清单，不再重复探测。
   await requireJudgeCanary();
 
@@ -349,7 +336,6 @@ e2eTest("[e2e/tags] 4.2 算法标签门控：AC 后可见", async () => {
 });
 
 e2eTest("[e2e/tags] Cleanup", async () => {
-  if (!isE2E) return;
   // 清理测试标签（题目保留无妨，客观题会被 dev 数据清理覆盖）
   for (const id of [tagId, algorithmTagId]) {
     if (id) await apiDelete(`/api/v1/tags/${id}`, adminToken);

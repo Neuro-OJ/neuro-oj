@@ -104,13 +104,11 @@ print(json.dumps(result))
 }
 
 e2eTest("[e2e/storage-failure] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
 });
 
 e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
-  if (!isE2E) return;
   const res = await apiPost(
     "/api/v1/domains/main/problems",
     {
@@ -149,7 +147,6 @@ e2eTest("[e2e/storage-failure] 无支持包下载返回 404", async () => {
 });
 
 e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () => {
-  if (!isE2E) return;
   // 通过 import-bundle 创建带支持包的题目（当前唯一服务端写入 storage URL 的入口）
   const zip = await makeBundleZip();
   const formData = new FormData();
@@ -246,7 +243,6 @@ e2eTest("[e2e/storage-failure] 存储文件缺失时下载返回 5xx", async () 
 e2eTest(
   "[e2e/storage-failure] 支持包缺失在预检阶段拒绝提交且不创建记录",
   async () => {
-    if (!isE2E) return;
     // 按版本执行需要目标支持包存在，预检失败不能落库后再等待 Judge。
     // 使用管理该导入题目的相同 admin 身份提交，
     // 普通用户会被 resolveProblemAccess 判为无权访问（403）。

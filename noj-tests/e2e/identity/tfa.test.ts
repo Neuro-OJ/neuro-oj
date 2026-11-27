@@ -14,7 +14,6 @@ import {
   apiGet,
   apiPost,
   e2eTest,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -32,7 +31,6 @@ function currentCode(secret: string): string {
 }
 
 e2eTest("[e2e/tfa] Setup: 注册并启用 TFA", async () => {
-  if (!isE2E) return;
   await waitForServer();
   token = await registerUser(userLogin, userEmail, TEST_PASSWORD);
 
@@ -65,7 +63,6 @@ e2eTest("[e2e/tfa] Setup: 注册并启用 TFA", async () => {
 });
 
 e2eTest("[e2e/tfa] 登录缺少 code 返回 TFA_REQUIRED", async () => {
-  if (!isE2E) return;
   const res = await apiPost("/api/v1/auth/login", {
     login: userLogin,
     password: TEST_PASSWORD,
@@ -80,7 +77,6 @@ e2eTest("[e2e/tfa] 登录缺少 code 返回 TFA_REQUIRED", async () => {
 });
 
 e2eTest("[e2e/tfa] 登录错误 TOTP 被拒绝", async () => {
-  if (!isE2E) return;
   const res = await apiPost("/api/v1/auth/login", {
     login: userLogin,
     password: TEST_PASSWORD,
@@ -92,7 +88,6 @@ e2eTest("[e2e/tfa] 登录错误 TOTP 被拒绝", async () => {
 });
 
 e2eTest("[e2e/tfa] 登录正确 TOTP 成功", async () => {
-  if (!isE2E) return;
   const res = await apiPost("/api/v1/auth/login", {
     login: userLogin,
     password: TEST_PASSWORD,
@@ -113,7 +108,6 @@ e2eTest("[e2e/tfa] 登录正确 TOTP 成功", async () => {
 });
 
 e2eTest("[e2e/tfa] 恢复码登录成功且一次性消费", async () => {
-  if (!isE2E) return;
   if (recoveryCodes.length === 0) throw new Error("缺少恢复码");
   const code = recoveryCodes.shift()!;
   const res = await apiPost("/api/v1/auth/login", {
@@ -138,7 +132,6 @@ e2eTest("[e2e/tfa] 恢复码登录成功且一次性消费", async () => {
 });
 
 e2eTest("[e2e/tfa] 重新生成恢复码后旧码作废", async () => {
-  if (!isE2E) return;
   if (recoveryCodes.length === 0) throw new Error("缺少恢复码");
   const oldCode = recoveryCodes[0];
   const regenRes = await apiPost(
@@ -174,7 +167,6 @@ e2eTest("[e2e/tfa] 重新生成恢复码后旧码作废", async () => {
 });
 
 e2eTest("[e2e/tfa] 禁用 TFA 需验证码确认", async () => {
-  if (!isE2E) return;
   // 错误验证码不能禁用
   const badDisable = await apiPost("/api/v1/auth/tfa/disable", {
     code: "000000",

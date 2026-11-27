@@ -105,9 +105,9 @@ if [[ -z "$VERSION" ]]; then
   [[ -n "$VERSION" && "$VERSION" != "latest" ]] ||
     die "无法解析最新版本，请用 --version 显式指定"
 fi
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] ||
-  die "版本标签格式不合法：$VERSION（应形如 v0.11.1）"
-say "目标版本：$VERSION，安装目录：$DIR"
+[[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]] ||
+  die "版本标签格式不合法：${VERSION}（应形如 v0.11.1）"
+say "目标版本：${VERSION}，安装目录：${DIR}"
 
 # ---- 3. 下载并校验二进制 ----
 TMP="$(mktemp -d)"

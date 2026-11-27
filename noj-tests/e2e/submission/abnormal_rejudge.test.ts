@@ -7,7 +7,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getAdminToken,
-  isE2E,
   pollSubmission,
   registerUser,
   submitCode,
@@ -20,7 +19,6 @@ let adminToken = "";
 let PROBLEM_ID = "";
 
 e2eTest("[e2e/submission-abnormal] Setup", async () => {
-  if (!isE2E) return;
   adminToken = await getAdminToken();
   const ts = Date.now().toString(36);
   token = await registerUser(
@@ -34,7 +32,6 @@ e2eTest("[e2e/submission-abnormal] Setup", async () => {
 e2eTest(
   "[e2e/submission-abnormal] 重测不存在的提交：受理为空任务",
   async () => {
-    if (!isE2E) return;
     // 统一任务化后（Handbook §4.3）单条重测是入口适配层，返回 202 与任务 ID；
     // 不存在的提交不会被固定进条目集合，因此任务总数为 0（"空集合返回已完成、
     // 总数为 0 的任务"），而不是 404。
@@ -53,7 +50,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/submission-abnormal] 并发重测同一提交不崩溃", async () => {
-  if (!isE2E) return;
   const id = await submitCode(token, PROBLEM_ID, CODE_SAMPLES.accepted);
   const results = await Promise.all([
     apiPost(
@@ -80,7 +76,6 @@ e2eTest("[e2e/submission-abnormal] 并发重测同一提交不崩溃", async () 
 e2eTest(
   "[e2e/submission-abnormal] 评测失败后状态为 error 且可查看",
   async () => {
-    if (!isE2E) return;
     // 使用必然运行失败的代码（语法错误）
     const id = await submitCode(token, PROBLEM_ID, "def broken(:\n");
     const result = await pollSubmission(token, id, 45, 2000, true);

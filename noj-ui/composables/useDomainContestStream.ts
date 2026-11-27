@@ -1,4 +1,5 @@
 import { computed, type Ref } from 'vue';
+import type { KaggleRankingRow } from '~/utils/domain/contest/contest-types';
 import { useEventSource } from './useEventSource';
 
 /**
@@ -28,7 +29,7 @@ export interface DomainContestRankingEvent {
   type: 'contest:ranking:snapshot' | 'contest:ranking:updated';
   contest_id: string;
   /** 全量榜单行（域入口即 REST 的 `data`） */
-  data: DomainContestRankingRow[];
+  data: KaggleRankingRow[];
   view: 'live' | 'frozen' | 'official';
   ranking_visibility?: string;
   freeze_start_time?: string | null;
@@ -38,30 +39,11 @@ export interface DomainContestRankingEvent {
   /** 关联班级；仅域入口下发 */
   classrooms?: { id: string; name: string }[];
   /** 关联班级学生（已按筛选重排名次） */
-  classroom_rows?: DomainContestRankingRow[];
+  classroom_rows?: KaggleRankingRow[];
   /** 非关联班级的选手 */
-  other_rows?: DomainContestRankingRow[];
+  other_rows?: KaggleRankingRow[];
   /** 建连时的班级筛选；null 表示未筛选 */
   classroom_id?: string | null;
-}
-
-/** 榜单行（只声明页面真正消费的字段，避免与 composable 类型耦合）。 */
-export interface DomainContestRankingRow {
-  user_id: string;
-  username: string;
-  rank: number;
-  total_score: number;
-  solved?: number;
-  penalty_ms?: number;
-  pending?: boolean;
-  problem_scores: {
-    label: string;
-    best_score?: number | null;
-    accepted?: boolean;
-    attempts?: number;
-    penalty_ms?: number;
-    pending?: boolean;
-  }[];
 }
 
 /** 提交定位事件：只有问题/时间/序号是公开的，身份字段仅组织者可见。 */

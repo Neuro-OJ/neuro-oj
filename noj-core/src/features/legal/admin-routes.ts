@@ -19,7 +19,7 @@ import { parseJsonBody } from "../../shared/http/request.ts";
 import { ValidationError } from "../../shared/base/errors.ts";
 import { enforceRateLimit } from "../../modules/platform/index.ts";
 import { getClientIp } from "../../modules/platform/index.ts";
-import { requireUserActor } from "../../modules/access/contracts/actor.ts";
+import { requireUserActor } from "../../shared/access/actor.ts";
 import {
   getCurrentDocument,
   listVersions,

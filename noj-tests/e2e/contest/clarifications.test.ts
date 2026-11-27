@@ -12,7 +12,6 @@ import {
   e2eTest,
   getAdminToken,
   getProblemIdByNumber,
-  isE2E,
   registerUser,
   TEST_PASSWORD,
   waitForServer,
@@ -43,7 +42,6 @@ interface NotificationItem {
 }
 
 e2eTest("[e2e/clarifications] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   participantToken = await registerUser(
@@ -65,7 +63,6 @@ e2eTest("[e2e/clarifications] Setup", async () => {
 });
 
 e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", async () => {
-  if (!isE2E) return;
   const now = Date.now();
   const createResult = await apiPost(
     "/api/v1/domains/main/contests",
@@ -111,7 +108,6 @@ e2eTest("[e2e/clarifications] 1. 创建进行中的竞赛并注册参赛者", as
 });
 
 e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async () => {
-  if (!isE2E) return;
   const withProblem = await apiPost(
     `/api/v1/domains/main/contests/${contestId}/clarifications`,
     { content: "样例输入第三行是什么含义？", problem_id: problemId },
@@ -150,7 +146,6 @@ e2eTest("[e2e/clarifications] 2. 参赛者提问（挂题目 + 全局）", async
 e2eTest(
   "[e2e/clarifications] 3. 非参赛者提问被拒，非进行期间提问被拒",
   async () => {
-    if (!isE2E) return;
     const forbidden = await apiPost(
       `/api/v1/domains/main/contests/${contestId}/clarifications`,
       { content: "非参赛者提问" },
@@ -301,7 +296,6 @@ e2eTest(
 e2eTest(
   "[e2e/clarifications] 4. admin 公开与私密回复，非主办方回复被拒",
   async () => {
-    if (!isE2E) return;
     const listResult = await apiGet(
       `/api/v1/domains/main/contests/${contestId}/clarifications`,
       adminToken,
@@ -366,7 +360,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/clarifications] 5. 提问者收到 clarification 通知", async () => {
-  if (!isE2E) return;
   const notificationsResult = await apiGet(
     "/api/v1/notifications?per_page=30",
     participantToken,
@@ -394,7 +387,6 @@ e2eTest("[e2e/clarifications] 5. 提问者收到 clarification 通知", async ()
 });
 
 e2eTest("[e2e/clarifications] 6. 答疑列表可见性", async () => {
-  if (!isE2E) return;
   const fetchList = async (
     token?: string,
   ): Promise<ClarificationData[]> => {

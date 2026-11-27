@@ -56,8 +56,16 @@ Deno.test("write-rate-limit: 限流证据识别", () => {
     true,
   );
   assertEquals(
-    hasRateLimitEvidence(`import { rateLimit } from "./x.ts";`),
+    hasRateLimitEvidence(
+      `import { rateLimit } from "./middleware/rate-limit.ts";`,
+    ),
     true,
+  );
+  assertEquals(
+    hasRateLimitEvidence(
+      `import { getClientIp } from "../../../platform/system/services/rate-limit-env.ts";\nrouter.post("/x", h);`,
+    ),
+    false,
   );
   assertEquals(hasRateLimitEvidence(`router.post("/x", h);`), false);
 });

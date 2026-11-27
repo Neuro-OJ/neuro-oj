@@ -59,6 +59,11 @@ export const ALLOWLIST: Record<
     status: "exempt",
     reason: "管理后台写操作：admin 权限 + 审计日志兜底",
   },
+  "noj-core/src/modules/http/admin/routes/system.ts": {
+    status: "exempt",
+    reason:
+      "管理后台写操作：admin 权限 + 审计日志兜底（此前被 rate-limit-env 导入掩盖）",
+  },
   "noj-core/src/modules/http/admin/routes/background-tasks.ts": {
     status: "exempt",
     reason:
@@ -116,9 +121,9 @@ export const ALLOWLIST: Record<
   },
 };
 
-/** 限流证据模式（文件级启发式：宁可宽松，避免"已限流却报错"的噪声）。 */
+/** 限流证据模式（排除仅导入 `rate-limit-env` 取 IP/开关的假阳性）。 */
 const RATE_LIMIT_RE =
-  /enforce[A-Za-z]*RateLimit|hardeningRateLimit|RateLimitConfig|rateLimit|rate-limit/i;
+  /enforce[A-Za-z]*RateLimit|educationWriteRateLimit|hardeningRateLimit|RateLimitConfig|\brateLimit\s*\(|(?:system\/middleware|middleware)\/rate-limit/i;
 
 /**
  * 写方法路由（接收者锚定 + 路径以 / 开头，与路由目录生成器同一口径）。

@@ -11,7 +11,6 @@ import {
   domainProblemPath,
   e2eTest,
   getAdminToken,
-  isE2E,
   publishProblemVersion,
   setProblemState,
   waitForServer,
@@ -21,13 +20,11 @@ let adminToken = "";
 let problemId = "";
 
 e2eTest("[e2e/problems] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
 });
 
 e2eTest("[e2e/problems] 2.1 公共列表", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiGet("/api/v1/problems");
   if (status !== 200) throw new Error("期望 200");
   const d = body as { data: unknown[]; total: number };
@@ -36,7 +33,6 @@ e2eTest("[e2e/problems] 2.1 公共列表", async () => {
 });
 
 e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
-  if (!isE2E) return;
   const { status, body } = await apiPost("/api/v1/domains/main/problems", {
     title: "E2E 两数之和",
     description: "实现两数之和。",
@@ -64,7 +60,6 @@ e2eTest("[e2e/problems] 2.2 管理员创建题目", async () => {
 });
 
 e2eTest("[e2e/problems] 2.3 未认证创建被拒", async () => {
-  if (!isE2E) return;
   const { status } = await apiPost("/api/v1/domains/main/problems", {
     title: "Hack",
     description: "x",
@@ -88,7 +83,6 @@ e2eTest("[e2e/problems] 2.3 未认证创建被拒", async () => {
 });
 
 e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
-  if (!isE2E) return;
   const draft = await apiGet(
     `${await domainProblemPath(problemId)}/draft`,
     adminToken,
@@ -151,7 +145,6 @@ e2eTest("[e2e/problems] 2.4 管理员更新题目", async () => {
 });
 
 e2eTest("[e2e/problems] 2.5 按难度筛选", async () => {
-  if (!isE2E) return;
   const { body } = await apiGet("/api/v1/problems?difficulty=hard");
   const d = body as { data: { difficulty: string }[] };
   if (!d.data.every((p) => p.difficulty === "hard")) {
@@ -161,7 +154,6 @@ e2eTest("[e2e/problems] 2.5 按难度筛选", async () => {
 });
 
 e2eTest("[e2e/problems] 2.6 按关键词搜索", async () => {
-  if (!isE2E) return;
   const { body } = await apiGet("/api/v1/problems?keyword=E2E");
   const d = body as { total: number };
   if (d.total < 1) throw new Error("应搜到结果");
@@ -169,14 +161,12 @@ e2eTest("[e2e/problems] 2.6 按关键词搜索", async () => {
 });
 
 e2eTest("[e2e/problems] 2.7 非法难度值", async () => {
-  if (!isE2E) return;
   const { status } = await apiGet("/api/v1/problems?difficulty=invalid");
   if (status !== 400) throw new Error("期望 400");
   console.log("  ✓ 非法难度 400");
 });
 
 e2eTest("[e2e/problems] 2.8 已发布题目保护版本且在公开域保持可读", async () => {
-  if (!isE2E) return;
   const { status } = await apiDelete(
     await domainProblemPath(problemId),
     adminToken,

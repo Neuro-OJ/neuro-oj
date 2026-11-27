@@ -17,7 +17,6 @@ import {
   BASE_URL,
   e2eTest,
   getAdminToken,
-  isE2E,
   registerUser,
   waitForServer,
 } from "../helper.ts";
@@ -78,7 +77,6 @@ let pinnedId = "";
 let normalId = "";
 
 e2eTest("[e2e/announcements] Setup: 管理员与普通用户就绪", async () => {
-  if (!isE2E) return;
   await waitForServer();
   adminToken = await getAdminToken();
   userToken = await registerUser(
@@ -92,7 +90,6 @@ e2eTest("[e2e/announcements] Setup: 管理员与普通用户就绪", async () =>
 e2eTest(
   "[e2e/announcements] 1. admin 发布公告 → 公开列表可见（置顶优先）",
   async () => {
-    if (!isE2E) return;
     // 先创建普通公告，再创建置顶公告（置顶较新，验证置顶优先而非时间优先）
     const normal = await apiPost(
       "/api/v1/admin/system/announcements",
@@ -151,7 +148,6 @@ e2eTest(
 e2eTest(
   "[e2e/announcements] 1b. 首页轮播数据源契约（per_page=5）",
   async () => {
-    if (!isE2E) return;
     // 首页轮播消费 GET /api/v1/announcements?per_page=5（见 pages/index.vue），
     // 此处验证该数据契约：分页参数、轮播渲染字段、置顶优先、不含 content 全文。
     const res = await apiGet("/api/v1/announcements?per_page=5");
@@ -190,7 +186,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/announcements] 2. 非 admin 无写权限", async () => {
-  if (!isE2E) return;
   const res = await apiPost(
     "/api/v1/admin/system/announcements",
     { title: "越权", content: "x" },
@@ -205,7 +200,6 @@ e2eTest("[e2e/announcements] 2. 非 admin 无写权限", async () => {
 e2eTest(
   "[e2e/announcements] 3. admin 下架 → 公开列表消失 + 详情 404",
   async () => {
-    if (!isE2E) return;
     // 下架置顶公告
     const unpublish = await apiPut(
       `/api/v1/admin/system/announcements/${pinnedId}`,
@@ -250,7 +244,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/announcements] 4. SSE 广播 announcement:updated", async () => {
-  if (!isE2E) return;
   // 并行：连接 SSE 读取事件 + 触发公告更新
   const eventPromise = readSSEEvents(
     `${BASE_URL}/api/v1/announcements/events`,
@@ -277,7 +270,6 @@ e2eTest("[e2e/announcements] 4. SSE 广播 announcement:updated", async () => {
 e2eTest(
   "[e2e/announcements] 5. 公告管理只授予平台管理员",
   async () => {
-    if (!isE2E) return;
     // 自定义 RBAC 已删除：公告治理只随平台 admin 角色授予，普通用户即使被
     // 邀请进域也不能管理公告。
     const userRes = await apiGet(
@@ -338,7 +330,6 @@ e2eTest(
 );
 
 e2eTest("[e2e/announcements] Cleanup: 删除公告", async () => {
-  if (!isE2E) return;
   if (pinnedId) {
     await apiDelete(
       `/api/v1/admin/system/announcements/${pinnedId}`,

@@ -15,9 +15,9 @@
  *   重算（[`MASTERY_PROTECTION_LOOKBACK_MS`] 窗口内每轮幂等重算）。
  */
 import { and, eq, sql } from "drizzle-orm";
-import { userActorFromAuthenticatedId } from "../../modules/access/contracts/actor.ts";
+import { userActorFromAuthenticatedId } from "../../shared/access/actor.ts";
 import { loadDomainProblemProtection } from "../../modules/access/index.ts";
-import { getSetting } from "../../modules/platform/index.ts";
+import { getSetting } from "../../shared/config/system-settings.ts";
 import {
   type ClaimedTask,
   type TaskHandler,

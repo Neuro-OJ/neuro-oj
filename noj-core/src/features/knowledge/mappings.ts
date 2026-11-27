@@ -15,7 +15,7 @@
  * 只接受 UUID（见 `parseProblemId`）。
  */
 import { and, count, eq, inArray, ne } from "drizzle-orm";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
 import { loadDomainProblemProtection } from "../../modules/access/index.ts";
 import { getDb } from "../../shared/db/connection.ts";
 import {
@@ -30,8 +30,8 @@ import {
   ValidationError,
 } from "../../shared/base/errors.ts";
 import { assertProblemEditPermissionForActor } from "../../modules/problems/index.ts";
-import { recordAudit } from "../../modules/platform/index.ts";
-import type { AuditDetail } from "../../modules/platform/index.ts";
+import { recordAudit } from "../../shared/audit/audit-log.ts";
+import type { AuditDetail } from "../../shared/audit/types.ts";
 
 /** 每题最多次要知识点数。 */
 export const MAX_SECONDARY_NODES = 3;

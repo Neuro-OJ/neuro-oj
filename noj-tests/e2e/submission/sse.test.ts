@@ -13,7 +13,6 @@ import {
   CODE_SAMPLES,
   e2eTest,
   getProblemIdByNumber,
-  isE2E,
   registerUser,
   submitCode,
   TEST_PASSWORD,
@@ -81,7 +80,6 @@ async function readSSEEvents(
 }
 
 e2eTest("[e2e/sse] Setup", async () => {
-  if (!isE2E) return;
   await waitForServer();
   const ts = Date.now().toString(36);
   token = await registerUser(
@@ -104,7 +102,6 @@ e2eTest("[e2e/sse] Setup", async () => {
 });
 
 e2eTest("[e2e/sse] 1.1 未认证用户 SSE 返回 401", async () => {
-  if (!isE2E) return;
   const res = await fetch(
     `${BASE_URL}/api/v1/domains/main/submissions/00000000-0000-0000-0000-000000000000/events`,
   );
@@ -115,7 +112,6 @@ e2eTest("[e2e/sse] 1.1 未认证用户 SSE 返回 401", async () => {
 });
 
 e2eTest("[e2e/sse] 1.2 队列 SSE 未认证返回 401", async () => {
-  if (!isE2E) return;
   const res = await fetch(`${BASE_URL}/api/v1/domains/main/queue/events`);
   if (res.status !== 401) {
     throw new Error("期望 401, 实际 " + res.status);
@@ -124,7 +120,6 @@ e2eTest("[e2e/sse] 1.2 队列 SSE 未认证返回 401", async () => {
 });
 
 e2eTest("[e2e/sse] 1.3 队列 SSE 连接建立收到初始状态", async () => {
-  if (!isE2E) return;
   const events = await readSSEEvents(
     `${BASE_URL}/api/v1/domains/main/queue/events`,
     token,
@@ -140,7 +135,6 @@ e2eTest("[e2e/sse] 1.3 队列 SSE 连接建立收到初始状态", async () => {
 });
 
 e2eTest("[e2e/sse] 1.4 提交状态 SSE 端点连接正常", async () => {
-  if (!isE2E) return;
   const sid = submissionId || "00000000-0000-0000-0000-000000000000";
   const res = await fetch(
     `${BASE_URL}/api/v1/domains/main/submissions/${sid}/events`,

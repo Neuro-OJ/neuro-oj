@@ -14,7 +14,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../shared/db/connection.ts";
 import type { DbRoot } from "../../shared/db/executor.ts";
-import type { UserActor } from "../../modules/access/contracts/actor.ts";
+import type { UserActor } from "../../shared/access/actor.ts";
 import {
   legalDocuments,
   legalDocumentVersions,
@@ -26,7 +26,7 @@ import type {
   LegalVersionSummary,
 } from "./types.ts";
 import { isLegalKind } from "./types.ts";
-import { type AuditMeta, recordAudit } from "../../modules/platform/index.ts";
+import { type AuditMeta, recordAudit } from "../../shared/audit/audit-log.ts";
 
 type LegalReader = Pick<DbRoot, "select">;
 
