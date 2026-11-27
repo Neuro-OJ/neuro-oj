@@ -133,7 +133,7 @@ onUnmounted(() => {
 <template>
   <UModal :open="open" :ui="{ content: 'sm:max-w-xl' }" @update:open="(val: boolean) => emit('update:open', val)">
     <template #content>
-      <div class="flex flex-col overflow-hidden rounded-lg bg-white border border-border shadow-modal">
+      <div class="flex flex-col overflow-hidden rounded-lg bg-bg-panel border border-border shadow-modal">
         <!-- 搜索输入框 -->
         <div class="flex items-center gap-3 px-4 py-3.5 border-b border-border bg-bg-page/40">
           <UIcon name="i-lucide-search" class="size-4.5 text-text-muted shrink-0" />
@@ -145,7 +145,7 @@ onUnmounted(() => {
             class="flex-1 bg-transparent border-none text-sm text-text placeholder:text-text-muted focus:outline-none"
             @keydown="onKeydown"
           />
-          <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-white border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)]">
+          <kbd class="px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-bg-panel border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)]">
             ESC 关闭
           </kbd>
         </div>
@@ -192,8 +192,8 @@ onUnmounted(() => {
         <!-- 底部快捷提示 -->
         <div class="flex items-center justify-between px-4 py-2 text-[11px] text-text-muted border-t border-border bg-bg-page/50">
           <div class="flex items-center gap-3">
-            <span><kbd class="font-mono bg-white px-1 py-0.5 rounded border border-border">↑</kbd> <kbd class="font-mono bg-white px-1 py-0.5 rounded border border-border">↓</kbd> 选择</span>
-            <span><kbd class="font-mono bg-white px-1 py-0.5 rounded border border-border">Enter</kbd> 跳转</span>
+            <span><kbd class="font-mono bg-bg-panel px-1 py-0.5 rounded border border-border">↑</kbd> <kbd class="font-mono bg-bg-panel px-1 py-0.5 rounded border border-border">↓</kbd> 选择</span>
+            <span><kbd class="font-mono bg-bg-panel px-1 py-0.5 rounded border border-border">Enter</kbd> 跳转</span>
           </div>
           <span>Neuro OJ 管理工作站</span>
         </div>

@@ -1,7 +1,7 @@
 <template>
   <div class="w-full max-w-[380px] relative">
     <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
-    <div class="bg-white border border-border rounded-lg p-8">
+    <div class="bg-bg-panel border border-border rounded-lg p-8">
       <h1 class="text-22px font-bold text-center mb-6 text-text">修改密码</h1>
 
       <form @submit.prevent="handleSubmit">
@@ -16,7 +16,7 @@
               placeholder="请输入当前密码"
               autocomplete="current-password"
               :disabled="loading"
-              class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+              class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-bg-panel outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               @focus="fieldErrors.oldPassword = ''"
             />
             <button type="button"
@@ -47,7 +47,7 @@
               placeholder="至少 8 位，需包含大小写字母和数字"
               autocomplete="new-password"
               :disabled="loading"
-              class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+              class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-bg-panel outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               @focus="fieldErrors.newPassword = ''"
               @blur="validateNewPasswordField"
             />
@@ -79,7 +79,7 @@
               placeholder="再次输入新密码"
               autocomplete="new-password"
               :disabled="loading"
-              class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-white outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
+              class="w-full px-3 py-2 pl-9 border-[1.5px] border-border rounded-md text-sm text-text bg-bg-panel outline-none transition-[border-color] duration-200 focus:border-primary disabled:opacity-60 disabled:cursor-not-allowed"
               @focus="fieldErrors.confirmPassword = ''"
             />
             <button type="button"
@@ -213,77 +213,3 @@ async function handleLogout() {
   router.replace('/login');
 }
 </script>
-
-<style>
-/* Vue Transition: slide (用于 error banner) */
-.slide-enter-active {
-  transition: all 0.3s ease-out;
-}
-.slide-leave-active {
-  transition: all 0.2s ease-in;
-}
-.slide-enter-from {
-  transform: translateX(-50%) translateY(-20px);
-  opacity: 0;
-}
-.slide-leave-to {
-  transform: translateX(-50%) translateY(-20px);
-  opacity: 0;
-}
-
-/* Vue Transition: drop (用于 field errors) */
-.drop-enter-active {
-  animation: dropIn 0.25s ease both;
-}
-.drop-leave-active {
-  animation: dropOut 0.2s ease both;
-}
-
-@keyframes dropIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes dropOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-/* Vue Transition: icon (用于密码可见切换) */
-.icon-enter-active,
-.icon-leave-active {
-  transition: opacity 0.18s linear, transform 0.18s linear;
-}
-.icon-enter-from {
-  opacity: 0;
-  transform: translate(-6px, -6px);
-}
-.icon-leave-to {
-  opacity: 0;
-  transform: translate(6px, 6px);
-}
-
-/* @keyframes fadeInUp (用于入场动画) */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>

@@ -286,7 +286,7 @@ async function confirmDeleteUser(user: User) {
       <input
         type="text"
         placeholder="搜索用户名或邮箱…"
-        class="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-lg bg-white text-text placeholder-text-muted outline-none focus:border-info-text transition-colors"
+        class="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-lg bg-bg-panel text-text placeholder-text-muted outline-none focus:border-info-text transition-colors"
         @input="searchInput(($event.target as HTMLInputElement).value)"
       />
     </div>

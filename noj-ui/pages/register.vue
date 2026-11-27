@@ -1,7 +1,7 @@
 <template>
   <div class="w-full max-w-[380px] relative">
     <ToastBanner :visible="!!error" color="error" icon="i-lucide-alert-circle" :message="error" @close="clearError" />
-    <div class="bg-white border border-border rounded-lg p-8">
+    <div class="bg-bg-panel border border-border rounded-lg p-8">
       <h1 class="text-22px font-bold text-center mb-6 text-text">{{ t('auth.register') }}</h1>
 
       <!-- issue #426：注册受限提示（注册关闭 / 邮件未配置） -->
@@ -98,7 +98,7 @@
                     </span>
         </div>
 
-        <UButton color="primary" size="md" block class="" type="submit"
+        <UButton color="primary" size="md" block type="submit"
           :disabled="loading || !!registerRestricted || !acceptedLegal">
                     <UIcon name="i-lucide-loader-2" class="animate-spin-slow mr-1.5 size-4.5" v-if="loading"/>
                     {{ loading ? t('auth.registering') : t('auth.register') }}
@@ -311,87 +311,3 @@ async function handleRegister() {
   }
 }
 </script>
-
-<style>
-/* Vue Transition: slide (用于 error banner) */
-.slide-enter-active {
-  transition: all 0.3s ease-out;
-}
-.slide-leave-active {
-  transition: all 0.2s ease-in;
-}
-.slide-enter-from {
-  transform: translateX(-50%) translateY(-20px);
-  opacity: 0;
-}
-.slide-leave-to {
-  transform: translateX(-50%) translateY(-20px);
-  opacity: 0;
-}
-
-/* Vue Transition: drop (用于 field errors) */
-.drop-enter-active {
-  animation: dropIn 0.25s ease both;
-}
-.drop-leave-active {
-  animation: dropOut 0.2s ease both;
-}
-
-@keyframes dropIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes dropOut {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
-
-/* Vue Transition: fade (保留用于可能的将来 overlay) */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* Vue Transition: icon (用于密码可见切换) */
-.icon-enter-active,
-.icon-leave-active {
-  transition: opacity 0.18s linear, transform 0.18s linear;
-}
-.icon-enter-from {
-  opacity: 0;
-  transform: translate(-6px, -6px);
-}
-.icon-leave-to {
-  opacity: 0;
-  transform: translate(6px, 6px);
-}
-
-/* @keyframes fadeInUp (用于入场动画) */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-</style>

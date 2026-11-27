@@ -107,7 +107,7 @@ function isActive(path: string) {
 <template>
   <div class="flex min-h-screen bg-bg-page bg-tech-grid">
     <a href="#admin-main"
-      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
+      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-bg-panel focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
       跳转到主要内容
     </a>
 
@@ -122,7 +122,7 @@ function isActive(path: string) {
 
     <!-- 侧边栏 -->
     <aside
-      class="fixed top-0 left-0 bottom-0 z-50 flex flex-col bg-white border-r border-border transition-[width] duration-200"
+      class="fixed top-0 left-0 bottom-0 z-50 flex flex-col bg-bg-panel border-r border-border transition-[width] duration-200"
       :class="sidebarOpen ? 'w-60' : 'w-0 md:w-15 overflow-hidden md:overflow-visible'"
     >
       <!-- Logo 栏 -->

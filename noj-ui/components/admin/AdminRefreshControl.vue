@@ -66,7 +66,7 @@ function formatRelativeTime(d: Date): string {
       color="neutral"
       variant="outline"
       size="sm"
-      class="text-text-secondary bg-white border-border hover:border-text-secondary"
+      class="text-text-secondary bg-bg-panel border-border hover:border-text-secondary"
       :disabled="refreshing"
       @click="emit('refresh')"
     >

@@ -120,6 +120,6 @@ watch(srcdoc, () => {
     sandbox="allow-scripts"
     referrerpolicy="no-referrer"
     title="题目界面"
-    class="h-full w-full border-0 bg-white"
+    class="h-full w-full border-0 bg-bg-panel"
   />
 </template>

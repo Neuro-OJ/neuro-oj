@@ -204,7 +204,7 @@ function formatRelativeTime(dateStr: string): string {
         <NuxtLink
           v-if="pendingReportsCount > 0"
           to="/admin/reports"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100/50 transition-colors no-underline"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-900 bg-bg-panel border border-amber-300 rounded hover:bg-amber-100/50 transition-colors no-underline"
         >
           前往处理举报
           <UIcon name="i-lucide-arrow-right" class="size-3.5" />
@@ -212,7 +212,7 @@ function formatRelativeTime(dateStr: string): string {
         <NuxtLink
           v-if="queueStats && queueStats.pending_count > 10"
           to="/d/main/queue"
-          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-900 bg-white border border-amber-300 rounded hover:bg-amber-100/50 transition-colors no-underline"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-amber-900 bg-bg-panel border border-amber-300 rounded hover:bg-amber-100/50 transition-colors no-underline"
         >
           查看评测队列
         </NuxtLink>
@@ -220,13 +220,13 @@ function formatRelativeTime(dateStr: string): string {
     </div>
 
     <!-- 加载中状态 -->
-    <div v-if="statsLoading && stats.length === 0" class="flex flex-col items-center justify-center gap-3 py-16 bg-white border border-border rounded-lg shadow-card">
+    <div v-if="statsLoading && stats.length === 0" class="flex flex-col items-center justify-center gap-3 py-16 bg-bg-panel border border-border rounded-lg shadow-card">
       <UIcon name="i-lucide-loader-2" class="animate-spin size-7 text-primary" />
       <span class="text-sm text-text-secondary">正在获取系统监控数据...</span>
     </div>
 
     <!-- 错误状态 -->
-    <div v-else-if="statsError && stats.length === 0" class="flex flex-col items-center justify-center gap-3 py-16 bg-white border border-border rounded-lg shadow-card text-error-text">
+    <div v-else-if="statsError && stats.length === 0" class="flex flex-col items-center justify-center gap-3 py-16 bg-bg-panel border border-border rounded-lg shadow-card text-error-text">
       <UIcon name="i-lucide-alert-circle" class="size-7" />
       <span class="text-sm font-medium">{{ statsError }}</span>
       <UButton color="neutral" variant="outline" size="sm" class="mt-2" @click="loadStats()">重试加载</UButton>
@@ -238,7 +238,7 @@ function formatRelativeTime(dateStr: string): string {
         <div
           v-for="card in stats"
           :key="card.label"
-          class="flex flex-col justify-between p-5 bg-white border border-border rounded-lg shadow-card hover:border-primary/40 transition-colors"
+          class="flex flex-col justify-between p-5 bg-bg-panel border border-border rounded-lg shadow-card hover:border-primary/40 transition-colors"
         >
           <div class="flex items-center justify-between gap-3 mb-3">
             <span class="text-xs font-medium text-text-secondary">{{ card.label }}</span>
@@ -267,7 +267,7 @@ function formatRelativeTime(dateStr: string): string {
       <!-- 态势与服务中心：双栏布局 -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- 左侧 2 栏：评测队列与实时沙箱态势 -->
-        <div class="lg:col-span-2 flex flex-col gap-4 p-5 sm:p-6 bg-white border border-border rounded-lg shadow-card">
+        <div class="lg:col-span-2 flex flex-col gap-4 p-5 sm:p-6 bg-bg-panel border border-border rounded-lg shadow-card">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <div class="size-7 rounded bg-primary-bg text-primary flex items-center justify-center">
@@ -362,7 +362,7 @@ function formatRelativeTime(dateStr: string): string {
         <!-- 右侧 1 栏：快捷操作与最近审计 -->
         <div class="flex flex-col gap-6">
           <!-- 快捷操作 Hub -->
-          <div class="p-5 bg-white border border-border rounded-lg shadow-card">
+          <div class="p-5 bg-bg-panel border border-border rounded-lg shadow-card">
             <h2 class="text-sm font-bold text-text mb-3 flex items-center gap-1.5">
               <UIcon name="i-lucide-zap" class="size-4 text-primary" />
               高频快捷操作
@@ -384,7 +384,7 @@ function formatRelativeTime(dateStr: string): string {
           </div>
 
           <!-- 最近系统审计动态 -->
-          <div class="p-5 bg-white border border-border rounded-lg shadow-card flex-1">
+          <div class="p-5 bg-bg-panel border border-border rounded-lg shadow-card flex-1">
             <div class="flex items-center justify-between mb-3">
               <h2 class="text-sm font-bold text-text flex items-center gap-1.5">
                 <UIcon name="i-lucide-scroll-text" class="size-4 text-text-secondary" />

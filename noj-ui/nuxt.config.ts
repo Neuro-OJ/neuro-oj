@@ -1,4 +1,4 @@
-import { CLIENT_ONLY_ROUTES } from './utils/ssr-routes';
+import { withClientOnlyRouteRules } from './utils/ssr-routes';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -209,23 +209,13 @@ export default defineNuxtConfig({
   // 序列化；同时同一路径下存在按用户鉴权/个性化的接口（例如 U 型题列表），缓存会
   // 导致请求挂起、复用错误响应，甚至把一个用户的数据暴露给另一个用户。需要缓存时，
   // 应在明确的、非个性化 server handler 中单独实现。
-  routeRules: {
-    ...Object.fromEntries(CLIENT_ONLY_ROUTES.map((path) => [path, { ssr: false }])),
+  routeRules: withClientOnlyRouteRules({
     '/api/bff/**': { headers: { 'cache-control': 'private, no-store' } },
     '/workspaces': { headers: { 'cache-control': 'no-store' } },
     '/my/submissions': { ssr: true, headers: { 'cache-control': 'no-store' } },
-    '/my/submissions/**': { ssr: false, headers: { 'cache-control': 'no-store' } },
+    '/my/submissions/**': { headers: { 'cache-control': 'no-store' } },
     '/d/**': { headers: { 'cache-control': 'private, no-store' } },
-    '/d/*/members': { ssr: false },
-    '/d/*/settings': { ssr: false },
-    '/d/*/editor/**': { ssr: false },
-    '/d/*/problems/new': { ssr: false },
-    '/d/*/problem-bindings': { ssr: false },
-    '/d/*/trainings/new': { ssr: false },
-    '/d/*/trainings/*/edit': { ssr: false },
-    '/d/*/classrooms/*/contest-remediation': { ssr: false },
-    '/d/*/submission-jobs/**': { ssr: false },
-    '/join': { ssr: false, headers: { 'cache-control': 'no-store' } },
+    '/join': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/domains/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/instance/queue/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/me/**': { headers: { 'cache-control': 'no-store' } },
@@ -233,7 +223,7 @@ export default defineNuxtConfig({
     '/api/v1/submissions/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/community/**': { headers: { 'cache-control': 'no-store' } },
     '/api/v1/users/me/**': { headers: { 'cache-control': 'no-store' } },
-  },
+  }),
 
   nitro: {
     preset: 'deno-server',

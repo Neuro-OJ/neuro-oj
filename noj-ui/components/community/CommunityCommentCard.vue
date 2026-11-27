@@ -49,7 +49,7 @@ async function save() {
 </script>
 
 <template>
-  <article class="rounded border border-border bg-white p-4">
+  <article class="rounded border border-border bg-bg-panel p-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap items-center gap-2">
         <UserIdentity :user="row.author" size="sm" />

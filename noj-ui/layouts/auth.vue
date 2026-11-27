@@ -1,6 +1,6 @@
 <template>
     <div class="flex flex-col min-h-screen bg-bg-page bg-tech-grid">
-        <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-white focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
+        <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[200] focus:bg-bg-panel focus:text-text focus:px-4 focus:py-2 focus:rounded-md focus:shadow-modal">
             跳转到主要内容
         </a>
         <Navbar />

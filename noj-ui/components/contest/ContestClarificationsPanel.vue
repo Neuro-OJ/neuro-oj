@@ -167,7 +167,7 @@ onMounted(() => void load())
     <!-- 提问表单：仅竞赛进行期间且已参赛用户可见 -->
     <form v-if="canAsk" class="rounded-xl border border-border bg-bg-page p-4" @submit.prevent="submitQuestion">
       <div class="mb-3 grid gap-3 sm:grid-cols-[220px_1fr]">
-        <select v-model="questionProblemId" class="rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary">
+        <select v-model="questionProblemId" class="rounded-lg border border-border bg-bg-panel px-3 py-2 text-sm outline-none focus:border-primary">
           <option value="">全局提问</option>
           <option v-for="problem in problems" :key="problem.problem_id" :value="problem.problem_id">{{ problem.label }}. {{ problem.title }}</option>
         </select>
@@ -175,7 +175,7 @@ onMounted(() => void load())
           v-model="questionContent"
           rows="3"
           maxlength="5000"
-          class="w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+          class="w-full resize-y rounded-lg border border-border bg-bg-panel px-3 py-2 text-sm outline-none focus:border-primary"
           placeholder="描述你的疑问（可挂到具体题目，或选择全局提问）"
         />
       </div>
@@ -194,7 +194,7 @@ onMounted(() => void load())
 
     <!-- 答疑流：提问 + 回复线程 -->
     <div v-else class="space-y-4">
-      <div v-for="clarification in clarifications" :key="clarification.id" class="overflow-hidden rounded-xl border border-border bg-white">
+      <div v-for="clarification in clarifications" :key="clarification.id" class="overflow-hidden rounded-xl border border-border bg-bg-panel">
         <div class="px-5 py-4">
           <div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
             <UserIdentity :user="clarification.sender" size="sm" />
@@ -229,13 +229,13 @@ onMounted(() => void load())
               v-model="draftFor(clarification.id).content"
               rows="3"
               maxlength="5000"
-              class="mb-2 w-full resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm outline-none focus:border-primary"
+              class="mb-2 w-full resize-y rounded-lg border border-border bg-bg-panel px-3 py-2 text-sm outline-none focus:border-primary"
               placeholder="输入回复内容"
             />
             <div class="flex flex-wrap items-center gap-3">
               <div class="flex items-center gap-1 rounded-lg border border-border bg-bg-page p-1 text-xs">
-                <button type="button" class="rounded-md px-2.5 py-1.5" :class="draftFor(clarification.id).isPublic ? 'bg-white text-success-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = true"><UIcon name="i-lucide-globe" class="mr-1 size-3" />公开</button>
-                <button type="button" class="rounded-md px-2.5 py-1.5" :class="!draftFor(clarification.id).isPublic ? 'bg-white text-warning-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = false"><UIcon name="i-lucide-lock" class="mr-1 size-3" />私密</button>
+                <button type="button" class="rounded-md px-2.5 py-1.5" :class="draftFor(clarification.id).isPublic ? 'bg-bg-panel text-success-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = true"><UIcon name="i-lucide-globe" class="mr-1 size-3" />公开</button>
+                <button type="button" class="rounded-md px-2.5 py-1.5" :class="!draftFor(clarification.id).isPublic ? 'bg-bg-panel text-warning-text shadow-sm' : 'text-text-muted'" @click="draftFor(clarification.id).isPublic = false"><UIcon name="i-lucide-lock" class="mr-1 size-3" />私密</button>
               </div>
               <UButton type="button" size="sm" color="primary" :disabled="replying" @click="submitReply(clarification.id)">{{ replying ? '提交中...' : '提交回复' }}</UButton>
               <UButton type="button" size="sm" variant="ghost" @click="replyingTo = null; replyError = ''">取消</UButton>

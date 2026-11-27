@@ -78,7 +78,7 @@ function isAnswer(key: string): boolean {
 <template>
   <div
     id="objective-question-editor"
-    class="flex flex-col gap-4 rounded-lg border border-primary/40 bg-white p-4 shadow-card"
+    class="flex flex-col gap-4 rounded-lg border border-primary/40 bg-bg-panel p-4 shadow-card"
     @keydown.meta.enter.prevent="emit('save', false)"
     @keydown.ctrl.enter.prevent="emit('save', false)"
   >

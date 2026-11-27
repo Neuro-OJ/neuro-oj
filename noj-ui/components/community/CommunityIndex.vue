@@ -415,8 +415,8 @@ onMounted(() => {
     <UAlert v-if="initialError" color="error" :title="extractApiError(initialError).message">
       <template #actions><UButton variant="outline" :loading="initialStatus === 'pending'" @click="retryInitial()">重试加载社区</UButton></template>
     </UAlert>
-    <div v-else-if="!config?.enabled" class="rounded-lg border border-border bg-white p-8 text-center text-text-secondary">社区功能暂未启用。</div>
-    <div v-else-if="enabledTypes.length === 0" class="rounded-lg border border-border bg-white p-8 text-center text-text-secondary">所有内容模块均已关闭，暂无可用功能。</div>
+    <div v-else-if="!config?.enabled" class="rounded-lg border border-border bg-bg-panel p-8 text-center text-text-secondary">社区功能暂未启用。</div>
+    <div v-else-if="enabledTypes.length === 0" class="rounded-lg border border-border bg-bg-panel p-8 text-center text-text-secondary">所有内容模块均已关闭，暂无可用功能。</div>
     <template v-else>
       <div class="mb-6 flex gap-2 overflow-x-auto border-b border-border" role="tablist">
         <button
@@ -435,13 +435,13 @@ onMounted(() => {
         </button>
       </div>
 
-      <form class="mb-6 flex flex-wrap gap-3 rounded-lg border border-border bg-white p-4 shadow-card" @submit.prevent="applySearch">
+      <form class="mb-6 flex flex-wrap gap-3 rounded-lg border border-border bg-bg-panel p-4 shadow-card" @submit.prevent="applySearch">
         <label class="min-w-52 flex-1"><span class="mb-1 block text-xs text-text-secondary">标题或正文</span><div class="relative"><UIcon name="i-lucide-search" class="absolute left-3 top-2.5 text-text-secondary size-4" /><input v-model="searchKeyword" class="w-full rounded border border-border py-2 pl-9 pr-3 text-sm" placeholder="搜索帖子标题或正文"></div></label>
         <label class="min-w-44 flex-1"><span class="mb-1 block text-xs text-text-secondary">关联题目 ID</span><input v-model="searchProblemId" class="w-full rounded border border-border px-3 py-2 text-sm" placeholder="例如 1001"></label>
         <div class="flex items-end gap-2"><UButton color="primary" type="submit"><UIcon name="i-lucide-search" class="size-4" />搜索</UButton><UButton color="primary" variant="outline" v-if="isFiltering"  type="button" @click="clearSearch">清除</UButton></div>
       </form>
 
-      <form v-if="showEditor" class="mb-6 rounded-lg border border-border bg-white p-5 shadow-card" @submit.prevent="publish">
+      <form v-if="showEditor" class="mb-6 rounded-lg border border-border bg-bg-panel p-5 shadow-card" @submit.prevent="publish">
         <div class="mb-3 flex items-center justify-between gap-2">
           <h2 class="font-semibold">发布{{ typeLabel[activeType] }}</h2>
         </div>
@@ -449,7 +449,7 @@ onMounted(() => {
         <div v-if="activeType === 'solution'" class="relative mb-3">
           <input v-model="problemQuery" class="w-full rounded border border-border px-3 py-2" placeholder="搜索题目（输入至少 2 个字符）或直接填题目 ID" @focus="searchProblemIdChanged" @input="searchProblems" @blur="delayCloseProblemDropdown">
           <span v-if="problemQuery" class="absolute right-2 top-2 cursor-pointer text-xs text-text-secondary hover:text-primary" @mousedown.prevent="clearProblemSelection">清除</span>
-          <ul v-if="showProblemDropdown" class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-border bg-white shadow-modal">
+          <ul v-if="showProblemDropdown" class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-border bg-bg-panel shadow-modal">
             <li v-if="problemSearching" class="px-3 py-2 text-xs text-text-secondary">搜索中…</li>
             <li v-for="p in problemResults" :key="p.id" class="cursor-pointer px-3 py-2 text-sm hover:bg-primary-bg" @mousedown.prevent="selectProblem(p)">{{ p.display_id }} · {{ p.title }}</li>
             <li v-if="!problemSearching && problemResults.length === 0" class="px-3 py-2 text-xs text-text-secondary">无匹配题目</li>
@@ -484,7 +484,7 @@ onMounted(() => {
         <UButton color="primary" variant="outline" class="mt-4" v-if="isFiltering"  type="button" @click="clearSearch">清除筛选</UButton>
       </div>
       <div v-else class="space-y-4">
-        <article v-for="item in posts" :key="item.post.id" class="rounded-lg border border-border bg-white p-5 shadow-card">
+        <article v-for="item in posts" :key="item.post.id" class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
           <div class="mb-2 flex flex-wrap items-center gap-2">
             <span class="rounded bg-primary-bg px-2 py-0.5 text-xs text-primary">{{ typeLabel[item.post.type] }}</span>
             <span v-if="item.post.status === 'pending'" class="rounded bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">审核中</span>

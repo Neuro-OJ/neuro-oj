@@ -208,7 +208,7 @@ function formatDate(iso: string): string {
 
       <template v-if="profile">
       <!-- 用户信息卡片 -->
-      <div class="bg-white border border-border rounded-xl overflow-hidden">
+      <div class="bg-bg-panel border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-6 sm:px-8 sm:py-8">
           <div class="flex items-start justify-between">
             <div class="flex items-center gap-5">
@@ -239,7 +239,7 @@ function formatDate(iso: string): string {
       <!-- 统计卡片 -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <!-- 通过 / 总提交（合并，通过数字更大且为绿色） -->
-        <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
+        <div class="bg-bg-panel border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">通过 / 提交</span>
           <p class="flex items-baseline gap-1.5">
             <span class="text-3xl font-bold text-green-600">{{ profile.stats.accepted }}</span>
@@ -247,7 +247,7 @@ function formatDate(iso: string): string {
           </p>
         </div>
         <!-- 通过率（蓝色渐变填充背景，随百分比变化） -->
-        <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1 overflow-hidden">
+        <div class="bg-bg-panel border border-border rounded-xl px-5 py-4 flex flex-col gap-1 overflow-hidden">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">通过率</span>
           <span class="text-2xl font-bold text-text">
             {{ (profile.stats.acceptance_rate * 100).toFixed(1) }}%
@@ -259,14 +259,14 @@ function formatDate(iso: string): string {
             ></div>
           </div>
         </div>
-        <div class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
+        <div class="bg-bg-panel border border-border rounded-xl px-5 py-4 flex flex-col gap-1">
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">解题数</span>
           <span class="text-2xl font-bold text-primary">{{ profile.stats.solved_count }}</span>
         </div>
         <!-- 全站排名（仅上榜用户显示） -->
         <div
           v-if="profile.rank !== null"
-          class="bg-white border border-border rounded-xl px-5 py-4 flex flex-col gap-1"
+          class="bg-bg-panel border border-border rounded-xl px-5 py-4 flex flex-col gap-1"
         >
           <span class="text-xs text-text-muted font-medium uppercase tracking-wide">全站排名</span>
           <NuxtLink
@@ -279,7 +279,7 @@ function formatDate(iso: string): string {
       </div>
 
       <!-- 我的创作：题解 -->
-      <div class="rounded-xl border border-border bg-white px-5 py-4">
+      <div class="rounded-xl border border-border bg-bg-panel px-5 py-4">
         <h3 class="text-sm font-semibold text-text">我的创作</h3>
         <div class="mt-3 flex items-center gap-8">
           <div class="flex flex-col gap-1"><span class="text-xs text-text-muted">题解</span><p class="text-2xl font-bold text-text">{{ profile.community_stats.solution_count }}</p></div>
@@ -287,7 +287,7 @@ function formatDate(iso: string): string {
       </div>
 
       <!-- 活跃度（issue #184）：连续天数 + 累计 + 本月签到日历 -->
-      <section class="rounded-xl border border-border bg-white p-6">
+      <section class="rounded-xl border border-border bg-bg-panel p-6">
         <h2 class="text-base font-semibold text-text">活跃度</h2>
 
         <div v-if="checkinLoading" class="mt-3 text-sm text-text-muted">加载中...</div>
@@ -308,7 +308,7 @@ function formatDate(iso: string): string {
             <!-- 数据卡片（竖屏在上，横屏在左；两卡各占 (日历高-间距)/2，与右侧日历等高） -->
             <div class="flex shrink-0 flex-col self-stretch gap-3 lg:w-72">
               <!-- 卡片 1：当前连续 | 最长连续 -->
-              <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border rounded-lg border border-border bg-white">
+              <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border rounded-lg border border-border bg-bg-panel">
                 <div class="flex flex-col gap-1 px-4 py-3 text-center">
                   <span class="text-xs text-text-muted">当前连续</span>
                   <p class="text-xl font-bold text-primary">{{ checkinStatsData.current_streak }}<span class="text-xs font-normal text-text-muted"> 天</span></p>
@@ -319,7 +319,7 @@ function formatDate(iso: string): string {
                 </div>
               </div>
               <!-- 卡片 2：本月签到 + 累计签到 -->
-              <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border rounded-lg border border-border bg-white">
+              <div class="grid min-h-0 flex-1 grid-cols-2 divide-x divide-border rounded-lg border border-border bg-bg-panel">
                 <div class="flex flex-col gap-1 px-4 py-3 text-center">
                   <span class="text-xs text-text-muted">本月签到</span>
                   <p class="text-xl font-bold text-text">{{ checkinStatsData.month_days }}<span class="text-xs font-normal text-text-muted"> 天</span></p>
@@ -331,7 +331,7 @@ function formatDate(iso: string): string {
               </div>
             </div>
             <!-- 贡献图（横屏时在右侧，与左侧两卡片组合等高） -->
-            <div class="flex min-w-0 flex-1 items-center rounded-lg border border-border bg-white p-4">
+            <div class="flex min-w-0 flex-1 items-center rounded-lg border border-border bg-bg-panel p-4">
               <CheckinContributionGraph
                 :days="contributionDays"
                 :start-date="contributionStart"
@@ -342,7 +342,7 @@ function formatDate(iso: string): string {
         </template>
       </section>
 
-      <section v-if="profile.solutions.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <section v-if="profile.solutions.length" class="bg-bg-panel border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-messages-square" class="text-primary size-4.5" />
@@ -357,7 +357,7 @@ function formatDate(iso: string): string {
       </section>
 
       <!-- 已通过题目 -->
-      <div v-if="profile.solved_problems.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <div v-if="profile.solved_problems.length" class="bg-bg-panel border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-check-circle" class="text-green-600 size-4.5" />
@@ -395,7 +395,7 @@ function formatDate(iso: string): string {
       </div>
 
       <!-- 创建的题目 -->
-      <div v-if="createdProblems.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <div v-if="createdProblems.length" class="bg-bg-panel border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-file-text" class="text-primary size-4.5" />
@@ -431,7 +431,7 @@ function formatDate(iso: string): string {
       </div>
 
       <!-- 题单（默认域 main） -->
-      <div v-if="profileTrainings.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <div v-if="profileTrainings.length" class="bg-bg-panel border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-list-todo" class="text-primary size-4.5" />
@@ -452,7 +452,7 @@ function formatDate(iso: string): string {
       </div>
 
       <!-- 最近提交 -->
-      <div v-if="profile.recent_submissions.length" class="bg-white border border-border rounded-xl overflow-hidden">
+      <div v-if="profile.recent_submissions.length" class="bg-bg-panel border border-border rounded-xl overflow-hidden">
         <div class="px-6 py-4 border-b border-border bg-bg-page">
           <h2 class="text-base font-semibold flex items-center gap-2">
             <UIcon name="i-lucide-clock" class="text-text-secondary size-4.5" />

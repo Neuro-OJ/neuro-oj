@@ -62,7 +62,7 @@ await loadBoards()
 </script>
 
 <template>
-  <section class="rounded-lg border border-border bg-white p-5 shadow-card">
+  <section class="rounded-lg border border-border bg-bg-panel p-5 shadow-card">
     <div class="flex items-center gap-2">
       <UIcon name="i-lucide-layout-list" class="size-4.5" />
       <h2 class="font-semibold">讨论板块</h2>

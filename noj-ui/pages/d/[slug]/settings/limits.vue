@@ -139,7 +139,7 @@ useSeoMeta({ title: '资源额度 - 域设置' });
             </div>
 
             <div class="grid gap-3 sm:grid-cols-3 pt-1">
-              <div class="rounded-md bg-white dark:bg-bg-panel p-3 border border-border">
+              <div class="rounded-md bg-bg-panel dark:bg-bg-panel p-3 border border-border">
                 <span class="text-text-muted block text-xs">成员用量</span>
                 <p class="text-sm font-semibold text-text mt-1">
                   {{ quotas.data.value.data.usage.members }} <span class="text-xs font-normal text-text-muted">人已在班</span>
@@ -147,7 +147,7 @@ useSeoMeta({ title: '资源额度 - 域设置' });
                 <span class="text-[11px] text-text-muted block mt-0.5">预约：{{ quotas.data.value.data.usage.reserved_members }} 人</span>
               </div>
 
-              <div class="rounded-md bg-white dark:bg-bg-panel p-3 border border-border">
+              <div class="rounded-md bg-bg-panel dark:bg-bg-panel p-3 border border-border">
                 <span class="text-text-muted block text-xs">题库条目</span>
                 <p class="text-sm font-semibold text-text mt-1">
                   {{ quotas.data.value.data.usage.problems }} <span class="text-xs font-normal text-text-muted">道题</span>
@@ -155,7 +155,7 @@ useSeoMeta({ title: '资源额度 - 域设置' });
                 <span class="text-[11px] text-text-muted block mt-0.5">预约：{{ quotas.data.value.data.usage.reserved_problems }} 道</span>
               </div>
 
-              <div class="rounded-md bg-white dark:bg-bg-panel p-3 border border-border">
+              <div class="rounded-md bg-bg-panel dark:bg-bg-panel p-3 border border-border">
                 <span class="text-text-muted block text-xs">存储空间占用</span>
                 <p class="text-sm font-semibold text-text mt-1">
                   {{ (quotas.data.value.data.usage.storage_bytes / 1048576).toFixed(2) }} <span class="text-xs font-normal text-text-muted">MiB</span>

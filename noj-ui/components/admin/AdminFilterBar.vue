@@ -23,7 +23,7 @@ function onReset() {
 </script>
 
 <template>
-  <div class="bg-white border border-border rounded-lg p-4">
+  <div class="bg-bg-panel border border-border rounded-lg p-4">
     <div class="flex flex-wrap gap-3">
       <slot />
     </div>

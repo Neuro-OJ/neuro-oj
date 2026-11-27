@@ -121,7 +121,7 @@ const currentBreadcrumb = computed(() => {
           <span>快速直达管理功能...</span>
         </div>
         <kbd
-          class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-white border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">
+          class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono text-text-muted bg-bg-panel border border-border rounded shadow-[0_1px_0_rgba(0,0,0,0.06)] tabular-nums">
           Ctrl K
         </kbd>
       </button>

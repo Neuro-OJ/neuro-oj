@@ -185,7 +185,7 @@ function onRowSelect(_event: Event, row: { original: Record<string, unknown> }) 
 </script>
 
 <template>
-  <div class="flex flex-col bg-white border border-border rounded-lg shadow-card overflow-hidden">
+  <div class="flex flex-col bg-bg-panel border border-border rounded-lg shadow-card overflow-hidden">
     <!-- 批量操作悬浮工具栏 (Batch Actions Toolbar) -->
     <Transition name="fade">
       <div

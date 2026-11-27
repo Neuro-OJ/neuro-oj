@@ -153,14 +153,14 @@ useSeoMeta({ title: '我的学习' });
         <!-- 接下来学什么 -->
         <section aria-labelledby="knowledge-next" class="space-y-3">
           <h2 id="knowledge-next" class="text-lg font-semibold text-text">接下来学什么</h2>
-          <p v-if="showEmptyRecommendations" class="rounded-xl border border-border bg-white px-4 py-6 text-sm text-text-secondary">
+          <p v-if="showEmptyRecommendations" class="rounded-xl border border-border bg-bg-panel px-4 py-6 text-sm text-text-secondary">
             暂无推荐，去题库做几道题吧
           </p>
           <ul v-else class="grid gap-3 md:grid-cols-2">
             <li
               v-for="item in recommendations"
               :key="`${item.node.id}:${item.reason.code}`"
-              class="rounded-xl border border-border bg-white p-4"
+              class="rounded-xl border border-border bg-bg-panel p-4"
               data-testid="recommendation-card"
             >
               <div class="flex items-start justify-between gap-2">
@@ -206,12 +206,12 @@ useSeoMeta({ title: '我的学习' });
         <!-- 掌握度（按当前域汇总） -->
         <section aria-labelledby="knowledge-mastery" class="space-y-3">
           <h2 id="knowledge-mastery" class="text-lg font-semibold text-text">掌握度</h2>
-          <p v-if="!mastery || mastery.total === 0" class="rounded-xl border border-border bg-white px-4 py-6 text-sm text-text-secondary">
+          <p v-if="!mastery || mastery.total === 0" class="rounded-xl border border-border bg-bg-panel px-4 py-6 text-sm text-text-secondary">
             本领域暂无可学习知识点的题目
           </p>
           <div
             v-else
-            class="overflow-hidden rounded-xl border border-border bg-white"
+            class="overflow-hidden rounded-xl border border-border bg-bg-panel"
             data-testid="mastery-summary"
           >
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border px-4 py-3 text-sm">

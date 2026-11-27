@@ -547,6 +547,39 @@
   transform: translateY(-4px);
 }
 
+/* 认证页共用 Vue Transition 与入场动效（集中定义，避免各认证页重复注入全局 <style>） */
+.slide-enter-active {
+  transition: all 0.3s ease-out;
+}
+.slide-leave-active {
+  transition: all 0.2s ease-in;
+}
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(-50%) translateY(-20px);
+  opacity: 0;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ==========================================================================
    终端风格：等宽为主、琥珀色交互、高对比判定色，分深色（默认）与浅色两套。
    app.vue 在 SSR 阶段按 noj-theme cookie 写入 html[data-theme]（见 utils/site-theme.ts）。

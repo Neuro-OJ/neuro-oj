@@ -11,7 +11,7 @@
           role="dialog"
           aria-modal="true"
           aria-label="搜索"
-          class="w-full max-w-2xl bg-white rounded-lg shadow-modal overflow-hidden"
+          class="w-full max-w-2xl bg-bg-panel rounded-lg shadow-modal overflow-hidden"
           @keydown="onKeydown"
         >
           <div class="flex items-center gap-3 px-4 h-14 border-b border-border">
@@ -68,8 +68,8 @@
 
           <div class="flex items-center justify-between px-4 h-10 border-t border-border bg-gray-50 text-xs text-text-muted">
             <div class="flex items-center gap-3">
-              <span><kbd class="px-1.5 py-0.5 bg-white border border-border rounded">↑↓</kbd> 导航</span>
-              <span><kbd class="px-1.5 py-0.5 bg-white border border-border rounded">↵</kbd> 选择</span>
+              <span><kbd class="px-1.5 py-0.5 bg-bg-panel border border-border rounded">↑↓</kbd> 导航</span>
+              <span><kbd class="px-1.5 py-0.5 bg-bg-panel border border-border rounded">↵</kbd> 选择</span>
             </div>
             <NuxtLink
               :to="`/search?q=${encodeURIComponent(query)}&type=all`"

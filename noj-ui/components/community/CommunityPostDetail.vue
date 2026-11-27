@@ -254,7 +254,7 @@ watch(initialData, (value) => {
   <main class="mx-auto w-full max-w-4xl px-6 py-10">
     <UAlert v-if="initialError" color="error" :title="extractApiError(initialError).message" />
     <UButton v-if="initialError" class="mt-3" variant="outline" @click="refresh()">重试</UButton>
-    <article v-if="post" class="mt-4 rounded-lg border border-border bg-white p-6 shadow-card">
+    <article v-if="post" class="mt-4 rounded-lg border border-border bg-bg-panel p-6 shadow-card">
       <template v-if="post.post.status === 'deleted'">
         <p class="py-8 text-center text-text-secondary">该内容已删除。</p>
       </template>
@@ -320,7 +320,7 @@ watch(initialData, (value) => {
 
       <div v-if="rootComments.length === 0" class="rounded-lg border border-dashed border-border p-10 text-center text-text-secondary">还没有评论，来抢沙发吧。</div>
       <div class="space-y-3">
-        <article v-for="item in rootComments" :key="item.comment.id" class="rounded border border-border bg-white p-4">
+        <article v-for="item in rootComments" :key="item.comment.id" class="rounded border border-border bg-bg-panel p-4">
           <CommunityCommentCard
             :row="item"
             :can-comment="canComment"
