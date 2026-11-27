@@ -268,11 +268,15 @@ pub async fn evaluate_scheduled(
             return Ok(result);
         }
     };
+    let checker_extra_files = if checker_source.is_some() {
+        selected_checker_runtime_files(runtime_config, &files)
+    } else {
+        HashMap::new()
+    };
     let checker_executable = if let Some(checker_src) = checker_source {
         match compile_native_checker(
             docker,
-            runtime_config,
-            &files,
+            &checker_extra_files,
             checker_src,
             trusted_image,
             cpu_limit_millicores,
@@ -332,6 +336,7 @@ pub async fn evaluate_scheduled(
                 files.get(&case.output).context("OI 输出文件索引丢失")?,
                 &files,
                 checker_executable.as_deref(),
+                &checker_extra_files,
                 trusted_image,
                 cpu_limit_millicores,
                 instance_id,
@@ -514,6 +519,14 @@ fn selected_checker_compile_files(
     selected_extra_files_from_paths(paths, files)
 }
 
+/// 本地 Docker 后端下，checker 运行容器同样需要注入 `checker_extra_files`（与 go-judge / WASM 保持一致）。
+fn selected_checker_runtime_files(
+    config: &OiRuntimeConfig,
+    files: &HashMap<String, Vec<u8>>,
+) -> HashMap<String, Vec<u8>> {
+    selected_checker_compile_files(config, files)
+}
+
 fn selected_extra_files_from_paths<'a>(
     paths: impl IntoIterator<Item = &'a str>,
     files: &HashMap<String, Vec<u8>>,
@@ -657,8 +670,7 @@ async fn compile_native_program(
 #[allow(clippy::too_many_arguments)]
 async fn compile_native_checker(
     docker: &Docker,
-    config: &OiRuntimeConfig,
-    files: &HashMap<String, Vec<u8>>,
+    checker_extra_files: &HashMap<String, Vec<u8>>,
     checker_source: &[u8],
     image: &str,
     cpu_limit: u64,
@@ -667,7 +679,7 @@ async fn compile_native_checker(
 ) -> Result<Result<Vec<u8>, String>> {
     compile_in_container(
         docker,
-        selected_checker_compile_files(config, files),
+        checker_extra_files.clone(),
         "checker.cpp",
         checker_source,
         checker_compile_command(),
@@ -693,6 +705,7 @@ async fn run_case(
     expected: &[u8],
     files: &HashMap<String, Vec<u8>>,
     checker_executable: Option<&[u8]>,
+    checker_extra_files: &HashMap<String, Vec<u8>>,
     trusted_image: &str,
     cpu_limit_millicores: u64,
     instance_id: &str,
@@ -750,6 +763,7 @@ async fn run_case(
                 cpu_limit_millicores,
                 instance_id,
                 checker_executable,
+                checker_extra_files,
                 input,
                 expected,
                 &output,
@@ -919,6 +933,7 @@ async fn run_checker(
     cpu_limit_millicores: u64,
     instance_id: &str,
     checker_executable: &[u8],
+    checker_extra_files: &HashMap<String, Vec<u8>>,
     input: &[u8],
     expected: &[u8],
     actual: &[u8],
@@ -936,6 +951,13 @@ async fn run_checker(
     )
     .await?;
     let result = async {
+        // 先注入 checker 辅助文件，再注入已编译的 checker 二进制与输入/答案/输出，
+        // 既保障运行期可读 checker_extra_files，又防止辅助文件覆盖核心评测文件。
+        for (path, data) in checker_extra_files {
+            inject_file_to_container(docker, &container_id, path, data)
+                .await
+                .context("注入 checker extra file 失败")?;
+        }
         inject_file_to_container(docker, &container_id, "checker", checker_executable)
             .await
             .context("注入已编译 testlib checker 失败")?;
@@ -1049,12 +1071,39 @@ mod tests {
         ]);
         let user = selected_user_compile_files(&config, &files);
         let checker = selected_checker_compile_files(&config, &files);
+        let checker_runtime = selected_checker_runtime_files(&config, &files);
         assert!(user.contains_key("common.h"));
         assert!(user.contains_key("user.h"));
         assert!(!user.contains_key("judge.h"));
         assert!(checker.contains_key("common.h"));
         assert!(checker.contains_key("judge.h"));
         assert!(!checker.contains_key("user.h"));
+        assert_eq!(checker_runtime, checker);
+    }
+
+    #[test]
+    fn checker_runtime_files_include_nested_path_and_basename_alias() {
+        let config: OiRuntimeConfig = serde_json::from_value(json!({
+            "backend": "native",
+            "languages": ["cc"],
+            "time_limit_ms": 1000,
+            "memory_limit_mb": 256,
+            "checker": { "type": "testlib", "path": "checker.cpp" },
+            "checker_extra_files": ["testdata/dict.txt"],
+            "subtasks": [{
+                "id": "all",
+                "score": 100,
+                "cases": [{ "input": "1.in", "output": "1.out" }]
+            }]
+        }))
+        .unwrap();
+        let files = HashMap::from([("testdata/dict.txt".to_string(), b"secret-dict".to_vec())]);
+        let runtime = selected_checker_runtime_files(&config, &files);
+        assert_eq!(
+            runtime.get("testdata/dict.txt"),
+            Some(&b"secret-dict".to_vec())
+        );
+        assert_eq!(runtime.get("dict.txt"), Some(&b"secret-dict".to_vec()));
     }
 
     #[test]
