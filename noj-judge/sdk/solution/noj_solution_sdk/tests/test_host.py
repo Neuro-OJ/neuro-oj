@@ -769,6 +769,36 @@ class TestHostProcess(unittest.TestCase):
                     pass
             self._cleanup(proc, path)
 
+    def test_fork_per_call_timeout_before_setpgrp_falls_back_to_kill_pid(self):
+        """子进程在 after_in_child 阻塞（尚未 setpgrp）时超时，killpg 抛 ProcessLookupError 后必须回退直杀 PID。"""
+        entry = textwrap.dedent("""
+            import os
+            import time
+            from noj_solution_sdk import register
+
+            os.register_at_fork(after_in_child=lambda: time.sleep(2.0))
+
+            @register
+            def fast():
+                return "ok"
+        """)
+        proc, path = self._start_host(entry, args=["--isolation-mode", "fork_per_call"])
+        try:
+            self._read_frame(proc)  # ready
+            started = time.monotonic()
+            self._send_frame(
+                proc,
+                {"type": "call", "id": "t-early", "fn": "fast", "args": [], "timeout_ms": 80},
+            )
+            resp = self._read_frame(proc)
+            elapsed = time.monotonic() - started
+            self.assertEqual(resp["type"], "error")
+            self.assertEqual(resp["id"], "t-early")
+            self.assertEqual(resp["code"], "CallTimeout")
+            self.assertLess(elapsed, 1.0, f"未回退直杀 PID，等待耗时过长: {elapsed:.2f}s")
+        finally:
+            self._cleanup(proc, path)
+
 
 if __name__ == "__main__":
     unittest.main()

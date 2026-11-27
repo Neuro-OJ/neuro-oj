@@ -382,11 +382,9 @@ def _write_payload_frame(frame: dict) -> None:
 
 
 def _kill_pid_group(pid: int) -> None:
-    """强杀子进程所属进程组（含可能派生的子进程）。"""
+    """强杀子进程所属进程组（含可能派生的子进程）；子进程尚未 setpgrp 时回退直杀 PID。"""
     try:
         os.killpg(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
     except OSError:
         try:
             os.kill(pid, signal.SIGKILL)
