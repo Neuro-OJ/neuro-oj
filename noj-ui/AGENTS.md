@@ -41,6 +41,7 @@ deno fmt / deno lint       # 单独格式化 / 检查
 
 deno task test:theme       # 编辑器主题浏览器回归（先起 UI）
 deno task test:bff:ssr     # 真实 Chromium：首屏 / 点击 / 水合
+(cd ../noj-tests && deno check e2e/browser/*.test.ts)  # 移动 utils/ 等目录后核对跨模块引用
 ```
 
 浏览器类任务首次先装

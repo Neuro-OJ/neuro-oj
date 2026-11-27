@@ -5,8 +5,18 @@
 
 ## 1. 编码规范
 
-- TypeScript/Deno：`deno fmt` + `deno lint`；Rust：`cargo fmt` +
-  `cargo clippy`； Vue：`deno lint` + `deno fmt`（均由 CI 强制）。
+- TypeScript/Deno：`deno fmt` + `deno lint`（`noj-core`、`noj-llm-gateway`、`noj-cli`
+  由 CI 强制）；Rust：`cargo fmt` + `cargo clippy`（由 CI 强制）；Vue：提交前在
+  `noj-ui/` 内跑 `deno task check`（含 `deno fmt --check`、`deno lint` 与类型检查）。
+- **缩进统一 2 空格**：TS / Vue / JSON / YAML / Markdown 列表都用 2 格；Rust 由
+  `cargo fmt` 保证 4 格。各模块 `deno.json` 的 `fmt.indentWidth` 已固定为 2（`noj-ui`
+  未显式写，取 Deno 默认 2），**不要再改成 4**。2026-11 曾尝试全仓改 4 格（2,100+
+  文件），因与并行开发持续冲突而被回滚（#776 合入后 #784 撤回）。
+- **禁止在仓库根目录直接跑全仓 `deno fmt`**：格式化必须在各模块目录下按各自
+  `deno.json` 执行。根目录没有统一的 `deno.json`，直接跑会用 Deno 默认配置
+  （`singleQuote: false`、`lineWidth: 80`）覆盖 `noj-ui` 的 `singleQuote: true` /
+  `lineWidth: 120` 并重排全仓文档与夹具，产生夹带大量无关改动的 diff；若要调整
+  全仓或根目录格式化门禁，应单独立项评审。
 - 中文注释 + 英文标识符。
 - Deno 错误用 `AppError` 继承体系；Rust 用 `anyhow::Result`。
 - 日志生产环境自动脱敏，不得直接输出敏感字段。
