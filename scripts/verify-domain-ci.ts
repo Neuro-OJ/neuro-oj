@@ -261,8 +261,12 @@ for (const domain of coreDomainDirs) {
 if (!ci.jobs.has("core-test-sharded")) {
   fail("ci.yml 缺少 core-test-sharded：Core 全部回归必须由完整分片执行");
 }
-if (!ciText.includes("deno task test:parallel --shards 4 --jobs 2")) {
-  fail("core-test-sharded 必须以 4 片 2 并发执行全部 Core 测试");
+if (
+  !ciText.includes("deno task test:parallel --shards 4 --jobs 1 --shard-index")
+) {
+  fail(
+    "core-test-sharded 必须以 4 分片并行（--shards 4 --jobs 1 --shard-index）执行全量 Core 测试",
+  );
 }
 if (ciText.includes("scripts/test-domain.sh")) {
   fail(

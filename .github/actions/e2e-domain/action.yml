@@ -1,10 +1,18 @@
 name: E2E Domain
-description: 构建完整评测栈并运行指定 Domain 的 E2E 测试（或 UI 浏览器门禁）
+description: 构建完整评测栈并运行指定 Domain / 合并批次的 E2E 测试（或 UI 浏览器门禁）
 
 inputs:
   domain:
-    description: E2E Domain 目录名（如 identity / cross-domain / browser）
+    description: 单个 E2E Domain 目录名（如 submission / contest / cross-domain / browser）或批次标签（配合 domains 使用）
     required: true
+  domains:
+    description: 可选：空格分隔的轻量 API Domain 列表（合并批次运行，复用同一套评测栈）
+    required: false
+    default: ""
+  selected-domains:
+    description: 可选：本次 changes 选中的 E2E Domain JSON 数组（用于在批次中仅运行命中的域）
+    required: false
+    default: ""
   browser:
     description: 是否运行 UI 浏览器门禁（true/false）
     required: false
@@ -26,18 +34,6 @@ runs:
       uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
       with:
         deno-version-file: .dvmrc
-
-    - name: 校验本地 E2E SDK 镜像刷新逻辑
-      run: bash scripts/e2e/check-setup.sh
-      shell: bash
-
-    - name: 校验 LLM Mock 的模型回显与安全读取契约
-      run: python3 -B scripts/e2e/check_llm_mock.py
-      shell: bash
-
-    - name: 校验测试协调服务的屏障契约
-      run: python3 -B scripts/e2e/check_test_coordinator.py
-      shell: bash
 
     # ── 缓存依赖 ──────────────────────────────
 
@@ -66,7 +62,7 @@ runs:
         DENO_DIR: ${{ env.DENO_DIR }}
 
     # 5 个镜像由 e2e.yml 的 e2e-images job 统一构建一次并以 artifact 分发，
-    # 各 Domain job 只加载，避免 12 个 job 各自重复构建（原 9–12 分钟）。
+    # 各 Domain job 只加载，避免各 job 各自重复构建。
     - name: 下载预构建镜像
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
       with:
@@ -96,7 +92,6 @@ runs:
       run: |
         docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME up -d --no-build
         echo "等待 noj-core 健康（bash 轮询 docker inspect，600s 超时）..."
-        # 不再依赖固定容器名：所有查询都经 compose 解析服务对应的容器 ID。
         core_id=$(docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME ps -q noj-core)
         for i in $(seq 1 600); do
           if [ -z "$core_id" ]; then
@@ -124,9 +119,6 @@ runs:
         exit 1
       shell: bash
 
-    # 测试需要 docker exec 进具体容器（Redis 锁定键、MinIO 故障注入、core 重启等）。
-    # Compose 已移除固定 container_name，这里统一把服务解析成容器 ID 写入环境，
-    # 测试与脚本只依赖 ID，不再猜测容器名。
     - name: 解析 E2E 容器 ID
       run: |
         set -euo pipefail
@@ -148,8 +140,6 @@ runs:
         resolve E2E_GATEWAY_CONTAINER noj-llm-gateway
       shell: bash
 
-    # 显式同步屏障协调服务（LLM 治理 Browser 用例）。健康检查走宿主 loopback
-    # 发布端口；它的容器内部只加入 noj-eval-net，evaluator 用容器网络名访问。
     - name: 等待测试协调服务健康
       if: inputs.browser == 'true'
       run: |
@@ -168,7 +158,7 @@ runs:
       shell: bash
 
     # ════════════════════════════════════════════
-    # 3. 测试：API E2E 或 UI 浏览器门禁
+    # 3. 测试：API E2E（单域或合并批次）或 UI 浏览器门禁
     # ════════════════════════════════════════════
 
     - name: E2E 测试 (noj-tests, Domain)
@@ -177,9 +167,27 @@ runs:
       env:
         E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
         E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
-        # 用 env 间接传参，避免把 workflow 输入直接拼进 run 命令
         E2E_DOMAIN: ${{ inputs.domain }}
-      run: deno task test:domain "$E2E_DOMAIN"
+        E2E_DOMAINS: ${{ inputs.domains }}
+        E2E_SELECTED_DOMAINS: ${{ inputs.selected-domains }}
+      run: |
+        set -euo pipefail
+        if [ -n "$E2E_DOMAINS" ]; then
+          paths=()
+          for d in $E2E_DOMAINS; do
+            if [ -z "$E2E_SELECTED_DOMAINS" ] || echo "$E2E_SELECTED_DOMAINS" | jq -e --arg d "$d" 'index($d) != null' >/dev/null; then
+              paths+=("e2e/$d")
+            fi
+          done
+          if [ "${#paths[@]}" -eq 0 ]; then
+            echo "::error::批次 ($E2E_DOMAINS) 未匹配任何选中域（selected=$E2E_SELECTED_DOMAINS），拒绝空跑假绿"
+            exit 1
+          fi
+          echo "运行合并批次 E2E：${paths[*]}"
+          deno task test:api --shard "$E2E_DOMAIN" "${paths[@]}"
+        else
+          deno task test:domain "$E2E_DOMAIN"
+        fi
       shell: bash
 
     - name: 下载浏览器测试 UI
@@ -242,12 +250,11 @@ runs:
         S3_SECRET_KEY: minioadmin
         S3_BUCKET: noj-support-packages
         S3_FORCE_PATH_STYLE: "true"
-      # S3 模式只验收支持包对象链路，不需要 Judge；此时 core 生成的 S3
-      # 预签名 URL 是集群内 http 地址，Judge 会按安全策略拒绝，canary 必然失败。
       run: deno task test:domain submission --filter=e2e/s3-support-pkg --no-canary
       shell: bash
 
     - name: 缓存 Playwright 浏览器
+      id: pw-cache
       if: inputs.browser == 'true'
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
@@ -257,7 +264,7 @@ runs:
           playwright-
 
     - name: 安装 Playwright Chromium
-      if: inputs.browser == 'true'
+      if: inputs.browser == 'true' && steps.pw-cache.outputs.cache-hit != 'true'
       run: deno run -A npm:playwright@1.62.1 install chromium
       shell: bash
 
@@ -270,14 +277,10 @@ runs:
         E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
         E2E_LLM_MOCK_INSPECT_URL: http://localhost:8002/
         E2E_LLM_GOVERNANCE_DATABASE_URL: ${{ env.E2E_DB_URL }}
-        # 屏障地址分两套：管理端口只发布在宿主 loopback；写进 evaluator 的必须是
-        # evaluator 网络内的服务名（容器端口固定 8010）。端口可由 CI/会话覆盖。
         E2E_TEST_COORDINATOR_PORT: ${{ env.E2E_TEST_COORDINATOR_PORT || '18010' }}
         E2E_TEST_COORDINATOR_URL: http://127.0.0.1:${{ env.E2E_TEST_COORDINATOR_PORT || '18010' }}
         E2E_TEST_COORDINATOR_EVALUATOR_URL: http://noj-e2e-test-coordinator:8010
-        # evaluator 网络按 run/CI 注入；judge 用同名网络挂载 evaluator。
         E2E_EVALUATOR_NETWORK: ${{ env.E2E_EVALUATOR_NETWORK || 'noj-eval-net' }}
-      # shard 非空时按分组执行（P6-A）；否则保持单进程全量，参数完全不变。
       run: |
         if [ -n "${{ inputs.shard }}" ]; then
           deno task test:browser --shard "${{ inputs.shard }}" --groups "${{ inputs.groups }}"
@@ -290,73 +293,28 @@ runs:
       if: failure() && inputs.browser == 'true'
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
-        # 分组并行时 artifact 名必须带 shard，否则三组互相覆盖。
         name: ui-browser-artifacts${{ inputs.shard != '' && format('-{0}', inputs.shard) || '' }}
         path: noj-tests/test-results/ui-browser/
         retention-days: 7
         if-no-files-found: ignore
 
     # ════════════════════════════════════════════
-    # 4. 诊断日志（即使前面失败也执行）
+    # 4. 诊断日志（仅失败或取消时输出并上传，减少正常运行的日志采集耗时）
     # ════════════════════════════════════════════
 
-    - name: 输出 noj-migrate 日志
-      if: always()
+    - name: 收集失败诊断日志
+      if: failure() || cancelled()
       run: |
-        echo "=== noj-migrate 日志 ==="
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-migrate 2>&1 || echo "容器可能未启动"
-      shell: bash
-
-    - name: 输出 noj-judge 日志
-      if: always()
-      run: |
-        echo "=== noj-judge 日志 ==="
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-judge 2>&1 || echo "容器可能未启动"
-      shell: bash
-
-    - name: 输出测试协调服务日志
-      if: always() && inputs.browser == 'true'
-      run: |
-        echo "=== test-coordinator 日志 ==="
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 test-coordinator 2>&1 || echo "容器可能未启动"
-      shell: bash
-
-    - name: 输出 noj-core 日志
-      if: always()
-      run: |
-        echo "=== noj-core 日志 ==="
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-core 2>&1 || echo "容器可能未启动"
-      shell: bash
-
-    - name: 输出 noj-llm-gateway 日志
-      if: always()
-      run: |
-        echo "=== noj-llm-gateway 日志 ==="
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=100 noj-llm-gateway 2>&1 || echo "容器可能未启动"
-      shell: bash
-
-    - name: 保存 + 上传 noj-judge 日志
-      if: always()
-      run: |
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-judge > noj-judge.log 2>&1 || echo "noj-judge may not be running"
-      shell: bash
-
-    - name: 保存 + 上传 noj-migrate 日志
-      if: always()
-      run: |
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-migrate > noj-migrate.log 2>&1 || echo "noj-migrate may not be running"
-      shell: bash
-
-    - name: 保存 + 上传 noj-core 日志
-      if: always()
-      run: |
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-core > noj-core.log 2>&1 || echo "noj-core may not be running"
-      shell: bash
-
-    - name: 保存 + 上传 noj-llm-gateway 日志
-      if: always()
-      run: |
-        docker compose -f docker-compose.e2e.yml -p $COMPOSE_PROJECT_NAME logs --tail=500 noj-llm-gateway > noj-llm-gateway.log 2>&1 || echo "noj-llm-gateway may not be running"
+        compose=(docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME")
+        for svc in noj-migrate noj-judge noj-core noj-llm-gateway; do
+          echo "=== $svc 日志（tail 100）==="
+          "${compose[@]}" logs --tail=100 "$svc" 2>&1 || echo "容器可能未启动"
+          "${compose[@]}" logs --tail=500 "$svc" > "$svc.log" 2>&1 || echo "$svc may not be running"
+        done
+        if [ "${{ inputs.browser }}" = "true" ]; then
+          echo "=== test-coordinator 日志（tail 100）==="
+          "${compose[@]}" logs --tail=100 test-coordinator 2>&1 || echo "容器可能未启动"
+        fi
       shell: bash
 
     - name: 上传诊断日志

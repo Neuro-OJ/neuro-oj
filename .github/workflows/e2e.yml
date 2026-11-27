@@ -1,29 +1,17 @@
 # =============================================================================
 # Neuro OJ — 全链路 E2E 测试
 #
-# 在每个 PR 和推送到 main 时运行完整的端到端测试：
-#   - e2e-full：noj-tests 全量 E2E（30 个测试文件 / 204 个 e2eTest 用例）
-#   - judge-sandbox：noj-judge Docker 沙箱 E2E（7 个 binary，独立 job）
-#   - problem-local-test：noj-cli problem test 本地验题门禁（fixtures/problem-test + 五类出题模板）
-#
-# 使用 Docker Compose 编排完整评测栈（noj-core + noj-judge + PostgreSQL + Redis）。
-#
-# 技术栈：Deno + Rust + Docker Compose
-# 运行时间：首次 ~15min，缓存命中后 ~5-8min
-#
-# 性能优化（2026-07）：
-#   - judge 沙箱 E2E 拆为独立 job（它只依赖 Docker + Redis，测试内自建
-#     评测镜像 ensure_test_image，无需 noj-core 栈），与 API E2E 并行，
-#     总时长从串行 ~15min 降到 max(API, sandbox) ~8min
-#   - noj-tests 30 个文件分 3 组并行（组间独立进程；文件间无跨文件固定
-#     ID 依赖，admin 改密竞态由 helper.ts loginAndChangePassword 并发
-#     兜底处理）
-#   - judge-sandbox 复用 sccache 编译缓存；AI 镜像测试独立于容器测试并行
+# 在每个 PR 和推送到 main 时运行端到端测试（PR 按变更路径精准选择；
+# main push / 手动触发 / Release workflow_call 全量执行）：
+#   - e2e-api-core / e2e-api-content：合并 6 个标准环境轻量 API 域（2 组复用评测栈）
+#   - e2e-submission / e2e-contest / e2e-rate-limit / e2e-cross-domain：独立环境域
+#   - e2e-browser-shard (×3) + e2e-browser：UI 浏览器关键流程门禁
+#   - judge-sandbox：noj-judge Docker 沙箱 E2E（按 judge 路径过滤）
+#   - problem-local-test：noj-cli problem test 本地验题门禁（按 cli/judge/模板路径过滤）
 # =============================================================================
 
 name: E2E
 
-# workflow-level 最小权限：所有 job 默认 contents: read。修复 finding S3。
 permissions:
   contents: read
 
@@ -31,12 +19,6 @@ on:
   push:
     branches: [main]
   pull_request:
-    # 纯文档 / 规范 / lint 配置类改动无需跑完整评测栈（节省 10-15 min / PR）。
-    # push to main 仍全量跑；workflow_dispatch 仍可手动强跑。
-    # 修复点：之前的 cache-to mode=min 拆分到独立的 workflow 安全与配置一致性 PR。
-    # issue #427：noj-ui 改动现在会触发本 workflow —— UI 浏览器关键流程门禁
-    # （注册验证 / 登录退出 / 代码提交到结果 / 核心失败反馈）依赖完整评测栈；
-    # ci.yml 自身改动仍不触发（ci.yml 不涉及评测栈镜像/编排）。
     paths-ignore:
       - "dev-docs/**"
       - "noj-docs/**"
@@ -48,11 +30,8 @@ on:
       - ".github/actionlint.yaml"
       - ".github/workflows/ci.yml"
   workflow_dispatch:
-  # 候选发布（release.yml）在固定 SHA 上复用全量 E2E；workflow_call 视为全量，
-  # 选择器对非 PR/main 事件直接扩大为全部 API + Browser + cross-domain。
   workflow_call:
 
-# 仅 PR 上可取消旧运行（修复 finding M4），main 推送不可被取消。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -65,12 +44,7 @@ env:
   E2E_CORE_PORT: 8099
   E2E_DB_URL: postgres://e2e:e2e@localhost:5433/e2e
   E2E_REDIS_URL: redis://localhost:6380/1
-  # JWT_SECRET 单一来源（修复 finding S1）。
-  # 全仓库（e2e.yml workflow env、docker-compose.e2e.yml noj-core、env.e2e.template）
-  # 统一使用此值；任何一处修改必须同步另外两处。
-  # 长度 ≥32 满足 noj-core main.ts 的 JWT_SECRET ≥ 32 字符校验。
   JWT_SECRET: e2e-ci-secret-fixed-value-with-32-chars-min-abc
-  # TFA_ENCRYPTION_KEY 单一来源，与 docker-compose.e2e.yml / env.e2e.template 保持一致。
   TFA_ENCRYPTION_KEY: e2e-ci-tfa-encryption-key-with-32-chars-min-abc
   NOJ_RUN_E2E: "1"
   BCRYPT_SALT_ROUNDS: 4
@@ -84,17 +58,37 @@ jobs:
     outputs:
       e2e-domains: ${{ steps.selection.outputs.e2e-domains }}
       e2e-browser: ${{ steps.selection.outputs.e2e-browser }}
+      judge-sandbox: ${{ steps.filter.outputs.judge-sandbox }}
+      problem-local: ${{ steps.filter.outputs.problem-local }}
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # 选择器需要 base/head 完整历史（含重命名前后路径）
           fetch-depth: 0
+
+      - name: 按独立 E2E 模块路径过滤
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        id: filter
+        with:
+          filters: |
+            judge-sandbox:
+              - 'noj-judge/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/e2e.yml'
+              - '!**/*.md'
+            problem-local:
+              - 'noj-cli/**'
+              - 'noj-judge/**'
+              - 'fixtures/problem-test/**'
+              - 'noj-core/scripts/problem-templates/**'
+              - '.github/workflows/e2e.yml'
+              - '!**/*.md'
+
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
-      # 统一选择器：Core 模块 → E2E 域映射、共享基础设施/锁文件 → 全部 API E2E、
-      # noj-ui → Browser、cross-domain 目录 → 跨域流水线。main push / 手动触发全量。
+
       - name: 计算受影响 E2E 域
         id: selection
         env:
@@ -110,10 +104,11 @@ jobs:
           deno run --allow-read --allow-env --allow-write --allow-run=git \
             scripts/select-core-ci.ts "${args[@]}"
 
-  # UI 构建随 workflow 启动，与 changes / 沙箱并行，避免在 Domain 作业之间排队。
-  # 单域 API PR 也执行一次预构建；浏览器 job 仍按原有路径过滤，只加载同次运行的产物。
+  # 仅在 Browser E2E 命中（或 main/手动/发布全量）时构建 UI 产物，避免后端 PR 白跑。
   e2e-ui-build:
     name: E2E UI Build
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e-browser == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -143,40 +138,58 @@ jobs:
           retention-days: 1
           compression-level: 1
 
-  e2e-identity:
-    name: E2E identity
+  # 合并 6 个标准环境轻量 API 域为 2 个并发批次（复用同一评测栈与 canary，
+  # 避免 admin/objective 等秒级域各自重复 50s 的镜像加载与迁移启动）。
+  e2e-api-core:
+    name: E2E API Core (identity / admin / system)
     needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'identity') }}
+    if: >-
+      ${{
+        github.event_name != 'pull_request' ||
+        contains(fromJson(needs.changes.outputs.e2e-domains), 'identity') ||
+        contains(fromJson(needs.changes.outputs.e2e-domains), 'admin') ||
+        contains(fromJson(needs.changes.outputs.e2e-domains), 'system')
+      }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
-      COMPOSE_PROJECT_NAME: noj-e2e-identity
+      COMPOSE_PROJECT_NAME: noj-e2e-api-core
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
-          domain: identity
+          domain: api-core
+          domains: identity admin system
+          selected-domains: ${{ github.event_name != 'pull_request' && '["identity","admin","system"]' || needs.changes.outputs.e2e-domains }}
 
-  e2e-catalog:
-    name: E2E catalog
+  e2e-api-content:
+    name: E2E API Content (catalog / community / objective)
     needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'catalog') }}
+    if: >-
+      ${{
+        github.event_name != 'pull_request' ||
+        contains(fromJson(needs.changes.outputs.e2e-domains), 'catalog') ||
+        contains(fromJson(needs.changes.outputs.e2e-domains), 'community') ||
+        contains(fromJson(needs.changes.outputs.e2e-domains), 'objective')
+      }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
-      COMPOSE_PROJECT_NAME: noj-e2e-catalog
+      COMPOSE_PROJECT_NAME: noj-e2e-api-content
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/e2e-domain
         with:
-          domain: catalog
+          domain: api-content
+          domains: catalog community objective
+          selected-domains: ${{ github.event_name != 'pull_request' && '["catalog","community","objective"]' || needs.changes.outputs.e2e-domains }}
 
   e2e-submission:
     name: E2E submission
     needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'submission') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-submission
     steps:
@@ -190,10 +203,9 @@ jobs:
     needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'contest') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-contest
-      # Worker 与 Deno 用例读取同一配置；正式比赛门禁必须实际执行 OI Native。
       E2E_JUDGE_RESOURCE_POOLS: ai,oi-native
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -203,72 +215,14 @@ jobs:
         with:
           domain: contest
 
-  e2e-system:
-    name: E2E system
-    needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'system') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      COMPOSE_PROJECT_NAME: noj-e2e-system
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/e2e-domain
-        with:
-          domain: system
-
-  e2e-community:
-    name: E2E community
-    needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'community') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      COMPOSE_PROJECT_NAME: noj-e2e-community
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/e2e-domain
-        with:
-          domain: community
-
-  e2e-objective:
-    name: E2E objective
-    needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'objective') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      COMPOSE_PROJECT_NAME: noj-e2e-objective
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/e2e-domain
-        with:
-          domain: objective
-
-  e2e-admin:
-    name: E2E admin
-    needs: [changes, e2e-images]
-    if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'admin') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      COMPOSE_PROJECT_NAME: noj-e2e-admin
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: ./.github/actions/e2e-domain
-        with:
-          domain: admin
-
   e2e-rate-limit:
     name: E2E Rate Limit
     needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'rate-limit') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-rate-limit
-      # 本域需要服务端真正启用限流/账号锁定（compose 读取这些变量注入 noj-core）：
-      # 放宽 IP/账号窗口限流，让「连续失败 10 次锁定」成为唯一触发路径。
       RATE_LIMIT_ENABLED: "true"
       RATE_LIMIT_LOGIN_IP_MAX: "1000"
       RATE_LIMIT_LOGIN_ACC_MAX: "1000"
@@ -284,12 +238,10 @@ jobs:
     needs: [changes, e2e-images]
     if: ${{ github.event_name != 'pull_request' || contains(fromJson(needs.changes.outputs.e2e-domains), 'cross-domain') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       COMPOSE_PROJECT_NAME: noj-e2e-cross-domain
       E2E_JUDGE_RESOURCE_POOLS: ai,oi-native
-      # 演练契约（restore_drill_contract）是跨域验收项：容器解析失败必须红，
-      # 不能退化成一条 [skip] 的绿色用例。
       NOJ_E2E_REQUIRE_DRILL: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -299,8 +251,6 @@ jobs:
         with:
           domain: cross-domain
 
-  # Browser 以测试文件为最小单元分三组（P6-A）。文件内部 journey 不拆开；
-  # 每组独立 Compose project/数据库/Redis/协调服务，禁止共用可变管理状态。
   e2e-browser-shard:
     name: E2E Browser (${{ matrix.shard }})
     needs: [changes, e2e-images, e2e-ui-build]
@@ -315,8 +265,6 @@ jobs:
       COMPOSE_PROJECT_NAME: noj-e2e-browser-${{ matrix.shard }}
       E2E_BROWSER_SHARD: ${{ matrix.shard }}
       E2E_BROWSER_GROUPS: "3"
-      # 每组一个 evaluator 网络：即使同一 Docker daemon 上残留上一次运行的
-      # 同名默认网络，也不会把不同分片的 evaluator/协调服务串到一起。
       E2E_EVALUATOR_NETWORK: noj-e2e-browser-${{ matrix.shard }}-evaluator
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -327,8 +275,6 @@ jobs:
           shard: ${{ matrix.shard }}
           groups: "3"
 
-  # 聚合 job 保留 "E2E Browser" 这个必需检查名称：有选中测试时三组必须全部成功；
-  # 未选中时显式记录原因；取消/失败/缺失都不能聚合为成功。
   e2e-browser:
     name: E2E Browser
     needs: [changes, e2e-browser-shard]
@@ -357,9 +303,6 @@ jobs:
               ;;
           esac
 
-  # 统一构建 E2E 评测栈镜像一次，以 artifact 分发给各 Domain job。
-  # 此前每个 Domain job 各自构建同样的 5 个镜像（judge 的 Rust 依赖层单项 ~270s），
-  # 而测试本身只要几秒到两三分钟。
   e2e-images:
     name: E2E Image (${{ matrix.image }})
     needs: changes
@@ -388,9 +331,6 @@ jobs:
             context: noj-judge
             file: noj-judge/Dockerfile.e2e
             tag: noj-e2e-judge
-            # mode=min 只导出最终 runtime 阶段，builder 中「只编依赖」层从不入缓存，
-            # 未改 judge 的 PR 也要重编 Rust 依赖（约 285s）。judge 单独用 max 导出
-            # 全部阶段；其余镜像构建仅数十秒，保持 min 以节省 GHA 缓存配额。
             cache-mode: max
           - image: gateway
             context: noj-llm-gateway
@@ -407,7 +347,6 @@ jobs:
           file: ${{ matrix.file }}
           tags: ${{ matrix.tag }}
           outputs: type=docker,dest=${{ runner.temp }}/${{ matrix.image }}.tar
-          # COPY 按源码与锁文件内容使缓存失效；不使用 run_id 破坏依赖层缓存。
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: ${{ github.event.pull_request.head.repo.fork && 'type=inline' || format('type=gha,mode={0},scope={1}', matrix.cache-mode || 'min', matrix.image) }}
       - name: 上传镜像
@@ -420,14 +359,14 @@ jobs:
 
   judge-sandbox:
     name: Judge Sandbox E2E
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge-sandbox == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       NOJ_RUN_E2E: "1"
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
-      # 测试镜像基础镜像直连 Docker Hub（digest 固定在 Dockerfile.test-runner）：
-      # 默认的 DaoCloud 代理从 GitHub runner 访问会间歇性 TLS handshake timeout
       NOJ_E2E_PYTHON_IMAGE_REPO: python
     permissions:
       actions: write
@@ -449,14 +388,9 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
-          # 固定 SHA 后不再能从 ref 名推断工具链，显式声明（审计 S1）
           toolchain: stable
-        # 注意：不装 rustfmt/clippy 组件——本 job 只编译并运行测试，
-        # 组件越少 rustup 下载失败面越小（曾因并行 cargo 触发 rustup
-        # sync 竞争导致 clippy 组件下载失败、测试启动即死）
       - name: 启用 sccache（Rust 编译缓存）
         uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-      # RUSTC_WRAPPER / SCCACHE_GHA_ENABLED 放在 job env，后续 cargo 才能复用。
 
       - name: 缓存 Cargo 注册表
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -476,7 +410,6 @@ jobs:
         run: |
           set -euo pipefail
           build_args=(--locked)
-          # 单元/其他集成测试由 Judge Check 覆盖，此处只预编译全部沙箱目标。
           for target in tests/e2e_*.rs; do
             target_name="${target##*/}"
             build_args+=(--test "${target_name%.rs}")
@@ -496,19 +429,8 @@ jobs:
         env:
           REDIS_URL: redis://localhost:6380/
         run: |
-          # set -euo pipefail：任一 cargo test 失败立即终止整个 job，
-          # 修复原版 for 循环吞掉中间失败、只在最后一个目标失败时退出 0 的问题。
           set -euo pipefail
-          # rustup 预热（修复 2026-08 并行竞争）：两个 run_group 同时启动
-          # cargo 会各自触发 rustup channel sync + 组件下载，竞争同一
-          # rustup 状态目录导致 "component download failed"（测试启动即死）。
-          # 先单进程触发一次 sync，之后并行 cargo 不再下载。
           cargo --version >/dev/null
-          # 必须列出全部 e2e_* 测试文件（e2e_container_pool 已随容器池移除而
-          # 删除；e2e_dual_container / e2e_network_capability / e2e_abnormal /
-          # e2e_solution_ai / e2e_prediction 为后续新增，漏登记会让测试只编译不执行）。
-          # 目标分 4 组并行——组内串行
-          # （serial_test 保证单 binary 内串行），组间并行利用 runner 多核。
           run_group() {
             for target in "$@"; do
               echo ""
@@ -518,17 +440,12 @@ jobs:
               NOJ_RUN_E2E=1 cargo test --locked --test "$target" -- --ignored --test-threads=1
             done
           }
-          # 分组约束：会创建 dual（evaluator + solution）标签容器的测试必须
-          # 集中在同一组（p3），避免与其他组并发时污染 e2e_prediction 对全局
-          # Docker 标签的轮询断言（组间并行，#[serial] 只保证单 binary 内串行）。
           run_group e2e_docker_basic e2e_resource_limits e2e_security_isolation &
           p1=$!
           run_group e2e_support_package e2e_problem_limits e2e_oi_native &
           p2=$!
           run_group e2e_dual_container e2e_network_capability e2e_abnormal e2e_prediction &
           p3=$!
-          # AI 镜像用例只构建镜像并执行导入，不创建 dual 标签容器；
-          # 单独运行避免约 76s 的镜像构建阻塞双容器组。
           run_group e2e_solution_ai &
           p4=$!
           fail=0
@@ -538,7 +455,6 @@ jobs:
           wait "$p4" || fail=1
           exit "$fail"
 
-      # 失败时上传 Docker 沙箱产物
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -551,11 +467,10 @@ jobs:
           if-no-files-found: ignore
         continue-on-error: true
 
-  # P0-2：`noj-cli problem test` 本地验题门禁。与生产同一评测入口
-  # （noj-judge run-local → evaluate_with_scheduler），覆盖正向断言与负例
-  # （错解断言为满分时必须退出 1）。只依赖 Docker，不起 noj-core 栈。
   problem-local-test:
     name: Problem Local Test
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.problem-local == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -609,8 +524,6 @@ jobs:
             echo "── problem test ${dir}"
             deno run -A src/cli.ts problem test "$dir" || exit 1
           done
-          # 负例：错解断言满分必须以退出码 1 失败（0 = 断言失效，2 = 用法/环境错误）
-          # Actions 默认 shell 为 bash -e，必须用 || 捕获退出码，否则负例的 1 会直接终止步骤
           code=0
           deno run -A src/cli.ts problem test ../fixtures/problem-test/aplusb --expect wrong=100 || code=$?
           if [ "$code" -ne 1 ]; then
@@ -618,8 +531,6 @@ jobs:
             exit 1
           fi
 
-      # P0-2 B：五类出题模板都必须「生成即可验题」——经 init --template 生成
-      # （覆盖嵌入与渲染路径），再 lint --strict 零发现 + problem test 断言全过。
       - name: problem init --template 五类模板验题
         working-directory: noj-cli
         env:

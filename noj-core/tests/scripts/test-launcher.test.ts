@@ -811,3 +811,51 @@ Deno.test("test-launcher: 含空格与中文的工作区路径仍能探测功能
     Deno.removeSync(root, { recursive: true });
   }
 });
+
+Deno.test("test-launcher: --shard-index 与 --modules 仅用于 parallel 且严格校验", () => {
+  const sliced = parseLauncherArgs([
+    "parallel",
+    "--shards",
+    "4",
+    "--jobs",
+    "1",
+    "--shard-index",
+    "2",
+  ]);
+  assertEquals(sliced.shardCount, 4);
+  assertEquals(sliced.jobs, 1);
+  assertEquals(sliced.shardIndices, [2]);
+
+  const scoped = parseLauncherArgs([
+    "parallel",
+    "--shards",
+    "1",
+    "--jobs",
+    "1",
+    "--modules",
+    "access,problems,access",
+  ]);
+  assertEquals(scoped.modules, ["access", "problems"]);
+
+  assertThrows(
+    () => parseLauncherArgs(["test", "--shard-index", "1"]),
+    Error,
+    "--shard-index 只适用于 parallel",
+  );
+  assertThrows(
+    () => parseLauncherArgs(["test", "--modules", "access"]),
+    Error,
+    "--modules 只适用于 parallel",
+  );
+  assertThrows(
+    () =>
+      parseLauncherArgs(["parallel", "--shards", "2", "--shard-index", "3"]),
+    Error,
+    "超出分片总数",
+  );
+  assertThrows(
+    () => parseLauncherArgs(["parallel", "--modules", "not-a-module"]),
+    Error,
+    "未知模块",
+  );
+});

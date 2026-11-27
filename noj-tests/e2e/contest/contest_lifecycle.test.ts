@@ -53,9 +53,9 @@ e2eTest("[e2e/contest] Setup", async () => {
 
 /**
  * 竞赛剩余时长。域入口开赛后不能修改受理窗口，测试 4 只能等它自然结束；
- * 窗口要覆盖测试 2/3 的提交与评测，又不能把整组测试拖得太久。
+ * 实测测试 2/3 耗时 1–2s，25s 窗口留有 10× 余量且避免测试 4 空等 85+ 秒。
  */
-const CONTEST_WINDOW_MS = 90_000;
+const CONTEST_WINDOW_MS = 25_000;
 let contestEndTime = 0;
 
 e2eTest("[e2e/contest] 1. 创建正在进行中的 Kaggle 竞赛", async () => {

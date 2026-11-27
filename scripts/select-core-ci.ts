@@ -543,9 +543,15 @@ export async function runSelector(
   });
   if (failure) selection.reasons.unshift(failure);
 
+  const coreRun = selection.coreFull || selection.modules.length > 0;
+  // GHA strategy.matrix 不允许空数组；未命中时由 job if 跳过，matrix 仍保持非空。
+  const coreShards = selection.coreFull ? [1, 2, 3, 4] : [1];
   const outputs = {
     "core-full": String(selection.coreFull),
+    "core-run": String(coreRun),
+    "core-shards": JSON.stringify(coreShards),
     "core-modules": JSON.stringify(selection.modules),
+    "core-modules-csv": selection.modules.join(","),
     "core-direct-modules": JSON.stringify(selection.directModules),
     "core-contracts": JSON.stringify(selection.contracts),
     "core-reasons": selection.reasons.join("; "),
@@ -579,11 +585,15 @@ if (import.meta.main) {
     console.error(`[select-core-ci] 失败，扩大为全量：${String(error)}`);
     const outputPath = Deno.env.get("GITHUB_OUTPUT");
     if (outputPath) {
+      const allModules = Object.keys(E2E_CI_MAPPING);
       await Deno.writeTextFile(
         outputPath,
         [
           "core-full=true",
-          `core-modules=${JSON.stringify(Object.keys(E2E_CI_MAPPING))}`,
+          "core-run=true",
+          "core-shards=[1,2,3,4]",
+          `core-modules=${JSON.stringify(allModules)}`,
+          `core-modules-csv=${allModules.join(",")}`,
           "core-contracts=[]",
           `e2e-domains=${
             JSON.stringify([...E2E_API_DOMAINS, "cross-domain", "browser"])

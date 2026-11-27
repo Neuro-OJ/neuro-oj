@@ -55,23 +55,50 @@ run_pair() {
   return "$status"
 }
 
-if want wasi; then
+run_wasi() {
   target/debug/examples/oi_wasi_acceptance
-fi
-if want standard; then
+}
+run_standard() {
   run_pair oi_standard_acceptance worker
   cmp "$report_dir/worker-a.json" "$report_dir/worker-b.json"
   cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v3-benchmarks.json
   cat "$report_dir/worker-a.json"
-fi
-if want compat; then
+}
+run_compat() {
   run_pair oi_wasi_v2_acceptance compat
   cmp "$report_dir/compat-a.json" "$report_dir/compat-b.json"
   cat "$report_dir/compat-a.json"
-fi
-if want analysis; then
+}
+run_analysis() {
   # 独立分析规则不进入计量标准清单；两个独立进程的分类成本/来源必须一致。
   run_pair oi_io_analysis_acceptance analysis
   cmp "$report_dir/analysis-a.json" "$report_dir/analysis-b.json"
   cmp "$report_dir/analysis-a.json" ../fixtures/noj-wasm-v3-io-analysis-v1.json
+}
+
+if [[ "$shard" == all ]]; then
+  # 一次编译后并发执行 4 组验收（独立输出文件，避免多 job 重复编译 90s×4）。
+  run_wasi > "$report_dir/out-wasi.log" 2>&1 &
+  p_wasi=$!
+  run_standard > "$report_dir/out-standard.log" 2>&1 &
+  p_standard=$!
+  run_compat > "$report_dir/out-compat.log" 2>&1 &
+  p_compat=$!
+  run_analysis > "$report_dir/out-analysis.log" 2>&1 &
+  p_analysis=$!
+  status=0
+  wait "$p_wasi" || status=1
+  wait "$p_standard" || status=1
+  wait "$p_compat" || status=1
+  wait "$p_analysis" || status=1
+  for name in wasi standard compat analysis; do
+    echo "── WASI acceptance: $name ──"
+    cat "$report_dir/out-$name.log"
+  done
+  exit "$status"
 fi
+
+if want wasi; then run_wasi; fi
+if want standard; then run_standard; fi
+if want compat; then run_compat; fi
+if want analysis; then run_analysis; fi

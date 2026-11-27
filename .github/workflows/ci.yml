@@ -1,26 +1,21 @@
 # =============================================================================
 # Neuro OJ CI Pipeline
 #
-# 触发条件：全分支 Push 和 Pull Request
-# 并行检查三个模块：
-#   - noj-core: Deno 后端（格式/代码检查/集成测试，需 PostgreSQL + Redis）
-#   - noj-ui:   Nuxt 4 前端（Deno 构建检查）
-#   - noj-judge: Rust Worker（格式/Clippy/单元测试）+ Python SDK 单测
-#
-# 性能优化（2026-07）：
-#   - 引入 dorny/paths-filter：PR 上按改动模块只跑相关 job
-#     （改 noj-ui 不再触发 judge/core 全套；push main / 手动触发仍全量）
-#   - 删除冗余 core-fmt / core-lint（core-quick-check 已覆盖 fmt+lint+typecheck）
-#   - judge-check（fmt/clippy）与 judge-test（nextest）并行；
-#     WASI SDK 构建/验收（2026-10）拆为 judge-wasi-sdk / judge-wasi-acceptance /
-#     judge-wasi-image 并行作业，SDK 产物按输入哈希缓存（详见文件末尾说明）
+# 触发条件：main Push、Pull Request、手动触发、Release workflow_call
+# 并行检查核心模块，PR 按真实变更路径过滤，main/手动/发布全量验证：
+#   - root-gates:        仓库级静态门禁（含供应链 / 入口 Smoke / 配置读取点 / noj-tests 逻辑单测）
+#   - core-quick-check:  noj-core fmt + lint + typecheck + logic 单测
+#   - core-test-sharded: noj-core 隔离 PG/Redis 回归（全量 4 机并行；PR 单模块增量）
+#   - ui-check:          noj-ui Nuxt 构建 + vue-tsc + 单测/覆盖率阈值 + 组件测试 + BFF/主题验收
+#   - gateway-check:     noj-llm-gateway 静态检查 + 单测 + 覆盖率阈值
+#   - production-cli:    noj-cli 静态检查 + 单测 + 真实 PG 往返 E2E（按路径过滤）
+#   - judge-*:           Rust fmt/clippy + Python SDK 单测 + nextest + WASI 验收（单 job 并发）
 # =============================================================================
 
 name: CI
 
 # workflow-level 最小权限：所有 job 默认 contents: read；如需写权限再按 job
-# 单独收窄 scope。修复 finding S3：之前 GITHUB_TOKEN 默认是 write-all，
-# 风险敞口包括 gh release create / gh pr comment 等不必要的写操作。
+# 单独收窄 scope。
 permissions:
   contents: read
 
@@ -36,64 +31,168 @@ on:
       JWT_SECRET:
         required: false
 
-# 同一分支/PR 的新推送自动取消旧运行，避免排队浪费。
-# 修复 finding M4：之前 `cancel-in-progress: true` 对 main 推送也生效，
-# 一次 force-push 就会丢失 main 分支的 CI coverage。改为仅在 PR 上取消，
-# main 推送必须跑完，保留质量门禁记录。
+# 仅 PR 上取消旧运行，main 推送必须跑完以保留完整质量门禁记录。
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# noj-core 集成测试入口只接受显式隔离资源；每个 GitHub job 使用自己的 service
-# 网络/daemon，TEST_REDIS_URL 供模板迁移/seed 使用，启动器再为本 run/shard 创建
-# 临时 Redis 容器和存储目录。
 env:
   TEST_PG_ADMIN_URL: postgres://noj:noj@localhost:5432/postgres
   TEST_REDIS_URL: redis://localhost:6379/0
   TEST_STORAGE_ROOT: /tmp/noj-core-test-runs
 
 jobs:
-  production-cli:
-    name: Production CLI
+  # ===========================================================================
+  # 变更检测（dorny/paths-filter + scripts/select-core-ci.ts）
+  #
+  # PR 上按改动路径过滤模块（排除纯 Markdown 文档）；push main / 手动 /
+  # workflow_call 始终全量执行。
+  # ===========================================================================
+  changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 3
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      core-full: ${{ steps.selection.outputs.core-full }}
+      core-run: ${{ steps.selection.outputs.core-run }}
+      core-shards: ${{ steps.selection.outputs.core-shards }}
+      core-modules: ${{ steps.selection.outputs.core-modules }}
+      core-modules-csv: ${{ steps.selection.outputs.core-modules-csv }}
+      core-reasons: ${{ steps.selection.outputs.core-reasons }}
+      e2e-domains: ${{ steps.selection.outputs.e2e-domains }}
+      e2e-browser: ${{ steps.selection.outputs.e2e-browser }}
+      ui: ${{ steps.filter.outputs.ui }}
+      judge: ${{ steps.filter.outputs.judge }}
+      wasi: ${{ steps.filter.outputs.wasi }}
+      gateway: ${{ steps.filter.outputs.gateway }}
+      cli: ${{ steps.filter.outputs.cli }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # paths-filter 与选择器需要比较 base/head 历史
+          fetch-depth: 0
+
+      - name: 按模块路径过滤
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'noj-core/**'
+              - 'dev-docs/engineering/module-boundaries.json'
+              - 'scripts/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+            ui:
+              - 'noj-ui/**'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+            judge:
+              - 'noj-judge/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+            wasi:
+              - 'noj-judge/src/**'
+              - 'noj-judge/Cargo.toml'
+              - 'noj-judge/Cargo.lock'
+              - 'noj-judge/toolchain/**'
+              - 'noj-judge/examples/**'
+              - 'noj-judge/scripts/*wasi*'
+              - 'noj-judge/Dockerfile'
+              - 'fixtures/noj-wasm-*.json'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+            gateway:
+              - 'noj-llm-gateway/**'
+              - 'noj-tests/fixtures/**'
+              - 'scripts/**'
+              - 'docker-compose.e2e.yml'
+              - 'env.e2e.template'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+            cli:
+              - 'noj-cli/**'
+              - 'docker-compose.prod.yml'
+              - 'deploy/**'
+              - 'scripts/deploy/**'
+              - '.github/workflows/ci.yml'
+              - '!**/*.md'
+
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
-      - name: 检查 CLI 与离线生产安装流程
-        working-directory: noj-cli
+
+      - name: 计算受影响测试范围
+        id: selection
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GIT_REF: ${{ github.ref }}
         run: |
-          deno task check
-          deno task test
-          deno task test:production
+          args=(--event "${EVENT_NAME}" --ref "${GIT_REF}")
+          if [ -n "${BASE_SHA}" ] && [ -n "${HEAD_SHA}" ]; then
+            args+=(--base "${BASE_SHA}" --head "${HEAD_SHA}")
+          fi
+          deno run --allow-read --allow-env --allow-write --allow-run=git \
+            scripts/select-core-ci.ts "${args[@]}"
 
   # ===========================================================================
-  # noj-cli 真实 E2E：备份产物的**真实工具链往返**（用户要求，CI 侧）。
-  #
-  # 与 `production-cli` 的分工：那个 job 跑单测（fake ops/fake runner，秒级、
-  # 无外部依赖）；本 job 跑**真实 PostgreSQL/Redis/MinIO**，因为有三类问题
-  # 单测永远抓不到：
-  #   - 参数形状与真实 CLI 的兼容性（`--ansi` 位置、`ss` 字段解析都出过错）；
-  #   - 产物可用性（pg_dump 能否被真实 pg_restore 读回）；
-  #   - 格式的隐蔽不兼容（`-Fc` 是自定义格式，被当文本处理会静默损坏）。
-  # 实测价值：本 job 的用例在本地上线当天就抓出"pg_restore 缺
-  # `--clean --if-exists`"——fake runner 永远不会拒绝参数。
-  #
-  # **只起 PostgreSQL**：现有 E2E 用例验证的是"产物能否被真实工具链往返"
-  # （pg_dump↔pg_restore、gpg/tar 加密封包、幂等化 globals），这些只需 PG +
-  # 宿主机的 gpg/tar/zstd。不预先起 Redis/MinIO：加未使用的 service 只会拖慢
-  # CI，且 `minio/minio` 的 health-cmd 在该镜像里不可用（`mc` 不在 PATH）。
-  # 若将来补 Redis/MinIO 往返用例，再按需增加并配好 health-cmd。
+  # 仓库级静态门禁（合并原 root-gates / supply-chain / entrypoint-smoke /
+  # config-usage-check，消除 3 台秒级静态检查 VM 的重复冷启动开销）
   # ===========================================================================
-  production-cli-e2e:
-    name: Production CLI E2E
+  root-gates:
+    name: Root Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: 安装 Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version-file: .dvmrc
+
+      - name: 检查供应链约束
+        run: bash scripts/release/test-supply-chain.sh
+
+      - name: 入口 Smoke
+        run: deno run -A scripts/smoke-entrypoints.ts
+
+      - name: 验证 WASM 统一标准
+        run: deno run -A scripts/verify-wasm-standard.ts
+
+      - name: 配置读取点静态校验 (check:config-usage)
+        working-directory: noj-core
+        run: deno task check:config-usage
+
+      - name: 仓库级门禁
+        run: deno run -A scripts/check-ci.ts
+
+      - name: noj-tests 零依赖单测
+        working-directory: noj-tests
+        run: deno task test:logic
+
+  # ===========================================================================
+  # noj-cli — 静态检查 + 单测 + 真实 PostgreSQL 往返 E2E（按 cli 路径过滤）
+  #
+  # 合并原 production-cli 与 production-cli-e2e：同一 runner 跑完检查、单测与
+  # 真实 pg_dump/pg_restore/gpg/zstd 往返，消除无条件运行与重复环境搭建。
+  # ===========================================================================
+  production-cli:
+    name: Production CLI
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.cli == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      NOJ_RUN_E2E: "1"
-      # 对齐下方 service container 的凭据
       NOJ_E2E_PG_CONTAINER: noj-e2e-postgres
       NOJ_E2E_PG_USER: noj
       NOJ_E2E_PG_PASSWORD: noj
@@ -118,143 +217,29 @@ jobs:
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version-file: .dvmrc
-      # 本 job 直接操作 `docker exec`（不经 compose），故需要容器名可达。
-      # service container 的 `--name` 只作用于该 runner 的 docker daemon，
-      # 因此这里显式确认容器存在——失败会给出明确原因而不是难以定位的
-      # "No such container"。
-      - name: 确认 E2E 依赖容器就绪
+      - name: 确认 E2E 依赖容器与工具链就绪
         run: |
           set -euo pipefail
-          for c in noj-e2e-postgres; do
-            docker inspect "$c" >/dev/null || {
-              echo "::error::service container $c 未就绪"; exit 1; }
-          done
-      - name: 校验工具链（gpg / tar / zstd）
-        run: |
-          set -euo pipefail
+          docker inspect noj-e2e-postgres >/dev/null || {
+            echo "::error::service container noj-e2e-postgres 未就绪"; exit 1; }
           gpg --version >/dev/null
           tar --version >/dev/null
           zstd --version >/dev/null
-      - name: 检查 CLI 与真实往返 E2E
+      - name: 检查 CLI、单测与真实 PostgreSQL 往返 E2E
         working-directory: noj-cli
         run: |
+          set -euo pipefail
           deno task check
-          # 只跑真实 E2E 目录（单测由 production-cli job 覆盖，避免重复）
-          deno test -A src/prod/e2e/
+          # deno task test 已包含 src/prod/ 单测；随后开启 NOJ_RUN_E2E 跑真实往返 E2E。
+          deno task test
+          NOJ_RUN_E2E=1 deno test -A src/prod/e2e/
 
   # ===========================================================================
-  # 生产镜像供应链配置检查：在 PR 阶段提前阻止 latest 和未固定 digest 回归。
-  # ===========================================================================
-  supply-chain:
-    name: Production Supply Chain
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 检查供应链约束
-        run: bash scripts/release/test-supply-chain.sh
-
-  # ===========================================================================
-  # 变更检测（dorny/paths-filter）
-  #
-  # PR 上按改动路径生成 core/ui/judge 三个模块 flag；各模块 job 据此
-  # 条件化执行。push main 与 workflow_dispatch 始终全量执行（质量门禁）。
-  # ci.yml 自身改动视为三模块皆变更，保证 CI 配置调整会被完整验证。
-  # ===========================================================================
-  changes:
-    name: Detect Changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    outputs:
-      core: ${{ steps.filter.outputs.core }}
-      core-full: ${{ steps.selection.outputs.core-full }}
-      core-modules: ${{ steps.selection.outputs.core-modules }}
-      core-reasons: ${{ steps.selection.outputs.core-reasons }}
-      e2e-domains: ${{ steps.selection.outputs.e2e-domains }}
-      e2e-browser: ${{ steps.selection.outputs.e2e-browser }}
-      ui: ${{ steps.filter.outputs.ui }}
-      judge: ${{ steps.filter.outputs.judge }}
-      gateway: ${{ steps.filter.outputs.gateway }}
-      config: ${{ steps.filter.outputs.config }}
-      extension: ${{ steps.filter.outputs.extension }}
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          # paths-filter 需要比较 base/head，push 事件需完整历史
-          fetch-depth: 0
-
-      - name: 按模块与 Domain 路径过滤
-        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
-        id: filter
-        with:
-          filters: |
-            core:
-              - 'noj-core/**'
-              - 'dev-docs/engineering/module-boundaries.json'
-              - 'scripts/**'
-              - 'docker-compose.e2e.yml'
-              - 'env.e2e.template'
-              - '.github/workflows/ci.yml'
-            # 配置读取点校验跨三个模块（core 注册表 + 网关声明 + noj-ui 引用），
-            # 任一模块变更都可能改变「声明 ↔ 读取点」的一致性
-            config:
-              - 'noj-core/src/shared/config/**'
-              - 'noj-core/scripts/check-config-usage.ts'
-              - 'noj-core/src/**'
-              - 'noj-ui/**'
-              - 'noj-llm-gateway/src/**'
-              - '.github/workflows/ci.yml'
-            ui:
-              - 'noj-ui/**'
-              - '.github/workflows/ci.yml'
-            judge:
-              - 'noj-judge/**'
-              - 'docker-compose.e2e.yml'
-              - 'env.e2e.template'
-              - '.github/workflows/ci.yml'
-            gateway:
-              - 'noj-llm-gateway/**'
-              - 'noj-tests/fixtures/**'
-              - 'scripts/**'
-              - 'docker-compose.e2e.yml'
-              - 'env.e2e.template'
-              - '.github/workflows/ci.yml'
-
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version-file: .dvmrc
-      # 选择器直接接收真实变更路径（含删除/重命名前后路径），不再依赖按
-      # src/domains/* 维护的过时路径过滤。main push / 手动触发直接全量。
-      - name: 计算受影响测试范围
-        id: selection
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          GIT_REF: ${{ github.ref }}
-        run: |
-          args=(--event "${EVENT_NAME}" --ref "${GIT_REF}")
-          if [ -n "${BASE_SHA}" ] && [ -n "${HEAD_SHA}" ]; then
-            args+=(--base "${BASE_SHA}" --head "${HEAD_SHA}")
-          fi
-          deno run --allow-read --allow-env --allow-write --allow-run=git \
-            scripts/select-core-ci.ts "${args[@]}"
-
-  # ===========================================================================
-  # noj-core — 快速静态检查（fmt + lint + typecheck，无外部服务）
-  #
-  # 目的：把 lint / 格式 / 类型错误在 30 秒内暴露，避免 core-test 跑满 15 分钟
-  # 才反馈。所有静态检查失败应在此层就被拦下。
-  # 修复 PR-2 review finding F3：原 CI 设计要求开发者在 PR 上等到
-  # 接近 15 分钟才收到 "deno fmt 没过" 这种秒级就能发现的问题。
+  # noj-core — 快速静态检查（fmt + lint + typecheck + 零依赖逻辑测试）
   # ===========================================================================
   core-quick-check:
     name: Core Quick Check
     needs: changes
-    # PR 按模块过滤；push main / 手动触发全量
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 3
@@ -287,54 +272,17 @@ jobs:
 
       - name: 类型检查 (deno check)
         working-directory: noj-core
-        # 排除 tests/：测试中用 Deno.test 包装的 import 由 deno test -A 解析，
-        # 单文件 check 会因 import.meta 等特性报"未使用"，噪音大于价值。
-        # 用 find+xargs 是因为 87 个 .ts 文件 shell glob 展开会超 E2BIG (os error 7)。
         run: find src -name '*.ts' -print0 | xargs -0 deno check
 
       - name: 纯逻辑与测试入口契约
         working-directory: noj-core
         run: deno task test:logic
 
-      # 配置读取点静态校验（issue #500）在独立的 config-usage-check 作业中运行：
-      # 它同时扫描 noj-core / noj-ui / noj-llm-gateway 三个模块，路径过滤与
-      # core-check 不同（见 changes 作业的 config 输出）。
-
-      # 不在 CI 跑 check:env:strict：脚本是给本地开发者用的工具，
-      # CI 环境使用 GitHub Secrets 而非 .env。
-      # 强行 cp .env.example .env 会触发模板里"故意写的占位符"
-      # （JWT_SECRET=change-this-...），产生误报。
-
   # ===========================================================================
-  # 配置读取点静态校验（issue #500）— 防死键再生
+  # noj-llm-gateway — 静态检查 + 单元测试 + 覆盖率阈值门禁（≥54%）
   #
-  # 校验两条方向相反的一致性：
-  #   正向：注册表/网关声明的每个可见键都必须有真实读取点（否则是死键）；
-  #   反向：代码里 Deno.env.get 读取的 env 必须已登记或在显式豁免清单中。
-  # 仅做静态扫描（不连库、不读 .env），因此单列一个轻量作业，
-  # 路径过滤覆盖 core / ui / gateway 三个模块。
-  # ===========================================================================
-  config-usage-check:
-    name: Config Usage Check
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.config == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 安装 Deno
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version-file: .dvmrc
-
-      - name: 配置读取点静态校验 (check:config-usage)
-        working-directory: noj-core
-        run: deno task check:config-usage
-
-  # ===========================================================================
-  # noj-llm-gateway — 快速静态检查 + 单元测试
+  # 直接在单测执行时采集覆盖率并检验阈值，避免单独的 coverage-check 重复
+  # 启动 PG/Redis 并冷跑整套测试。
   # ===========================================================================
   gateway-check:
     name: Gateway Check
@@ -344,7 +292,6 @@ jobs:
     timeout-minutes: 10
     env:
       DENO_DIR: ${{ github.workspace }}/noj-llm-gateway/.deno_cache
-    # 域 Provider、revision、持久账本在 PostgreSQL 验证，额度和节流在 Redis 验证。
     services:
       postgres:
         image: postgres:16-alpine
@@ -383,6 +330,8 @@ jobs:
           path: |
             noj-llm-gateway/.deno_cache
           key: gateway-deno-${{ hashFiles('noj-llm-gateway/deno.lock', 'noj-llm-gateway/deno.json') }}
+          restore-keys: |
+            gateway-deno-
 
       - name: 格式检查 (deno fmt)
         working-directory: noj-llm-gateway
@@ -396,132 +345,35 @@ jobs:
         working-directory: noj-llm-gateway
         run: deno check src/mod.ts
 
-      - name: 单元测试 (deno test)
+      - name: 单元测试与覆盖率门禁 (≥54%)
         working-directory: noj-llm-gateway
         env:
           TEST_PG_ADMIN_URL: postgres://noj:noj@localhost:5432/postgres
           TEST_REDIS_URL: redis://localhost:6379/15
-        run: deno task test
-
-  # ===========================================================================
-  # 仓库级门禁（Agent Note / Markdown 链接等，清单见 scripts/gate-list.ts）
-  # ===========================================================================
-  root-gates:
-    name: Root Gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 安装 Deno
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version-file: .dvmrc
-
-      - name: 验证 WASM 统一标准
-        run: deno run -A scripts/verify-wasm-standard.ts
-
-      - name: 仓库级门禁
-        run: deno run -A scripts/check-ci.ts
-
-      # noj-tests 的等待器/启动器清单/分组规划/浏览器生命周期单测不依赖
-      # PostgreSQL、Redis、Docker 或 UI；在 root gates 里跑，避免只靠 E2E 栈。
-      - name: noj-tests 零依赖单测
-        working-directory: noj-tests
-        run: deno task test:logic
-
-  # ===========================================================================
-  # 真实入口 Smoke（源码入口 + 已构建产物）
-  # ===========================================================================
-  entrypoint-smoke:
-    name: Entrypoint Smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 安装 Deno
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version-file: .dvmrc
-
-      - name: 入口 Smoke
-        run: deno run -A scripts/smoke-entrypoints.ts
-
-  # ===========================================================================
-  # 覆盖率门禁（noj-llm-gateway / noj-ui）
-  # ===========================================================================
-  coverage-check:
-    name: Coverage Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: noj
-          POSTGRES_PASSWORD: noj
-          POSTGRES_DB: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U noj -d postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 安装 Deno
-        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version-file: .dvmrc
-
-      - name: 覆盖率报告 + 模块阈值门禁
-        # 模块 deno.json 的 test:coverage 自带 --threshold；--check 让其退出码生效。
-        run: deno run -A scripts/coverage-report.ts --report --check
-      - name: 静默跳过扫描（报告）
-        run: deno run -A scripts/silent-skip-report.ts
-      - name: 上传测试治理报告
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: test-governance-reports
-          path: |
-            dev-docs/engineering/test-coverage.md
-            dev-docs/engineering/test-silent-skips.md
-          retention-days: 14
-          if-no-files-found: warn
+        run: |
+          set -euo pipefail
+          rm -rf coverage
+          deno run -A scripts/test-launcher.ts --coverage=coverage
+          deno coverage --threshold=54 coverage
 
   # ===========================================================================
   # noj-core — 分片并行测试（真实 PostgreSQL 模板路径）
   #
-  # 分片入口必须和本地统一：每个分片从正式迁移/seed 模板克隆独立数据库，
-  # 不共享 schema、truncate 或 Redis DB。
-  #
-  # 正式并行入口覆盖全部分片和新旧模块测试；新增模块没有 legacy job 时也不能漏测。
-  #
-  # 注意：test-parallel.ts 现在只是统一启动器的兼容入口，不读取 .env。
+  # - main push / 手动触发 / core-full 变更：4 台 runner 并行跑 4 片（每台 1 片，
+  #   不再单机两波串行），总墙钟从 6–7 分钟降到 ~2.5 分钟；
+  # - PR 仅触及特定模块：单台 runner 仅跑受影响模块及其反向依赖闭包（由
+  #   scripts/select-core-ci.ts 计算），保持隔离数据库与迁移验证。
   # ===========================================================================
   core-test-sharded:
-    name: Core Sharded (isolated PostgreSQL)
+    name: Core Sharded (${{ matrix.shard }})
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core-run == 'true' }}
     runs-on: ubuntu-latest
-    # 已观察到大分片测试本身耗时 19m22s；为迁移、容器启动和所有权清理保留预算。
-    timeout-minutes: 30
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(needs.changes.outputs.core-shards) }}
     services:
       postgres:
         image: postgres:16-alpine
@@ -580,20 +432,26 @@ jobs:
           restore-keys: |
             deno-sharded-
 
-      # 不传 --env-file：CI 通过 job env 提供全部变量，避免依赖仓库内不存在的 .env。
-      # Core 回归统一由这一 job 执行：4 片覆盖全部测试文件，2 片并发（每片独立
-      # 数据库 / Redis 容器 / 存储目录）；不再保留按 domain 复跑的 legacy job。
       - name: 分片测试（独立数据库）
         working-directory: noj-core
         env:
           BCRYPT_SALT_ROUNDS: "4"
-        run: deno task test:parallel --shards 4 --jobs 2
+          CORE_FULL: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core-full == 'true' }}
+          CORE_MODULES_CSV: ${{ needs.changes.outputs.core-modules-csv }}
+          SHARD_INDEX: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if [ "$CORE_FULL" = "true" ] || [ -z "$CORE_MODULES_CSV" ]; then
+            deno task test:parallel --shards 4 --jobs 1 --shard-index "$SHARD_INDEX"
+          else
+            deno task test:parallel --shards 1 --jobs 1 --modules "$CORE_MODULES_CSV"
+          fi
 
       - name: 记录分片选择
         if: always()
         run: |
           {
-            echo "### Core Sharded 选择结果"
+            echo "### Core Sharded (${{ matrix.shard }}) 选择结果"
             echo ""
             echo "- 全量 Core：${{ needs.changes.outputs.core-full }}"
             echo "- 受影响模块：${{ needs.changes.outputs.core-modules }}"
@@ -605,7 +463,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: core-test-sharded-logs
+          name: core-test-sharded-logs-${{ matrix.shard }}
           path: |
             noj-core/test-logs/
             noj-core/test-output.log
@@ -615,7 +473,10 @@ jobs:
         continue-on-error: true
 
   # ===========================================================================
-  # noj-ui — Nuxt 4 前端（Deno 构建检查）
+  # noj-ui — Nuxt 4 前端（类型 + 组件测试 + 构建 + 单测覆盖率 + BFF/主题验收）
+  #
+  # 合并原 ui-components 与 coverage-check 的 noj-ui 覆盖率门禁，并缓存
+  # Playwright 浏览器，避免重复 nuxt typecheck 与重复下载 Chromium。
   # ===========================================================================
   ui-check:
     name: UI (Nuxt)
@@ -623,6 +484,8 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.ui == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DENO_DIR: ${{ github.workspace }}/noj-ui/.deno_cache
 
     services:
       redis:
@@ -643,42 +506,51 @@ jobs:
         with:
           deno-version-file: .dvmrc
 
-      - name: 缓存 node_modules
+      - name: 缓存 node_modules 与 Deno 依赖
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          # cache key 同时 hash package.json 和 deno.lock（修复 finding P8）。
-          # 原单 hashFiles('package.json') 在 lockfile 隐式更新时不刷缓存，
-          # 会出现非确定性依赖版本。deno.lock 是本项目唯一的锁文件真源
-          # （已移除冗余的 package-lock.json / pnpm-lock.yaml）。
-          path: noj-ui/node_modules
-          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
+          path: |
+            noj-ui/node_modules
+            noj-ui/.deno_cache
+          key: npm-ui-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
           restore-keys: |
-            npm-
+            npm-ui-
 
       - name: 安装依赖 (Deno BYONM)
         working-directory: noj-ui
         run: deno install
 
-      # 全页面类型检查（issue #427）：`nuxt typecheck` 生成 .nuxt 类型上下文后
-      # 运行显式 vue-tsc，覆盖 pages / components / composables / middleware /
-      # server 的适用类型上下文。能拒绝 deno check 覆盖不到的 SFC 内错误
-      #（如注册页曾出现过的未定义变量 sent）。
-      # 注意：不能换成 `nuxt prepare`（Deno 下其类型生成静默缺失，.nuxt/tsconfig.json
-      # 不会生成）；也不能只用 `nuxt typecheck`（其内部启动的 vue-tsc 在 Deno 下
-      # 会静默跳过），故拆为「生成类型 + 显式 vue-tsc」两步。
       - name: 全页面类型检查 (nuxt typecheck 生成 + vue-tsc)
         working-directory: noj-ui
         run: deno task check:types:nuxt
+
+      - name: 组件测试 (Vitest)
+        working-directory: noj-ui
+        run: deno task test:components
 
       - name: 构建检查 (deno task build)
         working-directory: noj-ui
         run: deno task build
 
-      - name: 单元测试 (deno task test)
+      - name: 单元测试与覆盖率门禁 (≥60%)
         working-directory: noj-ui
-        run: deno task test
+        run: |
+          set -euo pipefail
+          rm -rf coverage
+          deno test -A --ignore=tests/browser tests/ --coverage=coverage
+          deno coverage --threshold=60 coverage
+
+      - name: 缓存 Playwright 浏览器
+        id: pw-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-ui-${{ hashFiles('noj-ui/deno.lock') }}
+          restore-keys: |
+            playwright-ui-
 
       - name: 安装 BFF 浏览器验收依赖
+        if: steps.pw-cache.outputs.cache-hit != 'true'
         working-directory: noj-ui
         run: deno run -A npm:playwright@1.65.1 install --with-deps chromium
 
@@ -709,7 +581,6 @@ jobs:
           done
           deno task test:theme
 
-      # 失败时上传 Nuxt 构建日志与 .output（修复 finding M7）
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -724,49 +595,14 @@ jobs:
           if-no-files-found: ignore
         continue-on-error: true
 
-  ui-components:
-    name: UI Components
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.ui == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
-        with:
-          deno-version-file: .dvmrc
-      - name: 缓存 node_modules
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: noj-ui/node_modules
-          key: npm-${{ hashFiles('noj-ui/package.json', 'noj-ui/deno.lock') }}
-          restore-keys: |
-            npm-
-      - name: 安装依赖 (Deno BYONM)
-        working-directory: noj-ui
-        run: deno install
-      - name: 生成 Nuxt 类型上下文
-        working-directory: noj-ui
-        run: deno run -A npm:nuxt typecheck
-      - name: 组件测试
-        working-directory: noj-ui
-        run: deno task test:components
-
   # ===========================================================================
-  # noj-judge — 拆为并行作业（2026-10 提速，目标 PR 总时长 ≤ 5 分钟）
+  # noj-judge — 并行作业
   #
-  #   judge-check          fmt + clippy
-  #   judge-test           nextest（Rust 全量单元/集成），与静态检查并行
-  #   judge-wasi-sdk       固定 NOJ WASI SDK：产物按输入哈希缓存，命中即跳过
-  #                        源码编译（libc++ 约 3.3 分钟/次）；未命中才构建并做
-  #                        不同目录一致性校验
-  #   judge-wasi-acceptance 真实 Worker 路径验收，4 分片并行（复用 SDK 缓存）
-  #   judge-wasi-image     生产 runtime 镜像验收；输入未变（缓存标记命中）则跳过
-  #
-  # 此前这些步骤在单 job 内串行，SDK 从源码构建 3 次（含镜像内一次），
-  # 验收示例以 debug 构建串行执行，总计 15–21 分钟。
-  # Rust 编译依赖 sccache，不再缓存整个 target（恢复/保存各约 1 分钟，收益为负）。
+  #   judge-check          fmt + clippy + Python SDK 单测
+  #   judge-test           nextest（Rust 全量单元/集成）
+  #   judge-wasi-sdk       固定 NOJ WASI SDK（按输入哈希缓存，命中即跳过构建）
+  #   judge-wasi-acceptance 单 job 一次编译 + 4 组并发运行（消除 4×90s 重复编译）
+  #   judge-wasi-image     生产 runtime 镜像验收（输入未变即缓存命中跳过）
   # ===========================================================================
   judge-check:
     name: Judge Check
@@ -774,9 +610,6 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # sccache 通过 GHA cache backend 读写编译缓存，需要 actions: write
-    # （workflow 级默认只有 contents: read；fork PR 上 GitHub 自动降级为
-    # 只读，sccache 写缓存失败仅警告，不影响测试正确性）
     permissions:
       actions: write
 
@@ -790,7 +623,6 @@ jobs:
       - name: 安装 Rust 工具链
         uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
-          # 固定 SHA 后不再能从 ref 名推断工具链，显式声明（审计 S1）
           toolchain: stable
           components: rustfmt, clippy
 
@@ -815,9 +647,6 @@ jobs:
         working-directory: noj-judge
         run: cargo clippy --locked --all-targets -- -D warnings
 
-      # Evaluator / Solution Python SDK 单测（纯 stdlib，无第三方依赖）。
-      # tests 目录没有 __init__.py，unittest discover 无法发现，故按文件名
-      # 展开为模块名逐个传入；timeout 防止测试线程卡死拖到 job 超时。
       - name: 安装 Python（SDK 单测）
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -855,7 +684,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       actions: write
-    # Redis 集成测试必须连接真实服务，避免缺少 REDIS_URL 时静默跳过。
     services:
       redis:
         image: redis:7-alpine
@@ -895,13 +723,12 @@ jobs:
 
       - name: 运行测试 (cargo nextest)
         working-directory: noj-judge
-        # 本项目无 doctest（src 无 /// ``` 示例），覆盖等价。
         run: cargo nextest run --locked --all-targets
 
   judge-wasi-sdk:
     name: Judge WASI SDK
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.wasi == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -912,8 +739,6 @@ jobs:
         working-directory: noj-judge
         run: python3 -m unittest discover -s scripts -p test_build_oi_wasi_toolchain.py
 
-      # SDK 构建是确定性的（下方「一致性」步骤保证），产物可按输入哈希缓存；
-      # 命中后本 job 只剩恢复缓存，验收分片直接复用。
       - name: 恢复已构建 WASI SDK
         id: sdk-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
@@ -947,17 +772,13 @@ jobs:
           "${RUNNER_TEMP}/noj-wasi-sdk-b"
 
   judge-wasi-acceptance:
-    name: Judge WASI Acceptance (${{ matrix.shard }})
+    name: Judge WASI Acceptance
     needs: [changes, judge-wasi-sdk]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.wasi == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       actions: write
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [wasi, standard, compat, analysis]
     env:
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: "true"
@@ -991,19 +812,18 @@ jobs:
           key: noj-wasi-sdk-v1-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
           fail-on-cache-miss: true
 
-      - name: 真实 WASI C/C++ 评测验收
+      - name: 真实 WASI C/C++ 评测验收（一次编译 + 4 组并发）
         working-directory: noj-judge
         shell: bash
         run: >-
-          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a" "${{ matrix.shard }}"
+          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a" all
           2>&1 | tee "${RUNNER_TEMP}/noj-wasi-toolchain-check.log"
 
-      # 仅上传诊断日志，避免整个 target 的数 GiB 编译缓存阻塞失败反馈与取消。
       - name: 上传失败日志
         if: failure() || cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: judge-wasi-acceptance-logs-${{ matrix.shard }}
+          name: judge-wasi-acceptance-logs
           path: ${{ runner.temp }}/noj-wasi-*-check.log
           retention-days: 7
           if-no-files-found: ignore
@@ -1012,16 +832,13 @@ jobs:
   judge-wasi-image:
     name: Judge WASI Image
     needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.judge == 'true' }}
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.wasi == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # 镜像在 Docker 内从源码构建 SDK（约 3 分钟）；只有 Dockerfile、工具链
-      # 配方或相关脚本变化才可能改变结果，其余情况用缓存标记跳过。
-      # 标记只会在本 job 成功后由 cache post 步骤保存。
       - name: 检查镜像验收标记
         id: image-ok
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
