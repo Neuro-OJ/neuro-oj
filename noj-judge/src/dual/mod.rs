@@ -28,6 +28,8 @@ mod result;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_p0_p2;
 
 #[cfg(test)]
 use crate::dual::protocol::LineParser;

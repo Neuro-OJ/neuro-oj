@@ -226,7 +226,7 @@ function statusIcon(status: string) {
                     <div class="mb-1.5 flex items-center justify-between">
                       <p class="text-[11px] font-semibold text-text-muted">调试输出 (stdout)</p>
                       <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-copy"
-                        @click.stop="copyText(item.stdout, '调试输出')">复制</UButton>
+                        @click.stop="copyText(item.stdout ?? null, '调试输出')">复制</UButton>
                     </div>
                     <pre
                       class="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d1117] p-3 font-mono text-[11px] leading-relaxed text-[#e6edf3]">{{ item.stdout }}</pre>
