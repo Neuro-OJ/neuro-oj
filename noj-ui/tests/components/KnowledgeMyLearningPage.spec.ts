@@ -102,6 +102,9 @@ beforeEach(() => {
         attempted_count: 3,
         failed_attempts: 0,
         max_passed_difficulty: 40,
+        ability_score: 80,
+        effective_ability: 66,
+        needs_review: true,
         problem_count: 3,
       },
       {
@@ -113,6 +116,9 @@ beforeEach(() => {
         attempted_count: 2,
         failed_attempts: 1,
         max_passed_difficulty: 30,
+        ability_score: 42,
+        effective_ability: 42,
+        needs_review: false,
         problem_count: 2,
       },
     ],
@@ -186,10 +192,14 @@ describe('我的学习页', () => {
     const nodes = wrapper.findAll('[data-testid="mastery-node"]');
     expect(nodes).toHaveLength(2);
     expect(nodes[0]!.text()).toContain('已掌握');
+    expect(nodes[0]!.text()).toContain('能力 66');
+    expect(nodes[0]!.text()).toContain('待复习');
     expect(nodes[1]!.text()).toContain('学习中');
+    expect(nodes[1]!.text()).toContain('能力 42');
     expect(wrapper.find('a[data-to="/d/school/knowledge/ds.list"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="knowledge-skill-tree"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="skill-node-ds.array"]').text()).toContain('已掌握');
+    expect(wrapper.find('[data-testid="skill-node-ds.array"]').text()).toContain('待复习');
   });
 
   it('KNOWLEDGE_DISABLED（总开关关闭）只显示未开启提示且不报错', async () => {

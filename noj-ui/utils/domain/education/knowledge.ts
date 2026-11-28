@@ -137,8 +137,27 @@ export interface MasteryItem {
   attempted_count: number;
   failed_attempts: number;
   max_passed_difficulty: number | null;
+  /** 持久化 Elo 能力分（0–100 整数）。 */
+  ability_score?: number;
+  /** 读时遗忘衰减后的展示能力分（0–100 整数）。 */
+  effective_ability?: number;
+  /** 有效加权证据量。 */
+  evidence_weight?: number;
+  /** 是否触发遗忘复习提醒。 */
+  needs_review?: boolean;
+  /** 最近一次达标时间（ISO 8601，可空）。 */
+  last_passed_at?: string | null;
   /** 该域中该节点为主动知识点的可访问题目数。 */
   problem_count: number;
+}
+
+/** 提取用于前端展示的节点能力分（优先衰减后展示能力分；无记录返回 null）。 */
+export function displayAbilityScore(
+  item: Pick<MasteryItem, 'ability_score' | 'effective_ability'> | null | undefined,
+): number | null {
+  const raw = item?.effective_ability ?? item?.ability_score;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return null;
+  return Math.min(100, Math.max(0, Math.round(raw)));
 }
 
 /** 我的掌握度（`GET /knowledge/me/mastery` 的 `data`）。 */
@@ -216,7 +235,8 @@ export type RecommendationReasonCode =
   | 'continue_learning'
   | 'prerequisites_mastered'
   | 'entry_point'
-  | 'review_prerequisite';
+  | 'review_prerequisite'
+  | 'needs_review';
 
 /** 推荐理由结构化数据（`params` 只填当前 code 使用的字段）。 */
 export interface RecommendationReasonParams {
@@ -230,6 +250,9 @@ export interface RecommendationReasonParams {
   prerequisite_name?: string;
   /** `prerequisites_mastered`：已掌握的前置列表。 */
   prerequisites?: Array<{ id: string; name: string }>;
+  /** `needs_review`：能力分与衰减后能力分。 */
+  ability_score?: number;
+  effective_ability?: number;
 }
 
 export interface RecommendationReason {
@@ -246,6 +269,9 @@ export interface KnowledgeRecommendation {
     area: string;
     state: MasteryState;
     problem_count: number;
+    ability_score?: number;
+    effective_ability?: number;
+    needs_review?: boolean;
   };
   reason: RecommendationReason;
   /** 推荐题（复用阶梯「下一题」）；无推荐题时为 null。 */
@@ -322,6 +348,8 @@ export function recommendationReasonText(reason: RecommendationReason | null | u
       const prerequisite = params.prerequisite_name ?? params.prerequisite_id ?? '前置知识点';
       return `你在 ${nodeName} 上多次未达标，建议先巩固 ${prerequisite}`;
     }
+    case 'needs_review':
+      return '距上次达标已有一段时间，建议做题复习巩固';
     default:
       return '根据你的学习进度推荐';
   }

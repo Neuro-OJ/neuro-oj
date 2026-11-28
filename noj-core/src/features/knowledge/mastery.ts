@@ -37,20 +37,39 @@ import {
 import type { ManagedTask } from "../../shared/runtime/managed-task.ts";
 import { startPeriodicTask } from "../../shared/runtime/managed-task.ts";
 import {
+  applyForgettingDecay,
+  computeNodeMastery,
+  computeScoreRatio,
+  DEFAULT_MASTERY_MIN_SOLVED,
+  type KnowledgeMappingRole,
+  type MasteryState,
+  type NodeMasteryInput,
+  type NodeMasteryResult,
+  type ProblemAbilityObservation,
+  upperThirdThreshold,
+} from "./ability.ts";
+import {
   isPassingScore,
   type LadderItem,
   readNodeLadder,
-  tierOf,
   tierToPrior,
 } from "./difficulty.ts";
 import { type KnowledgeGraphNode, readKnowledgeGraph } from "./graph.ts";
 import { objectiveFullScore } from "./objective-full-score.ts";
+export {
+  type CoverageNodeItem,
+  type CoverageView,
+  readCoverage,
+} from "./coverage.ts";
 
-/** 掌握状态三态。 */
-export type MasteryState = "none" | "learning" | "mastered";
-
-/** 默认「已掌握」所需达标题数（与注册表默认值一致）。 */
-export const DEFAULT_MASTERY_MIN_SOLVED = 3;
+export {
+  computeNodeMastery,
+  DEFAULT_MASTERY_MIN_SOLVED,
+  type MasteryState,
+  type NodeMasteryInput,
+  type NodeMasteryResult,
+  upperThirdThreshold,
+};
 
 /** 保护结束后回看窗口：每轮重算该窗口内结束保护的题目相关用户。 */
 export const MASTERY_PROTECTION_LOOKBACK_MS = 24 * 60 * 60 * 1000;
@@ -73,67 +92,6 @@ export function masteryMinSolved(): number {
   return Math.min(20, Math.max(1, Math.round(raw)));
 }
 
-/** 单节点掌握度计算的输入（纯函数）。 */
-export interface NodeMasteryInput {
-  /** 节点作为主知识点的题目数（同一可统计口径；含未达标题）。 */
-  total: number;
-  /** 用户达标题的难度分（校准难度；无校准行用先验）。 */
-  passed_difficulties: readonly number[];
-  /** 节点全部题目（含未达标）的难度分。 */
-  difficulties: readonly number[];
-  solved_count: number;
-  attempted_count: number;
-  failed_attempts: number;
-}
-
-/** 单节点掌握度计算结果。 */
-export interface NodeMasteryResult {
-  state: MasteryState;
-  solved_count: number;
-  attempted_count: number;
-  failed_attempts: number;
-  max_passed_difficulty: number | null;
-}
-
-/** 难度三分位上界（不含）：上三分之一为 `>=` 此值。 */
-export function upperThirdThreshold(difficulties: readonly number[]): number {
-  if (difficulties.length === 0) return Number.POSITIVE_INFINITY;
-  const sorted = [...difficulties].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length * 2) / 3)]!;
-}
-
-/**
- * 掌握度判定（纯函数）。
- *
- * - 无达标题 → `none`；有达标题且未满足 `mastered` → `learning`；
- * - `mastered`：题量 ≥ K 时达标题数 ≥ K 且至少一道达标难度 ≥ 上三分之一阈值；
- *   题量 < K 时为全部达标（且至少一道，题量为 0 时不可能掌握）。
- */
-export function computeNodeMastery(
-  input: NodeMasteryInput,
-  minSolved: number = DEFAULT_MASTERY_MIN_SOLVED,
-): NodeMasteryResult {
-  const solved = Math.max(0, input.passed_difficulties.length);
-  const total = Math.max(0, input.total);
-  let mastered = false;
-  if (solved > 0 && total > 0) {
-    const threshold = upperThirdThreshold(input.difficulties);
-    const hasHard = input.passed_difficulties.some((d) => d >= threshold);
-    mastered = total < minSolved
-      ? solved >= total
-      : solved >= minSolved && hasHard;
-  }
-  return {
-    state: mastered ? "mastered" : solved > 0 ? "learning" : "none",
-    solved_count: input.solved_count,
-    attempted_count: input.attempted_count,
-    failed_attempts: input.failed_attempts,
-    max_passed_difficulty: solved > 0
-      ? Math.max(...input.passed_difficulties)
-      : null,
-  };
-}
-
 // ── 取数（与 P2 阶梯同口径）──────────────────────────────
 
 type NodeProblemRow = {
@@ -147,10 +105,16 @@ type NodeProblemRow = {
   calibrated: number | null;
 } & Record<string, unknown>;
 
-/** 某用户在某题上的有效成绩（最高分）与未达标提交数。 */
+type NodeProblemMappingRow = NodeProblemRow & {
+  role: KnowledgeMappingRole;
+};
+
+/** 某用户在某题上的有效成绩（最高分）、对应作答时间与未达标提交数。 */
 interface UserProblemScore {
   /** 有效成绩最高分（×100 记分；无有效成绩为空）。 */
   best: number | null;
+  /** 达到有效最高分的最近一次作答/评测完成时间（ISO 8601；无有效成绩为空）。 */
+  best_at: string | null;
   /** 未达标提交次数（全部正式提交中未达标的尝试数）。 */
   failed_attempts: number;
 }
@@ -159,6 +123,7 @@ type UserScoreRow = {
   problem_id: string;
   kind: string;
   best: number | null;
+  best_at: string | null;
   failed_attempts: number;
 } & Record<string, unknown>;
 
@@ -198,23 +163,23 @@ export async function loadNodeProblems(
 }
 
 /**
- * 待确认挂载（`review_status = 'pending'）的节点题目行（仅覆盖度题量用）。
- *
- * 口径与 {@link loadNodeProblems} 相同，仅放宽 `review_status`。
+ * 节点题目行（含主/次知识点，供掌握度 Elo 能力分与协同证据累计使用）。
  */
-async function loadNodePendingCounts(
+async function loadNodeProblemMappings(
   db: DbRoot = getDb(),
-): Promise<{ node_id: string; problem_id: string; domain_id: string }[]> {
-  const rows = await db.execute(sql`
-    SELECT pk.node_id, p.id AS problem_id, p.domain_id
+): Promise<NodeProblemMappingRow[]> {
+  const rows = await db.execute<NodeProblemMappingRow>(sql`
+    SELECT pk.node_id, pk.role, p.id AS problem_id, p.domain_id, d.slug,
+           p.is_objective, pd.pass_ratio_override, p.difficulty, pd.calibrated
     FROM problem_knowledge pk
     JOIN knowledge_nodes kn ON kn.id = pk.node_id AND kn.status = 'active'
     JOIN problems p ON p.id = pk.problem_id
     JOIN domains d ON d.id = p.domain_id
     JOIN domain_problem_bindings b
       ON b.domain_id = p.domain_id AND b.problem_id = p.id
-    WHERE pk.role = 'primary'
-      AND pk.review_status = 'pending'
+    LEFT JOIN problem_difficulty pd ON pd.problem_id = p.id
+    WHERE pk.role IN ('primary', 'secondary')
+      AND pk.review_status IN ('auto', 'confirmed')
       AND b.disabled_at IS NULL
       AND d.status <> 'suspended'
       AND p.latest_version_id IS NOT NULL
@@ -222,11 +187,7 @@ async function loadNodePendingCounts(
         AND v.id = CASE WHEN p.effective_version_mode = 'exact'
           THEN p.required_version_id ELSE p.latest_version_id END)
   `);
-  return unwrapRows(rows as never) as {
-    node_id: string;
-    problem_id: string;
-    domain_id: string;
-  }[];
+  return unwrapRows(rows as never) as NodeProblemMappingRow[];
 }
 
 /** 节点题目难度分（无校准行用先验）。 */
@@ -235,10 +196,10 @@ export function scoreOfNodeProblem(row: NodeProblemRow): number {
 }
 
 /**
- * 用户在特定题目集合上的有效成绩（练习 + 已结束比赛）与未达标次数。
+ * 用户在特定题目集合上的有效成绩（练习 + 已结束比赛）、对应时间与未达标次数。
  *
- * `best` 为分题型（普通提交 / 客观题套卷）的最高有效分；未达标次数按全部正式
- * 提交（含进行中比赛，仅用于根因诊断展示「多次未达标」）的未通过尝试数统计。
+ * `best` 为分题型（普通提交 / 客观题套卷）的最高有效分，`best_at` 为达到该最高分
+ * 的最近一次作答时间；未达标次数按全部正式提交统计。
  */
 export async function loadUserProblemScores(
   userId: string,
@@ -247,40 +208,74 @@ export async function loadUserProblemScores(
 ): Promise<Map<string, UserProblemScore>> {
   const result = new Map<string, UserProblemScore>();
   if (problemIds.length === 0) return result;
-  const ids = sql.join(problemIds.map((id) => sql`${id}`), sql`, `);
+  const uniqueIds = [...new Set(problemIds)];
+  const ids = sql.join(uniqueIds.map((id) => sql`${id}`), sql`, `);
   const rows = await db.execute<UserScoreRow>(sql`
     WITH eff AS (
-      SELECT s.problem_id, 'submission' AS kind, a.score, a.accepted, s.contest_id
+      SELECT s.problem_id, 'submission' AS kind, a.score, a.accepted, s.contest_id,
+             COALESCE(a.finished_at, a.created_at, s.created_at) AS attempt_at
       FROM submissions s
       JOIN evaluation_attempts a ON a.id = s.effective_attempt_id
       WHERE s.user_id = ${userId} AND s.problem_id IN (${ids})
       UNION ALL
       SELECT o.paper_id AS problem_id, 'objective' AS kind,
-             a.score, a.accepted, o.contest_id
+             a.score, a.accepted, o.contest_id,
+             COALESCE(a.finished_at, a.created_at, o.created_at) AS attempt_at
       FROM objective_submissions o
       JOIN evaluation_attempts a ON a.id = o.effective_attempt_id
       WHERE o.user_id = ${userId} AND o.paper_id IN (${ids})
+    ),
+    elig AS (
+      SELECT e.problem_id, e.kind, e.score, e.accepted, e.attempt_at,
+             (e.contest_id IS NULL OR (
+               c.end_time ~ ${CONTEST_TIME_REGEX}
+               AND pg_input_is_valid(c.end_time, 'timestamptz')
+               AND c.end_time::timestamptz <= now()
+             )) AS is_eligible
+      FROM eff e
+      LEFT JOIN contests c ON c.id = e.contest_id
+    ),
+    agg AS (
+      SELECT problem_id, kind,
+             count(*) FILTER (WHERE NOT accepted)::int AS failed_attempts,
+             max(score) FILTER (WHERE is_eligible) AS best
+      FROM elig
+      GROUP BY problem_id, kind
     )
-    SELECT e.problem_id, e.kind,
-           count(*) FILTER (WHERE NOT e.accepted)::int AS failed_attempts,
-           max(e.score) FILTER (WHERE e.contest_id IS NULL OR (
-             c.end_time ~ ${CONTEST_TIME_REGEX}
-             AND pg_input_is_valid(c.end_time, 'timestamptz')
-             AND c.end_time::timestamptz <= now()
-           )) AS best
-    FROM eff e
-    LEFT JOIN contests c ON c.id = e.contest_id
-    GROUP BY e.problem_id, e.kind
+    SELECT a.problem_id, a.kind, a.failed_attempts, a.best,
+           (SELECT max(e2.attempt_at) FROM elig e2
+            WHERE e2.problem_id = a.problem_id
+              AND e2.kind = a.kind
+              AND e2.is_eligible
+              AND e2.score = a.best) AS best_at
+    FROM agg a
   `);
   for (const row of unwrapRows(rows as never) as UserScoreRow[]) {
     // 同一题目可能同时有普通提交与客观题套卷成绩：合并为该题的最高分与失败数。
     const previous = result.get(row.problem_id);
+    let best: number | null;
+    let bestAt: string | null;
+    if (previous?.best == null) {
+      best = row.best;
+      bestAt = row.best_at ?? null;
+    } else if (row.best == null) {
+      best = previous.best;
+      bestAt = previous.best_at;
+    } else if (row.best > previous.best) {
+      best = row.best;
+      bestAt = row.best_at ?? null;
+    } else if (row.best < previous.best) {
+      best = previous.best;
+      bestAt = previous.best_at;
+    } else {
+      best = previous.best;
+      bestAt = previous.best_at && row.best_at
+        ? (previous.best_at >= row.best_at ? previous.best_at : row.best_at)
+        : (row.best_at ?? previous.best_at);
+    }
     result.set(row.problem_id, {
-      best: previous?.best == null
-        ? row.best
-        : row.best == null
-        ? previous.best
-        : Math.max(previous.best, row.best),
+      best,
+      best_at: bestAt,
       failed_attempts: Math.max(
         previous?.failed_attempts ?? 0,
         row.failed_attempts,
@@ -291,7 +286,7 @@ export async function loadUserProblemScores(
 }
 
 /** 比赛保密保护中的题目 ID 集合（进行中 + 未结束保护；口径见 access）。 */
-async function loadProtectedProblems(
+export async function loadProtectedProblems(
   pairs: readonly { domain_id: string; problem_id: string }[],
 ): Promise<Set<string>> {
   const byDomain = new Map<string, string[]>();
@@ -360,7 +355,7 @@ export async function recomputeUserMastery(
 ): Promise<UserMasteryResult> {
   const empty = { userId, nodes: 0, mastered: 0, learning: 0 };
   if (getSetting("knowledge_enabled")?.value !== true) return empty;
-  const rows = await loadNodeProblems(db);
+  const rows = await loadNodeProblemMappings(db);
   if (rows.length === 0) {
     await db.delete(userKnowledgeMastery).where(
       eq(userKnowledgeMastery.user_id, userId),
@@ -376,30 +371,54 @@ export async function recomputeUserMastery(
   const fullScores = new FullScoreCache();
   const minSolved = masteryMinSolved();
 
-  /** 节点 → 全部题目（难度）与用户成绩。 */
+  /** 节点 → 主知识点题目（难度/计数）与主/次作答观测。 */
   const perNode = new Map<string, {
     difficulties: number[];
     passed: number[];
     solved: number;
     attempted: number;
     failed: number;
+    observations: ProblemAbilityObservation[];
   }>();
   for (const row of rows) {
-    const agg = perNode.get(row.node_id) ??
-      { difficulties: [], passed: [], solved: 0, attempted: 0, failed: 0 };
+    const agg = perNode.get(row.node_id) ?? {
+      difficulties: [],
+      passed: [],
+      solved: 0,
+      attempted: 0,
+      failed: 0,
+      observations: [],
+    };
     perNode.set(row.node_id, agg);
     if (protectedIds.has(row.problem_id)) continue;
-    const score = scoreOfNodeProblem(row);
-    agg.difficulties.push(score);
+    const difficulty = scoreOfNodeProblem(row);
+    if (row.role === "primary") {
+      agg.difficulties.push(difficulty);
+    }
     const mine = scores.get(row.problem_id);
     if (!mine) continue;
-    agg.failed += mine.failed_attempts;
+    if (row.role === "primary") {
+      agg.failed += mine.failed_attempts;
+    }
     if (mine.best !== null) {
-      agg.attempted++;
-      if (isPassingScore(mine.best, await passOptionOf(row, fullScores))) {
-        agg.passed.push(score);
-        agg.solved++;
+      const passOption = await passOptionOf(row, fullScores);
+      const passed = isPassingScore(mine.best, passOption);
+      const scoreRatio = computeScoreRatio(mine.best, passOption);
+      if (row.role === "primary") {
+        agg.attempted++;
+        if (passed) {
+          agg.passed.push(difficulty);
+          agg.solved++;
+        }
       }
+      agg.observations.push({
+        problem_id: row.problem_id,
+        role: row.role,
+        difficulty,
+        score_ratio: scoreRatio,
+        passed,
+        attempted_at: mine.best_at,
+      });
     }
   }
 
@@ -413,7 +432,8 @@ export async function recomputeUserMastery(
   let mastered = 0;
   let learning = 0;
   for (const [nodeId, agg] of perNode) {
-    const touched = agg.attempted > 0 || agg.failed > 0;
+    const touched = agg.attempted > 0 || agg.failed > 0 ||
+      agg.observations.length > 0;
     if (!touched) continue;
     keep.add(nodeId);
     const result = computeNodeMastery({
@@ -423,6 +443,7 @@ export async function recomputeUserMastery(
       solved_count: agg.solved,
       attempted_count: agg.attempted,
       failed_attempts: agg.failed,
+      observations: agg.observations,
     }, minSolved);
     if (result.state === "mastered") mastered++;
     else if (result.state === "learning") learning++;
@@ -494,7 +515,7 @@ async function listRecentProtectionEndUsers(
       JOIN contests c ON c.id = cp.contest_id
       WHERE EXISTS (
         SELECT 1 FROM problem_knowledge pk
-        WHERE pk.problem_id = p.id AND pk.role = 'primary'
+        WHERE pk.problem_id = p.id AND pk.role IN ('primary', 'secondary')
           AND pk.review_status IN ('auto', 'confirmed')
       )
         AND c.end_time ~ ${CONTEST_TIME_REGEX}
@@ -575,31 +596,28 @@ export function _stopMasteryProtectionWorkerForTest(): void {
   _masteryTask = null;
 }
 
+/** 持久化掌握度记录。 */
+export interface UserMasteryRecord {
+  state: MasteryState;
+  solved_count: number;
+  attempted_count: number;
+  failed_attempts: number;
+  max_passed_difficulty: number | null;
+  ability_score: number;
+  evidence_weight: number;
+  last_passed_at: string | null;
+  updated_at: string;
+}
+
 /** 读取某用户全部掌握度记录（API 与推荐共用）。 */
 export async function loadUserMastery(
   userId: string,
   db: DbRoot = getDb(),
-): Promise<
-  Map<string, {
-    state: MasteryState;
-    solved_count: number;
-    attempted_count: number;
-    failed_attempts: number;
-    max_passed_difficulty: number | null;
-    updated_at: string;
-  }>
-> {
+): Promise<Map<string, UserMasteryRecord>> {
   const rows = await db.select().from(userKnowledgeMastery).where(
     eq(userKnowledgeMastery.user_id, userId),
   );
-  const map = new Map<string, {
-    state: MasteryState;
-    solved_count: number;
-    attempted_count: number;
-    failed_attempts: number;
-    max_passed_difficulty: number | null;
-    updated_at: string;
-  }>();
+  const map = new Map<string, UserMasteryRecord>();
   for (const row of rows) {
     map.set(row.node_id, {
       state: row.state as MasteryState,
@@ -607,6 +625,9 @@ export async function loadUserMastery(
       attempted_count: row.attempted_count,
       failed_attempts: row.failed_attempts,
       max_passed_difficulty: row.max_passed_difficulty,
+      ability_score: row.ability_score ?? 0,
+      evidence_weight: Math.round((row.evidence_weight ?? 0) * 100) / 100,
+      last_passed_at: row.last_passed_at ?? null,
       updated_at: row.updated_at,
     });
   }
@@ -636,6 +657,16 @@ export interface MasteryItem {
   attempted_count: number;
   failed_attempts: number;
   max_passed_difficulty: number | null;
+  /** 持久化 Elo 能力分（0–100 整数）。 */
+  ability_score: number;
+  /** 读时遗忘衰减后的展示能力分（0–100 整数，不写库）。 */
+  effective_ability: number;
+  /** 有效加权证据量（保留 2 位小数）。 */
+  evidence_weight: number;
+  /** 是否触发遗忘复习提醒（读时计算，不写库）。 */
+  needs_review: boolean;
+  /** 最近一次达标时间（ISO 8601，可空）。 */
+  last_passed_at: string | null;
   /** 该域中该节点为主动知识点的可访问题目数。 */
   problem_count: number;
 }
@@ -654,12 +685,14 @@ export interface MyMasteryView {
 /**
  * 用户在某域的掌握度（只返回有题或有记录的节点）。
  *
- * `domainId` 为空时不按域过滤（`domain` 为 null）。
+ * `domainId` 为空时不按域过滤（`domain` 为 null）。读时基于 `now - last_passed_at`
+ * 实时计算 `effective_ability` 与 `needs_review`，不写回数据库。
  */
 export async function readMyMastery(
   userId: string,
   domain: { id: string; slug: string } | null,
   db: DbRoot = getDb(),
+  now: Date = new Date(),
 ): Promise<MyMasteryView> {
   const graph = await readKnowledgeGraph();
   const [mastery, placedIds, rows] = await Promise.all([
@@ -677,15 +710,27 @@ export async function readMyMastery(
     const record = mastery.get(node.id);
     const count = counts.get(node.id) ?? 0;
     if (!record && count === 0) continue;
+    const state = record?.state ?? "none";
+    const abilityScore = record?.ability_score ?? 0;
+    const lastPassedAt = record?.last_passed_at ?? null;
+    const decayed = applyForgettingDecay(
+      { ability_score: abilityScore, state, last_passed_at: lastPassedAt },
+      now,
+    );
     items.push({
       node_id: node.id,
       name: node.name,
       area: node.area,
-      state: record?.state ?? "none",
+      state,
       solved_count: record?.solved_count ?? 0,
       attempted_count: record?.attempted_count ?? 0,
       failed_attempts: record?.failed_attempts ?? 0,
       max_passed_difficulty: record?.max_passed_difficulty ?? null,
+      ability_score: decayed.ability_score,
+      effective_ability: decayed.effective_ability,
+      evidence_weight: record?.evidence_weight ?? 0,
+      needs_review: decayed.needs_review,
+      last_passed_at: lastPassedAt,
       problem_count: count,
     });
   }
@@ -791,7 +836,8 @@ export interface RecommendationReason {
     | "continue_learning"
     | "prerequisites_mastered"
     | "entry_point"
-    | "review_prerequisite";
+    | "review_prerequisite"
+    | "needs_review";
   params: Record<string, unknown>;
 }
 
@@ -803,9 +849,12 @@ export interface Recommendation {
     area: string;
     state: MasteryState;
     problem_count: number;
+    ability_score: number;
+    effective_ability: number;
+    needs_review: boolean;
   };
   reason: RecommendationReason;
-  /** 推荐题（复用 P2 阶梯「下一题」）；无推荐题时为 null。 */
+  /** 推荐题（复用 P2 阶梯「下一题」并优先匹配目标难度）；无推荐题时为 null。 */
   next: LadderItem | null;
 }
 
@@ -814,6 +863,9 @@ export const RECOMMENDATIONS_MAX_LIMIT = 20;
 
 /** 根因提示阈值：节点未达标提交次数不少于该值且存在未掌握前置。 */
 export const ROOT_CAUSE_THRESHOLD = 3;
+
+/** 推荐选题时的能力分微挑战偏移量（`d ≈ effective_ability + 5`）。 */
+export const RECOMMENDATION_TARGET_OFFSET = 5;
 
 /** 推荐候选的顺序键（来自图视图的领域/节点 sort）。 */
 export interface RecommendationOrder {
@@ -824,11 +876,13 @@ export interface RecommendationOrder {
 /**
  * 计算前沿节点推荐（纯函数）。
  *
- * 前沿 = 所有前置均已 `mastered`（无前置视为满足）、自身未 `mastered`、且在该
- * 域有可访问题目；另加根因提示：用户在节点上未达标 ≥ 3 次且存在未掌握前置 →
- * 推荐其未掌握前置（`review_prerequisite`）。
+ * 前沿 = 所有前置均已 `mastered`（或已自评解锁，无前置视为满足）、自身未 `mastered`、
+ * 且在该域有可访问题目；另含两类唤醒：
+ * - 根因提示：用户在未掌握节点上未达标 ≥ 3 次（含 `state === 'none'` 零通过场景）
+ *   且存在未掌握前置 → 推荐其未掌握前置（`review_prerequisite`）；
+ * - 遗忘复习：已掌握节点触发读时 `needs_review` 且本域有题 → 唤醒复习（`needs_review`）。
  *
- * 排序：`learning` 优先 → 根因提示 → 领域 sort → 节点 sort → ID。
+ * 排序：`learning`（0）→ 根因提示（1）→ 遗忘复习（2）→ 新前沿节点（3）→ 领域 sort → 节点 sort → ID。
  * 同一推荐节点只出现一次；`review_prerequisite` 指向前置节点。
  */
 export function rankFrontierNodes(
@@ -838,10 +892,16 @@ export function rankFrontierNodes(
     stateOf: (nodeId: string) => MasteryState;
     failedOf: (nodeId: string) => number;
     countOf: (nodeId: string) => number;
-    /** 节点未达标题数（`continue_learning` 的剩余题数用）。 */
+    /** 节点已达标题数（`continue_learning` 的剩余题数用）。 */
     solvedOf: (nodeId: string) => number;
     /** 是否已通过摸底自评解锁（作为前置满足，非 learning 时不重复推荐基础题）。 */
     placedOf?: (nodeId: string) => boolean;
+    /** 是否触发读时遗忘复习提醒（唤醒已掌握节点进入复习推荐）。 */
+    needsReviewOf?: (nodeId: string) => boolean;
+    /** 可选：原始能力分（透传给 `needs_review` 理由参数）。 */
+    abilityOf?: (nodeId: string) => number;
+    /** 可选：衰减后能力分（透传给 `needs_review` 理由参数）。 */
+    effectiveAbilityOf?: (nodeId: string) => number;
   },
 ): Array<{ node: KnowledgeGraphNode; reason: RecommendationReason }> {
   const byId = new Map(nodes.map((node) => [node.id, node]));
@@ -862,17 +922,26 @@ export function rankFrontierNodes(
     candidates.push({ rank, order: orderOf(node), node, reason });
   };
   for (const node of nodes) {
-    if (isMastered(node.id)) continue;
+    if (isMastered(node.id)) {
+      if (input.needsReviewOf?.(node.id) && input.countOf(node.id) > 0) {
+        add(2, node, {
+          code: "needs_review",
+          params: {
+            node_id: node.id,
+            node_name: node.name,
+            ability_score: input.abilityOf?.(node.id) ?? 0,
+            effective_ability: input.effectiveAbilityOf?.(node.id) ?? 0,
+          },
+        });
+      }
+      continue;
+    }
     const requires = node.requires.filter((id) => byId.has(id));
     const unmet = requires.filter((id) => !isUnlocked(id));
     const learning = input.stateOf(node.id) === "learning";
-    if (!learning && isPlaced(node.id)) continue;
     if (unmet.length > 0) {
-      // 根因提示：仅对「多次未达标」的节点推荐补前置（前置本身须未掌握且未自评）。
-      if (
-        input.stateOf(node.id) !== "learning" ||
-        input.failedOf(node.id) < ROOT_CAUSE_THRESHOLD
-      ) continue;
+      // 根因提示：对未掌握且多次未达标的节点（包含 state === 'none' 零通过但多次失败）推荐补前置。
+      if (input.failedOf(node.id) < ROOT_CAUSE_THRESHOLD) continue;
       for (const id of unmet) {
         const prerequisite = byId.get(id)!;
         if (isUnlocked(prerequisite.id)) continue;
@@ -889,6 +958,7 @@ export function rankFrontierNodes(
       }
       continue;
     }
+    if (!learning && isPlaced(node.id)) continue;
     if (input.countOf(node.id) <= 0) continue;
     if (learning) {
       add(0, node, {
@@ -903,12 +973,12 @@ export function rankFrontierNodes(
         },
       });
     } else if (requires.length === 0) {
-      add(2, node, {
+      add(3, node, {
         code: "entry_point",
         params: { node_id: node.id, node_name: node.name },
       });
     } else {
-      add(2, node, {
+      add(3, node, {
         code: "prerequisites_mastered",
         params: {
           node_id: node.id,
@@ -946,17 +1016,41 @@ export interface MyRecommendationsView {
   items: Recommendation[];
 }
 
+/** 复习节点在全部题已达标时的回退选题：挑最接近当前展示能力分的复习题。 */
+function pickReviewFallbackItem(
+  items: readonly LadderItem[],
+  targetDifficulty: number,
+): LadderItem | null {
+  if (items.length === 0) return null;
+  let best = items[0]!;
+  let bestDist = Math.abs(best.difficulty - targetDifficulty);
+  for (let i = 1; i < items.length; i++) {
+    const item = items[i]!;
+    const dist = Math.abs(item.difficulty - targetDifficulty);
+    if (
+      dist < bestDist ||
+      (dist === bestDist && item.difficulty > best.difficulty)
+    ) {
+      best = item;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
 /**
- * 用户在某域的推荐列表（前沿节点 + 根因提示，截断到 `limit`）。
+ * 用户在某域的推荐列表（前沿节点 + 根因提示 + 遗忘复习唤醒，截断到 `limit`）。
  *
- * 每条推荐附该节点在该域的阶梯「下一题」（复用 P2，未登录不可用——本接口
- * 只对登录用户开放）。单节点访问失败时 `next` 为 null，不影响其他推荐。
+ * 每条推荐附该节点在该域的阶梯「下一题」（有能力分时优先匹配接近
+ * `effective_ability + 5` 的未达标题；保护期过滤沿用 P2）。单节点访问失败时
+ * `next` 为 null，不影响其他推荐。
  */
 export async function readMyRecommendations(
   userId: string,
   domain: { id: string; slug: string },
   limit: number,
   db: DbRoot = getDb(),
+  now: Date = new Date(),
 ): Promise<MyRecommendationsView> {
   const graph = await readKnowledgeGraph();
   const [mastery, placedIds, rows] = await Promise.all([
@@ -969,6 +1063,25 @@ export async function readMyRecommendations(
     if (row.domain_id !== domain.id) continue;
     counts.set(row.node_id, (counts.get(row.node_id) ?? 0) + 1);
   }
+  const decayByNode = new Map<
+    string,
+    { ability_score: number; effective_ability: number; needs_review: boolean }
+  >();
+  for (const [nodeId, record] of mastery) {
+    const decayed = applyForgettingDecay(
+      {
+        ability_score: record.ability_score,
+        state: record.state,
+        last_passed_at: record.last_passed_at,
+      },
+      now,
+    );
+    decayByNode.set(nodeId, {
+      ability_score: decayed.ability_score,
+      effective_ability: decayed.effective_ability,
+      needs_review: decayed.needs_review,
+    });
+  }
   const areaSort = new Map(graph.areas.map((area) => [area.id, area.sort]));
   const ranked = rankFrontierNodes(graph.nodes, (node) => ({
     area_sort: areaSort.get(node.area) ?? 0,
@@ -980,15 +1093,34 @@ export async function readMyRecommendations(
     countOf: (id) => counts.get(id) ?? 0,
     solvedOf: (id) => mastery.get(id)?.solved_count ?? 0,
     placedOf: (id) => placedIds.has(id),
+    needsReviewOf: (id) => decayByNode.get(id)?.needs_review ?? false,
+    abilityOf: (id) => decayByNode.get(id)?.ability_score ?? 0,
+    effectiveAbilityOf: (id) => decayByNode.get(id)?.effective_ability ?? 0,
   }).slice(0, limit);
 
   const viewer = userActorFromAuthenticatedId(userId);
   const items: Recommendation[] = [];
   for (const { node, reason } of ranked) {
+    const decayed = decayByNode.get(node.id);
+    const abilityScore = decayed?.ability_score ?? 0;
+    const effectiveAbility = decayed?.effective_ability ?? 0;
+    const targetDifficulty = abilityScore > 0
+      ? Math.min(100, effectiveAbility + RECOMMENDATION_TARGET_OFFSET)
+      : undefined;
     let next: LadderItem | null = null;
     try {
-      next = (await readNodeLadder(node.id, domain.slug, viewer))?.next ??
-        null;
+      const ladder = await readNodeLadder(node.id, domain.slug, viewer, {
+        targetDifficulty,
+      });
+      next = ladder?.next ?? null;
+      if (
+        next === null &&
+        reason.code === "needs_review" &&
+        ladder &&
+        ladder.items.length > 0
+      ) {
+        next = pickReviewFallbackItem(ladder.items, effectiveAbility);
+      }
     } catch {
       next = null;
     }
@@ -999,184 +1131,13 @@ export async function readMyRecommendations(
         area: node.area,
         state: mastery.get(node.id)?.state ?? "none",
         problem_count: counts.get(node.id) ?? 0,
+        ability_score: abilityScore,
+        effective_ability: effectiveAbility,
+        needs_review: decayed?.needs_review ?? false,
       },
       reason,
       next,
     });
   }
   return { domain, items };
-}
-
-// ── 覆盖度（实例管理员 / 域管理员）──────────────────────────
-
-/** 单节点覆盖度（三档计数 + 缺口标记）。 */
-export interface CoverageNodeItem {
-  node_id: string;
-  name: string;
-  area: string;
-  /** 三档（校准难度派生：<34 easy、<67 medium、其余 hard）计数。 */
-  difficulty_distribution: { easy: number; medium: number; hard: number };
-  problem_count: number;
-  /** 题量不足：题数小于「已掌握」所需达标题数 K。 */
-  insufficient_problems: boolean;
-  /** 难度断层：无校准难度位于上三分之一的题目。 */
-  difficulty_gap: boolean;
-}
-
-/** 覆盖度视图。 */
-export interface CoverageView {
-  /** 指定域时的域；未指定为 null（跨域汇总）。 */
-  domain: { id: string; slug: string } | null;
-  min_solved: number;
-  totals: {
-    nodes: number;
-    nodes_with_problems: number;
-    insufficient_problems: number;
-    difficulty_gap: number;
-    problems: number;
-  };
-  nodes: CoverageNodeItem[];
-  /** 未归类题目数（该域已发布题目中无有效主知识点）。 */
-  unclassified_problems: number;
-  /** 待确认挂载数。 */
-  pending_mappings: number;
-  /** 失效挂载数（`deprecated` 节点上的有效挂载）。 */
-  deprecated_mappings: number;
-  /** 保护期内（进行中比赛 / 保密保护）被排除统计的题目数。 */
-  protected_problems: number;
-}
-
-/**
- * 覆盖度面板（聚合 SQL 一次取数，不逐节点查询）。
- *
- * 保护期题目按 access 口径排除（与阶梯、掌握度一致）。`domainId` 为空时统计
- * 全部域（实例管理员视图）。
- */
-export async function readCoverage(
-  domain: { id: string; slug: string } | null,
-  db: DbRoot = getDb(),
-): Promise<CoverageView> {
-  const graph = await readKnowledgeGraph();
-  const rows = await loadNodeProblems(db);
-  const scoped = domain
-    ? rows.filter((row) => row.domain_id === domain.id)
-    : rows;
-  const protectedIds = await loadProtectedProblems(scoped);
-  const visible = scoped.filter((row) => !protectedIds.has(row.problem_id));
-  const byNode = new Map<string, number[]>();
-  for (const row of visible) {
-    const list = byNode.get(row.node_id) ?? [];
-    list.push(scoreOfNodeProblem(row));
-    byNode.set(row.node_id, list);
-  }
-  // 待确认挂载（pending）的题量计入「题量不足」判定，但不进难度分布、
-  // 也不参与难度断层判定（难度未知，避免误报断层）。
-  const byNodePending = new Map<string, number>();
-  for (const row of await loadNodePendingCounts(db)) {
-    if (domain && row.domain_id !== domain.id) continue;
-    if (protectedIds.has(row.problem_id)) continue;
-    byNodePending.set(
-      row.node_id,
-      (byNodePending.get(row.node_id) ?? 0) + 1,
-    );
-  }
-  const minSolved = masteryMinSolved();
-  const areaSort = new Map(graph.areas.map((area) => [area.id, area.sort]));
-  const nodes: CoverageNodeItem[] = [];
-  // 域视图只展开该域有题的知识点；实例管理员未指定域时展开全部节点。
-  const nodesInDomain = domain
-    ? new Set([
-      ...scoped.map((row) => row.node_id),
-      ...byNodePending.keys(),
-    ])
-    : null;
-  for (const node of graph.nodes) {
-    if (nodesInDomain && !nodesInDomain.has(node.id)) continue;
-    const scores = byNode.get(node.id) ?? [];
-    const pendingCount = byNodePending.get(node.id) ?? 0;
-    const distribution = { easy: 0, medium: 0, hard: 0 };
-    for (const score of scores) distribution[tierOf(score)]++;
-    const problemCount = scores.length + pendingCount;
-    const insufficient = problemCount < minSolved;
-    nodes.push({
-      node_id: node.id,
-      name: node.name,
-      area: node.area,
-      difficulty_distribution: distribution,
-      problem_count: problemCount,
-      insufficient_problems: insufficient,
-      // 难度断层：题量已足（题量不足另有标记）但没有一道「困难」档题目
-      //（校准难度位于 0–100 的上三分之一）。不能用节点内相对上三分之一——
-      // 一组题永远有相对最难的那几道，会让断层永远判不出来。
-      difficulty_gap: !insufficient && scores.length > 0 &&
-        distribution.hard === 0,
-    });
-  }
-  nodes.sort((a, b) =>
-    (areaSort.get(a.area) ?? 0) - (areaSort.get(b.area) ?? 0) ||
-    graph.nodes.findIndex((node) => node.id === a.node_id) -
-      graph.nodes.findIndex((node) => node.id === b.node_id)
-  );
-
-  const domainFilter = domain ? sql`AND p.domain_id = ${domain.id}` : sql``;
-  const counts = await db.execute<{
-    unclassified_problems: number;
-    pending_mappings: number;
-    deprecated_mappings: number;
-  }>(sql`
-    WITH candidate AS (
-      SELECT p.id
-      FROM problems p
-      JOIN domains d ON d.id = p.domain_id
-      JOIN domain_problem_bindings b
-        ON b.domain_id = p.domain_id AND b.problem_id = p.id
-      WHERE p.latest_version_id IS NOT NULL
-        AND b.disabled_at IS NULL
-        AND d.status <> 'suspended'
-        ${domainFilter}
-    )
-    SELECT
-      (SELECT count(*)::int FROM candidate c
-        WHERE NOT EXISTS (
-          SELECT 1 FROM problem_knowledge pk
-          WHERE pk.problem_id = c.id AND pk.role = 'primary'
-            AND pk.review_status IN ('auto', 'confirmed', 'pending')
-        )) AS unclassified_problems,
-      (SELECT count(DISTINCT pk.problem_id)::int FROM problem_knowledge pk
-        JOIN candidate c ON c.id = pk.problem_id
-        WHERE pk.review_status = 'pending') AS pending_mappings,
-      (SELECT count(*)::int FROM problem_knowledge pk
-        JOIN problems p ON p.id = pk.problem_id
-        JOIN knowledge_nodes kn ON kn.id = pk.node_id
-        WHERE pk.review_status IN ('auto', 'confirmed')
-          AND kn.status = 'deprecated'
-          ${domainFilter}) AS deprecated_mappings
-  `);
-  const totals_ = (unwrapRows(counts as never) as {
-    unclassified_problems: number;
-    pending_mappings: number;
-    deprecated_mappings: number;
-  }[])[0] ?? {
-    unclassified_problems: 0,
-    pending_mappings: 0,
-    deprecated_mappings: 0,
-  };
-  return {
-    domain,
-    min_solved: minSolved,
-    totals: {
-      nodes: nodes.length,
-      nodes_with_problems:
-        nodes.filter((node) => node.problem_count > 0).length,
-      insufficient_problems:
-        nodes.filter((node) => node.insufficient_problems).length,
-      difficulty_gap: nodes.filter((node) => node.difficulty_gap).length,
-      problems: nodes.reduce((sum, node) => sum + node.problem_count, 0),
-    },
-    nodes,
-    unclassified_problems: totals_.unclassified_problems,
-    pending_mappings: totals_.pending_mappings,
-    deprecated_mappings: totals_.deprecated_mappings,
-    protected_problems: scoped.length - visible.length,
-  };
 }

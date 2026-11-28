@@ -1,7 +1,13 @@
 /**
  * 知识图谱「技能树视图」纯拓扑布局与状态派生（无 Nuxt/DOM 依赖，可独立单测）。
  */
-import type { KnowledgeGraph, KnowledgeNode, MasteryItem, MasteryState } from './knowledge.ts';
+import {
+  displayAbilityScore,
+  type KnowledgeGraph,
+  type KnowledgeNode,
+  type MasteryItem,
+  type MasteryState,
+} from './knowledge.ts';
 
 /** 技能树节点在学习视图中的展示状态。 */
 export type SkillTreeNodeStatus =
@@ -16,7 +22,18 @@ export interface SkillTreeLayoutOptions {
   areaId: string;
   syllabus?: string;
   onlyWithProblems?: boolean;
-  masteryByNode?: ReadonlyMap<string, Pick<MasteryItem, 'state' | 'solved_count' | 'problem_count'>>;
+  masteryByNode?: ReadonlyMap<
+    string,
+    Pick<
+      MasteryItem,
+      | 'state'
+      | 'solved_count'
+      | 'problem_count'
+      | 'ability_score'
+      | 'effective_ability'
+      | 'needs_review'
+    >
+  >;
   placedNodeIds?: ReadonlySet<string>;
   recommendedIds?: ReadonlySet<string>;
 }
@@ -32,6 +49,8 @@ export interface SkillTreeNodeLayout {
   status: SkillTreeNodeStatus;
   solvedCount: number;
   problemCount: number;
+  abilityScore: number | null;
+  needsReview: boolean;
   hasDoc: boolean;
   requiresInArea: string[];
   externalRequires: Array<{ id: string; name: string; area: string; completed: boolean }>;
@@ -274,6 +293,8 @@ export function buildSkillTreeLayout(
         status,
         solvedCount: mastery?.solved_count ?? 0,
         problemCount: node.problem_count ?? mastery?.problem_count ?? 0,
+        abilityScore: displayAbilityScore(mastery),
+        needsReview: Boolean(mastery?.needs_review),
         hasDoc: Boolean(node.doc),
         requiresInArea,
         externalRequires,

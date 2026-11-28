@@ -6,11 +6,7 @@
  * - 严格使用 Precision Instrument 设计 Token（Signal 绿 / Primary 蓝 / Neutral 灰，1px 发丝边与 6px 圆角）。
  */
 import { computed, ref, watch } from 'vue';
-import type {
-  KnowledgeGraph,
-  KnowledgeRecommendation,
-  MasteryItem,
-} from '~/utils/domain/education/knowledge';
+import type { KnowledgeGraph, KnowledgeRecommendation, MasteryItem } from '~/utils/domain/education/knowledge';
 import {
   buildSkillTreeLayout,
   type SkillTreeNodeLayout,
@@ -202,7 +198,8 @@ function badgeClass(status: SkillTreeNodeStatus): string {
           </button>
         </div>
 
-        <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-[4px] border border-border bg-bg-panel px-2.5 py-1 text-xs text-text-secondary">
+        <label
+          class="inline-flex cursor-pointer items-center gap-1.5 rounded-[4px] border border-border bg-bg-panel px-2.5 py-1 text-xs text-text-secondary">
           <input
             v-model="onlyWithProblems"
             type="checkbox"
@@ -249,6 +246,9 @@ function badgeClass(status: SkillTreeNodeStatus): string {
       </span>
       <span class="inline-flex items-center gap-1.5">
         <span class="size-2 rounded-full bg-border-strong" />前置未完成
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="size-2 rounded-full bg-warning" />待复习
       </span>
     </div>
 
@@ -309,11 +309,20 @@ function badgeClass(status: SkillTreeNodeStatus): string {
                 {{ item.node.name }}
               </span>
             </div>
-            <span
-              class="shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium"
-              :class="badgeClass(item.status)"
-            >
-              {{ statusLabel(item.status) }}
+            <span class="inline-flex shrink-0 items-center gap-1">
+              <span
+                v-if="item.needsReview"
+                class="rounded-[4px] bg-verdict-partial-bg px-1.5 py-0.5 text-[10px] font-medium text-verdict-partial"
+                data-testid="skill-node-review-badge"
+              >
+                待复习
+              </span>
+              <span
+                class="rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium"
+                :class="badgeClass(item.status)"
+              >
+                {{ statusLabel(item.status) }}
+              </span>
             </span>
           </div>
 
@@ -327,6 +336,13 @@ function badgeClass(status: SkillTreeNodeStatus): string {
               </template>
             </span>
             <span class="inline-flex shrink-0 items-center gap-2">
+              <span
+                v-if="item.abilityScore !== null && item.abilityScore > 0"
+                class="font-medium text-text-secondary"
+                data-testid="skill-node-ability"
+              >
+                能力 {{ item.abilityScore }}
+              </span>
               <span v-if="item.hasDoc" class="text-primary" title="含原理讲解">讲解</span>
               <span>题 {{ item.problemCount }}</span>
             </span>

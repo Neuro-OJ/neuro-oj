@@ -54,14 +54,43 @@ const sampleGraph: KnowledgeGraph = {
   ],
 };
 
-function masteryMap(items: Array<Pick<MasteryItem, 'node_id' | 'state' | 'solved_count' | 'problem_count'>>) {
+function masteryMap(
+  items: Array<
+    Pick<
+      MasteryItem,
+      | 'node_id'
+      | 'state'
+      | 'solved_count'
+      | 'problem_count'
+      | 'ability_score'
+      | 'effective_ability'
+      | 'needs_review'
+    >
+  >,
+) {
   return new Map(items.map((item) => [item.node_id, item]));
 }
 
 Deno.test('knowledgeTree: 拓扑深度分层、跨领域前置与状态派生', () => {
   const mastery = masteryMap([
-    { node_id: 'prog.python', state: 'mastered', solved_count: 3, problem_count: 4 },
-    { node_id: 'ml.linear', state: 'learning', solved_count: 1, problem_count: 3 },
+    {
+      node_id: 'prog.python',
+      state: 'mastered',
+      solved_count: 3,
+      problem_count: 4,
+      ability_score: 82,
+      effective_ability: 68,
+      needs_review: true,
+    },
+    {
+      node_id: 'ml.linear',
+      state: 'learning',
+      solved_count: 1,
+      problem_count: 3,
+      ability_score: 48,
+      effective_ability: 48,
+      needs_review: false,
+    },
   ]);
   const layout = buildSkillTreeLayout(sampleGraph, {
     areaId: 'ml',
@@ -82,13 +111,25 @@ Deno.test('knowledgeTree: 拓扑深度分层、跨领域前置与状态派生', 
   assertEquals(ensemble.column, 2);
 
   assertEquals(linear.status, 'learning');
+  assertEquals(linear.abilityScore, 48);
+  assertEquals(linear.needsReview, false);
   assertEquals(linear.hasDoc, true);
   assertEquals(linear.externalRequires, [
     { id: 'prog.python', name: 'Python 基础', area: 'prog', completed: true },
   ]);
   // ml.linear 处于 learning 而未 mastered，因此 ml.logistic 仍为 locked。
   assertEquals(logistic.status, 'locked');
+  assertEquals(logistic.abilityScore, null);
+  assertEquals(logistic.needsReview, false);
   assert(layout.edges.some((e) => e.fromId === 'ml.linear' && e.toId === 'ml.logistic' && e.path.startsWith('M ')));
+
+  const progLayout = buildSkillTreeLayout(sampleGraph, {
+    areaId: 'prog',
+    masteryByNode: mastery,
+  });
+  const pyNode = progLayout.nodes.find((n) => n.node.id === 'prog.python')!;
+  assertEquals(pyNode.abilityScore, 68);
+  assertEquals(pyNode.needsReview, true);
 });
 
 Deno.test('knowledgeTree: 摸底放置与推荐标记可解锁后续节点', () => {

@@ -728,18 +728,40 @@ export async function loadNodeProblemCounts(
 }
 
 /**
- * 「下一题」：难度 ≥ `minDifficulty` 的第一道未达标题。
+ * 「下一题」：优先匹配目标难度（`targetDifficulty`）或难度 ≥ `minDifficulty` 的未达标题。
  *
- * 未登录（`passed` 全为 null）时取第一条；全部达标返回 null。
+ * - 未传 `targetDifficulty` 时保持原有阶梯顺序：取难度 ≥ `minDifficulty` 的第一道未达标题；
+ * - 传入 `targetDifficulty`（如 `effective_ability + 5`）时，在满足 `minDifficulty` 的
+ *   未达标题中选择难度最接近 `targetDifficulty` 的一题（距离相等时优先略高难度）；
+ * - 未登录（`passed` 全为 null）时取第一条；全部达标返回 null。
  */
 export function pickNextLadderItem(
   items: readonly LadderItem[],
-  options: { minDifficulty?: number } = {},
+  options: { minDifficulty?: number; targetDifficulty?: number } = {},
 ): LadderItem | null {
   const min = options.minDifficulty;
-  return items.find((item) =>
+  const candidates = items.filter((item) =>
     item.passed !== true && (min === undefined || item.difficulty >= min)
-  ) ?? null;
+  );
+  if (candidates.length === 0) return null;
+  const target = options.targetDifficulty;
+  if (target === undefined || !Number.isFinite(target)) {
+    return candidates[0] ?? null;
+  }
+  let best = candidates[0]!;
+  let bestDist = Math.abs(best.difficulty - target);
+  for (let i = 1; i < candidates.length; i++) {
+    const item = candidates[i]!;
+    const dist = Math.abs(item.difficulty - target);
+    if (
+      dist < bestDist ||
+      (dist === bestDist && item.difficulty > best.difficulty)
+    ) {
+      best = item;
+      bestDist = dist;
+    }
+  }
+  return best;
 }
 
 /** 阶梯视图（`GET /knowledge/nodes/:id/ladder` 的 `data`）。 */
@@ -753,14 +775,18 @@ export interface NodeLadderView {
 /**
  * 读取节点阶梯；节点不存在/已废弃或域不可访问返回 null。
  *
- * `next`：难度 ≥ 用户已达标最高难度的第一道未达标题；未登录为第一题；
- * 全部达标为 null。
+ * `next`：未登录为第一题；传入 `targetDifficulty` 时优先匹配最接近目标难度的未达标题；
+ * 否则取难度 ≥ 用户已达标最高难度的第一道未达标题；全部达标为 null。
  */
 export async function readNodeLadder(
   nodeId: string,
   domainSlug: string,
   viewer: UserActor | null,
-  options: { is_admin?: boolean; include_unpublished?: boolean } = {},
+  options: {
+    is_admin?: boolean;
+    include_unpublished?: boolean;
+    targetDifficulty?: number;
+  } = {},
 ): Promise<NodeLadderView | null> {
   const [node] = await getDb().select({ id: knowledgeNodes.id }).from(
     knowledgeNodes,
@@ -775,11 +801,15 @@ export async function readNodeLadder(
   const passedScores = items.filter((item) => item.passed === true).map(
     (item) => item.difficulty,
   );
-  const next = viewer === null ? items[0] ?? null : pickNextLadderItem(items, {
-    minDifficulty: passedScores.length > 0
-      ? Math.max(...passedScores)
-      : undefined,
-  });
+  const next = viewer === null
+    ? items[0] ?? null
+    : options.targetDifficulty !== undefined
+    ? pickNextLadderItem(items, { targetDifficulty: options.targetDifficulty })
+    : pickNextLadderItem(items, {
+      minDifficulty: passedScores.length > 0
+        ? Math.max(...passedScores)
+        : undefined,
+    });
   return { node_id: nodeId, domain: domain.slug, items, next };
 }
 

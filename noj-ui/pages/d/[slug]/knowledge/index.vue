@@ -10,16 +10,18 @@ import KnowledgeDiagnosticModal from '~/components/knowledge/KnowledgeDiagnostic
 import KnowledgeSkillTree from '~/components/knowledge/KnowledgeSkillTree.vue';
 import { extractApiError } from '~/utils/server/apiError';
 import {
+  displayAbilityScore,
   type KnowledgeGraph,
   type KnowledgeRecommendation,
   ladderItemPath,
+  type MasteryItem,
   masteryPercent,
+  type MasteryState,
   masteryStateColor,
   masteryStateLabel,
-  type MasteryState,
   type MyMasteryView,
-  recommendationReasonText,
   type RecommendationReason,
+  recommendationReasonText,
 } from '~/utils/domain/education/knowledge';
 
 definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library' });
@@ -105,10 +107,12 @@ function stateColor(state: MasteryState): 'success' | 'primary' | 'neutral' {
   return masteryStateColor(state);
 }
 
+function nodeAbility(item: Pick<MasteryItem, 'ability_score' | 'effective_ability'>): number | null {
+  return displayAbilityScore(item);
+}
+
 const items = computed(() => mastery.value?.items ?? []);
-const showEmptyRecommendations = computed(() =>
-  !loading.value && !failure.value && recommendations.value.length === 0
-);
+const showEmptyRecommendations = computed(() => !loading.value && !failure.value && recommendations.value.length === 0);
 
 useBreadcrumbParams({});
 useSeoMeta({ title: '我的学习' });
@@ -153,7 +157,8 @@ useSeoMeta({ title: '我的学习' });
         <!-- 接下来学什么 -->
         <section aria-labelledby="knowledge-next" class="space-y-3">
           <h2 id="knowledge-next" class="text-lg font-semibold text-text">接下来学什么</h2>
-          <p v-if="showEmptyRecommendations" class="rounded-xl border border-border bg-bg-panel px-4 py-6 text-sm text-text-secondary">
+          <p v-if="showEmptyRecommendations"
+            class="rounded-xl border border-border bg-bg-panel px-4 py-6 text-sm text-text-secondary">
             暂无推荐，去题库做几道题吧
           </p>
           <ul v-else class="grid gap-3 md:grid-cols-2">
@@ -170,9 +175,20 @@ useSeoMeta({ title: '我的学习' });
                 >
                   {{ item.node.name }}
                 </NuxtLink>
-                <UBadge :color="stateColor(item.node.state)" variant="subtle" size="sm">
-                  {{ stateLabel(item.node.state) }}
-                </UBadge>
+                <span class="inline-flex shrink-0 items-center gap-1.5">
+                  <UBadge
+                    v-if="item.node.needs_review || item.reason.code === 'needs_review'"
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                    data-testid="recommendation-review-badge"
+                  >
+                    待复习
+                  </UBadge>
+                  <UBadge :color="stateColor(item.node.state)" variant="subtle" size="sm">
+                    {{ stateLabel(item.node.state) }}
+                  </UBadge>
+                </span>
               </div>
               <p class="mt-1 text-sm text-text-secondary">
                 {{ recommendationReason(item.reason) }}
@@ -206,7 +222,8 @@ useSeoMeta({ title: '我的学习' });
         <!-- 掌握度（按当前域汇总） -->
         <section aria-labelledby="knowledge-mastery" class="space-y-3">
           <h2 id="knowledge-mastery" class="text-lg font-semibold text-text">掌握度</h2>
-          <p v-if="!mastery || mastery.total === 0" class="rounded-xl border border-border bg-bg-panel px-4 py-6 text-sm text-text-secondary">
+          <p v-if="!mastery || mastery.total === 0"
+            class="rounded-xl border border-border bg-bg-panel px-4 py-6 text-sm text-text-secondary">
             本领域暂无可学习知识点的题目
           </p>
           <div
@@ -251,7 +268,23 @@ useSeoMeta({ title: '我的学习' });
                 >
                   {{ item.name }}
                 </NuxtLink>
+                <span
+                  v-if="nodeAbility(item) !== null && nodeAbility(item)! > 0"
+                  class="text-xs font-medium text-text-secondary tabular-nums"
+                  data-testid="mastery-node-ability"
+                >
+                  能力 {{ nodeAbility(item) }}
+                </span>
                 <span class="text-xs text-text-muted tabular-nums">题 {{ item.problem_count }}</span>
+                <UBadge
+                  v-if="item.needs_review"
+                  color="warning"
+                  variant="subtle"
+                  size="sm"
+                  data-testid="mastery-node-review"
+                >
+                  待复习
+                </UBadge>
                 <UBadge :color="stateColor(item.state)" variant="subtle" size="sm">
                   {{ stateLabel(item.state) }}
                 </UBadge>

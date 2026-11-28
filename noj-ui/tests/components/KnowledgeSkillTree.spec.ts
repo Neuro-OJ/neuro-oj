@@ -44,6 +44,9 @@ const masteryItems: MasteryItem[] = [
     attempted_count: 3,
     failed_attempts: 0,
     max_passed_difficulty: 50,
+    ability_score: 78,
+    effective_ability: 64,
+    needs_review: true,
     problem_count: 2,
   },
 ];
@@ -73,6 +76,8 @@ describe('KnowledgeSkillTree', () => {
     const aiNode = wrapper.find('[data-testid="skill-node-ai.concepts"]');
     expect(aiNode.exists()).toBe(true);
     expect(aiNode.text()).toContain('已掌握');
+    expect(aiNode.text()).toContain('待复习');
+    expect(aiNode.text()).toContain('能力 64');
     expect(aiNode.text()).toContain('讲解');
     expect(aiNode.text()).toContain('题 2');
 
