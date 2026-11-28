@@ -133,8 +133,6 @@ export default defineNuxtConfig({
   runtimeConfig: {
     apiBase,
     siteUrl,
-    bffRedisUrl: '',
-    bffCachePrefix: 'noj:ui:bff:v1',
     // 前端构建身份：`public` 段会随 SSR payload 下发到浏览器，页脚据此渲染。
     // 值在构建期定型（见 resolveBuildInfo），运行期不读 ENV。
     public: {

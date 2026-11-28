@@ -4,12 +4,12 @@
  * 严格遵循零副作用与凭据脱敏原则：所有报错不得回显数据库 URL 或密码。
  */
 
-import { resolveMigrationsDirectory } from "../migrations-path.ts";
+import { resolveMigrationsDirectory } from "../../src/shared/db/migrations-path.ts";
 import {
   type ActualMigration,
   readExpectedMigrations,
   validateMigrationLedger,
-} from "../schema-compat.ts";
+} from "../../src/shared/db/schema-compat.ts";
 import {
   assertPgIdentifier,
   countTableRows,

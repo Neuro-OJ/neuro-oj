@@ -1,7 +1,6 @@
 import type { H3Event } from 'h3';
 import { getCookie, getQuery, getRouterParam, setHeader, setResponseStatus } from 'h3';
 import type { BffViewKind } from '../../utils/server/bff-view.ts';
-import type { BffCacheStore } from './bff-cache.ts';
 import { cachedSiteMeta } from './bff-cache.ts';
 import { aggregateView } from './bff-aggregate.ts';
 import { BffError, createCoreReader } from './bff-request.ts';
@@ -32,10 +31,7 @@ export async function handleBffView(event: H3Event, kind: BffViewKind) {
   try {
     const query = getQuery(event);
     const slug = getRouterParam(event, 'slug');
-    const id = getRouterParam(
-      event,
-      kind === 'classroom' ? 'classroomId' : kind === 'training' ? 'trainingId' : 'assignmentId',
-    );
+    const id = kind === 'training' ? getRouterParam(event, 'trainingId') : undefined;
     if (!slug || /[/.\\]/.test(slug) || (id && /[/.\\]/.test(id))) {
       throw new BffError(400, { error: '无效的资源标识', code: 'BFF_INVALID_PATH' });
     }
@@ -45,10 +41,7 @@ export async function handleBffView(event: H3Event, kind: BffViewKind) {
     ) {
       throw new BffError(400, { error: '无效的页码', code: 'BFF_INVALID_PAGE' });
     }
-    const store = event.context.bffCacheStore as BffCacheStore | undefined;
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(config.apiBase)));
-    const upstream = Array.from(new Uint8Array(digest)).map((v) => v.toString(16).padStart(2, '0')).join('');
-    const key = `${config.bffCachePrefix}:${upstream}:site-meta`;
+    const cacheKey = `${String(config.apiBase)}:site-meta`;
     const result = await aggregateView(
       reader,
       {
@@ -57,14 +50,10 @@ export async function handleBffView(event: H3Event, kind: BffViewKind) {
         id,
         authenticated: !!token,
         page: Number(query.page ?? 1),
-        help: typeof query.help === 'string' ? query.help : undefined,
-        feedback: typeof query.feedback === 'string' ? query.feedback : undefined,
-        history: query.history === '1',
       },
       () =>
         cachedSiteMeta(
-          store ?? null,
-          key,
+          cacheKey,
           () => reader.get('/api/v1/site/meta', { anonymous: true, timeout: 2000 }),
           (state) => {
             cacheState = state;

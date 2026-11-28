@@ -6,7 +6,7 @@
  */
 
 import postgres from "postgres";
-import { resolveMigrationsDirectory } from "../migrations-path.ts";
+import { resolveMigrationsDirectory } from "../../src/shared/db/migrations-path.ts";
 import { buildUpgradePlan, type UpgradeExecutionPlan } from "./build-plan.ts";
 import {
   countTableRows,

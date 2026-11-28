@@ -117,8 +117,6 @@ Deno.test("dispatch recovery: handler 注册表覆盖全部任务类型", () => 
     "search.index": () => Promise.resolve(),
     "evaluation.dispatch": () => Promise.resolve(),
     "education.recompute": () => Promise.resolve(),
-    "storage.reclaim": () => Promise.resolve(),
-    "notification.email": () => Promise.resolve(),
   });
   assertEquals(missing, []);
   const partial = missingTaskHandlers({

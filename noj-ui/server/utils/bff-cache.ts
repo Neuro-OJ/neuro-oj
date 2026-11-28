@@ -1,33 +1,58 @@
-/** 公开站点元信息缓存所需的最小 Redis 接口。 */
-export interface BffCacheStore {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, ttl: number): Promise<boolean>;
+export const SITE_META_CACHE_TTL_MS = 30_000;
+
+interface CacheEntry {
+  value: unknown;
+  expiresAt: number;
 }
 
-/** 公开站点元信息缓存 30 秒；缓存故障直接回源，未命中无需等待其他请求。 */
-export async function cachedSiteMeta<T>(
-  store: BffCacheStore | null,
+export interface SiteMetaCache {
+  get<T>(
+    key: string,
+    load: () => Promise<T>,
+    report?: (state: string) => void,
+  ): Promise<T>;
+  clear(): void;
+}
+
+/** 创建进程内 30 秒 TTL 缓存，用于匿名 /api/v1/site/meta；上游失败不缓存。 */
+export function createSiteMetaCache(options: {
+  ttlMs?: number;
+  now?: () => number;
+} = {}): SiteMetaCache {
+  const ttlMs = options.ttlMs ?? SITE_META_CACHE_TTL_MS;
+  const now = options.now ?? (() => Date.now());
+  const entries = new Map<string, CacheEntry>();
+
+  return {
+    async get<T>(
+      key: string,
+      load: () => Promise<T>,
+      report: (state: string) => void = () => {},
+    ): Promise<T> {
+      const cached = entries.get(key);
+      if (cached && cached.expiresAt > now()) {
+        report('hit');
+        return cached.value as T;
+      }
+      if (cached) entries.delete(key);
+      report('miss');
+      const value = await load();
+      entries.set(key, { value, expiresAt: now() + ttlMs });
+      return value;
+    },
+    clear() {
+      entries.clear();
+    },
+  };
+}
+
+const defaultSiteMetaCache = createSiteMetaCache();
+
+/** 公开站点元信息进程内缓存 30 秒；未命中无需等待其他请求，上游失败不缓存。 */
+export function cachedSiteMeta<T>(
   key: string,
   load: () => Promise<T>,
   report: (state: string) => void = () => {},
 ): Promise<T> {
-  if (!store) {
-    report('bypass');
-    return load();
-  }
-  try {
-    const cached = await store.get(key);
-    if (cached !== null) {
-      const value = JSON.parse(cached) as T;
-      report('hit');
-      return value;
-    }
-  } catch {
-    report('bypass');
-    return load();
-  }
-  report('miss');
-  const value = await load();
-  await store.set(key, JSON.stringify(value), 30).catch(() => false);
-  return value;
+  return defaultSiteMetaCache.get(key, load, report);
 }

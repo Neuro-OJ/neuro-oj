@@ -7,7 +7,7 @@
 import {
   DEFAULT_DOMAIN_ID,
   DEFAULT_DOMAIN_SLUG,
-} from "../../workspace/types.ts";
+} from "../../src/shared/workspace/types.ts";
 import {
   type OrphanJobItemEntry,
   type PrivateProblemDecisionEntry,

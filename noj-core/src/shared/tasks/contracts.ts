@@ -13,8 +13,6 @@ export const TASK_TYPES = [
   "evaluation.dispatch",
   "search.index",
   "education.recompute",
-  "storage.reclaim",
-  "notification.email",
 ] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];

@@ -54,8 +54,6 @@ cd dist && ./noj-ui      # 默认 http://localhost:3000
 | -------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `NUXT_API_BASE`                  | `http://localhost:8000` | noj-core API 地址（服务端私有）                                                                                                    |
 | `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj`                   | 身份 Cookie 前缀；同一主机跑多套 UI 时分别设置，避免跨端口互相覆盖登录                                                             |
-| `NUXT_BFF_REDIS_URL`             | 空                      | BFF 公共元信息 Redis 缓存；空值禁用，故障时绕过（[bff.md](bff.md)）                                                                |
-| `NUXT_BFF_CACHE_PREFIX`          | `noj:ui:bff:v1`         | 部署缓存命名空间；共用 Redis 的部署必须换前缀                                                                                      |
 | `NUXT_SITE_URL`                  | 空                      | sitemap / canonical 的**权威站点地址**（如 `https://noj.example.com`）。未配置时按 Host 分键缓存；生产必须配置，否则有缓存投毒风险 |
 
 改前缀会要求重新登录，不迁移已有令牌。
@@ -68,9 +66,4 @@ E2E_UI_URL=http://127.0.0.1:3000 deno task test:theme # 需先起 UI
 ```
 
 `test:bff:ssr` 用 `scripts/verify-bff-ssr.mjs` 起独立模拟 Core +
-生产构建，检查初始 HTML、 HTTP
-状态与水合；不访问生产、不改真实数据。共享缓存验收要独立本机 Redis：
-
-```bash
-BFF_TEST_REDIS_URL=redis://127.0.0.1:6379 deno task test:bff:cache
-```
+生产构建，检查初始 HTML、HTTP 状态与水合；不访问生产、不改真实数据。

@@ -444,7 +444,6 @@ const process = new Deno.Command(Deno.execPath(), {
     PORT: String(port),
     HOST: "127.0.0.1",
     NUXT_API_BASE: `http://127.0.0.1:${fixture.addr.port}`,
-    NUXT_BFF_REDIS_URL: "",
     NUXT_NOJ_ENV: "development",
     NODE_ENV: "production",
   },
