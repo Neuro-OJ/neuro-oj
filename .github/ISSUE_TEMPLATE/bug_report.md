@@ -1,8 +1,8 @@
 ---
 name: 缺陷报告
-about: 报告可复现的功能错误、部署问题或文档错误
+about: 报告可复现的功能错误、评测异常或部署故障
 title: "[缺陷] "
-labels: ""
+labels: bug
 assignees: ""
 ---
 
