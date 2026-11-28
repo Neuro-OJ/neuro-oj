@@ -23,15 +23,6 @@ use std::time::Instant;
 /// 使用 worker 配置的 WASI SDK 编译器把用户源代码转换成 wasm。编译器是
 /// 受信路径，源码只作为文件输入；编译过程仍由调用方放入受限 worker 线程，
 /// 不会在 judge 宿主机直接运行用户生成的二进制。
-/// 使用固定 WASI 编译器编译源码，并提供题包声明的编译辅助文件。
-pub fn compile_source_with_files(
-    language: &str,
-    source: &str,
-    extra_files: &HashMap<String, Vec<u8>>,
-) -> Result<Vec<u8>> {
-    Ok(compile_impl(language, source, extra_files, false, None)?.module)
-}
-
 /// 生产编译可响应取消，整个编译进程组清理后才释放阶段租约。
 pub(super) fn compile_cancellable(
     language: &str,
@@ -39,32 +30,7 @@ pub(super) fn compile_cancellable(
     extra_files: &HashMap<String, Vec<u8>>,
     cancellation: Option<&std::sync::atomic::AtomicBool>,
 ) -> Result<Vec<u8>> {
-    Ok(compile_impl(language, source, extra_files, false, cancellation)?.module)
-}
-
-pub(super) struct AnalysisCompilation {
-    pub module: Vec<u8>,
-    pub object: Vec<u8>,
-    pub link_map: String,
-    pub workspace: std::path::PathBuf,
-}
-
-pub(super) fn compile_for_analysis(
-    language: &str,
-    source: &str,
-    extra_files: &HashMap<String, Vec<u8>>,
-) -> Result<AnalysisCompilation> {
-    compile_impl(language, source, extra_files, true, None)
-}
-
-fn compile_impl(
-    language: &str,
-    source: &str,
-    extra_files: &HashMap<String, Vec<u8>>,
-    analysis: bool,
-    cancellation: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<AnalysisCompilation> {
-    anyhow::ensure!(matches!(language, "c" | "cc"), "分析语言必须是 c 或 cc");
+    anyhow::ensure!(matches!(language, "c" | "cc"), "编译语言必须是 c 或 cc");
     let tempdir = tempfile::tempdir().context("创建 WASI 编译临时目录失败")?;
     let root = tempdir.path().to_path_buf();
     let include = root.join("include/bits");
@@ -155,48 +121,9 @@ fn compile_impl(
             command.arg("-I").arg(testlib_include);
         }
     }
-    if analysis {
-        // 仅分析编译保留对象来源；正式编译参数不变。
-        command.arg("-fno-lto").arg("-c");
-        command.arg("-o").arg(root.join("main.o"));
-        let output = run_compiler_with_limits(&mut command, &root, cancellation)?;
-        anyhow::ensure!(
-            output.status.success(),
-            "WASI 分析编译失败: {}",
-            output.stderr
-        );
-        let mut link = Command::new(compiler);
-        link.env_clear()
-            .env("PATH", std::env::var("PATH").unwrap_or_default())
-            .arg(format!("--target={target}"))
-            .arg(format!("--sysroot={}", settings.sysroot.display()))
-            .arg("-fno-lto")
-            .arg("-Wl,--threads=1")
-            .arg(format!("-Wl,-Map={}", root.join("link.map").display()))
-            .arg(root.join("main.o"))
-            .arg("-o")
-            .arg(&output_path);
-        let output = run_compiler_with_limits(&mut link, &root, cancellation)?;
-        anyhow::ensure!(
-            output.status.success(),
-            "WASI 分析链接失败: {}",
-            output.stderr
-        );
-        return Ok(AnalysisCompilation {
-            module: std::fs::read(output_path)?,
-            object: std::fs::read(root.join("main.o"))?,
-            link_map: std::fs::read_to_string(root.join("link.map"))?,
-            workspace: root,
-        });
-    }
     let output = run_compiler_with_limits(&mut command, &root, cancellation)?;
     if output.status.success() {
-        Ok(AnalysisCompilation {
-            module: std::fs::read(&output_path).context("读取编译后的 WASM 失败")?,
-            object: Vec::new(),
-            link_map: String::new(),
-            workspace: root,
-        })
+        std::fs::read(&output_path).context("读取编译后的 WASM 失败")
     } else {
         Err(anyhow::anyhow!("WASI 编译失败: {}", output.stderr))
     }

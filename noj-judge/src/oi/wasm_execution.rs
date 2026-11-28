@@ -35,35 +35,6 @@ impl HostMonotonicClock for DeterministicMonotonicClock {
     }
 }
 
-/// 在独立目录中运行受信 checker，并保留墙钟和输出保护。
-#[allow(clippy::too_many_arguments)]
-pub async fn run_checker_module(
-    module_bytes: &[u8],
-    input: &[u8],
-    expected: &[u8],
-    actual: &[u8],
-    memory_limit_mb: u64,
-    fuel_budget: u64,
-    profile: &OiCostProfile,
-    extra_files: &HashMap<String, Vec<u8>>,
-    wall_limit_ms: u64,
-) -> Result<WasmRunResult> {
-    run_prepared_checker(
-        module_bytes,
-        input,
-        expected,
-        actual,
-        memory_limit_mb,
-        fuel_budget,
-        profile,
-        extra_files,
-        wall_limit_ms,
-        None,
-        None,
-    )
-    .await
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_prepared_checker(
     module_bytes: &[u8],
@@ -104,7 +75,6 @@ pub(super) async fn run_prepared_checker(
         Some(directory.path()),
         FsPerms::ReadOnly,
         Some(wall_limit_ms),
-        0,
         cancellation,
         prepared,
     )
@@ -124,7 +94,7 @@ pub(super) async fn run_module_with_files(
     wall_limit_ms: Option<u64>,
     cancellation: Option<Arc<AtomicBool>>,
 ) -> Result<WasmRunResult> {
-    run_observed_module_with_files(
+    run_prepared_module(
         module_bytes,
         input,
         memory_limit_mb,
@@ -134,8 +104,8 @@ pub(super) async fn run_module_with_files(
         preopened_dir,
         preopened_perms,
         wall_limit_ms,
-        0,
         cancellation,
+        None,
     )
     .await
 }
@@ -209,37 +179,6 @@ impl PreparedModule {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn run_observed_module_with_files(
-    module_bytes: &[u8],
-    input: &[u8],
-    memory_limit_mb: u64,
-    fuel_budget: u64,
-    profile: &OiCostProfile,
-    args: &[String],
-    preopened_dir: Option<&Path>,
-    preopened_perms: FsPerms,
-    wall_limit_ms: Option<u64>,
-    observe_count: usize,
-    cancellation: Option<Arc<AtomicBool>>,
-) -> Result<WasmRunResult> {
-    run_prepared_module(
-        module_bytes,
-        input,
-        memory_limit_mb,
-        fuel_budget,
-        profile,
-        args,
-        preopened_dir,
-        preopened_perms,
-        wall_limit_ms,
-        observe_count,
-        cancellation,
-        None,
-    )
-    .await
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_prepared_module(
     module_bytes: &[u8],
     input: &[u8],
@@ -250,7 +189,6 @@ pub(super) async fn run_prepared_module(
     preopened_dir: Option<&Path>,
     preopened_perms: FsPerms,
     wall_limit_ms: Option<u64>,
-    observe_count: usize,
     cancellation: Option<Arc<AtomicBool>>,
     prepared: Option<&PreparedModule>,
 ) -> Result<WasmRunResult> {
@@ -391,10 +329,8 @@ pub(super) async fn run_prepared_module(
         });
         store.set_epoch_deadline(1);
     }
-    let mut observed_instance = None;
     let execute = async {
         let instance = linker.instantiate_async(&mut store, &module).await?;
-        observed_instance = Some(instance);
         let start = instance.get_typed_func::<(), ()>(&mut store, "_start")?;
         start.call_async(&mut store, ()).await
     };
@@ -437,16 +373,6 @@ pub(super) async fn run_prepared_module(
         .get_fuel()
         .ok()
         .map(|remaining| fuel_budget.saturating_sub(remaining));
-    let mut analysis_counters = Vec::new();
-    if let Some(instance) = observed_instance {
-        for index in 0..observe_count {
-            let global = instance
-                .get_global(&mut store, &format!("__noj_analysis_{index}"))
-                .context("插桩计数器缺失")?;
-            let value = global.get(&mut store).i64().context("插桩计数器类型错误")?;
-            analysis_counters.push(u64::try_from(value).context("插桩计数器溢出")?);
-        }
-    }
 
     let mut status = if output_limit_triggered.load(Ordering::Relaxed)
         || stdout.len().saturating_add(stderr.len()) >= MAX_OUTPUT_BYTES
@@ -498,7 +424,6 @@ pub(super) async fn run_prepared_module(
         cpu_time_ms,
         wall_time_ms,
         exit_code,
-        analysis_counters,
     })
 }
 

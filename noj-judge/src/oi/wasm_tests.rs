@@ -56,7 +56,6 @@ async fn reused_module_keeps_fuel_and_store_isolation() {
                         None,
                         FsPerms::ReadOnly,
                         Some(10_000),
-                        0,
                         None,
                         Some(&prepared),
                     ))
@@ -101,7 +100,6 @@ async fn shared_engine_timeout_does_not_interrupt_another_store() {
                             None,
                             FsPerms::ReadOnly,
                             Some(deadline),
-                            0,
                             None,
                             Some(&prepared),
                         ))
@@ -239,7 +237,10 @@ async fn published_v1_task_is_rejected_with_rejudge_guidance() {
     ))
     .unwrap();
     let config = task.runtime_config.as_oi().unwrap();
-    let v1: serde_json::Value = serde_json::from_str(include_str!("noj-wasm-v1.json")).unwrap();
+    let v1 = serde_json::json!({
+        "id": "noj-wasm-v1",
+        "hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+    });
     let mut old = super::super::standard::profile();
     old.hash = v1["hash"].as_str().unwrap().into();
     old.benchmark = Some("noj-wasm-v1".into());

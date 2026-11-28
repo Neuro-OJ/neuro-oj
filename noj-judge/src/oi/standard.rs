@@ -28,14 +28,6 @@ pub fn fuel_budget(time_limit_ms: u64) -> anyhow::Result<u64> {
         .ok_or_else(|| anyhow::anyhow!("WASM fuel 预算溢出"))
 }
 
-/// 结果单位沿用 wire 字段，展示名称由结果的标准版本决定。
-pub fn reference_time_ms(fuel: u64) -> u64 {
-    let fuel_per_ms = manifest()["fuel_per_ms"]
-        .as_u64()
-        .expect("标准换算尺度必须为整数");
-    fuel.div_ceil(fuel_per_ms).max(1)
-}
-
 pub fn validate_profile(value: &OiCostProfile) -> anyhow::Result<()> {
     if value != &profile() {
         anyhow::bail!("WASM 任务使用旧成本表或不匹配的标准，请重测");
@@ -154,11 +146,11 @@ mod tests {
     #[test]
     fn reference_scale_budget_and_rounding() {
         assert_eq!(fuel_budget(1000).unwrap(), 20_000_000_000);
-        assert_eq!(reference_time_ms(20_000_000), 1);
-        assert_eq!(reference_time_ms(20_000_001), 2);
-        assert_eq!(reference_time_ms(0), 1);
         assert!(fuel_budget(u64::MAX).is_err());
-        let v2: Value = serde_json::from_str(include_str!("noj-wasm-v2.json")).unwrap();
+        let v2: Value = json!({
+            "id": "noj-wasm-v2",
+            "hash": "c48b2438327c128ae798599f554dd7e2bb186b282827324a32c84116e7f39360",
+        });
         let mut old = profile();
         old.hash = v2["hash"].as_str().unwrap().into();
         old.benchmark = Some("noj-wasm-v2".into());
@@ -170,7 +162,10 @@ mod tests {
         let mut legacy = profile();
         legacy.fuel_per_ms = 10.0;
         assert!(validate_profile(&legacy).is_err());
-        let v1: Value = serde_json::from_str(include_str!("noj-wasm-v1.json")).unwrap();
+        let v1: Value = json!({
+            "id": "noj-wasm-v1",
+            "hash": "dd45773b77ab74fa69e15427760a86dc8defcac79d2dfb61ec91c18eba08a906",
+        });
         legacy = profile();
         legacy.hash = v1["hash"].as_str().unwrap().into();
         legacy.benchmark = Some("noj-wasm-v1".into());
