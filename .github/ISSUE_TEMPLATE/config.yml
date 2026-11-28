@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: 文档站与常见问题（FAQ）
+    url: https://docs.noj.xyber-nova.space/intro/faq.html
+    about: 提问或报障前，建议先查阅文档站与常见问题排查指南。
   - name: 私下报告安全漏洞
     url: https://github.com/Neuro-OJ/neuro-oj/security/advisories/new
     about: 请勿在公开 Issue 中披露漏洞细节、利用代码、敏感日志或凭据。
