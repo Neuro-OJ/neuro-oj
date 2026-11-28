@@ -2,7 +2,7 @@
 
 # Neuro OJ noj-judge 生产镜像（多阶段）
 #
-# 目标：最终镜像保留 release 二进制、固定 WASI SDK 与运行必需文件，
+# 目标：最终镜像只保留 release 二进制与运行必需文件，
 # 不包含 Rust 工具链、target/、测试源码。
 #
 # 平台：linux/amd64（公测阶段只支持 amd64）。
@@ -10,18 +10,8 @@
 # 注意：生产 Compose 只挂载独立 rootless Docker daemon 的 Unix socket，
 # Worker 使用非 root 用户运行；禁止挂载应用宿主机的 /var/run/docker.sock。
 
-# ── WASI SDK：固定来源与 NOJ 标准库补丁，产物必须匹配冻结清单 ────────
-FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867 AS wasi-sdk
-COPY toolchain/ /build/toolchain/
-COPY scripts/build-oi-wasi-toolchain.py /build/scripts/build-oi-wasi-toolchain.py
-RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends ca-certificates python3 cmake ninja-build git \
-    && python3 /build/scripts/build-oi-wasi-toolchain.py \
-       --cache /tmp/noj-wasi-cache --work /tmp/noj-wasi-build --output /opt/wasi-sdk \
-    && rm -rf /tmp/noj-wasi-cache /tmp/noj-wasi-build
-
 # ── Builder：编译 release 二进制 ────────────────────────────────────
-# Wasmtime 49 要求 Rust 1.96+；与 rust-toolchain.toml 保持同一工具链版本。
+# 与 rust-toolchain.toml 保持同一工具链版本。
 FROM rust:1.96.1-slim-bookworm@sha256:e18a79fc84dfcfc3ab5ba72290398a644c135c97eaa881447fddc354ee4701a3 AS builder
 
 WORKDIR /build
@@ -34,18 +24,17 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
 
 # 第 2 层：只编译业务代码
 COPY src/ ./src/
-COPY toolchain/components.json ./toolchain/components.json
 RUN cargo build --release --bin noj-judge && \
     cp /build/target/release/noj-judge /tmp/noj-judge && \
     test -f /tmp/noj-judge || { echo "ERROR: binary not found after build" >&2; exit 1; }
 
-# ── Runtime：评测二进制与受限 WASI 编译工具链 ───────────────────────
-FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867 AS wasi-runtime
+# ── Runtime：只保留评测二进制与 CA 证书 ────────────────────────────
+FROM debian:bookworm-slim@sha256:5ae3c39ebd15e229dcedd5cee596b2497182493d41ff162e824ba13fc1b2b867 AS runtime
 
 # ca-certificates：支持包/预签名 URL 的 HTTPS 下载
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 libtinfo6 \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system --gid 10001 noj \
@@ -53,13 +42,6 @@ RUN addgroup --system --gid 10001 noj \
     && mkdir -p /run/noj-judge \
     && chown noj:noj /run/noj-judge
 
-COPY --from=wasi-sdk /opt/wasi-sdk /opt/wasi-sdk
-ENV JUDGE_WASI_CC=/opt/wasi-sdk/bin/clang \
-    JUDGE_WASI_CXX=/opt/wasi-sdk/bin/clang++ \
-    JUDGE_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot \
-    JUDGE_WASI_TARGET=wasm32-wasip1
-
-FROM wasi-runtime AS runtime
 COPY --from=builder /tmp/noj-judge /usr/local/bin/noj-judge
 
 USER 10001:10001

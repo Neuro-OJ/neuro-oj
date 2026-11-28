@@ -1,4 +1,3 @@
-use crate::oi::OiCostProfile;
 use crate::oi::OiRuntimeConfig;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -94,9 +93,6 @@ pub struct SolutionRuntime {
     /// 单次 SDK 调用的时间上限（毫秒）。
     pub call_timeout_ms: u64,
     pub memory_limit_mb: u64,
-    /// 调用级隔离模式：缺省/shared 为常驻共享；fork_per_call 为按调用 fork 隔离。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub isolation_mode: Option<String>,
 }
 
 /// LLM 评测任务字段（与 noj-core 的 JudgeTaskLlm 对齐）。
@@ -167,9 +163,6 @@ pub struct JudgeTask {
     pub artifact_download_url: Option<String>,
     /// 双容器或 OI Runtime 配置（必填）
     pub runtime_config: JudgeRuntimeConfig,
-    /// WASM 任务的受信成本表快照；绝不从题目配置推导或接受用户覆盖。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub oi_cost_profile: Option<OiCostProfile>,
     /// 编程语言标识
     pub language: String,
     /// 用户源代码

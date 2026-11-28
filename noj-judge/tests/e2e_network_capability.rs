@@ -914,7 +914,6 @@ else:
             image: "noj-e2e-sdk-solution:latest".to_string(),
             call_timeout_ms: 8000,
             memory_limit_mb: 128,
-            isolation_mode: None,
         }),
     };
     let user_code = r#"

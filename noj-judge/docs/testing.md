@@ -73,5 +73,5 @@ NOJ_RUN_E2E=1 cargo test --locked --test <target> -- --ignored --test-threads=1
 ```
 
 E2E job 另跑
-`python3 -m unittest discover -s noj-judge/scripts -p 'test_ci_*.py'` （WASI
-工具链与沙箱脚本自检），失败时上传 `target/**/test-*.log`。
+`python3 -m unittest discover -s noj-judge/scripts -p 'test_ci_*.py'`
+（沙箱调度脚本自检），失败时上传 `target/**/test-*.log`。

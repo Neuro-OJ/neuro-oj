@@ -3,7 +3,7 @@
 //! 读取一个与生产**同构**的 [`JudgeTask`] JSON（由 `noj-cli problem test` 调用
 //! noj-core 的 `prepareJudgeTask` 生成），把本地支持包 / 产物文件包装为
 //! `noj-download://local` 后交给 Worker 同一入口
-//! [`crate::judge::runner::evaluate_with_scheduler`]。容器安全基线
+//! [`crate::judge::runner::evaluate_with_cpu_limit`]。容器安全基线
 //! （`cap_drop ALL`、`no-new-privileges`、默认无网、不挂 docker socket）与镜像 /
 //! 命令白名单全部沿用生产实现，本模块**不做任何编排**。
 //!
@@ -31,9 +31,6 @@ pub const LLM_MOCK_SCHEME: &str = "mock://";
 
 /// 联网但未指定网络名时使用的 Docker 网络。
 pub const DEFAULT_LOCAL_NETWORK: &str = "bridge";
-
-/// 远程 go-judge 地址环境变量；run-local 一律忽略。
-const GO_JUDGE_URL_ENV: &str = "JUDGE_GO_JUDGE_URL";
 
 /// 中断后清理本次容器的最长等待时间。
 const INTERRUPT_CLEANUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
@@ -243,17 +240,10 @@ fn read_task(path: &str) -> Result<JudgeTask> {
 /// 执行一次本地评测并返回输出封套。
 pub async fn run(args: &LocalArgs) -> Result<LocalOutput> {
     let mut task = read_task(&args.task)?;
-    let mut notes = apply_local_policy(&mut task, args)?;
+    let notes = apply_local_policy(&mut task, args)?;
 
     // local 协议仅供本进程使用；生产 Worker 不会进入本函数。
     std::env::set_var("JUDGE_ALLOW_LOCAL_DOWNLOAD", "1");
-    // 本地验题不得把源码与测试数据发往远程 go-judge：OI 原生题一律走本机 Docker。
-    if std::env::var(GO_JUDGE_URL_ENV).is_ok_and(|v| !v.trim().is_empty()) {
-        notes.push(format!(
-            "已忽略 {GO_JUDGE_URL_ENV}：本地验题的 OI 原生题只在本机 Docker 中运行"
-        ));
-    }
-    std::env::remove_var(GO_JUDGE_URL_ENV);
     let config = Config::from_env();
 
     let scratch = tempfile::Builder::new()
@@ -289,7 +279,7 @@ pub async fn run(args: &LocalArgs) -> Result<LocalOutput> {
         &uuid::Uuid::new_v4().simple().to_string()[..12]
     );
     let started = Instant::now();
-    let evaluation = crate::judge::runner::evaluate_with_scheduler(
+    let evaluation = crate::judge::runner::evaluate_with_cpu_limit(
         docker.clone(),
         None,
         &task,
@@ -309,7 +299,6 @@ pub async fn run(args: &LocalArgs) -> Result<LocalOutput> {
         config.max_solution_call_timeout_ms,
         config.prediction_workspace_mb,
         &instance_id,
-        None,
     );
     // Ctrl+C / SIGTERM：放弃评测 future 后按本次实例标签有界清理容器，避免残留。
     let outcome = tokio::select! {

@@ -7,9 +7,6 @@ use zip::write::SimpleFileOptions;
 #[ignore = "需要 Docker 和 noj-oi-cpp 镜像"]
 async fn native_docker_cpp_executes_compiled_binary() {
     assert_eq!(std::env::var("NOJ_RUN_E2E").as_deref(), Ok("1"));
-    assert!(std::env::var("JUDGE_GO_JUDGE_URL")
-        .unwrap_or_default()
-        .is_empty());
     let docker = bollard::Docker::connect_with_local_defaults().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let package = dir.path().join("tests.zip");

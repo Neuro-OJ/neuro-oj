@@ -63,6 +63,7 @@ impl JudgeMetrics {
         cache_items: usize,
         cache_bytes: u64,
         work_dir_bytes: u64,
+        resource_pools: &[String],
     ) -> Heartbeat {
         Heartbeat {
             // 版本随心跳上报，供 core 排空状态逐节点展示与滚动升级观测。
@@ -76,6 +77,7 @@ impl JudgeMetrics {
             cache_items,
             cache_bytes,
             work_dir_bytes,
+            resource_pools: resource_pools.to_vec(),
             updated_at_ms: chrono_like_now_ms(),
         }
     }
@@ -94,6 +96,7 @@ struct Heartbeat {
     cache_items: usize,
     cache_bytes: u64,
     work_dir_bytes: u64,
+    resource_pools: Vec<String>,
     updated_at_ms: u64,
 }
 
@@ -105,7 +108,6 @@ fn chrono_like_now_ms() -> u64 {
 }
 
 /// 启动 Judge 心跳任务。Redis 暂时不可用只记录告警，不影响评测主循环。
-#[allow(dead_code)]
 pub async fn heartbeat_loop(
     redis_client: redis::Client,
     docker: Docker,
@@ -113,28 +115,7 @@ pub async fn heartbeat_loop(
     metrics: Arc<JudgeMetrics>,
     cache_dir: PathBuf,
     work_dir: PathBuf,
-) {
-    heartbeat_loop_with_resources(
-        redis_client,
-        docker,
-        instance_id,
-        metrics,
-        cache_dir,
-        work_dir,
-        None,
-    )
-    .await
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn heartbeat_loop_with_resources(
-    redis_client: redis::Client,
-    docker: Docker,
-    instance_id: String,
-    metrics: Arc<JudgeMetrics>,
-    cache_dir: PathBuf,
-    work_dir: PathBuf,
-    resource: Option<(String, String, Vec<String>, serde_json::Value)>,
+    resource_pools: Vec<String>,
 ) {
     let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -145,124 +126,14 @@ pub async fn heartbeat_loop_with_resources(
             directory_stats(&cache_dir, true),
             directory_stats(&work_dir, false),
         );
-        let mut heartbeat = serde_json::to_value(metrics.snapshot(
+        let heartbeat = metrics.snapshot(
             orphan_containers,
             cache_items,
             cache_bytes,
             work_dir_bytes,
-        ))
-        .expect("观测快照字段固定且可序列化");
-        if let Some((group, resource_key, enabled, capacities)) = &resource {
-            if let Ok(mut connection) = redis_client.get_multiplexed_async_connection().await {
-                use redis::AsyncCommands;
-                let rss = fs::read_to_string("/proc/self/statm")
-                    .await
-                    .ok()
-                    .and_then(|value| value.split_whitespace().nth(1)?.parse::<u64>().ok())
-                    .map(|pages| {
-                        // 当前正式平台为 Linux amd64；页大小按运行环境读取。
-                        let page_bytes = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-                        pages
-                            .saturating_mul(if page_bytes > 0 {
-                                page_bytes as u64
-                            } else {
-                                4096
-                            })
-                            .div_ceil(1024 * 1024)
-                    })
-                    .unwrap_or(0);
-                // 校验 Redis 中的 `{resource_key}:config` 仍与本 Worker 一致后，再原子写入 RSS 心跳；
-                // 防止已遭重置的陈旧 Worker 覆盖或重新激活已清除的心跳键。
-                let config_key = format!("{resource_key}:config");
-                let raw_config = connection
-                    .get::<_, Option<String>>(&config_key)
-                    .await
-                    .ok()
-                    .flatten();
-                let matched_config_raw = raw_config.filter(|raw| {
-                    serde_json::from_str::<serde_json::Value>(raw)
-                        .is_ok_and(|parsed| &parsed == capacities)
-                });
-                if let Some(expected_config_raw) = matched_config_raw {
-                    // 租约过期与准入都使用 Redis 时间，避免多 Worker 时钟偏差。
-                    let server_time: redis::RedisResult<(u64, u64)> =
-                        redis::cmd("TIME").query_async(&mut connection).await;
-                    let Ok((seconds, micros)) = server_time else {
-                        continue;
-                    };
-                    let now = seconds.saturating_mul(1000) + micros / 1000;
-                    let rss_key = format!("{resource_key}:rss");
-                    let sample = serde_json::json!({"mb":rss,"expires":now+30_000}).to_string();
-                    let wrote_rss: i64 = redis::Script::new(
-                        r#"
-                        if redis.call('GET',KEYS[1])~=ARGV[1] then return 0 end
-                        redis.call('HSET',KEYS[2],ARGV[2],ARGV[3])
-                        redis.call('EXPIRE',KEYS[2],60)
-                        return 1
-                        "#,
-                    )
-                    .key(&config_key)
-                    .key(&rss_key)
-                    .arg(&expected_config_raw)
-                    .arg(&instance_id)
-                    .arg(&sample)
-                    .invoke_async(&mut connection)
-                    .await
-                    .unwrap_or(0);
-                    if wrote_rss == 1 {
-                        let leases: redis::RedisResult<std::collections::HashMap<String, String>> =
-                            connection.hgetall(resource_key).await;
-                        if let Ok(leases) = leases {
-                            let mut counts = std::collections::HashMap::<String, u64>::new();
-                            let mut parents =
-                                std::collections::HashMap::<String, (u64, u64)>::new();
-                            let mut children = std::collections::HashMap::<String, u64>::new();
-                            for (id, raw) in leases {
-                                let Ok(item) = serde_json::from_str::<serde_json::Value>(&raw)
-                                else {
-                                    continue;
-                                };
-                                if item["expires"].as_u64().unwrap_or(0) <= now {
-                                    continue;
-                                }
-                                let kind = item["kind"].as_str().unwrap_or_default().to_owned();
-                                let parent = item["parent"].as_str().unwrap_or_default();
-                                // 领取前的零内存容量探针不作为活跃提交展示。
-                                if !parent.is_empty()
-                                    || item["base"].as_u64().unwrap_or(0) != 0
-                                    || item["headroom"].as_u64().unwrap_or(0) != 0
-                                {
-                                    *counts.entry(kind).or_default() += 1;
-                                }
-                                if parent.is_empty() {
-                                    parents.insert(
-                                        id,
-                                        (
-                                            item["base"].as_u64().unwrap_or(0),
-                                            item["headroom"].as_u64().unwrap_or(0),
-                                        ),
-                                    );
-                                } else {
-                                    *children.entry(parent.to_owned()).or_default() +=
-                                        item["memory"].as_u64().unwrap_or(0);
-                                }
-                            }
-                            let reserved = parents
-                                .into_iter()
-                                .map(|(id, (base, headroom))| {
-                                    base + headroom.max(children.get(&id).copied().unwrap_or(0))
-                                })
-                                .sum::<u64>();
-                            heartbeat["scheduling_version"] = serde_json::json!(1);
-                            heartbeat["resource_group"] = serde_json::json!(group);
-                            heartbeat["resource_pools"] = serde_json::json!(enabled);
-                            heartbeat["resources"] = serde_json::json!({"capacities":capacities,"active":counts,"reserved_memory_mb":reserved,"worker_rss_mb":rss});
-                        }
-                    }
-                }
-            }
-        }
-        let payload = heartbeat.to_string();
+            &resource_pools,
+        );
+        let payload = serde_json::to_string(&heartbeat).expect("观测快照字段固定且可序列化");
         let key = format!("{}{}", HEARTBEAT_PREFIX, instance_id);
         match redis_client.get_multiplexed_async_connection().await {
             Ok(mut conn) => {
@@ -354,9 +225,15 @@ mod tests {
     #[test]
     fn heartbeat_snapshot_reports_judge_version() {
         let metrics = JudgeMetrics::new(2);
-        let value =
-            serde_json::to_value(metrics.snapshot(0, 0, 0, 0)).expect("心跳快照必须可序列化");
+        let pools = vec!["oi-native".to_string(), "ai".to_string()];
+        let value = serde_json::to_value(metrics.snapshot(0, 0, 0, 0, &pools))
+            .expect("心跳快照必须可序列化");
         assert_eq!(value["judge_version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(value["max_concurrent_tasks"], 2);
+        assert_eq!(
+            value["resource_pools"],
+            serde_json::json!(["oi-native", "ai"])
+        );
     }
 
     #[test]
