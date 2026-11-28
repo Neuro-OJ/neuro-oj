@@ -478,10 +478,10 @@ try {
   for (const text of ["空间首屏", "公告首屏"]) {
     assert(html.includes(text), `SSR 缺少 ${text}`);
   }
-  // 首页随机三题已删除：题目首屏只在题库页出现。
+  // 首页推荐题目卡片在服务端直出题目首屏。
   assert(
-    !html.includes("题目首屏"),
-    "首页不应再出现题目首屏（随机推荐已删除）",
+    html.includes("题目首屏"),
+    "首页推荐题目 SSR 缺少题目首屏",
   );
   const problemsHtml = await (await fetch(`${base}/d/school/problems`)).text();
   assert(problemsHtml.includes("题目首屏"), "题库页 SSR 缺少题目首屏");
