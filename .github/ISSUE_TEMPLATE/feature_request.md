@@ -2,7 +2,7 @@
 name: 功能建议
 about: 提议新功能、体验改进或工程能力建设
 title: "[功能] "
-labels: ""
+labels: enhancement
 assignees: ""
 ---
 

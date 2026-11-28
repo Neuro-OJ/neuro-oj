@@ -5,7 +5,7 @@
 ## 从哪里开始
 
 1. 先搜索已有 Issue 和 Pull Request，避免重复工作。
-2. 缺陷请使用 [缺陷报告模板](./ISSUE_TEMPLATE/bug_report.md)，功能建议请使用 [功能建议模板](./ISSUE_TEMPLATE/feature_request.md)。
+2. 按场景选择对应的 Issue 模板：[缺陷报告](./ISSUE_TEMPLATE/bug_report.md)、[功能建议](./ISSUE_TEMPLATE/feature_request.md)、[文档改进](./ISSUE_TEMPLATE/documentation.md)、[使用咨询 / 部署求助](./ISSUE_TEMPLATE/question.md) 或 [工程任务 / 重构改进](./ISSUE_TEMPLATE/task.md)。
 3. 涉及安全漏洞时，不要创建公开 Issue，先阅读 [安全漏洞报告流程](./SECURITY.md)。
 4. 进入模块目录前，阅读对应的 `AGENTS.md` 或 `CLAUDE.md`，并遵守其中更具体的约定。
 
