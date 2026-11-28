@@ -4,7 +4,7 @@
  * 发布、作答、反馈、求助、矩阵及补题使用页面操作，不以 API 成功代替 Web 验收。
  */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import {
   api,
@@ -20,7 +20,7 @@ import {
   withBrowserJourney,
 } from "./browser.ts";
 
-type Page = import("npm:playwright@1.62.1").Page;
+type Page = import("npm:playwright@1.65.1").Page;
 
 /** 完成水合再操作 SSR 表单，避免填入的 DOM 值被初始客户端模型覆盖。 */
 async function ready(page: Page) {

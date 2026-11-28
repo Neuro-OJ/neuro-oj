@@ -22,7 +22,7 @@ import {
   TEST_PASSWORD,
 } from "../helper.ts";
 
-type Page = import("npm:playwright@1.62.1").Page;
+type Page = import("npm:playwright@1.65.1").Page;
 
 const ts = Date.now().toString(36);
 /** 被封禁后收到封禁通知的普通用户 */

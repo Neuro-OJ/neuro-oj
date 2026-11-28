@@ -2,8 +2,7 @@
 
 > 适用模块：`noj-llm-gateway`。审计来源：2026-11-02 rc/v0.11 审计 R1
 > （“校验对象与连接对象不是同一批地址”）。本文记录 spike
-> 结论、实现选择、残余风险 与回滚点，对应 Agent Note
-> [rc/v0.11 审计阻断项修复](../../.agents/notes/implemented/bug-fix/2026-11-02-rc-v011-audit-blockers.md)。
+> 结论、实现选择、残余风险与回滚点（对应历史决策记录见 git 历史）。
 
 ## 1. 问题
 

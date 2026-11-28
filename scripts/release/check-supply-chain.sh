@@ -139,8 +139,8 @@ check_release_workflow() {
   grep -q 'trivy' "$file" || fail "Release workflow 未配置漏洞扫描"
   local trivy_refs
   trivy_refs="$(grep -E '^[[:space:]]*uses:[[:space:]]+aquasecurity/trivy-action@' "$file" || true)"
-  [[ "$(printf '%s\n' "$trivy_refs" | sed '/^$/d' | wc -l | tr -d ' ')" == "2" ]] \
-    || fail "Release workflow 必须配置两个 Trivy 步骤"
+  [[ "$(printf '%s\n' "$trivy_refs" | sed '/^$/d' | wc -l | tr -d ' ')" == "1" ]] \
+    || fail "Release workflow 必须配置 Trivy 漏洞扫描步骤"
   while IFS= read -r line; do
     # 固定到经核验的 v0.36.0 commit SHA（审计 S1：可变 tag 不可信，只认 SHA）
     [[ "$line" == *'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25'* ]] \

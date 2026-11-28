@@ -65,26 +65,17 @@ cd noj-llm-gateway && deno task dev
 deno run -A scripts/verify-md-links.ts
 ```
 
-若改动了 Agent Note，再执行：
-
-```bash
-deno run -A scripts/verify-agent-note-format.ts
-```
-
 按改动范围运行相关检查，并在 Pull Request 中记录实际执行的命令和结果。需要完整 CI 验证的改动仍应等待 GitHub Actions 完成。
 
 ### 安全门禁
 
-[`.github/workflows/security.yml`](./workflows/security.yml) 在 PR、`main` push 与每周定时任务上执行四类检查：
+[`.github/workflows/security.yml`](./workflows/security.yml) 在 PR、`main` push 与每周定时任务上执行三类检查：
 
 | Job | 覆盖范围 | 触发时机 |
 | --- | --- | --- |
-| `dependency-review` | PR 新增依赖的已知漏洞，`high` / `critical` 直接失败（需组织启用 Dependency Graph） | 仅 PR |
 | `cargo-audit` | `noj-judge/Cargo.lock`（CodeQL 不支持 Rust，由它承担） | 依赖清单变更、定时 |
 | `osv-scanner` | 5 个 `deno.lock` 与 `noj-docs` 的 `package-lock.json` | 依赖清单变更、定时 |
 | `codeql` | JavaScript / TypeScript 静态扫描 | 源码变更、`main` push、定时 |
-
-`dependency-review` 依赖 GitHub Dependency Graph；组织未启用时该 job 会显式跳过并在 job summary 告警（不是扫描通过），需要组织 owner 在 Settings → Code security 启用后自动生效。
 
 `osv-scanner` 目前没有 `deno.lock` 提取器，workflow 会先用 `scripts/security/deno-lock-to-package-lock.ts` 把 npm 依赖转成 `package-lock.json` 再扫描；jsr 依赖不在 npm 生态，不在扫描范围内。
 
@@ -137,7 +128,6 @@ gh pr create --draft --base main
 - 代码、注释和文档使用中文，代码标识符使用英文；
 - 未提交环境文件、凭据、日志、编辑器配置或构建产物；
 - 已运行与改动相关的格式化、Lint、类型检查和测试；
-- 非平凡变更已补充 `.agents/notes/implemented/` 下的 Agent Note；
 - PR 描述中的验证清单与实际结果一致。
 
 `main` 必须始终保持可部署状态：PR 需在 CI 通过、完成评审后才能合入。

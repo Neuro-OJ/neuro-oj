@@ -12,18 +12,12 @@
 | [`design/`](design/)                     | 设计 token 与 UI 视觉契约                           | 活文档，代码与 CI 引用 |
 | [`product/`](product/)                   | 进行中的产品设计与路线图：`DESIGN.md` / `PRODUCT.md` / `ROADMAP.md` | 活文档            |
 | [`refactor/`](refactor/)                 | 进行中的设计：core 功能切片重构提案（proposal/design/tasks） | 活文档            |
-| [`audit/`](audit/)                       | 时点审计，按日期建目录                              | 只读快照          |
-| [`reviews/`](reviews/)                   | 时点评审与验证记录                                  | 只读快照          |
 | [`acceptance/`](acceptance/)             | 时点验收记录（含 PR body 存档）                     | 只读快照          |
-| [`unattended/`](unattended/)             | 无人值守改造的过程记录与证据                        | 只读快照          |
 | [`postmortem/`](postmortem/)             | 事故复盘                                            | 只读快照          |
-| [`archive/`](archive/)                   | 历史存档：`superpowers/` 与 `openspec-changes/`（10 个已下线历史提案） | 归档，勿新增      |
 
 ## 约定
 
 1. **只读快照不回溯修改**。被代码推翻时，在文首加「修订指针」指向最新结论，正文保持原样。
 2. **新文档先定归属**：规范进 `engineering/` 并在其 README 登记；设计契约进 `design/`；
    一次性过程记录按 `yyyy-mm-dd-<主题>.md` 命名，进对应的快照目录。
-3. **不要把计划当规范**。`archive/superpowers/plans/` 是历史存档；已实现的结论写进
-   `.agents/notes/implemented/`，现行规则写进 `engineering/`。
-4. 决策记录（为什么这么做）在 `.agents/notes/implemented/`，不在这里重复一遍。
+3. **不要把计划当规范**。现行规则直接写进 `engineering/`，变更背景与取舍记在 PR 描述或提交信息中（早期历史归档、审计快照与 Agent Notes 保存在 git 历史中）。

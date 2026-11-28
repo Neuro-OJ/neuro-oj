@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** 设置、邀请和观察页面的浏览器任务验收，API只准备独立域。 */
 import { assertEquals } from "jsr:@std/assert@1";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { api, getAdminToken } from "../helper.ts";
 import {
   ARTIFACT_DIR,

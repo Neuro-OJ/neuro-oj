@@ -22,12 +22,7 @@ import { handleSearchIndexTask } from "./search-handlers.ts";
 import { handleEvaluationDispatchTask } from "./dispatch-handlers.ts";
 import { processEducationTask } from "../education/index.ts";
 
-/**
- * 组装生产 handler 表。
- *
- * 尚未接入的处理器必须显式实现为"记失败"，不能返回成功——否则任务会被标记
- * 完成而事实没有生效。
- */
+/** 组装生产 handler 表（内置核心任务 + 功能自声明任务）。 */
 export function createBackgroundHandlers(
   features: readonly FeatureDefinition[] = FEATURES,
 ): TaskHandlerMap {
@@ -43,12 +38,6 @@ export function createBackgroundHandlers(
       ),
     // 教学事件即任务本身：每次领取处理一页，未完成时由 worker 重新调度。
     "education.recompute": processEducationTask,
-    // 对象回收在 application 组合层实现（引用守卫 + 域计数释放）。
-    "storage.reclaim": () =>
-      Promise.reject(new Error("storage.reclaim 处理器尚未接入")),
-    // 邮件通知允许重复风险，由 application 注入真实发送实现后启用。
-    "notification.email": () =>
-      Promise.reject(new Error("notification.email 处理器尚未接入")),
   };
   // 功能自声明的任务：冲突或重复在此处启动期失败。
   return {

@@ -210,42 +210,6 @@ services:
         aliases:
           - noj-e2e-llm-mock
 
-  # 显式同步屏障协调服务（LLM 治理 Browser 用例）：evaluator 在真实 llm.complete()
-  # 之前阻塞在这里，测试进程确认「尝试仍在途」后经 UI 修改模型别名，再放行；
-  # 取代原来 evaluator 固定 sleep 20 秒的做法。
-  # 网络约束：只接入评测隔离网络 noj-eval-net——evaluator 容器只在该网络上，
-  # 它看到的地址就是本服务名；管理端口只绑定宿主 loopback，两者绝不能混用。
-  test-coordinator:
-    image: python:3.12-slim
-    ports:
-      - "127.0.0.1:${E2E_TEST_COORDINATOR_PORT:-18010}:8010"
-    command:
-      - "python3"
-      - "-u"
-      - "/coordinator/test_coordinator.py"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8010"
-    volumes:
-      - ./scripts/e2e/test_coordinator.py:/coordinator/test_coordinator.py:ro
-    healthcheck:
-      # python:3.12-slim 没有 curl，用标准库探活。
-      test:
-        - "CMD"
-        - "python3"
-        - "-c"
-        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=2).read()"
-      interval: 3s
-      timeout: 3s
-      retries: 20
-    networks:
-      noj-eval-net:
-        # 固定 evaluator 侧 alias（P2 夹具与 action 默认值）；容器名不再固定，
-        # 跨会话隔离由会话私有网络名承担。
-        aliases:
-          - noj-e2e-test-coordinator
-
   noj-llm-gateway:
     build:
       context: ./noj-llm-gateway

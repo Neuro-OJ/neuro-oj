@@ -140,23 +140,6 @@ runs:
         resolve E2E_GATEWAY_CONTAINER noj-llm-gateway
       shell: bash
 
-    - name: 等待测试协调服务健康
-      if: inputs.browser == 'true'
-      run: |
-        port="${E2E_TEST_COORDINATOR_PORT:-18010}"
-        for i in $(seq 1 60); do
-          if curl -sf "http://127.0.0.1:$port/health" > /dev/null; then
-            echo "✅ 测试协调服务就绪 (:$port)"
-            exit 0
-          fi
-          sleep 1
-        done
-        echo "::error::测试协调服务未在 60s 内就绪"
-        docker compose -f docker-compose.e2e.yml -p "$COMPOSE_PROJECT_NAME" \
-          logs --tail=100 test-coordinator
-        exit 1
-      shell: bash
-
     # ════════════════════════════════════════════
     # 3. 测试：API E2E（单域或合并批次）或 UI 浏览器门禁
     # ════════════════════════════════════════════
@@ -265,7 +248,7 @@ runs:
 
     - name: 安装 Playwright Chromium
       if: inputs.browser == 'true' && steps.pw-cache.outputs.cache-hit != 'true'
-      run: deno run -A npm:playwright@1.62.1 install chromium
+      run: deno run -A npm:playwright@1.65.1 install chromium
       shell: bash
 
     - name: UI 浏览器关键流程测试 (noj-tests test:browser)
@@ -277,9 +260,6 @@ runs:
         E2E_LLM_MOCK_URL: http://noj-e2e-llm-mock:8002/v1
         E2E_LLM_MOCK_INSPECT_URL: http://localhost:8002/
         E2E_LLM_GOVERNANCE_DATABASE_URL: ${{ env.E2E_DB_URL }}
-        E2E_TEST_COORDINATOR_PORT: ${{ env.E2E_TEST_COORDINATOR_PORT || '18010' }}
-        E2E_TEST_COORDINATOR_URL: http://127.0.0.1:${{ env.E2E_TEST_COORDINATOR_PORT || '18010' }}
-        E2E_TEST_COORDINATOR_EVALUATOR_URL: http://noj-e2e-test-coordinator:8010
         E2E_EVALUATOR_NETWORK: ${{ env.E2E_EVALUATOR_NETWORK || 'noj-eval-net' }}
       run: |
         if [ -n "${{ inputs.shard }}" ]; then
@@ -311,10 +291,6 @@ runs:
           "${compose[@]}" logs --tail=100 "$svc" 2>&1 || echo "容器可能未启动"
           "${compose[@]}" logs --tail=500 "$svc" > "$svc.log" 2>&1 || echo "$svc may not be running"
         done
-        if [ "${{ inputs.browser }}" = "true" ]; then
-          echo "=== test-coordinator 日志（tail 100）==="
-          "${compose[@]}" logs --tail=100 test-coordinator 2>&1 || echo "容器可能未启动"
-        fi
       shell: bash
 
     - name: 上传诊断日志

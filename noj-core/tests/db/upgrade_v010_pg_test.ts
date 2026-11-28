@@ -29,7 +29,7 @@ import {
   runUpgradeFromV010,
   UpgradeV010Error,
   V010_LAST_MIGRATION_TAG,
-} from "../../src/shared/db/upgrade-v010/index.ts";
+} from "../../scripts/upgrade-v010/index.ts";
 import { assertOwnedTestDatabase } from "../helpers/db.ts";
 
 const CORE_MIGRATIONS_DIR = resolve(

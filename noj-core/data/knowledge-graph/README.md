@@ -2,9 +2,8 @@
 
 AI 竞赛知识图谱的默认内容：知识点（节点）与前置关系（边），覆盖 **IOAI**（2027
 版考纲）、 **NOAI**（中国区选拔）与 **LMCC**（CCF 大模型能力认证 2026 年 5
-月版）。功能设计见
-[`dev-docs/archive/openspec-changes/add-knowledge-graph/`](../../../dev-docs/archive/openspec-changes/add-knowledge-graph/)。
-内容采用 CC BY-SA 4.0，见 [LICENSE](LICENSE)。
+月版）。早期功能设计提案已归档于 git 历史。 内容采用 CC BY-SA 4.0，见
+[LICENSE](LICENSE)。
 
 > **状态：已上线（P0–P4 架构 + 45 篇试点节点讲解）。**
 

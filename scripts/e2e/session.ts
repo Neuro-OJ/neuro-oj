@@ -52,7 +52,6 @@ const PORT_MAPPINGS: ReadonlyArray<{
   { service: "minio", container: 9001, key: "minioConsole" },
   { service: "noj-llm-gateway", container: 8001, key: "llmGateway" },
   { service: "llm-mock", container: 8002, key: "llmMock" },
-  { service: "test-coordinator", container: 8010, key: "coordinator" },
 ];
 
 /** 会话主机端口。 */
@@ -64,7 +63,6 @@ export interface SessionPorts {
   minioConsole: number;
   llmGateway: number;
   llmMock: number;
-  coordinator: number;
 }
 
 /** 会话清单；写入磁盘后是清理与测试入口的唯一事实源。 */
@@ -81,8 +79,6 @@ export interface SessionManifest {
   resourcePools: string;
   urls: {
     core: string;
-    coordinator: string;
-    evaluatorCoordinator: string;
   };
   /** 输入 fingerprint：UI 源码、支持包、SDK 等，变化即失效。 */
   fingerprints: Record<string, string>;
@@ -238,10 +234,6 @@ export function buildSessionManifest(
 export function sessionUrls(ports: SessionPorts): SessionManifest["urls"] {
   return {
     core: `http://localhost:${ports.core}`,
-    coordinator: `http://127.0.0.1:${ports.coordinator}`,
-    // evaluator 在会话私有网络内按服务名访问协调服务：容器内监听 8010，
-    // ports.coordinator 只是宿主机映射；用宿主端口会让评测容器连不上（arrivals=0）。
-    evaluatorCoordinator: "http://test-coordinator:8010",
   };
 }
 
@@ -322,13 +314,6 @@ export function renderSessionEnv(manifest: SessionManifest): string {
     // LLM 治理用例从 mock 的只读记录入口核对上游实际收到的模型；缺映射会读到
     // 默认 8002 的开发栈 mock，模型计数恒为 0。
     E2E_LLM_MOCK_INSPECT_URL: `http://127.0.0.1:${manifest.ports.llmMock}/`,
-    E2E_COORDINATOR_PORT: String(manifest.ports.coordinator),
-    // 测试与 compose 使用的规范名（P2 协调服务）；下面两个旧名保留兼容。
-    E2E_TEST_COORDINATOR_PORT: String(manifest.ports.coordinator),
-    E2E_TEST_COORDINATOR_URL: manifest.urls.coordinator,
-    E2E_TEST_COORDINATOR_EVALUATOR_URL: manifest.urls.evaluatorCoordinator,
-    E2E_COORDINATOR_URL: manifest.urls.coordinator,
-    E2E_EVALUATOR_COORDINATOR_URL: manifest.urls.evaluatorCoordinator,
     E2E_EVALUATOR_NETWORK: manifest.networkName,
     E2E_JUDGE_RESOURCE_POOLS: manifest.resourcePools,
     JWT_SECRET: "e2e-ci-secret-fixed-value-with-32-chars-min-abc",
@@ -573,7 +558,6 @@ export async function allocateSessionPorts(
     minioConsole: await allocate(),
     llmGateway: await allocate(),
     llmMock: await allocate(),
-    coordinator: await allocate(),
   };
 }
 

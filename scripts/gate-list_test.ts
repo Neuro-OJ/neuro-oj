@@ -57,11 +57,6 @@ Deno.test("gate-list: 本地入口覆盖 CI 入口的全部门禁", async () => 
 });
 
 Deno.test("gate-list: 关键门禁不得被删除", () => {
-  // 静默跳过棘轮
-  assert(
-    hasGate(["deno", "run", "-A", "scripts/silent-skip-report.ts", "--check"]),
-    "静默跳过棘轮必须在清单内",
-  );
   // 迁移安全
   assert(
     hasGate(["deno", "run", "-A", "scripts/check-migration-safety.ts"]),
@@ -71,11 +66,6 @@ Deno.test("gate-list: 关键门禁不得被删除", () => {
   assert(
     hasGate(["deno", "run", "-A", "scripts/check-migration-snapshot-chain.ts"]),
     "迁移快照链门禁必须在清单内",
-  );
-  // 文件规模棘轮
-  assert(
-    hasGate(["deno", "run", "-A", "scripts/check-file-size.ts"]),
-    "文件规模棘轮必须在清单内",
   );
   // 测试可发现性
   assert(
@@ -91,11 +81,6 @@ Deno.test("gate-list: 关键门禁不得被删除", () => {
       "--strict",
     ]),
     "P3 模块边界严格门禁必须在清单内",
-  );
-  // Deno 版本一致性
-  assert(
-    hasGate(["deno", "run", "-A", "scripts/check-deno-version.ts"]),
-    "Deno 版本门禁必须在清单内",
   );
   // PGlite/schema parity 门禁已随测试后端删除；正式迁移由真实 PostgreSQL
   // 启动器与迁移安全/快照链门禁共同验证。

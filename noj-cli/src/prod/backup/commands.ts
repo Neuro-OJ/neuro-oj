@@ -102,7 +102,7 @@ export interface VerifyCommandOptions {
 }
 
 /**
- * 路径形态守卫：verify/restore/drill 只接受 `.nojbackup` 单文件。
+ * 路径形态守卫：verify/restore 只接受 `.nojbackup` 单文件。
  *
  * 形态**唯一**（单文件容器），故守卫校验后缀，并**明确拒绝** legacy 目录（否则会走到解包失败，报出难以理解的错）。
  */
@@ -342,8 +342,8 @@ export interface RestoreConfirmedResult {
  * 与 `restorePlan` 的
  * dry-run 规划器是**两条路径**，不是同一个函数的开关：
  * dry-run 只要 `gpgDecrypt`/`untarZst` 两项能力（类型上就无法写数据），
- * 而本函数需要完整的数据恢复编排。共用编排逻辑在
- * {@link restoreDataServices}（生产与 drill 共享，见其文件头）。
+ * 而本函数需要完整的数据恢复编排。编排逻辑在
+ * {@link restoreDataServices}（见其文件头）。
  *
  * ## 顺序（每一步都是安全要求）
  *
@@ -431,7 +431,7 @@ export async function restoreConfirmed(
     log(`✓ 加密环境文件已恢复：${opts.restoreEnv}`);
   }
 
-  // ---- 5. 数据恢复序列（与 drill 共享同一实现）----
+  // ---- 5. 数据恢复序列 ----
   await restoreDataServices({
     // **必须用 verify 解包出的 staging**（`<workDir>/payload`），
     // 不是 workDir 本身——容器根的条目落在子目录里（见 unpackContainer）。

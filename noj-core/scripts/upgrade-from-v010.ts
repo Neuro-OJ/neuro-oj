@@ -16,7 +16,7 @@ import {
   runUpgradeFromV010,
   type UpgradeReport,
   UpgradeV010Error,
-} from "../src/shared/db/upgrade-v010/index.ts";
+} from "./upgrade-v010/index.ts";
 
 export interface UpgradeCliOptions {
   sourceUrl?: string;

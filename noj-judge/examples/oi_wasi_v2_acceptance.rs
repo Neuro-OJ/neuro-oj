@@ -109,22 +109,18 @@ async fn main() {
         club_expected.push_str(&format!("{answer}\n"));
     }
     let club_source = include_str!("../toolchain/tests/club-generated.cpp");
-    let baseline: serde_json::Value = serde_json::from_str(include_str!(
-        "../../fixtures/noj-wasm-v1-club-generated.json"
-    ))
-    .unwrap();
-    assert_eq!(
-        baseline["source_hash"],
-        standard::hash(club_source.as_bytes())
-    );
-    assert_eq!(
-        baseline["input_hash"],
-        standard::hash(club_input.as_bytes())
-    );
+    // 冻结的 v1 基准（源程序与输入在冻结 v1 SDK 下测得，用于回归校验 v2/v3 至少降低 75% fuel）。
+    const V1_CLUB_SOURCE_HASH: &str =
+        "5f9365a31b82a3244e846a7d426646ff8bdfcd69fffdebb16f7295b3dc560a83";
+    const V1_CLUB_INPUT_HASH: &str =
+        "50368df5f3ddda8bddfaba9a1e937900f9606f4ec38a008a3a637838d53416cd";
+    const V1_CLUB_FUEL: u64 = 11_607_613_534;
+    assert_eq!(V1_CLUB_SOURCE_HASH, standard::hash(club_source.as_bytes()));
+    assert_eq!(V1_CLUB_INPUT_HASH, standard::hash(club_input.as_bytes()));
     let club = run(club_source, club_input.into_bytes(), &club_expected, false).await;
     // 同一源程序和生成输入在冻结 v1 SDK 下测得，算子与尺度保持相同。
     assert!(
-        club["fuel"].as_u64().unwrap() * 4 <= baseline["fuel"].as_u64().unwrap(),
+        club["fuel"].as_u64().unwrap() * 4 <= V1_CLUB_FUEL,
         "生成 club 的 fuel 必须较 v1 降低至少 75%: {club}"
     );
     report.insert("club-generated".into(), club);

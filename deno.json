@@ -1,18 +1,8 @@
 {
-  // 根目录只承载跨模块任务：依赖清单与锁文件在各模块自己的 deno.json 里。
-  // 本文件不声明依赖：
-  // - "lock": false 避免 `deno task` / `deno test scripts/...` 在根目录生成一个
-  //   空的 deno.lock（与"deno.lock 受版本控制"的约定冲突）；
-  // - 排除 no-import-prefix：scripts/ 下的测试仍直接写 `jsr:@std/assert@^1`
-  //   （本仓库此前没有根清单，该规则本来就不生效）。等 scripts/ 统一成
-  //   imports 映射后，这条排除应当删掉。
   "lock": false,
   "lint": {
     "rules": {
       "exclude": ["no-import-prefix"]
     }
-  },
-  "tasks": {
-    "check:branch-safety": "deno run -A scripts/check-branch-safety.ts"
   }
 }

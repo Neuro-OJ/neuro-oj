@@ -25,8 +25,8 @@ import {
   topoSortSelfFk,
   transformOrphanJobItem,
   UpgradeV010Error,
-} from "../../src/shared/db/upgrade-v010/index.ts";
-import { deterministicUuid } from "../../src/shared/db/upgrade-v010/copy-helpers.ts";
+} from "../../scripts/upgrade-v010/index.ts";
+import { deterministicUuid } from "../../scripts/upgrade-v010/copy-helpers.ts";
 import {
   executeUpgradeCli,
   formatUpgradeReport,

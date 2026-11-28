@@ -15,7 +15,6 @@
     "@nuxt/fonts": "^0.14.0",
     "@nuxt/icon": "^2.3.1",
     "@nuxt/ui": "^4.10.0",
-    "@nuxtjs/color-mode": "^4.0.1",
     "@tailwindcss/typography": "^0.5.20",
     "dompurify": "^3.4.17",
     "highlight.js": "^11.11.1",
@@ -26,7 +25,6 @@
     "sanitize-html": "^2.18.1",
     "qrcode": "^1.5.4",
     "tailwindcss": "^4.3.3",
-    "ioredis": "5.11.1",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/geist-mono": "^5.2.7"
   },

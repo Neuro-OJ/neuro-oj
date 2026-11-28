@@ -10,7 +10,6 @@
 - [测试覆盖率报告](test-coverage.md)
 - [测试性能基线（suite=core）](test-performance-baseline.md)
 - [Core 测试性能实测（本地，2026-11-03）](test-performance-local.md)
-- [静默跳过测试清单](test-silent-skips.md)（生成物，基线在 `test-silent-skips.baseline.json`）
 
 ## 架构与边界
 
@@ -58,10 +57,7 @@
 
 ## 生成物与时效约定
 
-- SSE 事件目录、API 路由目录**不提交**，按需生成：
-  `deno run -A scripts/gen-event-catalog.ts` / `deno run -A scripts/gen-route-catalog.ts`。
+- API 路由目录**不提交**，按需生成：
+  `deno run -A scripts/gen-route-catalog.ts`。
 - 评审/审计类文档是**时点快照**，不回溯修改；被代码推翻时在文首加「修订指针」
   （示例见 `architecture-review-2026-09-01.md`）。
-- 计数类陈述（表数量、文件行数、跳过数）不写死在文档里，改由门禁的基线文件承载：
-  `test-silent-skips.baseline.json`（静默跳过）、`scripts/check-file-size.ts`（巨型文件）、
-  `scripts/check-write-rate-limits.ts`（限流覆盖）。

@@ -23,15 +23,7 @@ use wasmtime_wasi::{
 
 #[path = "wasm_execution.rs"]
 mod execution;
-pub use execution::run_checker_module;
-use execution::{
-    run_module_with_files, run_observed_module_with_files, run_prepared_checker,
-    run_prepared_module, PreparedModule,
-};
-
-#[path = "wasm_analysis_runtime.rs"]
-mod analysis_runtime;
-pub(super) use analysis_runtime::run_analysis_module;
+use execution::{run_module_with_files, run_prepared_checker, run_prepared_module, PreparedModule};
 
 use super::wasm_compile::{compile_cancellable, CompilerInfrastructureError};
 use crate::types::{JudgeResult, JudgeTask};
@@ -65,8 +57,6 @@ pub struct WasmRunResult {
     pub cpu_time_ms: Option<u64>,
     pub wall_time_ms: u64,
     pub exit_code: Option<i32>,
-    /// 仅独立分析运行读取；正式评测始终为空，不进入 MQ 结果。
-    pub analysis_counters: Vec<u64>,
 }
 
 #[allow(dead_code)]
@@ -704,7 +694,6 @@ async fn run_wasm_case(
                 FsPerms::ReadOnly
             },
             Some(wall_budget_ms(limit)),
-            0,
             user_cancellation,
             user_prepared.as_ref(),
         ))
@@ -721,7 +710,6 @@ async fn run_wasm_case(
             cpu_time_ms: None,
             wall_time_ms: 0,
             exit_code: None,
-            analysis_counters: Vec::new(),
         },
         Err(error) => return Err(error),
     };

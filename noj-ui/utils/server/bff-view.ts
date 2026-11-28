@@ -1,17 +1,14 @@
 import type { WorkspaceDetail } from '../domain/workspace/workspace.ts';
 import type { AuthUser } from '../auth/auth-user.ts';
 
-export type BffViewKind = 'home' | 'classroom' | 'assignment' | 'training';
+export type BffViewKind = 'home' | 'training';
 export type BffSectionName =
-  | 'problemSummaries'
   | 'training'
   | 'workspace'
   | 'banStatus'
   | 'instanceNavigation'
   | 'announcementBanner'
   | 'userSpaces'
-  | 'draftRoster'
-  | 'draftTraining'
   | 'siteMeta'
   | 'communityConfig'
   | 'accountNotifications'
@@ -21,17 +18,7 @@ export type BffSectionName =
   | 'contests'
   | 'trainings'
   | 'checkin'
-  | 'dashboard'
-  | 'classroom'
-  | 'assignments'
-  | 'assignment'
-  | 'matrix'
-  | 'progress'
-  | 'feedback'
-  | 'help'
-  | 'helpDetail'
-  | 'focusedFeedback'
-  | 'history';
+  | 'dashboard';
 
 export type BffJsonValue = null | boolean | number | string | BffJsonValue[] | { [key: string]: BffJsonValue };
 
@@ -45,23 +32,4 @@ export interface BffEnvelope {
   viewer: AuthUser | null;
   workspace: WorkspaceDetail;
   sections: Partial<Record<BffSectionName, BffSection>>;
-}
-
-/** 精确匹配首批页面，其他页面不改变数据加载方式。 */
-export function bffViewRoute(path: string) {
-  const match = /^\/d\/([^/]+)(?:\/(classrooms|assignments|trainings)\/([^/]+))?\/?$/.exec(path);
-  if (!match) return null;
-  const kind: BffViewKind = !match[2]
-    ? 'home'
-    : match[2] === 'classrooms'
-    ? 'classroom'
-    : match[2] === 'trainings'
-    ? 'training'
-    : 'assignment';
-  const root = `/api/bff/v1/domains/${match[1]}`;
-  return {
-    kind,
-    slug: match[1],
-    endpoint: kind === 'home' ? `${root}/home` : `${root}/${match[2]}/${match[3]}/overview`,
-  };
 }

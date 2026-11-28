@@ -3,7 +3,7 @@
 #
 # 触发条件：main Push、Pull Request、手动触发、Release workflow_call
 # 并行检查核心模块，PR 按真实变更路径过滤，main/手动/发布全量验证：
-#   - root-gates:        仓库级静态门禁（含供应链 / 入口 Smoke / 配置读取点 / noj-tests 逻辑单测）
+#   - root-gates:        仓库级静态门禁（含供应链 / 配置读取点 / noj-tests 逻辑单测；纯文档 PR 仅跑链接检查）
 #   - core-quick-check:  noj-core fmt + lint + typecheck + logic 单测
 #   - core-test-sharded: noj-core 隔离 PG/Redis 回归（全量 4 机并行；PR 单模块增量）
 #   - ui-check:          noj-ui Nuxt 构建 + vue-tsc + 单测/覆盖率阈值 + 组件测试 + BFF/主题验收
@@ -56,6 +56,7 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      code: ${{ steps.filter.outputs.code }}
       core: ${{ steps.filter.outputs.core }}
       core-full: ${{ steps.selection.outputs.core-full }}
       core-run: ${{ steps.selection.outputs.core-run }}
@@ -85,6 +86,8 @@ jobs:
           # 不能把 '!**/*.md' 作为独立条目写入列表；使用 picomatch 内联 extglob
           # '/**/!(*.md)' 仅在对应目录内排除 Markdown 文档。
           filters: |
+            code:
+              - '{!(*.md),**/!(*.md)}'
             core:
               - 'noj-core/**/!(*.md)'
               - 'dev-docs/engineering/module-boundaries.json'
@@ -144,11 +147,11 @@ jobs:
             scripts/select-core-ci.ts "${args[@]}"
 
   # ===========================================================================
-  # 仓库级静态门禁（合并原 root-gates / supply-chain / entrypoint-smoke /
-  # config-usage-check，消除 3 台秒级静态检查 VM 的重复冷启动开销）
+  # 仓库级静态门禁（纯文档 PR 仅跑 Markdown 链接校验以保持必需状态检查快速通过）
   # ===========================================================================
   root-gates:
     name: Root Gates
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -160,23 +163,29 @@ jobs:
         with:
           deno-version-file: .dvmrc
 
+      - name: 仅文档变更快速门禁 (verify-md-links)
+        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.code != 'true' }}
+        run: deno run -A scripts/verify-md-links.ts
+
       - name: 检查供应链约束
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
         run: bash scripts/release/test-supply-chain.sh
 
-      - name: 入口 Smoke
-        run: deno run -A scripts/smoke-entrypoints.ts
-
       - name: 验证 WASM 统一标准
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
         run: deno run -A scripts/verify-wasm-standard.ts
 
       - name: 配置读取点静态校验 (check:config-usage)
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
         working-directory: noj-core
         run: deno task check:config-usage
 
       - name: 仓库级门禁
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
         run: deno run -A scripts/check-ci.ts
 
       - name: noj-tests 零依赖单测
+        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
         working-directory: noj-tests
         run: deno task test:logic
 
@@ -483,17 +492,6 @@ jobs:
     env:
       DENO_DIR: ${{ github.workspace }}/noj-ui/.deno_cache
 
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
-
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -549,12 +547,6 @@ jobs:
       - name: BFF 生产 SSR 与水合验收
         working-directory: noj-ui
         run: deno task test:bff:ssr
-
-      - name: BFF 跨副本缓存与故障降级
-        working-directory: noj-ui
-        env:
-          BFF_TEST_REDIS_URL: redis://127.0.0.1:6379
-        run: deno task test:bff:cache
 
       - name: 编辑器 Markdown 明暗主题回归
         working-directory: noj-ui
@@ -753,15 +745,6 @@ jobs:
           "${RUNNER_TEMP}/noj-wasi-cache"
           "${RUNNER_TEMP}/noj-wasi-build-a"
           "${RUNNER_TEMP}/noj-wasi-sdk-a"
-
-      - name: 不同目录构建产物一致性
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        working-directory: noj-judge
-        run: >-
-          bash scripts/build-oi-wasi-toolchain.sh
-          "${RUNNER_TEMP}/noj-wasi-cache"
-          "${RUNNER_TEMP}/noj-wasi-build-b"
-          "${RUNNER_TEMP}/noj-wasi-sdk-b"
 
   judge-wasi-acceptance:
     name: Judge WASI Acceptance

@@ -2,16 +2,15 @@
 import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@^1';
 import { aggregateView } from '../../server/utils/bff-aggregate.ts';
 import { BffError, type CoreReader } from '../../server/utils/bff-request.ts';
-import { bffViewRoute } from '../../utils/server/bff-view.ts';
 
-function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', community = false) {
+function fixture(role: 'guest' | 'student' | 'coach' = 'guest', community = false) {
   const calls: string[] = [];
   const workspace = {
     actor_id: role === 'guest' ? null : role,
     slug: 'school',
     is_member: role !== 'guest',
     platform_admin: false,
-    permissions: [],
+    permissions: role === 'coach' ? ['classroom:create'] : [],
     configuration: { features: { assignment: role !== 'guest', community } },
   };
   const reader: CoreReader = {
@@ -21,18 +20,7 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
       let data: unknown = { data: [] };
       if (pathname === '/api/v1/auth/me') data = { data: { id: role, must_change_password: false } };
       else if (pathname === '/api/v1/domains/school') data = { data: workspace };
-      else if (pathname.endsWith('/classrooms/c')) {
-        data = {
-          data: {
-            id: 'c',
-            membership: { role },
-            capabilities: role === 'coach' ? ['progress:read', 'feedback:write', 'help:manage'] : [],
-            manages_domain: role === 'coach',
-          },
-        };
-      } else if (pathname.endsWith('/assignments/a')) {
-        data = { data: { id: 'a', classroom_id: 'c', published_at: '2026-10-18' } };
-      } else if (pathname.endsWith('/problems')) data = { items: [], total: 0 };
+      else if (pathname.endsWith('/problems')) data = { items: [], total: 0 };
       else if (pathname.endsWith('/contests')) {
         data = { data: [], pagination: { page: 1, per_page: 3, total: 0, total_pages: 0 } };
       } else if (pathname.endsWith('/trainings')) data = { items: [], page: 1, limit: 3, total: 0 };
@@ -85,36 +73,18 @@ Deno.test('BFF 匿名首页不读取身份、签到和教学，公共布局只�
   assert(result.sections.trainings?.data);
 });
 
-Deno.test('BFF 学生和教练成绩分支分开，助教无能力时不读取成绩和会话', async () => {
-  for (const role of ['student', 'coach', 'assistant'] as const) {
+Deno.test('BFF 登录首页按角色读取教学或学习概览，身份只载入一次', async () => {
+  for (const role of ['student', 'coach'] as const) {
     const { reader, calls } = fixture(role);
     await aggregateView(
       reader,
-      { kind: 'assignment', slug: 'school', id: 'a', authenticated: true },
+      { kind: 'home', slug: 'school', authenticated: true },
       () => Promise.resolve({ data: {} }),
     );
-    assertEquals(calls.some((p) => p.includes('/progress?')), role === 'student');
-    assertEquals(calls.some((p) => p.includes('/matrix?')), role === 'coach');
-    assertEquals(calls.some((p) => p.includes('/help-requests?')), role !== 'assistant');
+    assertEquals(calls.some((p) => p.includes('/teaching?')), role === 'coach');
+    assertEquals(calls.some((p) => p.includes('/my-learning?')), role === 'student');
     assertEquals(calls.filter((p) => p === '/api/v1/auth/me').length, 1);
-    assertEquals(calls.filter((p) => p.endsWith('/classrooms/c')).length, 1);
   }
-});
-
-Deno.test('BFF 通知深链所需数据随作业视图一起返回', async () => {
-  const { reader, calls } = fixture('student');
-  await aggregateView(reader, {
-    kind: 'assignment',
-    slug: 'school',
-    id: 'a',
-    authenticated: true,
-    help: 'h',
-    feedback: 'f',
-    history: true,
-  }, () => Promise.resolve({}));
-  assert(calls.some((p) => p.endsWith('/help-requests/h?page=1')));
-  assert(calls.some((p) => p.endsWith('/feedback/f')));
-  assert(calls.some((p) => p.endsWith('/history?page=1')));
 });
 
 Deno.test('BFF 辅助模块 5xx 保留局部错误，必要主资源和 401 不降级', async () => {
@@ -137,22 +107,6 @@ Deno.test('BFF 辅助模块 5xx 保留局部错误，必要主资源和 401 不�
     BffError,
   );
   assertEquals(missing.statusCode, 404);
-  const anonymous = await assertRejects(
-    () =>
-      aggregateView(
-        reader,
-        { kind: 'classroom', slug: 'school', id: 'c', authenticated: false },
-        () => Promise.resolve({}),
-      ),
-    BffError,
-  );
-  assertEquals(anonymous.statusCode, 401);
-});
-
-Deno.test('BFF 精确路由匹配与跨域、账号、查询参数快照隔离', () => {
-  assertEquals(bffViewRoute('/d/school/classrooms/c')?.kind, 'classroom');
-  assertEquals(bffViewRoute('/d/school/classrooms/c/members'), null);
-  assertEquals(bffViewRoute('/d/school/assignments/a')?.endpoint, '/api/bff/v1/domains/school/assignments/a/overview');
 });
 
 Deno.test('题单只补齐当前20题，保留顺序与未知进度，不向来源域读取', async () => {

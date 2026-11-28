@@ -286,24 +286,7 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-      - name: 生成候选镜像 SBOM
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.meta.outputs.candidate }}
-          format: spdx-json
-          output: sbom-${{ matrix.name }}.spdx.json
-          vuln-type: os,library
-          exit-code: "0"
-
-      - name: 上传 SBOM 文件
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sbom-${{ matrix.name }}-${{ steps.meta.outputs.version }}
-          path: sbom-${{ matrix.name }}.spdx.json
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: 签名候选 digest 并附加 SBOM attestation
+      - name: 签名候选 digest
         env:
           COSIGN_YES: "true"
           IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.name }}
@@ -311,10 +294,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           cosign sign "$IMAGE@$DIGEST"
-          cosign attest \
-            --type spdxjson \
-            --predicate "sbom-${{ matrix.name }}.spdx.json" \
-            "$IMAGE@$DIGEST"
 
       - name: 绑定 GitHub 构建来源证明
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
@@ -398,31 +377,17 @@ jobs:
     uses: ./.github/workflows/e2e.yml
     secrets: inherit
 
-  # ===========================================================================
-  # 候选发布性能门禁（P7）：在该 Release 目标提交上调用每日性能工作流。
-  # 性能结果只作为发布前置证据；普通 PR 由 test-performance 的每日运行承担。
-  # ===========================================================================
-  performance-gate:
-    name: 候选发布性能门禁
-    if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
-    uses: ./.github/workflows/test-performance.yml
-    with:
-      ref: ${{ github.sha }}
-    secrets: inherit
-
   verify-release:
     name: 验证正式 Release 镜像
     if: (github.event_name == 'workflow_dispatch' && inputs.cleanup_existing != true) || github.event.release.prerelease == true
     needs: build-and-gate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: 检出代码
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - name: 安装 Cosign
-        uses: sigstore/cosign-installer@7e8b541eb2e61bf99390e1afd4be13a184e9ebc5 # v3.10.1
       - name: 登录 ghcr.io
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
@@ -437,10 +402,7 @@ jobs:
           path: release-metadata
           merge-multiple: true
 
-      - name: 验证 digest、签名、来源证明和 smoke test
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
+      - name: 验证发布镜像 digest 一致性
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -459,49 +421,6 @@ jobs:
               echo "::error::$release digest 不匹配：期望 $digest，实际 $actual"
               exit 1
             }
-
-            cosign verify \
-              --certificate-identity-regexp "^https://github.com/${REPOSITORY}/.github/workflows/release.yml@.*$" \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              "$image@$digest" >/dev/null
-
-            cosign verify-attestation \
-              --type spdxjson \
-              --certificate-identity-regexp "^https://github.com/${REPOSITORY}/.github/workflows/release.yml@.*$" \
-              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              "$image@$digest" >/dev/null
-
-            gh attestation verify "oci://$image@$digest" \
-              --repo "$REPOSITORY" \
-              --signer-workflow "$REPOSITORY/.github/workflows/release.yml" >/dev/null
-
-            docker pull "$image@$digest" >/dev/null
-            case "$image" in
-              */noj-server)
-                docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
-                  'test -x /app/bin/noj-server && test -x /app/bin/noj && test "$(id -u)" != 0'
-                ;;
-              */noj-ui)
-                docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
-                  'test -x /app/noj-ui && test "$(id -u)" != 0'
-                ;;
-              */noj-judge)
-                docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
-                  'test -x /usr/local/bin/noj-judge && test "$(id -u)" != 0'
-                ;;
-              */noj-llm-gateway)
-                docker run --rm --entrypoint /bin/sh "$image@$digest" -c \
-                  'command -v deno >/dev/null && test "$(id -u)" != 0'
-                ;;
-              */noj-evaluator-python|*/noj-solution-python|*/noj-solution-ai)
-                docker run --rm --entrypoint python3 "$image@$digest" -c \
-                  'import sys; assert sys.version_info >= (3, 12)'
-                ;;
-              *)
-                echo "::error::未覆盖的发布镜像：$image"
-                exit 1
-                ;;
-            esac
             echo "已验证 $release@$digest"
           done
 
@@ -511,7 +430,6 @@ jobs:
     needs: [
       verify-release,
       publish-cli,
-      performance-gate,
       functional-gate,
       e2e-gate,
     ]

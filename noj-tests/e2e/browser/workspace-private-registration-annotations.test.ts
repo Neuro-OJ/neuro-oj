@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** 私有学校邀请注册与不可变代码批注；注册、评测和批注均经过真实页面。 */
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { createPublishedCodingProblem } from "../../fixtures/coding-problem.ts";
 import { domainAnswerKey } from "../../../noj-ui/utils/domain/problem/domain-problems.ts";
 import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
@@ -13,7 +13,7 @@ import {
   withBrowserJourney,
 } from "./browser.ts";
 
-type Page = import("npm:playwright@1.62.1").Page;
+type Page = import("npm:playwright@1.65.1").Page;
 type Setting = {
   key: string;
   effective_value: unknown;

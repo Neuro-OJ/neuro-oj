@@ -1,4 +1,4 @@
-"""验证 WASI 分片仅构建所需示例，且编译失败/冻结快照不一致仍阻断验收。"""
+"""验证 WASI 分片仅构建所需示例，且编译失败/跨进程输出不一致仍阻断验收。"""
 
 import json
 import os
@@ -14,7 +14,6 @@ EXAMPLES = {
     "wasi": "oi_wasi_acceptance",
     "standard": "oi_standard_acceptance",
     "compat": "oi_wasi_v2_acceptance",
-    "analysis": "oi_io_analysis_acceptance",
 }
 
 
@@ -26,10 +25,6 @@ class WasiSchedulingTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             script = scripts / "check-oi-wasi-toolchain.sh"
             shutil.copyfile(ROOT / "noj-judge/scripts" / script.name, script)
-            fixtures = root / "fixtures"
-            fixtures.mkdir()
-            for name in ("noj-wasm-v3-benchmarks.json", "noj-wasm-v3-io-analysis-v1.json"):
-                shutil.copyfile(ROOT / "fixtures" / name, fixtures / name)
             sdk = root / "sdk"
             sdk.mkdir()
             cargo = root / "cargo"
@@ -44,11 +39,12 @@ class WasiSchedulingTests(unittest.TestCase):
                 "output = pathlib.Path('target/debug/examples')\n"
                 "output.mkdir(parents=True)\n"
                 "for name in names:\n"
-                "    fixture = {'oi_standard_acceptance':'noj-wasm-v3-benchmarks.json', 'oi_io_analysis_acceptance':'noj-wasm-v3-io-analysis-v1.json'}.get(name)\n"
-                "    contents = (root / 'fixtures' / fixture).read_text() if fixture else '{}\\n'\n"
-                "    if os.environ['FAILURE'] == 'snapshot': contents = '{}\\n'\n"
                 "    binary = output / name\n"
-                "    binary.write_text('#!/usr/bin/env python3\\nimport sys\\nsys.stdout.write(' + repr(contents) + ')\\n')\n"
+                "    if os.environ['FAILURE'] == 'mismatch':\n"
+                "        body = '#!/usr/bin/env python3\\nimport os, sys\\nsys.stdout.write(str(os.getpid()) + \"\\\\n\")\\n'\n"
+                "    else:\n"
+                "        body = '#!/usr/bin/env python3\\nimport sys\\nsys.stdout.write(\"{}\\\\n\")\\n'\n"
+                "    binary.write_text(body)\n"
                 "    binary.chmod(0o755)\n"
             )
             cargo.chmod(0o755)
@@ -86,10 +82,10 @@ class WasiSchedulingTests(unittest.TestCase):
         result, _ = self.run_check("standard", "build")
         self.assertNotEqual(result.returncode, 0)
 
-    def test_snapshot_mismatch_still_fails(self):
-        for shard in ("standard", "analysis", "all"):
+    def test_cross_process_mismatch_still_fails(self):
+        for shard in ("standard", "compat", "all"):
             with self.subTest(shard=shard):
-                result, _ = self.run_check(shard, "snapshot")
+                result, _ = self.run_check(shard, "mismatch")
                 self.assertNotEqual(result.returncode, 0)
 
     def test_unknown_shard_fails_before_build(self):

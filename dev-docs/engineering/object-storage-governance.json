@@ -51,7 +51,7 @@
       "description": "部署备份快照及其校验文件",
       "reference": "external backup manifest; not a database URL",
       "key_prefix": "backups/（部署目录或备份目的地）",
-      "producer": "scripts/deploy/backup.sh / noj-cli maintain backup",
+      "producer": "noj-cli backup create",
       "delete_paths": ["按备份保留策略人工/运维确认后清理"],
       "automatic_cleanup": false,
       "review_required": true

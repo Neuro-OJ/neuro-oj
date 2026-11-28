@@ -1,10 +1,8 @@
 import type { BffEnvelope, BffJsonValue, BffSectionName, BffViewKind } from '../../utils/server/bff-view.ts';
 import type { AuthUser } from '../../utils/auth/auth-user.ts';
 import type { WorkspaceDetail } from '../../utils/domain/workspace/workspace.ts';
-import type { AssignmentDetail, ClassroomDetail } from '../../utils/domain/education/education.ts';
 import type { DomainTrainingDetail, TrainingViewItem } from '../../utils/domain/problem/domain-trainings.ts';
 import { readProblemSummaries } from './bff-problem-summaries.ts';
-import { classroomCan } from '../../utils/domain/education/education.ts';
 import { BffError, type CoreReader } from './bff-request.ts';
 
 /** 聚合既有 API，不读 Core 数据库、不推导或替代上游授权。 */
@@ -14,14 +12,8 @@ export async function aggregateView(reader: CoreReader, input: {
   id?: string;
   authenticated: boolean;
   page?: number;
-  help?: string;
-  feedback?: string;
-  history?: boolean;
 }, siteMeta: () => Promise<unknown>): Promise<BffEnvelope> {
   const viewer = input.authenticated ? (await reader.get<{ data: AuthUser }>('/api/v1/auth/me')).data : null;
-  if (!viewer && input.kind !== 'home' && input.kind !== 'training') {
-    throw new BffError(401, { error: '请先登录', code: 'UNAUTHORIZED' });
-  }
   if (viewer?.must_change_password) throw new BffError(401, { error: '请先修改密码', code: 'MUST_CHANGE_PASSWORD' });
   const root = `/api/v1/domains/${encodeURIComponent(input.slug)}`;
   const workspaceResponse = await reader.get<{ data: WorkspaceDetail }>(root);
@@ -87,7 +79,7 @@ export async function aggregateView(reader: CoreReader, input: {
         reads.push(read('dashboard', `${root}/${teaching ? 'teaching' : 'my-learning'}?page=1`));
       } else put('dashboard', null);
       await Promise.all(reads);
-    } else if (input.kind === 'training') {
+    } else {
       const { data } = await reader.get<{ data: DomainTrainingDetail }>(
         `${root}/trainings/${encodeURIComponent(input.id!)}`,
       );
@@ -114,68 +106,6 @@ export async function aggregateView(reader: CoreReader, input: {
         };
       });
       put('training', { data: { training, items, page, per_page: 20, total: all.length } });
-    } else if (input.kind === 'classroom') {
-      // 班级是主资源；鉴权通过后再读取作业。
-      put('classroom', await reader.get(`${root}/classrooms/${encodeURIComponent(input.id!)}`));
-      await read('assignments', `${root}/classrooms/${encodeURIComponent(input.id!)}/assignments?page=1`);
-    } else {
-      const base = `${root}/assignments/${encodeURIComponent(input.id!)}`;
-      const assignment = await reader.get<{ data: AssignmentDetail }>(base);
-      put('assignment', assignment);
-      const classroom = await reader.get<{ data: ClassroomDetail }>(
-        `${root}/classrooms/${encodeURIComponent(assignment.data.classroom_id)}`,
-      );
-      put('classroom', classroom);
-      const room = classroom.data;
-      const student = room.membership?.role === 'student' || room.historical_student === true;
-      const reads: Promise<unknown>[] = [];
-      if (student || classroomCan(room, 'progress:read') || classroomCan(room, 'assignments:manage')) {
-        reads.push(
-          optional('problemSummaries', () =>
-            readProblemSummaries(
-              reader,
-              input.slug,
-              assignment.data.items?.slice(0, 20).filter((item) => item.answer_version_id).map((item) =>
-                item.reference.qualified_ref
-              ) ?? [],
-            )),
-        );
-      } else put('problemSummaries', { items: [] });
-      if (!assignment.data.published_at && classroomCan(room, 'assignments:manage')) {
-        reads.push(
-          read('draftRoster', `${root}/classrooms/${encodeURIComponent(assignment.data.classroom_id)}/members`),
-        );
-        if (assignment.data.source_training_id) {
-          reads.push(
-            read('draftTraining', `${root}/trainings/${encodeURIComponent(assignment.data.source_training_id)}`),
-          );
-        } else put('draftTraining', null);
-      }
-      if (classroomCan(room, 'progress:read') && assignment.data.published_at) {
-        reads.push(read('matrix', `${base}/matrix?scope=on_time&page=1&recipients=current`));
-      } else put('matrix', null);
-      if (student && assignment.data.published_at) reads.push(read('progress', `${base}/progress?scope=on_time`));
-      else put('progress', null);
-      if (student || classroomCan(room, 'feedback:write')) {
-        reads.push(read('feedback', `${base}/feedback?page=1`));
-        if (input.feedback) {
-          reads.push(read('focusedFeedback', `${base}/feedback/${encodeURIComponent(input.feedback)}`));
-        } else put('focusedFeedback', null);
-      } else {
-        put('feedback', null);
-        put('focusedFeedback', null);
-      }
-      if (student || classroomCan(room, 'help:manage')) {
-        reads.push(read('help', `${base}/help-requests?page=1`));
-        if (input.help) {
-          reads.push(read('helpDetail', `${base}/help-requests/${encodeURIComponent(input.help)}?page=1`));
-        } else put('helpDetail', null);
-      } else {
-        put('help', null);
-        put('helpDetail', null);
-      }
-      if (input.history) reads.push(read('history', `${base}/history?page=1`));
-      await Promise.all(reads);
     }
   };
   await Promise.all([...tasks, loadView()]);

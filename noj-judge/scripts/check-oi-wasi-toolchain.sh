@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # 在已下载并校验过的 WASI SDK 上执行真实 Worker 路径验收，无全局安装或配置写入。
-# 可选第二参数选择分片（供 CI 并行）：wasi | standard | compat | analysis | all（默认）。
+# 可选第二参数选择分片（供 CI 并行）：wasi | standard | compat | all（默认）。
 set -euo pipefail
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo '用法: bash scripts/check-oi-wasi-toolchain.sh <wasi-sdk-directory> [wasi|standard|compat|analysis|all]' >&2
+  echo '用法: bash scripts/check-oi-wasi-toolchain.sh <wasi-sdk-directory> [wasi|standard|compat|all]' >&2
   exit 2
 fi
 sdk_dir="$(cd "$1" && pwd)"
@@ -12,7 +12,6 @@ case "$shard" in
   wasi) build_targets=(--example oi_wasi_acceptance) ;;
   standard) build_targets=(--example oi_standard_acceptance) ;;
   compat) build_targets=(--example oi_wasi_v2_acceptance) ;;
-  analysis) build_targets=(--example oi_io_analysis_acceptance) ;;
   all) build_targets=(--examples) ;;
   *)
     echo "未知分片: $shard" >&2
@@ -61,7 +60,6 @@ run_wasi() {
 run_standard() {
   run_pair oi_standard_acceptance worker
   cmp "$report_dir/worker-a.json" "$report_dir/worker-b.json"
-  cmp "$report_dir/worker-a.json" ../fixtures/noj-wasm-v3-benchmarks.json
   cat "$report_dir/worker-a.json"
 }
 run_compat() {
@@ -69,29 +67,20 @@ run_compat() {
   cmp "$report_dir/compat-a.json" "$report_dir/compat-b.json"
   cat "$report_dir/compat-a.json"
 }
-run_analysis() {
-  # 独立分析规则不进入计量标准清单；两个独立进程的分类成本/来源必须一致。
-  run_pair oi_io_analysis_acceptance analysis
-  cmp "$report_dir/analysis-a.json" "$report_dir/analysis-b.json"
-  cmp "$report_dir/analysis-a.json" ../fixtures/noj-wasm-v3-io-analysis-v1.json
-}
 
 if [[ "$shard" == all ]]; then
-  # 一次编译后并发执行 4 组验收（独立输出文件，避免多 job 重复编译 90s×4）。
+  # 一次编译后并发执行 3 组验收（独立输出文件，避免多 job 重复编译 90s×3）。
   run_wasi > "$report_dir/out-wasi.log" 2>&1 &
   p_wasi=$!
   run_standard > "$report_dir/out-standard.log" 2>&1 &
   p_standard=$!
   run_compat > "$report_dir/out-compat.log" 2>&1 &
   p_compat=$!
-  run_analysis > "$report_dir/out-analysis.log" 2>&1 &
-  p_analysis=$!
   status=0
   wait "$p_wasi" || status=1
   wait "$p_standard" || status=1
   wait "$p_compat" || status=1
-  wait "$p_analysis" || status=1
-  for name in wasi standard compat analysis; do
+  for name in wasi standard compat; do
     echo "── WASI acceptance: $name ──"
     cat "$report_dir/out-$name.log"
   done
@@ -101,4 +90,3 @@ fi
 if want wasi; then run_wasi; fi
 if want standard; then run_standard; fi
 if want compat; then run_compat; fi
-if want analysis; then run_analysis; fi
