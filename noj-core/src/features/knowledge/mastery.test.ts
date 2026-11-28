@@ -48,12 +48,15 @@ import {
   knowledgeMasteryHandler,
   MASTERY_TASK_TYPE,
   rankFrontierNodes,
-  readCoverage,
+  readMyMastery,
+  readMyRecommendations,
   recomputeRecentlyUnprotectedMastery,
   recomputeUserMastery,
   ROOT_CAUSE_THRESHOLD,
   upperThirdThreshold,
 } from "./mastery.ts";
+import { readCoverage } from "./coverage.ts";
+import { pickNextLadderItem } from "./difficulty.ts";
 import { type KnowledgeGraphNode } from "./graph.ts";
 
 await resetDbForTest();
@@ -247,9 +250,12 @@ async function mkScore(input: {
   userId: string;
   score: number;
   contestId?: string | null;
+  createdAt?: string;
+  finishedAt?: string | null;
 }): Promise<void> {
   const d = db();
-  const now = NOW();
+  const createdAt = input.createdAt ?? NOW();
+  const finishedAt = input.finishedAt ?? createdAt;
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await d.insert(submissions).values({
@@ -261,16 +267,16 @@ async function mkScore(input: {
     contest_id: input.contestId ?? null,
     language: "c",
     code: "",
-    created_at: now,
+    created_at: createdAt,
   } as never);
   await d.execute(sql`
     INSERT INTO evaluation_attempts
       (id, submission_id, problem_id, sequence, source, state,
-       result_kind, score, accepted, created_at)
+       result_kind, score, accepted, created_at, finished_at)
     VALUES (${attemptId}, ${submissionId}, ${input.problemId}, 0, 'initial',
             'finished', 'graded', ${input.score}, ${
     input.score >= 10000
-  }, ${now})
+  }, ${finishedAt}, ${finishedAt})
   `);
   await d.update(submissions).set({ effective_attempt_id: attemptId })
     .where(eq(submissions.id, submissionId));
@@ -331,22 +337,44 @@ Deno.test("knowledge mastery: 掌握规则纯函数（题量 < K、上三分之�
     "learning",
   );
   // 含一道上三分之一难度 → mastered。
+  const masteredResult = computeNodeMastery({
+    total: 6,
+    passed_difficulties: [10, 20, 50],
+    difficulties: [10, 20, 30, 40, 50, 60],
+    solved_count: 3,
+    attempted_count: 3,
+    failed_attempts: 2,
+  }, 3);
+  assertEquals(masteredResult.state, "mastered");
+  assertEquals(masteredResult.solved_count, 3);
+  assertEquals(masteredResult.attempted_count, 3);
+  assertEquals(masteredResult.failed_attempts, 2);
+  assertEquals(masteredResult.max_passed_difficulty, 50);
+  assertEquals(masteredResult.evidence_weight, 3);
+  assertEquals(masteredResult.ability_score >= 45, true);
+  assertEquals(masteredResult.last_passed_at, null);
+  // 稀疏题库（1 道简单题）防虚高 → 停留 learning；1 道高难题（d >= 67）→ mastered。
   assertEquals(
     computeNodeMastery({
-      total: 6,
-      passed_difficulties: [10, 20, 50],
-      difficulties: [10, 20, 30, 40, 50, 60],
-      solved_count: 3,
-      attempted_count: 3,
-      failed_attempts: 2,
-    }, 3),
-    {
-      state: "mastered",
-      solved_count: 3,
-      attempted_count: 3,
-      failed_attempts: 2,
-      max_passed_difficulty: 50,
-    },
+      total: 1,
+      passed_difficulties: [20],
+      difficulties: [20],
+      solved_count: 1,
+      attempted_count: 1,
+      failed_attempts: 0,
+    }, 3).state,
+    "learning",
+  );
+  assertEquals(
+    computeNodeMastery({
+      total: 1,
+      passed_difficulties: [75],
+      difficulties: [75],
+      solved_count: 1,
+      attempted_count: 1,
+      failed_attempts: 0,
+    }, 3).state,
+    "mastered",
   );
   // 无达标 → none。
   assertEquals(
@@ -474,6 +502,40 @@ Deno.test({
     );
     assertEquals(rows[0]!.solved_count, 3);
     assertEquals(rows[0]!.max_passed_difficulty, 90);
+    assertEquals(rows[0]!.ability_score >= 45, true);
+    assertEquals(rows[0]!.evidence_weight, 3);
+    assertEquals(typeof rows[0]!.last_passed_at, "string");
+
+    // 读时遗忘衰减：90 天后读取 mastery 触发 needs_review 且 effective_ability 下降，不改 DB。
+    const futureNow = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000);
+    const decayedView = await readMyMastery(
+      user,
+      { id: f.domain.id, slug: f.domain.slug },
+      db(),
+      futureNow,
+    );
+    const decayedItem = decayedView.items.find((i) => i.node_id === "a.m")!;
+    assertEquals(decayedItem.needs_review, true);
+    assertEquals(
+      decayedItem.effective_ability < decayedItem.ability_score,
+      true,
+    );
+    const [persistedAfterRead] = await db().select().from(userKnowledgeMastery)
+      .where(eq(userKnowledgeMastery.user_id, user));
+    assertEquals(persistedAfterRead!.ability_score, decayedItem.ability_score);
+
+    // 推荐唤醒：遗忘节点优先进入推荐，且在全部题已达标时仍返回复习题。
+    const reviewRecs = await readMyRecommendations(
+      user,
+      { id: f.domain.id, slug: f.domain.slug },
+      5,
+      db(),
+      futureNow,
+    );
+    assertEquals(reviewRecs.items[0]?.node.id, "a.m");
+    assertEquals(reviewRecs.items[0]?.reason.code, "needs_review");
+    assertEquals(reviewRecs.items[0]?.node.needs_review, true);
+    assertEquals(reviewRecs.items[0]?.next !== null, true);
 
     // 保护期：题目处于进行中保密比赛 → 其成绩不计，节点回到 learning。
     const now = NOW();
@@ -592,7 +654,8 @@ Deno.test({
       authorId: f.author,
       number: 2,
       nodeId: "b.mid",
-      calibrated: 20,
+      // 稀疏节点（1 题）：配置高难题（calibrated >= 67）高分攻克方可 mastered。
+      calibrated: 75,
       passRatioOverride: 20,
     });
     const nextP = await mkProblem({
@@ -701,7 +764,69 @@ Deno.test({
     assertEquals(ranked[0]!.reason.params.node_id, "b.mid");
     assertEquals(ranked[0]!.reason.params.prerequisite_id, "b.entry");
 
+    // 根因提示边界修复：state === 'none'（零通过）但未达标 ≥ 3 次同样触发 review_prerequisite。
+    states.set("b.mid", "none");
+    failed.set("b.mid", ROOT_CAUSE_THRESHOLD);
+    ranked = rank((id) => failed.get(id) ?? 0);
+    assertEquals(ranked[0]!.node.id, "b.entry");
+    assertEquals(ranked[0]!.reason.code, "review_prerequisite");
+    assertEquals(ranked[0]!.reason.params.node_id, "b.mid");
+    states.set("b.mid", "learning");
+
+    // 遗忘复习唤醒：已掌握节点 needsReviewOf=true 时进入推荐（优先级高于入门新节点）。
+    states.set("b.entry", "mastered");
+    const reviewRanked = rankFrontierNodes(nodes, (node) => ({
+      area_sort: graph.areas.find((area) => area.id === node.area)?.sort ?? 0,
+      node_sort: nodes.indexOf(node),
+    }), {
+      stateOf: (id) => id === "b.entry" ? "mastered" : "none",
+      failedOf: () => 0,
+      countOf: (id) => counts.get(id) ?? 0,
+      solvedOf: () => 0,
+      needsReviewOf: (id) => id === "b.entry",
+      abilityOf: () => 78,
+      effectiveAbilityOf: () => 62,
+    });
+    assertEquals(reviewRanked[0]!.node.id, "b.entry");
+    assertEquals(reviewRanked[0]!.reason.code, "needs_review");
+
+    // 下一题目标难度匹配：pickNextLadderItem 按 targetDifficulty（如 ability + 5）择优。
+    const picked = pickNextLadderItem([
+      {
+        problem_id: "p-easy",
+        number: 1,
+        title: "易",
+        domain: "d",
+        difficulty: 20,
+        tier: "easy",
+        sample_size: 10,
+        passed: false,
+      },
+      {
+        problem_id: "p-fit",
+        number: 2,
+        title: "适中",
+        domain: "d",
+        difficulty: 55,
+        tier: "medium",
+        sample_size: 10,
+        passed: false,
+      },
+      {
+        problem_id: "p-hard",
+        number: 3,
+        title: "难",
+        domain: "d",
+        difficulty: 90,
+        tier: "hard",
+        sample_size: 10,
+        passed: false,
+      },
+    ], { targetDifficulty: 50 + 5 });
+    assertEquals(picked?.problem_id, "p-fit");
+
     // 未达标不足 3 次 → 不出根因提示，只有入门节点。
+    states.set("b.entry", "none");
     failed.set("b.mid", ROOT_CAUSE_THRESHOLD - 1);
     ranked = rank((id) => failed.get(id) ?? 0);
     assertEquals(ranked.map((item) => item.reason.code), ["entry_point"]);
@@ -888,7 +1013,8 @@ Deno.test({
       authorId: f.author,
       number: 1,
       nodeId: "e.n",
-      calibrated: 10,
+      // 稀疏单题节点需攻克高难题（d >= 67）才判定 mastered。
+      calibrated: 75,
     });
     const app = createApp();
     const userToken = await createUserToken("user");
@@ -988,8 +1114,15 @@ Deno.test({
       `/api/v1/knowledge/me/mastery?domain=${f.domain.slug}`,
       { token: authorToken },
     )).json()).data;
-    // 题量 < K（1 题）且全部达标 → mastered。
+    // 题量 < K（1 道高难题）高分达标 → mastered，且返回能力分与读时衰减字段。
     assertEquals(myMastery.mastered, 1);
+    assertEquals(myMastery.items[0].ability_score >= 50, true);
+    assertEquals(
+      myMastery.items[0].effective_ability,
+      myMastery.items[0].ability_score,
+    );
+    assertEquals(myMastery.items[0].needs_review, false);
+    assertEquals(typeof myMastery.items[0].last_passed_at, "string");
     const diag = await jsonRequest(
       app,
       "/api/v1/knowledge/nodes/e.n/diagnosis",
@@ -1023,5 +1156,146 @@ Deno.test({
       404,
     );
     await updateSetting("knowledge_enabled", true, admin());
+  },
+});
+
+Deno.test({
+  name:
+    "knowledge mastery: 复习低分达标刷新遗忘时钟、重测不重置时钟且同分重刷稳定 Elo",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const f = await baseFixture("kg-mastery-clock");
+    await seedGraph({
+      areas: [{ id: "k", sort: 0 }],
+      nodes: [{ id: "k.n", area: "k" }],
+    });
+    const p1 = await mkProblem({
+      domainId: f.domain.id,
+      authorId: f.author,
+      number: 1,
+      nodeId: "k.n",
+      calibrated: 25,
+    });
+    const p2 = await mkProblem({
+      domainId: f.domain.id,
+      authorId: f.author,
+      number: 2,
+      nodeId: "k.n",
+      calibrated: 50,
+    });
+    const p3 = await mkProblem({
+      domainId: f.domain.id,
+      authorId: f.author,
+      number: 3,
+      nodeId: "k.n",
+      calibrated: 50,
+    });
+    const u = await mkUser();
+    await addDomainMember(db(), f.domain.id, u);
+
+    const oldTime = new Date(Date.now() - 120 * 86_400_000).toISOString();
+    const t2 = new Date(Date.now() - 119 * 86_400_000).toISOString();
+    const t3 = new Date(Date.now() - 118 * 86_400_000).toISOString();
+    const recentTime = new Date(Date.now() - 60_000).toISOString();
+
+    // 1. 管理员重测旧提交（evaluation_attempts.finished_at 为现在，但源提交在 120 天前）
+    //    不得重置遗忘时钟，节点应保持待复习。
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p1.bindingId,
+      problemId: p1.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: oldTime,
+      finishedAt: recentTime,
+    });
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p2.bindingId,
+      problemId: p2.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: t2,
+      finishedAt: recentTime,
+    });
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p3.bindingId,
+      problemId: p3.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: t3,
+      finishedAt: recentTime,
+    });
+    await recomputeUserMastery(u);
+    const beforeRepeat = await readMyMastery(u, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    const itemBefore = beforeRepeat.items.find((it) => it.node_id === "k.n")!;
+    assertEquals(itemBefore.state, "mastered");
+    assertEquals(itemBefore.last_passed_at, t3);
+    assertEquals(itemBefore.needs_review, true);
+
+    // 2. 同分重刷 p1（d=25, 60%）：Elo 重放顺序与 ability_score 不得退化，且 last_passed_at 刷新。
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p1.bindingId,
+      problemId: p1.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: recentTime,
+    });
+    await recomputeUserMastery(u);
+    const afterSameScore = await readMyMastery(u, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    const itemAfterSame = afterSameScore.items.find((it) =>
+      it.node_id === "k.n"
+    )!;
+    assertEquals(itemAfterSame.ability_score, itemBefore.ability_score);
+    assertEquals(itemAfterSame.state, "mastered");
+    assertEquals(itemAfterSame.last_passed_at, recentTime);
+    assertEquals(itemAfterSame.needs_review, false);
+
+    // 3. 历史满分 100%，随后以较低但仍达标的 70% 复习：last_passed_at 应刷新到最新复习时间。
+    const u2 = await mkUser();
+    await addDomainMember(db(), f.domain.id, u2);
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p2.bindingId,
+      problemId: p2.problemId,
+      userId: u2,
+      score: 10000,
+      createdAt: oldTime,
+    });
+    await recomputeUserMastery(u2);
+    const u2Before = await readMyMastery(u2, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    assertEquals(
+      u2Before.items.find((it) => it.node_id === "k.n")!.needs_review,
+      true,
+    );
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p2.bindingId,
+      problemId: p2.problemId,
+      userId: u2,
+      score: 7000,
+      createdAt: recentTime,
+    });
+    await recomputeUserMastery(u2);
+    const u2After = await readMyMastery(u2, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    const u2Item = u2After.items.find((it) => it.node_id === "k.n")!;
+    assertEquals(u2Item.last_passed_at, recentTime);
+    assertEquals(u2Item.needs_review, false);
   },
 });

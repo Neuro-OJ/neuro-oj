@@ -11,10 +11,10 @@
 import { extractApiError } from '~/utils/server/apiError';
 import type { ProblemKnowledgeView } from '~/utils/domain/education/knowledge';
 import {
-  ladderEntryItem,
-  ladderItemPath,
   type KnowledgeLadder,
   type KnowledgeNodeView,
+  ladderEntryItem,
+  ladderItemPath,
   type MasteryItem,
   type MasteryState,
   masteryStateColor,
@@ -41,6 +41,9 @@ const notFound = ref(false);
 const domainProblemViews = ref<Record<string, ProblemKnowledgeView | null>>({});
 /** 当前用户的掌握状态（`me/mastery` 中该节点项；未登录/无记录为 null）。 */
 const masteryItem = ref<MasteryItem | null>(null);
+/** 当前用户已标熟/摸底的知识点 ID 列表。 */
+const placedNodes = ref<string[]>([]);
+const markingFamiliar = ref(false);
 /** 根因诊断（未掌握前置链）。 */
 const diagnosis = ref<NodeDiagnosisView | null>(null);
 
@@ -78,6 +81,7 @@ async function load() {
     graph.value = loadedGraph;
     const masteryView = loadedMastery as MyMasteryView | null;
     masteryItem.value = masteryView?.items.find((item) => item.node_id === id) ?? null;
+    placedNodes.value = masteryView?.placed_nodes ?? [];
     diagnosis.value = loadedDiagnosis;
     // 阶梯题目若不在当前域，按各自域补读归类（仅用于标签展示，失败静默）。
     const foreign = (loadedLadder?.items ?? []).filter((item) => item.domain !== currentSlug);
@@ -140,9 +144,35 @@ const passedCount = computed(() => {
 });
 
 /** 根因提示：只展示未掌握前置链（未登录或空链不显示）。 */
-const prerequisiteChain = computed(() =>
-  user.value ? (diagnosis.value?.chain ?? []) : []
+const prerequisiteChain = computed(() => user.value ? (diagnosis.value?.chain ?? []) : []);
+
+const isPlaced = computed(() => placedNodes.value.includes(nodeId.value));
+const canMarkFamiliar = computed(() =>
+  Boolean(user.value) &&
+  typeof knowledge.submitSelfAssessment === 'function' &&
+  masteryState.value !== 'mastered'
 );
+
+async function toggleFamiliar(includePrerequisites = false) {
+  if (!canMarkFamiliar.value || markingFamiliar.value) return;
+  markingFamiliar.value = true;
+  try {
+    const res = await knowledge.submitSelfAssessment({
+      node_ids: [nodeId.value],
+      mode: isPlaced.value ? 'remove' : 'merge',
+      include_prerequisites: isPlaced.value ? false : includePrerequisites,
+    });
+    if (res) {
+      placedNodes.value = res.placed_nodes;
+    }
+    const currentSlug = slug.value;
+    if (currentSlug) {
+      diagnosis.value = await knowledge.loadDiagnosis(nodeId.value, currentSlug).catch(() => diagnosis.value);
+    }
+  } finally {
+    markingFamiliar.value = false;
+  }
+}
 
 useBreadcrumbParams({ nodeId: () => node.value?.name });
 useSeoMeta({ title: () => node.value?.name ?? '知识点' });
@@ -185,12 +215,54 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
           <p v-if="node.summary" class="max-w-prose text-sm leading-relaxed text-text-secondary">
             {{ node.summary }}
           </p>
-          <div v-if="masteryState" class="flex flex-wrap items-center gap-2 text-sm" data-testid="node-mastery">
-            <UBadge :color="masteryStateColor(masteryState)" variant="subtle" size="sm">
+          <div
+            v-if="masteryState || canMarkFamiliar"
+            class="flex flex-wrap items-center gap-2 text-sm"
+            data-testid="node-mastery"
+          >
+            <UBadge v-if="masteryState" :color="masteryStateColor(masteryState)" variant="subtle" size="sm">
               掌握状态：{{ masteryStateLabel(masteryState) }}
             </UBadge>
-            <span class="text-xs text-text-muted tabular-nums">
+            <UBadge v-if="isPlaced && masteryState !== 'mastered'" color="primary" variant="subtle" size="sm"
+              data-testid="node-placed-badge">
+              已标熟
+            </UBadge>
+            <span v-if="masteryState" class="text-xs text-text-muted tabular-nums">
               已达标题数 {{ passedCount }} / {{ items.length }}
+            </span>
+            <span v-if="canMarkFamiliar" class="inline-flex flex-wrap items-center gap-1.5">
+              <button
+                v-if="isPlaced"
+                type="button"
+                :disabled="markingFamiliar"
+                class="rounded-[4px] border border-border bg-bg-panel px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-border-strong hover:text-text disabled:opacity-50"
+                data-testid="node-unmark-familiar-btn"
+                @click="toggleFamiliar(false)"
+              >
+                {{ markingFamiliar ? '处理中...' : '取消标熟' }}
+              </button>
+              <template v-else>
+                <button
+                  type="button"
+                  :disabled="markingFamiliar"
+                  class="rounded-[4px] border border-primary/50 bg-primary-bg px-2.5 py-1 text-xs font-medium text-primary hover:border-primary disabled:opacity-50"
+                  data-testid="node-mark-familiar-btn"
+                  @click="toggleFamiliar(false)"
+                >
+                  {{ markingFamiliar ? '处理中...' : '标熟' }}
+                </button>
+                <button
+                  v-if="prerequisiteChain.length > 0"
+                  type="button"
+                  :disabled="markingFamiliar"
+                  class="rounded-[4px] border border-border bg-bg-panel px-2 py-1 text-xs font-medium text-text-secondary hover:border-primary/60 hover:text-primary disabled:opacity-50"
+                  title="一并标熟全部未完成前置知识点"
+                  data-testid="node-mark-familiar-prereqs-btn"
+                  @click="toggleFamiliar(true)"
+                >
+                  含前置标熟
+                </button>
+              </template>
             </span>
           </div>
         </header>
@@ -251,7 +323,8 @@ useSeoMeta({ title: () => node.value?.name ?? '知识点' });
         </section>
 
         <!-- 讲解：仅内容包提供 doc 时显示；markdown + 公式走既有净化管线 -->
-        <section v-if="node.doc" aria-labelledby="knowledge-doc" class="rounded-xl border border-border bg-bg-panel p-5 sm:p-6">
+        <section v-if="node.doc" aria-labelledby="knowledge-doc"
+          class="rounded-xl border border-border bg-bg-panel p-5 sm:p-6">
           <h2 id="knowledge-doc" class="mb-4 text-lg font-semibold text-text">讲解</h2>
           <MarkdownRenderer :content="node.doc" />
           <div v-if="firstProblem" class="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">

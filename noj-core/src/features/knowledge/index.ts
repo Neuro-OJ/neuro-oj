@@ -74,9 +74,40 @@ export {
   type TagUsageView,
 } from "./tagging.ts";
 export {
-  computeNodeMastery,
+  adaptiveStep,
+  applyForgettingDecay,
+  ATTEMPT_EVIDENCE_FACTOR,
+  computeNodeAbility,
+  computeScoreRatio,
+  DECAY_FLOOR_RATIO,
+  DECAY_GRACE_DAYS,
+  DECAY_HALF_LIFE_DAYS,
+  type DecayedAbilityView,
+  deduplicateObservations,
+  ELO_ALPHA,
+  ELO_K0,
+  ELO_SCALE,
+  expectedScore,
+  INITIAL_ABILITY,
+  type KnowledgeMappingRole,
+  MASTERED_MIN_ABILITY,
+  type NodeAbilitySummary,
+  type ProblemAbilityObservation,
+  REVIEW_TRIGGER_DAYS,
+  ROLE_WEIGHT_PRIMARY,
+  ROLE_WEIGHT_SECONDARY,
+  roleWeightOf,
+  SPARSE_HARD_DIFFICULTY,
+  SPARSE_HARD_MIN_ABILITY,
+  SPARSE_MASTERED_MIN_EVIDENCE,
+} from "./ability.ts";
+export {
   type CoverageNodeItem,
   type CoverageView,
+  readCoverage,
+} from "./coverage.ts";
+export {
+  computeNodeMastery,
   diagnoseNode,
   DIAGNOSIS_MAX_ITEMS,
   type DiagnosisItem,
@@ -94,10 +125,10 @@ export {
   type NodeMasteryInput,
   type NodeMasteryResult,
   rankFrontierNodes,
-  readCoverage,
   readMyMastery,
   readMyRecommendations,
   type Recommendation,
+  RECOMMENDATION_TARGET_OFFSET,
   type RecommendationReason,
   RECOMMENDATIONS_MAX_LIMIT,
   recomputeRecentlyUnprotectedMastery,
@@ -105,6 +136,7 @@ export {
   ROOT_CAUSE_THRESHOLD,
   startMasteryProtectionWorker,
   upperThirdThreshold,
+  type UserMasteryRecord,
   type UserMasteryResult,
 } from "./mastery.ts";
 export {
@@ -138,6 +170,7 @@ export {
 export { objectiveFullScore } from "./objective-full-score.ts";
 export { setPassRatioOverride } from "./pass-ratio.ts";
 export {
+  collectPrerequisiteIds,
   computeDownstreamReach,
   DIAGNOSTIC_MAX_CHECKPOINTS,
   type DiagnosticAreaSummary,

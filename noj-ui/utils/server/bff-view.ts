@@ -14,6 +14,9 @@ export type BffSectionName =
   | 'accountNotifications'
   | 'announcements'
   | 'activity'
+  | 'problems'
+  | 'contests'
+  | 'trainings'
   | 'checkin'
   | 'dashboard';
 

@@ -34,7 +34,12 @@ export function useDomainContests() {
     list: (
       slug: string,
       page: number,
-      filters: { classroom_id?: string; my_classrooms?: boolean } = {},
+      filters: {
+        classroom_id?: string;
+        my_classrooms?: boolean;
+        sort?: 'recent' | 'upcoming';
+        per_page?: number;
+      } = {},
     ) =>
       api.get<{ data: DomainContest[]; pagination: Pagination }>(path(slug), {
         query: { page, per_page: 20, ...filters },

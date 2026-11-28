@@ -29,7 +29,7 @@
     "test:smoke": "deno run -A scripts/test-launcher.ts smoke",
     "test:runtime": "deno test -A tests/shared/runtime",
     "test:gates": "deno run -A ../scripts/test-gates.ts",
-    "test:logic": "deno test -A --no-check tests/scripts/test-launcher.test.ts tests/scripts/test-parallel-coverage.test.ts tests/scripts/test-parallel.test.ts tests/shared/runtime",
+    "test:logic": "deno test -A --no-check tests/scripts/test-launcher.test.ts tests/scripts/test-parallel-coverage.test.ts tests/scripts/test-parallel.test.ts tests/shared/runtime src/features/knowledge/ability.test.ts",
     "test:domain": "bash scripts/test-domain.sh",
     "test:shared": "bash scripts/test-shared.sh",
     "test:watch": "deno run -A scripts/test-launcher.ts watch",
