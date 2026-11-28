@@ -1,7 +1,7 @@
 # 分支、PR 与提交流程
 
 > 根 [`AGENTS.md`](../../AGENTS.md) 的 workflow 落点：分支与集成分支、jj 操作、
-> PR、提交信息、GPG、Agent Notes 与 CI/CD。
+> PR、提交信息、GPG 与 CI/CD。
 
 ## 1. 分支与集成分支
 
@@ -37,23 +37,6 @@ jj new
 jj squash
 jj git push -b <branch-name>
 ```
-
-提交/推送前自检（2026-11-22 起）：
-
-```bash
-deno task check:branch-safety                       # 默认对照 origin/main
-deno task check:branch-safety --base fefab742       # 指定 base（提交/标签都行）
-```
-
-它对照目标分支检查四件事：目标分支分叉后改过、本分支也改过的文件（静默覆盖）、
-解析不到文件的导入与仓库内路径、提交签名、提交信息格式。有 error 退出码为 1，
-warn/info 只打印。**AI 每次提交前必须跑一次，并把 warn 如实报告给用户**，不得
-自行判定为噪声忽略。
-
-本地 `.git/hooks/pre-push`（`node scripts/install-git-hooks.mjs` 安装）读取 git 传入的
-待推送引用，按 `remote-sha..local-sha` 逐个检查；一次推多个分支、或推的分支不是当前
-检出分支时，检查对象仍是待推送的提交树，不受工作区未提交改动影响。旧分支没有
-`check:branch-safety` 任务时钩子只打印一行并放行。手动复核单个分支仍用上面的命令。
 
 ### 大规模变更：先报后果，再动手（2026-11-22）
 
@@ -120,38 +103,20 @@ git config --global commit.gpgsign
 jj config get signing.key
 ```
 
-## 6. Agent Notes（决策记录）
-
-非平凡变更必须在 `.agents/notes/implemented/<分类>/yyyy-mm-dd-topic-title.md`
-新增或更新记录。分类：`feature` / `bug-fix` / `simplification` / `architecture`
-/ `process` / `testing`。
-
-格式：`# Agent Note: <标题>`、`Status: implemented`，以及 `## Problem` /
-`## Decision` / `## Alternatives considered` / `## Consequences` 四节。
-
-校验与约定：
-
-```bash
-deno run -A scripts/verify-agent-note-format.ts
-```
-
-细则见 [`.agents/notes/README.md`](../../.agents/notes/README.md)。
-
-## 7. CI/CD
+## 6. CI/CD
 
 | 工作流                 | 作用                                                                                            |
 | ---------------------- | ----------------------------------------------------------------------------------------------- |
 | `ci.yml`               | 静态检查、测试、构建（按模块路径过滤）                                                          |
 | `e2e.yml`              | 跨模块全链路 E2E + judge 沙箱                                                                   |
-| `security.yml`         | 依赖漏洞审计（dependency-review / cargo-audit / osv-scanner）与 CodeQL；PR 按路径过滤，定时全量 |
+| `security.yml`         | 依赖漏洞审计（cargo-audit / osv-scanner）与 CodeQL；PR 按路径过滤，定时全量                     |
 | `release.yml`          | 预发布 Release：构建镜像、`noj-cli` 二进制与部署文件（附 `.sha256`）                            |
 | `test-performance.yml` | 性能基准门禁：每日定时 + 候选发布固定 SHA 调用，不用来阻断普通 PR                               |
 | `lint-workflows.yml`   | actionlint                                                                                      |
 
-CI 同时检查文档链接（`scripts/verify-md-links.ts`）与 Agent Note 格式
-（`scripts/verify-agent-note-format.ts`）。
+CI 同时检查文档链接（`scripts/verify-md-links.ts`）。
 
-## 8. 故障排查
+## 7. 故障排查
 
 生产问题先用 `noj-cli status --dir <安装目录>` 拿到状态，再对照
 [常见问题](https://docs.noj.xyber-nova.space/intro/faq.html)。

@@ -1275,7 +1275,7 @@ Deno.test("新增 restore --confirm：真实恢复序列（真实容器解包 + 
 // 缺少写入方时三条告警会同时失去数据源（其中一条正是 `absent(...)` 缺失
 // 告警，会持续报警）。
 //
-// 格式必须与 drill 的既有 writer 一致：
+// 输出格式约定：
 // `# HELP` + `# TYPE` + 值行，文件名 `noj_backup.prom`，权限 644、目录 755。
 
 Deno.test("新增 备份指标：renderBackupMetrics 输出三行且指标名逐字正确", async () => {

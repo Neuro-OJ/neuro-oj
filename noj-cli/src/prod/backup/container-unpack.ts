@@ -9,7 +9,7 @@ import {
 } from "./container.ts";
 import type { ContainerPayloadOps } from "./container-create.ts";
 
-// ---------------- 容器解包（verify / restore / drill 共用） ----------------
+// ---------------- 容器解包（verify / restore 共用） ----------------
 
 /** {@link unpackContainer} 的注入点。 */
 export interface UnpackContainerOptions {
@@ -42,7 +42,7 @@ export interface UnpackContainerResult {
  * 编排：加密时 `gpg --decrypt` → `tar -I zstd -xf` → 读 manifest。
  *
  * **不校验**内容（那是 {@link verifyContainer} 的职责）：本函数只负责把包打开，
- * 让上层按档位自行判定。这样三档 verify 与 restore/drill 共用同一份解包实现。
+ * 让上层按档位自行判定。这样三档 verify 与 restore 共用同一份解包实现。
  *
  * **不清理** `destDir`：调用方在 `finally` 里删（verify 需要在解包后继续读文件）。
  */

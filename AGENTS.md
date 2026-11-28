@@ -35,7 +35,7 @@
    `cache.delete()`。
 9. 前端颜色与圆角禁止自创，遵循
    [`dev-docs/design/noj-design-tokens.md`](dev-docs/design/noj-design-tokens.md)。
-10. 本地产物（AI/编辑器配置、日志、备份）不得提交；非平凡变更必须写 Agent Note。
+10. 本地产物（AI/编辑器配置、日志、备份）不得提交。
 11. 优先使用 `scripts/` 下的开发脚本，不要绕过既有门禁。
 
 ## 命令
@@ -64,11 +64,10 @@ cd noj-tests && deno task test:domain cross-domain
 cd noj-judge && cargo nextest run --all-targets   # 不含 Docker E2E；见 noj-judge/docs/testing.md 的 --ignored 命令
 ```
 
-**迁移与记录**
+**迁移**
 
 ```bash
 cd noj-core && deno task db:generate
-deno run -A scripts/verify-agent-note-format.ts
 ```
 
 ## 指令文件预算
@@ -81,7 +80,7 @@ deno run -A scripts/verify-agent-note-format.ts
 ## 深入阅读
 
 - [`dev-docs/agents/module-map.md`](dev-docs/agents/module-map.md) — 模块职责、目录、架构方向、加载顺序
-- [`dev-docs/agents/workflow.md`](dev-docs/agents/workflow.md) — 分支、jj、PR、提交信息、GPG、Agent Notes、CI/CD
+- [`dev-docs/agents/workflow.md`](dev-docs/agents/workflow.md) — 分支、jj、PR、提交信息、GPG、CI/CD
 - [`dev-docs/agents/testing.md`](dev-docs/agents/testing.md) — 启动、测试矩阵、迁移、改动检查清单
 - [`dev-docs/agents/conventions.md`](dev-docs/agents/conventions.md) — 编码规范、多副本、安全基线、品牌 Token
 - [`dev-docs/engineering/README.md`](dev-docs/engineering/README.md) — 工程规范总览

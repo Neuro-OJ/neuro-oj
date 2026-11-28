@@ -97,13 +97,6 @@ cd noj-llm-gateway && deno task test
 - 分支与推送纪律以根目录 `AGENTS.md` §7.1 为准：**禁止直接推送 `main`**，所有变更
   从 `main` 派生主题分支并通过 PR 合入（2026-10-05 起）。
 
-## 决策记录
-
-非平凡变更必须新增或更新 `.agents/notes/implemented/` 下对应记录。
-
-- 格式：`# Agent Note: <标题>` + `Status: implemented` + `## Problem` / `## Decision` / `## Alternatives considered` / `## Consequences`
-- 校验：`deno run -A scripts/verify-agent-note-format.ts`
-
 ## 文档
 
 - 根 `AGENTS.md` 只放“规则 + 链接”。

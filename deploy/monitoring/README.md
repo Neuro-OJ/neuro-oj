@@ -86,14 +86,8 @@ promtool check config /etc/prometheus/prometheus.yml   # 会明确指出缺失�
 `noj-alerts.yml` 中的备份新鲜度告警依赖 textfile 指标：
 
 - `noj-cli backup create` 写出 `<备份目录>/metrics/noj_backup.prom`
-  （`noj_backup_last_success_unix_time`、`noj_backup_snapshot_bytes`）。
-
-> 历史说明：该指标过去由 `scripts/deploy/backup.sh` 写入；生产写入方现为 `noj-cli`
-> （见 `noj-cli/src/prod/backup/metrics.ts`）。隔离恢复演练（`backup drill`）及其
-> `noj_restore_drill.prom` 指标已随 noj-cli 精简移除。
-> 弃用闸门现状：`scripts/deploy/deploy.sh` 与 `scripts/deploy/restore-drill.sh`
-> 已加闸门（每次执行需 `y` 确认）；**`backup.sh` 未加闸门，仍可直接执行并写入
-> 同一批指标**，生产请改用 `noj-cli backup create`。
+  （`noj_backup_last_success_unix_time`、`noj_backup_snapshot_bytes`，实现见
+  `noj-cli/src/prod/backup/metrics.ts`）。
 
 宿主机 node_exporter 通过 textfile collector 采集这些文件，Prometheus
 抓取后告警生效：
@@ -113,8 +107,7 @@ node_exporter 时，备份新鲜度告警不会触发，请在容量规划中记
 
 规则文件只能产生告警，**不能证明有人收到**。每次部署或调整接收器后，执行一次投递演练。
 
-仓库不再提供 `scripts/deploy/test-alert.sh`（随自举 bash 脚本一并删除）。改用
-Alertmanager 的 v2 API 直接注入一条测试告警（critical 与 warning 各一条），再由
+使用 Alertmanager 的 v2 API 直接注入一条测试告警（critical 与 warning 各一条），再由
 `scripts/monitoring/check-observability.sh --check-notifications` 校验通知链路前置条件：
 
 ```bash

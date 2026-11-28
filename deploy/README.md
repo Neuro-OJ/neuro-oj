@@ -1,10 +1,13 @@
 # Neuro OJ 生产部署文件
 
-本目录包含公测部署所需的反向代理配置。
+本目录包含生产部署所需的自举脚本、反向代理配置与监控配置。
 
 ## 目录
 
+- `install.sh`：官方一键自举部署脚本（解析 Release 版本 → 下载并校验 `noj-cli` 二进制 → 交给 `noj-cli install`）。
 - `nginx/default.conf`：Nginx 反向代理配置（容器内只处理 HTTP，转发到 `ui:3000`）。
+- `monitoring/`：Prometheus / Alertmanager / Grafana 监控配置与告警规则（见 [`monitoring/README.md`](monitoring/README.md)）。
+- `minio/`：MinIO 桶初始化脚本。
 
 ## TLS 说明
 
@@ -53,11 +56,15 @@ server {
 
 ## 首次安装与生产运维
 
-从 Release 手动下载 `noj-cli` 二进制并校验后执行 `install`（**不再有自举脚本**；
-`setup.sh` 与 `scripts/deploy/install.sh` 已移除）：
+推荐使用官方自举脚本 `deploy/install.sh`（随 Release 一起发布，只负责下载校验 `noj-cli` 二进制并调用 `noj-cli install`），也可手动从 Release 下载 `noj-cli` 二进制并校验后执行 `install`：
 
 ```bash
-# 首次安装（先下载 noj-cli-linux-amd64 与 .sha256 并校验，见项目 README）
+# 方式一：官方一键自举安装（推荐）
+curl -fsSL https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/install.sh | bash
+# 指定版本与目录：
+# curl -fsSL https://github.com/Neuro-OJ/neuro-oj/releases/latest/download/install.sh | bash -s -- --version <tag> --dir /opt/neuro-oj
+
+# 方式二：手动下载 noj-cli-linux-amd64 与 .sha256 并校验后安装
 ./noj-cli-linux-amd64 install --dir /opt/neuro-oj --ref <与二进制相同的 Release 标签>
 
 # 日常运维
@@ -73,7 +80,7 @@ noj-cli config check
 `noj-cli update` 按 `.env.prod` 中的版本升级，`noj-cli update --latest` 获取最新的资产就绪正式 Release（含已转正的 `-rc.N` 等标签）。
 `noj-cli uninstall` 默认保留数据卷，`noj-cli uninstall --all --yes` 才会执行完全删除。
 `install` 从同版本 Release 下载并校验部署文件，生产机无需安装 Deno。已有 `.env.prod`、备份和数据卷**逐字节保留**。
-`noj-cli backup verify/restore/drill` 提供快照校验、恢复和演练；恢复需要显式 `--confirm`。
+`noj-cli backup verify/restore` 提供快照校验与恢复；恢复需要显式 `--confirm`。
 所选 Release 必须已发布 CLI 与部署文件资产；缺少资产时明确报错，不会被静默切换成其他版本。
 
 镜像拉取由 Docker daemon 负责。若官方源访问不稳定，请在 Docker daemon 配置

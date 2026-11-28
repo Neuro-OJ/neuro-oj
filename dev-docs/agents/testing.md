@@ -77,7 +77,6 @@ cd noj-core && deno task db:generate
 - [ ] 新表/字段已通过 `deno task db:generate` 生成迁移
 - [ ] 新环境变量已登记注册表并加入对应模块 `.env.example`
 - [ ] 中文提交描述符合 Conventional Commits，GPG 签名可用
-- [ ] 非平凡变更包含 Agent Note（`.agents/notes/implemented/`）
 - [ ] 移动被跨模块引用的目录或共享文件（尤其是 `noj-ui/` 下的 `utils/`、`components/`、
       `tests/`）后，已全仓 `rg` 过旧路径并核对消费方模块的类型检查；涉及 `noj-ui` 时，
       必须**先 `cd noj-tests`** 再运行 `deno check e2e/browser/*.test.ts`（从仓库根直接跑
@@ -90,7 +89,6 @@ cd noj-core && deno task db:generate
 
 ```bash
 deno run -A scripts/verify-md-links.ts
-deno run -A scripts/verify-agent-note-format.ts
 ```
 
-本地改完文档或 Agent Note 后可先跑这两条，避免 CI 才暴露链接或格式问题。
+本地改完文档后可先跑这条，避免 CI 才暴露链接问题。

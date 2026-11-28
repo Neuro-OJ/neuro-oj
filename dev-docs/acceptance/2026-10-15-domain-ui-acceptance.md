@@ -1,8 +1,7 @@
 # 域内 UI 修复验收记录
 
 范围：以 `syupslzz / 9b2e3d4c` 为基线，修复真实 UI 功能、域内操作逻辑和布局。
-完成标记见[任务清单](../archive/superpowers/plans/2026-10-14-ui-repair-tasks.md)，产品待决事项见
-[无人值守决策队列](../../.agents/notes/proposed/process/2026-10-14-unattended-ui-decision-queue.md)。
+原任务清单与产品待决事项决策队列已归档于 git 历史。
 
 ## 已交付行为
 

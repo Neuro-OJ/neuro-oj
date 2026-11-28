@@ -1,7 +1,7 @@
 /**
- * 数据服务恢复序列（**生产 restore 与隔离 drill 共用**）。
+ * 数据服务恢复序列。
  *
- * ## 为什么抽出来（而不是两处各写一份）
+ * ## 顺序与错误处理不变式
  *
  * 这段序列的顺序与错误处理是**反复修正出来的**，不是随手写的：
  *
@@ -16,15 +16,11 @@
  * 6. **MinIO 用 `mc mirror --overwrite --remove`**，`--remove` 让目标桶与快照
  *    **一致**（否则快照里已删的对象会残留在目标）。
  *
- * 这些性质分成两份实现就必然漂移——而漂移的后果是"演练通过但真实恢复没做对"，
- * 属于最坏的一类不一致（drill 的全部意义就是证明 restore 可行）。
- *
  * ## 与调用方的边界
  *
  * 本模块**不知道** compose 项目名、override 文件、是否用隔离网络——那些由
- * {@link DataRestoreContext.composeArgs} 决定。于是：
- * - drill 传入它的隔离项目参数；
- * - 生产 `restore --confirm` 传入真实生产 compose 参数。
+ * {@link DataRestoreContext.composeArgs} 决定。生产 `restore --confirm`
+ * 传入真实生产 compose 参数，测试可注入隔离参数。
  *
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
@@ -62,9 +58,9 @@ export interface DataRestoreContext extends ComposeTarget {
   /**
    * 是否在恢复结束后**停掉数据服务**。
    *
-   * - 生产 restore：`true`（恢复后停服务，等人工检查再起业务，
-   *   避免应用在半恢复的数据上对外服务）；
-   * - drill：`false`（它后续还要起业务服务做验收）。
+   * - `true`（生产 restore）：恢复后停服务，等人工检查再起业务，
+   *   避免应用在半恢复的数据上对外服务；
+   * - `false`：保留数据服务运行，供调用方继续检查或测试。
    */
   stopAfterRestore: boolean;
 }
@@ -148,7 +144,7 @@ export async function restoreDataServices(
   }
   // MinIO 桶初始化：保留一次性 service 容器，供后续 core 的
   // `depends_on: service_completed_successfully` 复用。不能用 `run --rm`：
-  // 那会删除完成状态，后续 `up core` 只能再次执行初始化，恢复与演练的
+  // 那会删除完成状态，后续 `up core` 只能再次执行初始化，恢复的
   // 生命周期因此不再是可观察的单一 one-shot 链。
   if (await startOneShotService(ctx, "minio-init") !== 0) {
     throw new Error("MinIO 初始化失败（minio-init）");
@@ -262,7 +258,7 @@ export async function restoreDataServices(
     throw new Error("MinIO/S3 对象恢复失败");
   }
 
-  // ---- 5. 收尾（生产语义：停服务等人工检查；drill：保留给后续验收）----
+  // ---- 5. 收尾（按 stopAfterRestore 决定是否停服务）----
   if (ctx.stopAfterRestore) {
     log("✓ 停止数据服务（请人工检查后再启动业务服务）");
     // 收尾失败不该把"数据已恢复成功"报成失败。

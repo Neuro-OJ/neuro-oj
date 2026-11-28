@@ -124,7 +124,7 @@ export interface BackupManifest {
 /**
  * 说明性字段默认值。
  *
- * 抽成常量而不是散在调用点：drill 与文档都会引用同一套措辞。
+ * 抽成常量而不是散在调用点：恢复流程与文档都会引用同一套措辞。
  */
 export const MANIFEST_DEFAULTS = {
   redis_policy: "RDB snapshot; judge queue is recoverable transient data",
