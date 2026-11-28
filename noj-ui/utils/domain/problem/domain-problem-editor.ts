@@ -13,7 +13,7 @@ export interface DomainOiSubtask {
   cases: DomainOiCase[];
 }
 export interface DomainOiRuntime {
-  backend: 'native' | 'wasm';
+  backend: 'native';
   languages: ('c' | 'cc')[];
   time_limit_ms: number;
   memory_limit_mb: number;
@@ -63,7 +63,7 @@ export function newDomainEditorContent(kind: DomainEditorContent['kind']): Domai
     return {
       ...base,
       runtime_config: {
-        backend: 'wasm',
+        backend: 'native',
         languages: ['c', 'cc'],
         time_limit_ms: 1000,
         memory_limit_mb: 256,
@@ -118,6 +118,7 @@ export function normalizeDomainEditorContent(input: Record<string, unknown>): Do
   }
   if (content.kind === 'oi' && content.runtime_config) {
     const runtime = content.runtime_config as DomainOiRuntime;
+    runtime.backend = 'native';
     runtime.subtasks = runtime.subtasks.map((item) => ({
       ...item,
       scoring: (item.scoring as string) === 'all' ? 'min' : item.scoring ?? 'min',
@@ -146,6 +147,7 @@ export function domainEditorPayload(content: DomainEditorContent): DomainEditorC
   }
   if (result.kind === 'oi') {
     const runtime = result.runtime_config as DomainOiRuntime;
+    runtime.backend = 'native';
     if (runtime.filename === '') delete runtime.filename;
     if (runtime.checker.type !== 'testlib') delete runtime.checker.path;
   }

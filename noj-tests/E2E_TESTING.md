@@ -121,10 +121,8 @@ noj-tests/
   `noj-solution-python` SDK 镜像，无需手动执行构建脚本
 
 `docker-compose.e2e.yml` 的 Worker 明确启用 `ai` 池，用于现有
-AI、产物提交与客观题 全链路测试；其轻量镜像不包含 WASI SDK。OI Native 的真实
-Docker 沙箱同时由 Rust E2E 与比赛 HTTP 门禁验证；OI WASM 则由 Judge Check 的真实
-SDK、冻结快照与生产镜像验收验证。 不要在缺少经过标准摘要校验的 SDK 时启用
-`oi-wasm` 池。
+AI、产物提交与客观题全链路测试；OI Native 的真实 Docker 沙箱同时由
+Rust E2E 与比赛/教学 HTTP 门禁（`E2E_JUDGE_RESOURCE_POOLS=ai,oi-native`）验证。
 
 ### 五赛制真实评测门禁
 

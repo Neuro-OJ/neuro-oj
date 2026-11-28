@@ -80,7 +80,6 @@ const judgeBackends = [
   { value: allFilterValue, label: '全部后端' },
   { value: 'dual', label: 'dual' },
   { value: 'oi-native', label: 'oi-native' },
-  { value: 'oi-wasm', label: 'oi-wasm' },
 ];
 
 // 标签选项：按 kind 排序（题目标签在前），label 带 kind 前缀区分

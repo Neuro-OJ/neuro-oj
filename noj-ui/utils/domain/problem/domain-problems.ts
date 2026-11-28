@@ -21,7 +21,7 @@ export interface DomainProblemSummary {
   binding_id: string;
   policy_revision: number;
   difficulty?: string;
-  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  judge_backend?: 'dual' | 'oi-native' | null;
   limits?:
     | { time_limit_ms: number | null; memory_limit_mb: number | null }
     | null;

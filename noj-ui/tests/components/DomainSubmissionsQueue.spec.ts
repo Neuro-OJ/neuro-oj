@@ -384,7 +384,7 @@ describe('评测队列页面', () => {
         judging_count: 2,
         completed_today: 10,
         pools: {
-          'oi-wasm': { pending: 2, processing: 1, task_capacity: 10 },
+          'oi-native': { pending: 2, processing: 1, task_capacity: 10 },
           'ai': { pending: 3, processing: 1 },
         },
       },

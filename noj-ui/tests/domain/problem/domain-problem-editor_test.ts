@@ -8,12 +8,15 @@ import {
 } from '../../../utils/domain/problem/domain-problem-editor.ts';
 import type { DomainAiRuntime } from '../../../utils/domain/problem/domain-problem-editor.ts';
 import type { DomainOiRuntime } from '../../../utils/domain/problem/domain-problem-editor.ts';
-Deno.test('域草稿：OI 编辑保留既有文件扩展、测试点 ID 和专属限制', () => {
+Deno.test('域草稿：OI 编辑保留既有文件扩展、测试点 ID 和专属限制，历史 wasm 后端归一为 native', () => {
   const input = newDomainEditorContent('oi');
+  assertEquals((input.runtime_config as DomainOiRuntime).backend, 'native');
   const runtime = input.runtime_config as DomainOiRuntime;
+  (runtime as unknown as { backend: string }).backend = 'wasm';
   runtime.compile_extra_files = ['include.hpp'];
   runtime.subtasks[0]!.cases[0]!.id = 'stable-case';
   const normalized = normalizeDomainEditorContent(input);
+  assertEquals((normalized.runtime_config as DomainOiRuntime).backend, 'native');
   assertEquals((normalized.runtime_config as DomainOiRuntime).compile_extra_files, ['include.hpp']);
   assertEquals((normalized.runtime_config as DomainOiRuntime).subtasks[0]!.cases[0]!.id, 'stable-case');
 });

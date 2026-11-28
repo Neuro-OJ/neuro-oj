@@ -18,11 +18,7 @@ function addCase(index: number) {
 <template>
   <section class="space-y-4">
     <h3 class="font-semibold">OI 评测配置</h3>
-    <div class="grid gap-4 sm:grid-cols-3">
-      <AdminFormField label="执行后端">
-        <USelect v-model="runtime.backend"
-          :items="[{ label: 'WASM', value: 'wasm' }, { label: '原生', value: 'native' }]" />
-      </AdminFormField>
+    <div class="grid gap-4 sm:grid-cols-2">
       <AdminFormField label="时间限制（ms）">
         <UInput v-model.number="runtime.time_limit_ms" type="number" min="1" />
       </AdminFormField>

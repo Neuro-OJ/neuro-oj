@@ -56,7 +56,7 @@ export interface ProblemView {
   is_objective: boolean;
   /** 评测题型与公开后端标识；不依赖仅管理员可见的运行配置。 */
   judge_type?: 'dual' | 'oi';
-  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  judge_backend?: 'dual' | 'oi-native' | null;
   /** 提交模式：`code` 代码 / `artifact` 产物 zip / `prediction` 预测单文件 / `ui` 题包自带界面。 */
   submission_mode: SubmissionMode;
   /** artifact 单文件大小上限（MB）；null 表示使用平台默认上限。 */
@@ -117,7 +117,7 @@ export interface ProblemResource {
   owner_avatar_url?: string | null;
   is_objective: boolean;
   judge_type?: 'dual' | 'oi';
-  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  judge_backend?: 'dual' | 'oi-native' | null;
   submission_mode?: SubmissionMode;
   artifact_max_size_mb?: number | null;
   tags?: ProblemTagView[];
@@ -155,7 +155,7 @@ export interface ContestProblemResource {
   artifact_max_size_mb?: number | null;
   is_objective?: boolean;
   judge_type?: 'dual' | 'oi';
-  judge_backend?: 'dual' | 'oi-native' | 'oi-wasm' | null;
+  judge_backend?: 'dual' | 'oi-native' | null;
   /** 竞赛固定作答版本；提交必须原样回传（不一致 → 409）。 */
   version_id?: string | null;
   version?: number | null;
