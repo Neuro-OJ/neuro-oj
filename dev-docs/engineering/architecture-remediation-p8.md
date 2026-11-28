@@ -17,8 +17,7 @@ Gateway 的业务所有权；生产升级仍必须由维护窗口和经过审阅
 
 - `migration_level`（当前 Core/Gateway 迁移前缀）；
 - `protocol_versions.evaluation = 3` 与 `protocol_versions.gateway = 3`；
-- 与 Release tag 一致的 `cli_version` 和 `ide_version`；
-- `sdk_standard = noj-wasm-v1`。
+- 与 Release tag 一致的 `cli_version` 和 `ide_version`。
 
 Release workflow 先消费 `verify-release` 产出的 `release-<image>.txt`（镜像路径、版本、
 digest 三列），再由 `scripts/release/generate-release-set.ts` 生成发布集，并上传 SHA-256

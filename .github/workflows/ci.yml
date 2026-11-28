@@ -9,7 +9,7 @@
 #   - ui-check:          noj-ui Nuxt 构建 + vue-tsc + 单测/覆盖率阈值 + 组件测试 + BFF/主题验收
 #   - gateway-check:     noj-llm-gateway 静态检查 + 单测 + 覆盖率阈值
 #   - production-cli:    noj-cli 静态检查 + 单测 + 真实 PG 往返 E2E（按路径过滤）
-#   - judge-*:           Rust fmt/clippy + Python SDK 单测 + nextest + WASI 验收（单 job 并发）
+#   - judge-*:           Rust fmt/clippy + Python SDK 单测 + nextest
 # =============================================================================
 
 name: CI
@@ -68,7 +68,6 @@ jobs:
       e2e-browser: ${{ steps.selection.outputs.e2e-browser }}
       ui: ${{ steps.filter.outputs.ui }}
       judge: ${{ steps.filter.outputs.judge }}
-      wasi: ${{ steps.filter.outputs.wasi }}
       gateway: ${{ steps.filter.outputs.gateway }}
       cli: ${{ steps.filter.outputs.cli }}
     steps:
@@ -102,16 +101,6 @@ jobs:
               - 'noj-judge/**/!(*.md)'
               - 'docker-compose.e2e.yml'
               - 'env.e2e.template'
-              - '.github/workflows/ci.yml'
-            wasi:
-              - 'noj-judge/src/**/!(*.md)'
-              - 'noj-judge/Cargo.toml'
-              - 'noj-judge/Cargo.lock'
-              - 'noj-judge/toolchain/**/!(*.md)'
-              - 'noj-judge/examples/**/!(*.md)'
-              - 'noj-judge/scripts/*wasi*'
-              - 'noj-judge/Dockerfile'
-              - 'fixtures/noj-wasm-*.json'
               - '.github/workflows/ci.yml'
             gateway:
               - 'noj-llm-gateway/**/!(*.md)'
@@ -170,10 +159,6 @@ jobs:
       - name: 检查供应链约束
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
         run: bash scripts/release/test-supply-chain.sh
-
-      - name: 验证 WASM 统一标准
-        if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
-        run: deno run -A scripts/verify-wasm-standard.ts
 
       - name: 配置读取点静态校验 (check:config-usage)
         if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code == 'true' }}
@@ -584,9 +569,6 @@ jobs:
   #
   #   judge-check          fmt + clippy + Python SDK 单测
   #   judge-test           nextest（Rust 全量单元/集成）
-  #   judge-wasi-sdk       固定 NOJ WASI SDK（按输入哈希缓存，命中即跳过构建）
-  #   judge-wasi-acceptance 单 job 一次编译 + 4 组并发运行（消除 4×90s 重复编译）
-  #   judge-wasi-image     生产 runtime 镜像验收（输入未变即缓存命中跳过）
   # ===========================================================================
   judge-check:
     name: Judge Check
@@ -708,135 +690,3 @@ jobs:
       - name: 运行测试 (cargo nextest)
         working-directory: noj-judge
         run: cargo nextest run --locked --all-targets
-
-  judge-wasi-sdk:
-    name: Judge WASI SDK
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.wasi == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: 校验固定来源下载保护
-        working-directory: noj-judge
-        run: python3 -m unittest discover -s scripts -p test_build_oi_wasi_toolchain.py
-
-      - name: 恢复已构建 WASI SDK
-        id: sdk-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/noj-wasi-sdk-a
-          key: noj-wasi-sdk-v1-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
-
-      - name: 缓存固定 WASI 构建来源
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/noj-wasi-cache
-          key: noj-wasi-v2-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
-
-      - name: 构建并验证固定 NOJ WASI SDK
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        working-directory: noj-judge
-        run: >-
-          bash scripts/build-oi-wasi-toolchain.sh
-          "${RUNNER_TEMP}/noj-wasi-cache"
-          "${RUNNER_TEMP}/noj-wasi-build-a"
-          "${RUNNER_TEMP}/noj-wasi-sdk-a"
-
-  judge-wasi-acceptance:
-    name: Judge WASI Acceptance
-    needs: [changes, judge-wasi-sdk]
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.wasi == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      actions: write
-    env:
-      RUSTC_WRAPPER: sccache
-      SCCACHE_GHA_ENABLED: "true"
-      NOJ_WASI_OPT_DEPS: "1"
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: 安装 Rust 工具链
-        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
-        with:
-          toolchain: stable
-
-      - name: 启用 sccache（Rust 编译缓存）
-        uses: mozilla/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
-
-      - name: 缓存 Cargo 注册表
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-registry-${{ hashFiles('noj-judge/Cargo.lock') }}
-          restore-keys: |
-            cargo-registry-
-
-      - name: 获取已构建 WASI SDK
-        id: sdk-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/noj-wasi-sdk-a
-          key: noj-wasi-sdk-v1-${{ hashFiles('noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.*') }}
-          fail-on-cache-miss: true
-
-      - name: 真实 WASI C/C++ 评测验收（一次编译 + 4 组并发）
-        working-directory: noj-judge
-        shell: bash
-        run: >-
-          bash scripts/check-oi-wasi-toolchain.sh "${RUNNER_TEMP}/noj-wasi-sdk-a" all
-          2>&1 | tee "${RUNNER_TEMP}/noj-wasi-toolchain-check.log"
-
-      - name: 上传失败日志
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: judge-wasi-acceptance-logs
-          path: ${{ runner.temp }}/noj-wasi-*-check.log
-          retention-days: 7
-          if-no-files-found: ignore
-        continue-on-error: true
-
-  judge-wasi-image:
-    name: Judge WASI Image
-    needs: changes
-    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.wasi == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: 检出代码
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: 检查镜像验收标记
-        id: image-ok
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/noj-wasi-image-ok
-          key: noj-wasi-image-v1-${{ hashFiles('noj-judge/Dockerfile', 'noj-judge/toolchain/recipe.json', 'noj-judge/toolchain/archive-encodings.json', 'noj-judge/toolchain/patches/*.patch', 'noj-judge/scripts/build-oi-wasi-toolchain.py', 'noj-judge/scripts/check-oi-wasi-image.sh') }}
-
-      - name: 生产 WASI runtime 镜像验收
-        if: steps.image-ok.outputs.cache-hit != 'true'
-        working-directory: noj-judge
-        shell: bash
-        run: |
-          set -o pipefail
-          bash scripts/check-oi-wasi-image.sh 2>&1 | tee "${RUNNER_TEMP}/noj-wasi-image-check.log"
-          mkdir -p "${RUNNER_TEMP}/noj-wasi-image-ok"
-          date -u > "${RUNNER_TEMP}/noj-wasi-image-ok/ok"
-
-      - name: 上传失败日志
-        if: failure() || cancelled()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: judge-wasi-image-logs
-          path: ${{ runner.temp }}/noj-wasi-*-check.log
-          retention-days: 7
-          if-no-files-found: ignore
-        continue-on-error: true

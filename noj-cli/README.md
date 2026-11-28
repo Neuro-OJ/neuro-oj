@@ -165,8 +165,6 @@ noj-cli judge install-env      # 检查依赖并输出 rootless 准备指引
 noj-cli judge install          # 首次配置并启动独立 Judge
 noj-cli judge check            # 配置 / Redis / 专用 socket / 镜像架构
 noj-cli judge status | logs | stop | start | upgrade
-noj-cli judge reset-config --group <资源组> [--ai-tasks 6] [--restart]
-                               # 排空后解除资源组容量锁（可同时调整并发并重建）
 ```
 
 ## 题目包管理

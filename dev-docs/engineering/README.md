@@ -35,14 +35,6 @@
 - [日志视觉契约](log-conventions.md)
 - [指标目录](metric-catalog.md)
 
-## 评测与 WASM
-
-- [Judge 资源池调度协议](judge-resource-pools.md)
-- [WASM 资源池并发离线对照（2026-10-07）](judge-resource-pools-benchmark.md)
-- [WASM IO 分类分析工具](wasm-io-analysis.md)
-- [WASM IO 插桩本地验证报告（2026-10-06）](wasm-io-analysis-report-2026-10-06.md)
-- [NOJ WASM v3 参考毫秒](wasm-reference-v3.md)
-
 ## 题务与领域
 
 - [题目版本管理手册](problem-version-management-handbook.md)

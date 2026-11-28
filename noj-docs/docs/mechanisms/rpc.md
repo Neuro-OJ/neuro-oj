@@ -118,8 +118,6 @@ flowchart LR
 | **`capability`** | Solution $\to$ Evaluator | 选手代码反向请求 Evaluator 的受限能力                                      |
 | **`cap_reg`**    | Evaluator $\to$ Judge    | 动态登记反向能力的默认调用超时                                             |
 | **`log`**        | Solution $\to$ Evaluator | 选手端受控结构化日志，转发 Evaluator 集中归集                              |
-| **`chunk`**      | 双向（两端互通）         | 大载荷透明分片帧（单物理行仍 ≤ 1 MiB，支持默认最高 16 MiB 逻辑载荷）       |
-| **`cancel`**     | Judge $\to$ Solution     | 单次调用超时时宿主下发取消信号，`fork_per_call` 立即 `SIGKILL` 活跃子进程  |
 | **`shutdown`**   | 保留指令                 | 优雅停机信号（实际生产中依赖管道标准输入 EOF 自动退出）                    |
 
 ---
@@ -155,11 +153,8 @@ flowchart LR
 
 为了抵御内存溢出攻击并保障评测宿主的高可用，系统设定了清晰的防卫边界：
 
-1. **单物理帧上限（1 MiB）与大载荷透明分片（默认 16 MiB）**：
-   - 每条底层 NDJSON 物理帧仍严格限制在 **1 MiB（`MAX_FRAME_BYTES`）** 以内；
-   - 当 `runner.call()` 入参或选手函数返回值序列化后位于 **1 MiB ~ 16 MiB**（可通过 `NOJ_RPC_MAX_PAYLOAD_BYTES` 调整，硬上限 32 MiB）时，SDK 自动按 512 KiB 切片封装为多条 `type: "chunk"` 帧，接收端 `ChunkReassembler` 透明重组还原；
-   - 评测宿主 `noj-judge` 在转发 `chunk` 帧时继续追踪首片 `call_timeout_ms`、末片响应结算，并对 Solution 方向强制施加 **64 MiB 累计分片配额**，且不将分片 base64 写入诊断 `stdout_full`；
-   - 超出逻辑载荷上限的超大对象在编码前即由 `estimate_frame_size` 拒绝并返回 `Rejected` 错误；
+1. **单物理帧上限（1 MiB）**：
+   - 每条底层 NDJSON 物理帧严格限制在 **1 MiB（`MAX_FRAME_BYTES`）** 以内；超出上限的对象在序列化或转发阶段直接拒绝并返回 `Rejected` 错误；
 2. **底层行切分流缓冲区（4 MiB）**： 评测宿主在底层处理跨分块 TCP/Pipe
    拼接时，为单行 NDJSON 保留最多 4 MiB 缓冲区；
 3. **输出收集与尾部保留策略（1 MiB）**： Evaluator 的 `stdout` 与 `stderr`

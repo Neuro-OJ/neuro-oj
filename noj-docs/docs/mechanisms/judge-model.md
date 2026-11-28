@@ -1,7 +1,7 @@
 # 双容器评测模型（Judge Model）
 
 ::: tip 适用范围 本文描述 **AI 题的 dual 双容器评测**。NOJ
-共有三条评测路径：**OI 题**（`judge_type=oi`， native / WASM runner
+共有三条评测路径：**OI 题**（`judge_type=oi`，本机 Docker OI runner
 直接执行测试点）、**AI 题**（本文的双容器 RPC 评测）、
 **客观题**（`is_objective=true`，core 内即时判定）。dual 不是 NOJ
 的唯一评测模型。
@@ -81,13 +81,7 @@ Solution 容器负责隔离执行选手提交的解答：
   注入沙箱工作目录 `/workspace`；
 - **Solution Host 协议守护**：容器拉起 `noj_solution_sdk.host` 守护进程，以
   `--entry /workspace/main.py` 动态加载用户模块（模块名固定为
-  `user_solution`），自动提取顶层导出的公共函数并进入事件监听循环；
-- **执行隔离模式（`isolation_mode`）**：`runtime_config.solution.isolation_mode`
-  支持 **`shared`**（默认）与 **`fork_per_call`**。`shared` 模式下 Solution Host
-  单例常驻，多次 `runner.call()` 之间共享全局变量与内存状态（适合多轮 Agent
-  题目）；配置为 `fork_per_call` 时，每次 `runner.call()` 在完成模块导入后按
-  `os.fork()` COW 派生独立子进程执行，既隔离跨用例全局状态污染，又能在单次调用超时或崩溃时立即
-  `SIGKILL` 强杀子进程并恢复后续测试点。
+  `user_solution`），自动提取顶层导出的公共函数并进入事件监听循环；每次 `runner.call()` 在同一常驻进程内执行并共享模块状态。
 
 ---
 
@@ -100,7 +94,7 @@ Solution 容器负责隔离执行选手提交的解答：
 | ---------------- | ------------- | ------------------ | ------------------------------------------------------------------ |
 | **函数未定义**   | `NotFound`    | `NotFoundError`    | 选手没有定义题面要求的顶层函数（如拼写错误）                       |
 | **执行崩溃抛错** | `Exception`   | `SystemError`      | 选手代码内部抛出未捕获异常（包含清洗后的 Traceback）               |
-| **非法返回类型** | `Rejected`    | `RejectedError`    | 选手返回了不可序列化的对象（如函数引用、生成器）或载荷体积超过分片上限（默认 16 MiB） |
+| **非法返回类型** | `Rejected`    | `RejectedError`    | 选手返回了不可序列化的对象（如函数引用、生成器）或载荷体积超过单帧上限（1 MiB） |
 
 ::: warning 关键准则：调用失败 ≠ 提交失败
 上述异常是选手代码在执行**单次测试点**时产生的错误，**绝不等于本次提交失败**！

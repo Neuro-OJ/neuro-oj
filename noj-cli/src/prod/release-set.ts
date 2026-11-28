@@ -8,17 +8,12 @@
 
 import { validateReleaseTag } from "./release.ts";
 import type { VerifiedDigest } from "./config.ts";
-import wasmStandard from "../../../noj-core/src/modules/problems/types/noj-wasm-v3.json" with {
-  type: "json",
-};
 
 export const RELEASE_SET_ASSET = "release-set.json";
 export const RELEASE_SET_SHA_ASSET = `${RELEASE_SET_ASSET}.sha256`;
 export const RELEASE_SET_SCHEMA_VERSION = 1 as const;
 export const EVALUATION_PROTOCOL_VERSION = 3 as const;
 export const GATEWAY_PROTOCOL_VERSION = 3 as const;
-// 与 Core 实际内置标准共用构建输入，避免生成器与校验器一起接受旧常量。
-export const SDK_STANDARD = wasmStandard.id;
 
 export const RELEASE_SET_COMPONENTS = [
   "core",
@@ -48,7 +43,7 @@ export interface ReleaseSet {
   components: Record<ReleaseSetComponentName, ReleaseSetComponent>;
   cli_version: string;
   ide_version?: string;
-  sdk_standard: typeof SDK_STANDARD;
+  sdk_standard?: string;
 }
 
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
@@ -146,8 +141,9 @@ export function validateReleaseSet(
       );
     }
   }
-  if (root.sdk_standard !== SDK_STANDARD) {
-    throw new Error(`发布集 sdk_standard 必须为 ${SDK_STANDARD}`);
+  let sdkStandard: string | undefined;
+  if (root.sdk_standard !== undefined) {
+    sdkStandard = requiredString(root, "sdk_standard", "根");
   }
   return {
     schema_version: RELEASE_SET_SCHEMA_VERSION,
@@ -160,7 +156,7 @@ export function validateReleaseSet(
     components: normalizedComponents,
     cli_version: cliVersion,
     ...(ideVersion !== undefined ? { ide_version: ideVersion } : {}),
-    sdk_standard: SDK_STANDARD,
+    ...(sdkStandard !== undefined ? { sdk_standard: sdkStandard } : {}),
   };
 }
 
