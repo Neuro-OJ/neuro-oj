@@ -24,7 +24,7 @@ import {
   recommendationReasonText,
 } from '~/utils/domain/education/knowledge';
 
-definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'library' });
+definePageMeta({ layout: 'workspace', middleware: 'workspace-context', workspaceWidth: 'workspace' });
 
 const { slug } = useWorkspace();
 const { isLoggedIn, user } = useAuth();
@@ -138,14 +138,20 @@ useSeoMeta({ title: '我的学习' });
       </UButton>
     </header>
 
-    <UAlert
-      v-if="!isLoggedIn"
-      color="neutral"
-      variant="subtle"
-      icon="i-lucide-log-in"
-      title="登录后查看你的学习进度"
-      description="登录后可看到掌握状态、推荐知识点与待巩固的前置。"
-    />
+    <template v-if="!isLoggedIn">
+      <UAlert
+        color="neutral"
+        variant="subtle"
+        icon="i-lucide-log-in"
+        title="登录后查看你的学习进度"
+        description="登录后可看到掌握状态、推荐知识点与待巩固的前置。"
+      />
+      <KnowledgeSkillTree
+        v-if="graph && graph.nodes.length > 0"
+        :graph="graph"
+        :slug="slug ?? ''"
+      />
+    </template>
 
     <AsyncContent
       v-else

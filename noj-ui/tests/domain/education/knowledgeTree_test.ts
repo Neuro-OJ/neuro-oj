@@ -2,7 +2,12 @@
 // deno-lint-ignore no-import-prefix
 import { assert, assertEquals } from 'jsr:@std/assert@^1';
 import type { KnowledgeGraph, MasteryItem } from '../../../utils/domain/education/knowledge.ts';
-import { buildSkillTreeLayout, summarizeSkillTreeAreas } from '../../../utils/domain/education/knowledgeTree.ts';
+import {
+  buildGlobalSkillTreeLayout,
+  buildSkillTreeLayout,
+  collectDependencyChain,
+  summarizeSkillTreeAreas,
+} from '../../../utils/domain/education/knowledgeTree.ts';
 
 const sampleGraph: KnowledgeGraph = {
   pack: { id: 'official', version: '2026.11.0-draft' },
@@ -166,4 +171,57 @@ Deno.test('knowledgeTree: 支持考纲筛选与仅看有题节点', () => {
   assertEquals(summaries[0]!.docCount, 1);
   assertEquals(summaries[1]!.placedCount, 1);
   assertEquals(summaries[1]!.availableProblems, 5);
+});
+
+Deno.test('knowledgeTree: 全图总览布局（跨领域阶段分层、跨领域边与完整依赖链收集）', () => {
+  const mastery = masteryMap([
+    {
+      node_id: 'prog.python',
+      state: 'mastered',
+      solved_count: 3,
+      problem_count: 4,
+      ability_score: 80,
+      effective_ability: 64,
+      needs_review: true,
+    },
+    {
+      node_id: 'ml.linear',
+      state: 'learning',
+      solved_count: 1,
+      problem_count: 3,
+      ability_score: 50,
+      effective_ability: 50,
+      needs_review: false,
+    },
+  ]);
+
+  const global = buildGlobalSkillTreeLayout(sampleGraph, {
+    masteryByNode: mastery,
+  });
+  assertEquals(global.clusters.length, 2);
+  assertEquals(global.nodes.length, 4);
+  assertEquals(global.stageCount, 2);
+
+  const progCluster = global.clusters.find((c) => c.areaId === 'prog')!;
+  const mlCluster = global.clusters.find((c) => c.areaId === 'ml')!;
+  assertEquals(progCluster.stage, 0);
+  assertEquals(mlCluster.stage, 1);
+  assert(mlCluster.x > progCluster.x + progCluster.width);
+  assertEquals(progCluster.reviewCount, 1);
+
+  const crossEdge = global.edges.find((e) => e.fromId === 'prog.python' && e.toId === 'ml.linear');
+  assert(crossEdge);
+  assertEquals(crossEdge.crossArea, true);
+  const intraEdge = global.edges.find((e) => e.fromId === 'ml.linear' && e.toId === 'ml.logistic');
+  assert(intraEdge);
+  assertEquals(intraEdge.crossArea, false);
+
+  const chain = collectDependencyChain(sampleGraph, 'ml.linear');
+  assertEquals([...chain.ancestors], ['prog.python']);
+  assertEquals([...chain.descendants].sort(), ['ml.ensemble', 'ml.logistic']);
+
+  const summaries = summarizeSkillTreeAreas(sampleGraph, mastery);
+  assertEquals(summaries[0]!.reviewCount, 1);
+  assertEquals(summaries[0]!.avgAbility, 64);
+  assertEquals(summaries[1]!.avgAbility, 50);
 });

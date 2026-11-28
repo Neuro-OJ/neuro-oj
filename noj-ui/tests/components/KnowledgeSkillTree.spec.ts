@@ -72,6 +72,9 @@ describe('KnowledgeSkillTree', () => {
       },
     });
 
+    expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="overview-area-card-ai"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="overview-area-card-ml"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="skill-area-tab-ai"]').text()).toContain('1/1');
     const aiNode = wrapper.find('[data-testid="skill-node-ai.concepts"]');
     expect(aiNode.exists()).toBe(true);
@@ -80,11 +83,26 @@ describe('KnowledgeSkillTree', () => {
     expect(aiNode.text()).toContain('能力 64');
     expect(aiNode.text()).toContain('讲解');
     expect(aiNode.text()).toContain('题 2');
+    const docLink = wrapper.find('[data-testid="skill-node-doc-ai.concepts"]');
+    expect(docLink.exists()).toBe(true);
+    expect(docLink.attributes('data-to')).toBe('/d/school/knowledge/ai.concepts');
 
+    // 点击节点打开总览快览面板
+    await aiNode.trigger('click');
+    const inspector = wrapper.find('[data-testid="overview-node-inspector"]');
+    expect(inspector.exists()).toBe(true);
+    expect(inspector.text()).toContain('人工智能基本概念');
+    expect(inspector.text()).toContain('后继 1');
+
+    // 切换至单领域视图
     await wrapper.find('[data-testid="skill-area-tab-ml"]').trigger('click');
     const mlNode = wrapper.find('[data-testid="skill-node-ml.linear"]');
     expect(mlNode.exists()).toBe(true);
     expect(mlNode.text()).toContain('已解锁');
     expect(mlNode.text()).toContain('前置域 1/1');
+
+    // 切回全图总览
+    await wrapper.find('[data-testid="skill-area-tab-overview"]').trigger('click');
+    expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
   });
 });

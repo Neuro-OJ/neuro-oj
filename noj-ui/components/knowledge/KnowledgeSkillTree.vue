@@ -1,11 +1,13 @@
 <script setup lang="ts">
 /**
- * 知识图谱轻量技能树视图（DAG）：
- * - 按 14 领域分 Tab 展示，支持按考纲（IOAI / NOAI / LMCC）与「仅看有题节点」过滤；
- * - 拓扑分层布局 + SVG 依赖连线，悬停节点高亮上下游前置/后继连线；
- * - 严格使用 Precision Instrument 设计 Token（Signal 绿 / Primary 蓝 / Neutral 灰，1px 发丝边与 6px 圆角）。
+ * 知识图谱轻量技能树视图（左栏领域总览导航 + 右侧全图/单领域 DAG 画布）：
+ * - 左侧栏集中展示全图完成度、节点搜索定位与 14 领域进度列表，消除顶部冗余横条；
+ * - 右侧支持「全图总览」（可拖拽、触控板平移/缩放、小地图、全屏、跨领域依赖链高亮）
+ *   与「单领域精读 DAG」一键切换；
+ * - 严格使用 Precision Instrument 设计 Token（Signal 绿 / Primary 蓝 / Neutral 灰 / 6px 圆角）。
  */
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
+import KnowledgeGlobalOverview from '~/components/knowledge/KnowledgeGlobalOverview.vue';
 import type { KnowledgeGraph, KnowledgeRecommendation, MasteryItem } from '~/utils/domain/education/knowledge';
 import {
   buildSkillTreeLayout,
@@ -32,6 +34,12 @@ const props = withDefaults(
 const selectedSyllabus = ref<'all' | 'ioai' | 'noai' | 'lmcc'>('all');
 const onlyWithProblems = ref(false);
 const hoveredNodeId = ref<string | null>(null);
+const viewMode = ref<'overview' | 'area'>('overview');
+const selectedAreaId = ref('');
+const focusedAreaId = ref<string | null>(null);
+const searchQuery = ref('');
+const searchFocused = ref(false);
+const overviewRef = ref<InstanceType<typeof KnowledgeGlobalOverview> | null>(null);
 
 const masteryByNode = computed(() => {
   const map = new Map<string, MasteryItem>();
@@ -48,7 +56,96 @@ const areas = computed(() =>
   summarizeSkillTreeAreas(props.graph, masteryByNode.value, placedSet.value, selectedSyllabus.value)
 );
 
-const selectedAreaId = ref('');
+const areaNameMap = computed(() => {
+  const map = new Map<string, string>();
+  for (const area of props.graph?.areas ?? []) {
+    map.set(area.id, area.name);
+  }
+  return map;
+});
+
+const globalTotals = computed(() => {
+  let total = 0;
+  let mastered = 0;
+  let placed = 0;
+  let learning = 0;
+  let review = 0;
+  for (const area of areas.value) {
+    total += area.totalNodes;
+    mastered += area.masteredCount;
+    placed += area.placedCount;
+    learning += area.learningCount;
+    review += area.reviewCount;
+  }
+  const done = mastered + placed;
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  return { total, mastered, placed, learning, review, done, percent };
+});
+
+const searchResults = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase();
+  if (!q || !props.graph) return [];
+  const normSyllabus = selectedSyllabus.value.toLowerCase();
+  return props.graph.nodes
+    .filter((node) => {
+      if (
+        normSyllabus !== 'all' &&
+        (!node.syllabus || !node.syllabus.some((tag) => tag.toLowerCase() === normSyllabus))
+      ) {
+        return false;
+      }
+      if (onlyWithProblems.value) {
+        const count = node.problem_count ?? masteryByNode.value.get(node.id)?.problem_count ?? 0;
+        if (count <= 0) return false;
+      }
+      return (
+        node.name.toLowerCase().includes(q) ||
+        node.id.toLowerCase().includes(q) ||
+        (areaNameMap.value.get(node.area)?.toLowerCase().includes(q) ?? false)
+      );
+    })
+    .slice(0, 8);
+});
+
+function openOverview() {
+  viewMode.value = 'overview';
+  focusedAreaId.value = null;
+  void nextTick(() => overviewRef.value?.fitToViewport());
+}
+
+function openArea(areaId: string) {
+  selectedAreaId.value = areaId;
+  focusedAreaId.value = areaId;
+  viewMode.value = 'area';
+}
+
+function focusAreaInOverview(areaId: string) {
+  focusedAreaId.value = areaId;
+  if (viewMode.value !== 'overview') {
+    viewMode.value = 'overview';
+    void nextTick(() => overviewRef.value?.focusArea(areaId));
+  } else {
+    overviewRef.value?.focusArea(areaId);
+  }
+}
+
+function jumpToSearchHit(nodeId: string, areaId: string) {
+  searchQuery.value = '';
+  searchFocused.value = false;
+  focusedAreaId.value = areaId;
+  if (viewMode.value !== 'overview') {
+    viewMode.value = 'overview';
+    void nextTick(() => overviewRef.value?.focusNodeById(nodeId));
+  } else {
+    overviewRef.value?.focusNodeById(nodeId);
+  }
+}
+
+function onSearchBlur() {
+  globalThis.setTimeout(() => {
+    searchFocused.value = false;
+  }, 160);
+}
 
 watch(
   areas,
@@ -89,6 +186,11 @@ const highlightedIds = computed(() => {
 
 function nodePath(id: string): string {
   return `/d/${encodeURIComponent(props.slug)}/knowledge/${encodeURIComponent(id)}`;
+}
+
+function areaSegmentWidth(count: number, total: number): string {
+  if (total <= 0 || count <= 0) return '0%';
+  return `${Math.min(100, (count / total) * 100)}%`;
 }
 
 function isEdgeHighlighted(fromId: string, toId: string): boolean {
@@ -169,11 +271,12 @@ function badgeClass(status: SkillTreeNodeStatus): string {
     class="space-y-3"
     data-testid="knowledge-skill-tree"
   >
+    <!-- 顶部标题 + 考纲/有题过滤 -->
     <div class="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h2 id="skill-tree-heading" class="text-lg font-semibold text-text">AI 知识技能树</h2>
         <p class="text-xs text-text-secondary">
-          按领域展示前置依赖拓扑，悬停节点可高亮上下游路径，点击进入讲解与阶梯练习。
+          左侧按 14 领域总览进度与定位，右侧自由平移缩放全图或切换单领域精读。
         </p>
       </div>
 
@@ -211,28 +314,6 @@ function badgeClass(status: SkillTreeNodeStatus): string {
       </div>
     </div>
 
-    <!-- 领域导航栏 -->
-    <div class="flex flex-wrap gap-1.5" role="tablist" aria-label="知识领域">
-      <button
-        v-for="area in areas"
-        :key="area.id"
-        type="button"
-        role="tab"
-        :aria-selected="selectedAreaId === area.id"
-        class="inline-flex items-center gap-1.5 rounded-[4px] border px-2.5 py-1 text-xs font-medium transition-colors"
-        :class="selectedAreaId === area.id
-          ? 'border-primary bg-primary-bg text-primary'
-          : 'border-border bg-bg-panel text-text-secondary hover:border-border-strong hover:text-text'"
-        :data-testid="`skill-area-tab-${area.id}`"
-        @click="selectedAreaId = area.id"
-      >
-        <span>{{ area.name }}</span>
-        <span class="tabular-nums text-[11px] opacity-80">
-          {{ area.masteredCount + area.placedCount }}/{{ area.totalNodes }}
-        </span>
-      </button>
-    </div>
-
     <!-- 状态图例 -->
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
       <span class="inline-flex items-center gap-1.5">
@@ -252,102 +333,290 @@ function badgeClass(status: SkillTreeNodeStatus): string {
       </span>
     </div>
 
-    <!-- 拓扑 DAG 画布 -->
-    <div
-      v-if="layout.nodes.length === 0"
-      class="rounded-[6px] border border-border bg-bg-panel px-4 py-8 text-center text-sm text-text-secondary"
-    >
-      当前筛选条件下暂无匹配知识点，请取消「只显示有题节点」或切换考纲。
-    </div>
-    <div
-      v-else
-      class="overflow-x-auto rounded-[6px] border border-border bg-bg-sunken/40"
-    >
-      <div
-        class="relative"
-        :style="{ width: `${layout.width}px`, height: `${layout.height}px` }"
+    <!-- 主体：左侧领域总览导航栏 + 右侧交互画布 -->
+    <div class="grid gap-3 lg:grid-cols-[264px_minmax(0,1fr)] lg:items-start">
+      <!-- 左侧栏：全局进度 + 搜索 + 14 领域进度列表 -->
+      <aside
+        class="flex flex-col overflow-hidden rounded-[6px] border border-border bg-bg-panel lg:max-h-[666px]"
+        data-testid="overview-area-sidebar"
       >
-        <svg
-          class="pointer-events-none absolute inset-0"
-          :width="layout.width"
-          :height="layout.height"
-          aria-hidden="true"
-        >
-          <path
-            v-for="edge in layout.edges"
-            :key="edge.id"
-            :d="edge.path"
-            fill="none"
-            :stroke="isEdgeHighlighted(edge.fromId, edge.toId) ? 'var(--c-primary)' : 'var(--c-border-strong)'"
-            :stroke-width="isEdgeHighlighted(edge.fromId, edge.toId) ? 2 : 1.25"
-            :stroke-opacity="hoveredNodeId && !isEdgeHighlighted(edge.fromId, edge.toId) ? 0.25 : 0.85"
-          />
-        </svg>
+        <!-- 全局进度遥测 -->
+        <div class="space-y-2 border-b border-border p-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-semibold text-text">全图进度</span>
+            <span class="font-medium text-signal tabular-nums">
+              {{ globalTotals.done }}/{{ globalTotals.total }}（{{ globalTotals.percent }}%）
+            </span>
+          </div>
+          <div class="h-1.5 overflow-hidden rounded-full bg-bg-sunken">
+            <div
+              class="h-full bg-signal transition-all"
+              :style="{ width: `${globalTotals.percent}%` }"
+            />
+          </div>
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-muted tabular-nums">
+            <span>已掌握 {{ globalTotals.mastered }}</span>
+            <span v-if="globalTotals.placed > 0">已摸底 {{ globalTotals.placed }}</span>
+            <span class="text-primary">学习中 {{ globalTotals.learning }}</span>
+            <span v-if="globalTotals.review > 0" class="text-verdict-partial">
+              待复习 {{ globalTotals.review }}
+            </span>
+          </div>
 
-        <NuxtLink
-          v-for="item in layout.nodes"
-          :key="item.node.id"
-          :to="nodePath(item.node.id)"
-          class="absolute flex flex-col justify-between rounded-[6px] border p-2.5 no-underline shadow-card transition-all"
-          :class="cardClass(item)"
-          :style="{
-            left: `${item.x}px`,
-            top: `${item.y}px`,
-            width: `${item.width}px`,
-            height: `${item.height}px`,
-          }"
-          :data-testid="`skill-node-${item.node.id}`"
-          @mouseenter="hoveredNodeId = item.node.id"
-          @mouseleave="hoveredNodeId = null"
-          @focus="hoveredNodeId = item.node.id"
-          @blur="hoveredNodeId = null"
+          <!-- 节点搜索框 -->
+          <div class="relative pt-1">
+            <input
+              v-model="searchQuery"
+              type="search"
+              placeholder="搜索并定位知识点..."
+              class="w-full rounded-[4px] border border-border bg-bg-sunken/60 px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-primary focus:bg-bg-panel focus:outline-none"
+              data-testid="overview-search-input"
+              @focus="searchFocused = true"
+              @blur="onSearchBlur"
+            />
+            <ul
+              v-if="searchFocused && searchResults.length > 0"
+              class="absolute left-0 right-0 top-full z-40 mt-1 max-h-60 overflow-y-auto rounded-[6px] border border-border-strong bg-bg-elevated py-1 shadow-dropdown"
+              data-testid="overview-search-results"
+            >
+              <li v-for="hit in searchResults" :key="hit.id">
+                <button
+                  type="button"
+                  class="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-primary-bg/70"
+                  @mousedown.prevent="jumpToSearchHit(hit.id, hit.area)"
+                >
+                  <span class="truncate font-medium text-text">{{ hit.name }}</span>
+                  <span class="shrink-0 text-[10px] text-text-muted">
+                    {{ areaNameMap.get(hit.area) ?? hit.area }}
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 全图总览入口 + 14 领域滚动列表 -->
+        <div
+          class="flex-1 divide-y divide-border/70 overflow-y-auto"
+          role="tablist"
+          aria-label="知识领域"
+          data-testid="overview-area-grid"
         >
-          <div class="flex items-start justify-between gap-1.5">
-            <div class="flex min-w-0 items-center gap-1.5">
-              <span class="size-2 shrink-0 rounded-full" :class="statusDotClass(item.status)" />
-              <span class="line-clamp-2 text-xs font-semibold leading-snug text-text">
-                {{ item.node.name }}
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="viewMode === 'overview' && focusedAreaId === null"
+            class="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium transition-colors"
+            :class="viewMode === 'overview' && focusedAreaId === null
+              ? 'bg-primary-bg text-primary'
+              : 'text-text hover:bg-bg-sunken/70'"
+            data-testid="skill-area-tab-overview"
+            @click="openOverview()"
+          >
+            <span>全图总览（适配全部）</span>
+            <span class="text-[11px] tabular-nums opacity-80">{{ areas.length }} 域</span>
+          </button>
+
+          <div
+            v-for="area in areas"
+            :key="area.id"
+            class="px-3 py-2 transition-colors"
+            :class="(viewMode === 'area' && selectedAreaId === area.id) ||
+                (viewMode === 'overview' && focusedAreaId === area.id)
+              ? 'bg-primary-bg/60'
+              : 'hover:bg-bg-sunken/50'"
+            :data-testid="`overview-area-card-${area.id}`"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                class="min-w-0 flex-1 truncate text-left text-xs font-semibold transition-colors"
+                :class="(viewMode === 'area' && selectedAreaId === area.id) ||
+                    (viewMode === 'overview' && focusedAreaId === area.id)
+                  ? 'text-primary'
+                  : 'text-text hover:text-primary'"
+                :title="`${area.name}（点击在总览中聚焦）`"
+                @click="focusAreaInOverview(area.id)"
+              >
+                {{ area.name }}
+              </button>
+              <span class="shrink-0 text-[11px] font-medium text-text-secondary tabular-nums">
+                {{ area.masteredCount + area.placedCount }}/{{ area.totalNodes }}
               </span>
             </div>
-            <span class="inline-flex shrink-0 items-center gap-1">
-              <span
-                v-if="item.needsReview"
-                class="rounded-[4px] bg-verdict-partial-bg px-1.5 py-0.5 text-[10px] font-medium text-verdict-partial"
-                data-testid="skill-node-review-badge"
-              >
-                待复习
+
+            <div class="mt-1.5 flex h-1 overflow-hidden rounded-full bg-bg-sunken">
+              <div
+                class="h-full bg-signal"
+                :style="{ width: areaSegmentWidth(area.masteredCount, area.totalNodes) }"
+              />
+              <div
+                class="h-full bg-primary"
+                :style="{ width: areaSegmentWidth(area.placedCount + area.learningCount, area.totalNodes) }"
+              />
+            </div>
+
+            <div class="mt-1.5 flex items-center justify-between gap-1 text-[10px] text-text-muted tabular-nums">
+              <span class="inline-flex items-center gap-1.5 truncate">
+                <span v-if="area.avgAbility !== null" class="font-medium text-text-secondary">
+                  均分 {{ area.avgAbility }}
+                </span>
+                <span v-else>题 {{ area.availableProblems }}</span>
+                <span v-if="area.reviewCount > 0" class="text-verdict-partial">
+                  复习 {{ area.reviewCount }}
+                </span>
               </span>
-              <span
-                class="rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium"
-                :class="badgeClass(item.status)"
+
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="viewMode === 'area' && selectedAreaId === area.id"
+                class="shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+                :class="viewMode === 'area' && selectedAreaId === area.id
+                  ? 'bg-primary text-white'
+                  : 'text-primary hover:bg-primary-bg'"
+                :data-testid="`skill-area-tab-${area.id}`"
+                @click="openArea(area.id)"
               >
-                {{ statusLabel(item.status) }}
-              </span>
+                单域 {{ area.masteredCount + area.placedCount }}/{{ area.totalNodes }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 右侧主画布区：全图总览 OR 单领域精读 -->
+      <div class="min-w-0">
+        <KnowledgeGlobalOverview
+          v-if="viewMode === 'overview'"
+          ref="overviewRef"
+          :graph="graph"
+          :slug="slug"
+          :syllabus="selectedSyllabus"
+          :only-with-problems="onlyWithProblems"
+          :mastery-by-node="masteryByNode"
+          :placed-node-ids="placedSet"
+          :recommended-ids="recommendedSet"
+          :focused-area-id="focusedAreaId"
+          @select-area="openArea"
+          @focus-area-change="focusedAreaId = $event"
+        />
+
+        <div
+          v-else
+          class="overflow-hidden rounded-[6px] border border-border bg-bg-panel"
+        >
+          <div class="flex items-center justify-between gap-2 border-b border-border px-3 py-2 text-xs">
+            <span class="font-semibold text-text">
+              {{ areaNameMap.get(selectedAreaId) ?? selectedAreaId }} · 单领域拓扑
             </span>
+            <button
+              type="button"
+              class="rounded-[4px] px-2 py-0.5 font-medium text-primary hover:bg-primary-bg"
+              @click="openOverview()"
+            >
+              ← 返回全图总览
+            </button>
           </div>
 
-          <div class="flex items-center justify-between gap-2 text-[11px] text-text-muted tabular-nums">
-            <span class="truncate">
-              <template v-if="item.externalRequires.length > 0">
-                前置域 {{ item.externalRequires.filter((r) => r.completed).length }}/{{ item.externalRequires.length }}
-              </template>
-              <template v-else>
-                {{ item.node.id }}
-              </template>
-            </span>
-            <span class="inline-flex shrink-0 items-center gap-2">
-              <span
-                v-if="item.abilityScore !== null && item.abilityScore > 0"
-                class="font-medium text-text-secondary"
-                data-testid="skill-node-ability"
-              >
-                能力 {{ item.abilityScore }}
-              </span>
-              <span v-if="item.hasDoc" class="text-primary" title="含原理讲解">讲解</span>
-              <span>题 {{ item.problemCount }}</span>
-            </span>
+          <div
+            v-if="layout.nodes.length === 0"
+            class="px-4 py-12 text-center text-sm text-text-secondary"
+          >
+            当前筛选条件下暂无匹配知识点，请取消「只显示有题节点」或切换考纲。
           </div>
-        </NuxtLink>
+          <div
+            v-else
+            class="h-[620px] overflow-auto bg-bg-sunken/40"
+          >
+            <div
+              class="relative"
+              :style="{ width: `${layout.width}px`, height: `${layout.height}px` }"
+            >
+              <svg
+                class="pointer-events-none absolute inset-0"
+                :width="layout.width"
+                :height="layout.height"
+                aria-hidden="true"
+              >
+                <path
+                  v-for="edge in layout.edges"
+                  :key="edge.id"
+                  :d="edge.path"
+                  fill="none"
+                  :stroke="isEdgeHighlighted(edge.fromId, edge.toId) ? 'var(--c-primary)' : 'var(--c-border-strong)'"
+                  :stroke-width="isEdgeHighlighted(edge.fromId, edge.toId) ? 2 : 1.25"
+                  :stroke-opacity="hoveredNodeId && !isEdgeHighlighted(edge.fromId, edge.toId) ? 0.25 : 0.85"
+                />
+              </svg>
+
+              <NuxtLink
+                v-for="item in layout.nodes"
+                :key="item.node.id"
+                :to="nodePath(item.node.id)"
+                class="absolute flex flex-col justify-between rounded-[6px] border p-2.5 no-underline shadow-card transition-all"
+                :class="cardClass(item)"
+                :style="{
+                  left: `${item.x}px`,
+                  top: `${item.y}px`,
+                  width: `${item.width}px`,
+                  height: `${item.height}px`,
+                }"
+                :data-testid="`skill-node-${item.node.id}`"
+                @mouseenter="hoveredNodeId = item.node.id"
+                @mouseleave="hoveredNodeId = null"
+                @focus="hoveredNodeId = item.node.id"
+                @blur="hoveredNodeId = null"
+              >
+                <div class="flex items-start justify-between gap-1.5">
+                  <div class="flex min-w-0 items-center gap-1.5">
+                    <span class="size-2 shrink-0 rounded-full" :class="statusDotClass(item.status)" />
+                    <span class="line-clamp-2 text-xs font-semibold leading-snug text-text">
+                      {{ item.node.name }}
+                    </span>
+                  </div>
+                  <span class="inline-flex shrink-0 items-center gap-1">
+                    <span
+                      v-if="item.needsReview"
+                      class="rounded-[4px] bg-verdict-partial-bg px-1.5 py-0.5 text-[10px] font-medium text-verdict-partial"
+                      data-testid="skill-node-review-badge"
+                    >
+                      待复习
+                    </span>
+                    <span
+                      class="rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium"
+                      :class="badgeClass(item.status)"
+                    >
+                      {{ statusLabel(item.status) }}
+                    </span>
+                  </span>
+                </div>
+
+                <div class="flex items-center justify-between gap-2 text-[11px] text-text-muted tabular-nums">
+                  <span class="truncate">
+                    <template v-if="item.externalRequires.length > 0">
+                      前置域 {{ item.externalRequires.filter((r) => r.completed).length }}/{{ item.externalRequires.length }}
+                    </template>
+                    <template v-else>
+                      {{ item.node.id }}
+                    </template>
+                  </span>
+                  <span class="inline-flex shrink-0 items-center gap-2">
+                    <span
+                      v-if="item.abilityScore !== null && item.abilityScore > 0"
+                      class="font-medium text-text-secondary"
+                      data-testid="skill-node-ability"
+                    >
+                      能力 {{ item.abilityScore }}
+                    </span>
+                    <span v-if="item.hasDoc" class="text-primary" title="含原理讲解">讲解</span>
+                    <span>题 {{ item.problemCount }}</span>
+                  </span>
+                </div>
+              </NuxtLink>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>
