@@ -33,6 +33,9 @@ function fixture(role: 'guest' | 'student' | 'coach' | 'assistant' = 'guest', co
       } else if (pathname.endsWith('/assignments/a')) {
         data = { data: { id: 'a', classroom_id: 'c', published_at: '2026-10-18' } };
       } else if (pathname.endsWith('/problems')) data = { items: [], total: 0 };
+      else if (pathname.endsWith('/contests')) {
+        data = { data: [], pagination: { page: 1, per_page: 3, total: 0, total_pages: 0 } };
+      } else if (pathname.endsWith('/trainings')) data = { items: [], page: 1, limit: 3, total: 0 };
       else if (pathname.endsWith('/community/config')) {
         data = { data: { enabled: true } };
       }
@@ -74,6 +77,12 @@ Deno.test('BFF 匿名首页不读取身份、签到和教学，公共布局只�
   assertEquals(meta, 1);
   assert(!calls.some((path) => /auth\/me|checkin|my-learning|teaching|feed|notifications/.test(path)));
   assertEquals(calls.filter((path) => path === '/api/v1/domains/school').length, 1);
+  assert(calls.some((path) => path === '/api/v1/domains/school/problems?page=1&limit=3'));
+  assert(calls.some((path) => path === '/api/v1/domains/school/contests?page=1&per_page=3&sort=upcoming'));
+  assert(calls.some((path) => path === '/api/v1/domains/school/trainings?page=1&limit=3'));
+  assert(result.sections.problems?.data);
+  assert(result.sections.contests?.data);
+  assert(result.sections.trainings?.data);
 });
 
 Deno.test('BFF 学生和教练成绩分支分开，助教无能力时不读取成绩和会话', async () => {

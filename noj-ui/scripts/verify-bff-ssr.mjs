@@ -324,6 +324,39 @@ const fixture = Deno.serve(
         }],
       });
     }
+    if (path.endsWith("/contests")) {
+      return Response.json({
+        data: [{
+          id: "contest-1",
+          domain_id: "domain",
+          revision: 1,
+          title: "比赛首屏",
+          type: "acm",
+          status: "running",
+          start_time: "2026-10-01T00:00:00.000Z",
+          end_time: "2026-10-01T05:00:00.000Z",
+          problem_count: 3,
+        }],
+        pagination: { page: 1, per_page: 3, total: 1, total_pages: 1 },
+      });
+    }
+    if (path.endsWith("/trainings")) {
+      return Response.json({
+        items: [{
+          id: "t",
+          title: "题单首屏",
+          description: "循序练习",
+          source_domain_slug: "school",
+          visibility: "public",
+          state: "published",
+          can_edit: false,
+          revision: 1,
+        }],
+        page: 1,
+        limit: 3,
+        total: 1,
+      });
+    }
     if (path.endsWith("/activity")) {
       return Response.json({
         data: {
@@ -478,11 +511,13 @@ try {
   for (const text of ["空间首屏", "公告首屏"]) {
     assert(html.includes(text), `SSR 缺少 ${text}`);
   }
-  // 首页随机三题已删除：题目首屏只在题库页出现。
-  assert(
-    !html.includes("题目首屏"),
-    "首页不应再出现题目首屏（随机推荐已删除）",
-  );
+  // 首页三个卡片经由首页 BFF 聚合，在服务端直出首屏内容。
+  for (const text of ["题目首屏", "比赛首屏", "题单首屏"]) {
+    assert(
+      html.includes(text),
+      `首页卡片 SSR 缺少 ${text}`,
+    );
+  }
   const problemsHtml = await (await fetch(`${base}/d/school/problems`)).text();
   assert(problemsHtml.includes("题目首屏"), "题库页 SSR 缺少题目首屏");
   assert.equal((await fetch(`${base}/d/missing`)).status, 404);

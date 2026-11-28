@@ -879,3 +879,75 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name:
+    "域比赛：sort=upcoming 在分页前优先返回进行中与最近未开始比赛，无活跃比赛时按开始时间倒序兜底",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const a = await workspace("contest-upcoming-sort");
+    const p = await item(a.domain.id, a.owner);
+    const now = Date.now();
+    const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+    const hour = 3_600_000;
+    const endedOlder = await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      title: "已结束更早",
+      start_time: iso(-72 * hour),
+      end_time: iso(-70 * hour),
+    });
+    const endedRecent = await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      title: "已结束较近",
+      start_time: iso(-24 * hour),
+      end_time: iso(-22 * hour),
+    });
+    const endedFallback = await listDomainContests(a.domain.slug, a.owner, {
+      page: 1,
+      perPage: 3,
+      sort: "upcoming",
+    });
+    assertEquals(
+      endedFallback.data.map((c) => c.id),
+      [endedRecent.id, endedOlder.id],
+    );
+
+    const running = await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      title: "进行中",
+      start_time: iso(-1 * hour),
+      end_time: iso(2 * hour),
+    });
+    const soonest = await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      title: "最近未开始",
+      start_time: iso(3 * hour),
+      end_time: iso(5 * hour),
+    });
+    const secondSoon = await createDomainContest(a.domain.slug, a.owner, {
+      ...input(p.id),
+      title: "次近未开始",
+      start_time: iso(6 * hour),
+      end_time: iso(8 * hour),
+    });
+    for (let i = 1; i <= 5; i++) {
+      await createDomainContest(a.domain.slug, a.owner, {
+        ...input(p.id),
+        title: `远期比赛 ${i}`,
+        start_time: iso((24 * i) * hour),
+        end_time: iso((24 * i + 2) * hour),
+      });
+    }
+    const page1 = await listDomainContests(a.domain.slug, a.owner, {
+      page: 1,
+      perPage: 3,
+      sort: "upcoming",
+    });
+    assertEquals(
+      page1.data.map((c) => c.id),
+      [running.id, soonest.id, secondSoon.id],
+    );
+  },
+});

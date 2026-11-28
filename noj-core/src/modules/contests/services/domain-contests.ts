@@ -35,6 +35,11 @@ import {
 } from "./contests.ts";
 import { loadDomainContest } from "./domain-access.ts";
 import { resolveDomainContestProblems } from "./domain-problems.ts";
+import {
+  CONTEST_TIME_ISO_REGEX_SQL,
+  endedWindowCondition,
+  runningWindowCondition,
+} from "./contest-window.ts";
 
 /** 显式域比赛列表在计数及分页前过滤其他域和未获授权的邀请赛。 */
 export async function listDomainContests(
@@ -46,6 +51,7 @@ export async function listDomainContests(
     type?: ContestType;
     classroomId?: string;
     myClassrooms?: boolean;
+    sort?: "recent" | "upcoming";
   },
 ) {
   const db = getDb(), workspace = await loadWorkspace(slug, actorId);
@@ -75,10 +81,28 @@ export async function listDomainContests(
       )`
       : undefined,
   );
+  const startTimestamp = sql`CASE
+    WHEN ${contests.start_time} ~ ${CONTEST_TIME_ISO_REGEX_SQL}
+     AND pg_input_is_valid(${contests.start_time}, 'timestamptz')
+    THEN ${contests.start_time}::timestamptz
+  END`;
+  const running = runningWindowCondition(
+    contests.start_time,
+    contests.end_time,
+  );
+  const ended = endedWindowCondition(contests.end_time);
+  const orderBy = query.sort === "upcoming"
+    ? [
+      sql`CASE WHEN ${running} THEN 0 WHEN NOT (${ended}) THEN 1 ELSE 2 END ASC`,
+      sql`CASE WHEN NOT (${ended}) THEN ${startTimestamp} END ASC NULLS LAST`,
+      sql`CASE WHEN ${ended} THEN ${startTimestamp} END DESC NULLS LAST`,
+      contests.id,
+    ]
+    : [desc(contests.start_time), contests.id];
   const [[total], rows] = await Promise.all([
     db.select({ total: count() }).from(contests).where(visible),
     db.select({ id: contests.id, revision: contests.revision }).from(contests)
-      .where(visible).orderBy(desc(contests.start_time), contests.id).limit(
+      .where(visible).orderBy(...orderBy).limit(
         query.perPage,
       ).offset((query.page - 1) * query.perPage),
   ]);
