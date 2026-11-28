@@ -4,9 +4,9 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 export type JudgeType = "dual" | "oi";
 
 /** 可公开的执行后端名称；客观题或无有效 OI 配置时为空。 */
-export type JudgeBackend = "dual" | "oi-native" | "oi-wasm";
+export type JudgeBackend = "dual" | "oi-native";
 
-/** 提取执行后端标识，不暴露测试数据、checker 或存储配置。 */
+/** 提取执行后端标识，不暴露测试数据、checker 或存储配置；存量 wasm 配置兼容归一化为 oi-native。 */
 export function getJudgeBackend(
   judgeType: string | null | undefined,
   config: unknown,
@@ -14,7 +14,7 @@ export function getJudgeBackend(
 ): JudgeBackend | null {
   if (isObjective) return null;
   if (judgeType !== "oi") return "dual";
-  return isOiRuntimeConfig(config) ? `oi-${config.backend}` : null;
+  return isOiRuntimeConfig(config) ? "oi-native" : null;
 }
 
 /**
@@ -39,9 +39,6 @@ export interface EvaluatorRuntime {
   workspace_size_mb?: number;
 }
 
-/** Solution 容器执行隔离模式：shared（默认，常驻共享状态）或 fork_per_call（按调用 fork 隔离）。 */
-export type SolutionIsolationMode = "shared" | "fork_per_call";
-
 /** Solution 容器运行时配置。 */
 export interface SolutionRuntime {
   /** Docker 镜像名（须在 `judge_images` 白名单中且 kind='solution'） */
@@ -50,8 +47,6 @@ export interface SolutionRuntime {
   call_timeout_ms: number;
   /** Solution 容器内存上限（MB） */
   memory_limit_mb: number;
-  /** 可选调用级隔离模式；缺省等价 shared。 */
-  isolation_mode?: SolutionIsolationMode;
 }
 
 /** 双容器模式的 Runtime 配置。prediction 模式省略 solution（不创建 Solution 容器）。 */
@@ -81,12 +76,12 @@ export interface OiSubtask {
   cases: OiTestCase[];
 }
 
-/** OI 题在原生与 WASM 执行后端共用的时空限制配置。 */
+/** OI 题在原生 Docker 执行后端的时空限制配置。 */
 export interface OiRuntimeConfig {
   /** 仅独立自测任务允许；CRUD 和题包配置禁止声明。 */
   self_test?: { no_compare_inputs: string[] };
   scoring_version?: 2;
-  backend: "native" | "wasm";
+  backend: "native";
   languages: Array<"c" | "cc">;
   time_limit_ms: number;
   memory_limit_mb: number;
@@ -97,6 +92,15 @@ export interface OiRuntimeConfig {
   /** 仅注入受信 checker 编译/运行沙箱；Hydro judge_extra_files 映射到这里。 */
   checker_extra_files?: string[];
   user_extra_files?: string[];
+}
+
+/** 读/派发路径向后兼容：将存量 DB/快照中的 `backend: "wasm"` 归一化为唯一的 `"native"`。 */
+export function normalizeOiRuntimeConfig(
+  config: OiRuntimeConfig,
+): OiRuntimeConfig {
+  return (config as { backend: unknown }).backend === "wasm"
+    ? { ...config, backend: "native" }
+    : config;
 }
 
 /** 按题目 judge_type 解释的运行配置。 */
@@ -167,8 +171,8 @@ export function validateOiRuntimeConfig(
       throw new BadRequestError("extra_files 必须是不重复的安全相对路径数组");
     }
   }
-  if (rc.backend !== "native" && rc.backend !== "wasm") {
-    throw new BadRequestError("runtime_config.backend 仅允许 native / wasm");
+  if (rc.backend !== "native") {
+    throw new BadRequestError("runtime_config.backend 仅允许 native");
   }
   if (
     !Array.isArray(rc.languages) || rc.languages.length === 0 ||
@@ -362,15 +366,8 @@ export function validateOiRuntimeConfig(
     }
   }
   if (caseCount > 100) throw new BadRequestError("OI 最多 100 个测试点");
-  // WASM 限额是固定工作量，不能沿用原生 CPU 毫秒的总预算上限。
-  // 宿主实际耗时仍由 Worker 的外层任务墙钟保护独立约束。
-  const totalTimeLimit = rc.backend === "wasm" ? 300000 : 60000;
-  if (totalTime > totalTimeLimit) {
-    throw new BadRequestError(
-      rc.backend === "wasm"
-        ? "OI WASM 测试点总预算最多 300000 NOJ 参考毫秒"
-        : "OI 测试点总时限最多 60000ms",
-    );
+  if (totalTime > 60000) {
+    throw new BadRequestError("OI 测试点总时限最多 60000ms");
   }
   if (Math.abs(totalScore - 100) > 1e-7) {
     throw new BadRequestError("runtime_config.subtasks.score 总和必须为 100");

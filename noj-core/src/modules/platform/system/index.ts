@@ -169,11 +169,6 @@ export {
   maskEmail,
   normalizeEmailDeliveryEvent,
 } from "./services/email-delivery/service.ts";
-export {
-  getActiveOiCostProfile,
-  getOiCostProfileStatus,
-  OI_COST_PROFILE_SETTING_KEY,
-} from "./services/oi-cost-profile.ts";
 export { _resetRateLimitForTest, rateLimit } from "./middleware/rate-limit.ts";
 export {
   enterTestContext,

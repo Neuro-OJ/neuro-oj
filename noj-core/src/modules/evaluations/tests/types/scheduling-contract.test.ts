@@ -48,7 +48,7 @@ Deno.test("调度契约：资源池只由规范化后端推导，三级优先级
   assertEquals(judgeResourcePool(fixture.runtime_config), "ai");
   assertEquals(
     judgeResourcePool(oiFixture.runtime_config as ProblemRuntimeConfig),
-    "oi-wasm",
+    "oi-native",
   );
   assertEquals(
     judgeResourcePool(
@@ -59,10 +59,10 @@ Deno.test("调度契约：资源池只由规范化后端推导，三级优先级
     ),
     "oi-native",
   );
-  assertEquals(buildJudgeQueues("custom:oi-wasm"), {
-    high: "custom:oi-wasm:high",
-    medium: "custom:oi-wasm:medium",
-    low: "custom:oi-wasm:low",
+  assertEquals(buildJudgeQueues("custom:oi-native"), {
+    high: "custom:oi-native:high",
+    medium: "custom:oi-native:medium",
+    low: "custom:oi-native:low",
   });
 });
 
@@ -78,14 +78,17 @@ Deno.test("调度迁移：保留源码、轮次、标准与优先级，不信任
   const normalized = JSON.parse(
     normalizePoolTask(JSON.stringify(legacy), "medium")!,
   );
-  assertEquals(normalized.resource_pool, "oi-wasm");
+  assertEquals(normalized.resource_pool, "oi-native");
   assertEquals(normalized.scheduling_version, 1);
   assertEquals(normalized.priority, "high");
   assertEquals(normalized.rejudge_seq, 7);
   assertEquals(normalized.run_id, "same-attempt");
   assertEquals(normalized.code, legacy.code);
-  assertEquals(normalized.runtime_config, legacy.runtime_config);
-  assertEquals(normalized.oi_cost_profile, legacy.oi_cost_profile);
+  assertEquals(normalized.runtime_config, {
+    ...legacy.runtime_config,
+    backend: "native",
+  });
+  assertEquals("oi_cost_profile" in normalized, false);
   assertEquals(normalizePoolTask("not JSON", "medium"), null);
   assertEquals(
     normalizePoolTask(

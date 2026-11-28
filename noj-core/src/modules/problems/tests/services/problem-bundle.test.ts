@@ -85,7 +85,7 @@ Deno.test("validateBundleManifest: OI 题仍要求 runtime_config", () => {
 });
 
 const oiRuntime: OiRuntimeConfig = {
-  backend: "wasm",
+  backend: "native",
   languages: ["c", "cc"],
   time_limit_ms: 1000,
   memory_limit_mb: 256,

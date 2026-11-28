@@ -70,17 +70,17 @@ Deno.test("judge-heartbeat: emptyJudgeSnapshot 字段完整", () => {
 
 Deno.test("judge-heartbeat: 同资源组容量只算一次，专用池并集和独立组分别计数", async () => {
   const records = [
-    { resource_group: "one", resource_pools: ["oi-wasm"], active_tasks: 1 },
+    { resource_group: "one", resource_pools: ["oi-native"], active_tasks: 1 },
     {
       resource_group: "one",
       resource_pools: ["oi-native", "ai"],
       active_tasks: 2,
     },
-    { resource_group: "two", resource_pools: ["oi-wasm"], active_tasks: 3 },
+    { resource_group: "two", resource_pools: ["oi-native"], active_tasks: 3 },
   ].map((record) => ({
     ...record,
     scheduling_version: 1,
-    resources: { capacities: { wasm_tasks: 4, native_tasks: 2, ai_tasks: 2 } },
+    resources: { capacities: { native_tasks: 4, ai_tasks: 2 } },
   }));
   const redis: FakeRedis = {
     scan: () =>
@@ -94,5 +94,5 @@ Deno.test("judge-heartbeat: 同资源组容量只算一次，专用池并集和�
   );
   assert(snapshot.workers === 3, "Worker 数仍按实例计数");
   assert(snapshot.active_tasks === 6, "活跃任务按 Worker 累加");
-  assert(snapshot.max_concurrent_tasks === 12, "同组容量去重并取启用池并集");
+  assert(snapshot.max_concurrent_tasks === 10, "同组容量去重并取启用池并集");
 });

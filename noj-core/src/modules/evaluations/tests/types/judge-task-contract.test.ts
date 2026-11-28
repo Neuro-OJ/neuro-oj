@@ -107,17 +107,13 @@ Deno.test("JudgeTask 契约: 字段集合与登记表一致", async () => {
   });
   assertEquals(
     Object.keys(built).sort(),
-    [...JUDGE_TASK_FIELDS].filter((key) =>
-      !["oi_cost_profile", "self_test_run_id"].includes(key)
-    ).sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) => key !== "self_test_run_id").sort(),
     "JudgeTask 字段集合变化时必须同步 JUDGE_TASK_FIELDS 与 Rust 结构体",
   );
   // fixture 自身也必须是完整字段集（防止 fixture 落后于契约）
   assertEquals(
     Object.keys(fixture).sort(),
-    [...JUDGE_TASK_FIELDS].filter((key) =>
-      !["oi_cost_profile", "self_test_run_id"].includes(key)
-    ).sort(),
+    [...JUDGE_TASK_FIELDS].filter((key) => key !== "self_test_run_id").sort(),
     "契约 fixture 必须包含全部字段",
   );
 });
@@ -197,37 +193,34 @@ Deno.test("JudgeTask 契约: 必填字段齐全时才构造（类型层面已强
   );
 });
 
-Deno.test("buildJudgeTask: WASM缺少统一标准快照明确拒绝", () => {
-  let rejected = false;
-  try {
-    buildJudgeTask({
-      submission_id: "s",
-      problem_id: "p",
-      user_id: "u",
-      priority: "medium" as const,
-      submission_mode: "code" as const,
-      language: "cc",
-      code: "int main(){}",
-      runtime_config: {
-        backend: "wasm",
-        languages: ["cc"],
-        time_limit_ms: 1000,
-        memory_limit_mb: 256,
-        checker: { type: "default" },
-        subtasks: [{
-          id: "all",
-          score: 100,
-          cases: [{ input: "1.in", output: "1.out" }],
-        }],
-      },
-    });
-  } catch {
-    rejected = true;
-  }
-  assertEquals(rejected, true);
+Deno.test("buildJudgeTask: 存量 WASM runtime_config 向后兼容归一化为 native 与 oi-native", () => {
+  const built = buildJudgeTask({
+    submission_id: "s",
+    problem_id: "p",
+    user_id: "u",
+    priority: "medium" as const,
+    submission_mode: "code" as const,
+    language: "cc",
+    code: "int main(){}",
+    runtime_config: {
+      backend: "wasm",
+      languages: ["cc"],
+      time_limit_ms: 1000,
+      memory_limit_mb: 256,
+      checker: { type: "default" },
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [{ input: "1.in", output: "1.out" }],
+      }],
+    } as unknown as JudgeTask["runtime_config"],
+  });
+  assertEquals(built.resource_pool, "oi-native");
+  assertEquals((built.runtime_config as { backend: string }).backend, "native");
+  assertEquals("oi_cost_profile" in built, false);
 });
 
-Deno.test("JudgeTask 契约: OI WASM携带可信独立成本快照", async () => {
+Deno.test("JudgeTask 契约: OI 原生任务与契约一致", async () => {
   const fixture = JSON.parse(
     await Deno.readTextFile(
       new URL(

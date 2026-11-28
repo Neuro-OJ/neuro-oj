@@ -41,7 +41,7 @@ Deno.test({
         `${prefix}:layout`,
         `${prefix}:pool-migration-lock`,
         `${prefix}:ai:high`,
-        `${prefix}:oi-wasm:medium`,
+        `${prefix}:oi-native:medium`,
       ];
       await redis.lpush(`${prefix}:processing`, "claimed");
       await assertRejects(
@@ -66,7 +66,7 @@ Deno.test({
       assertEquals(ai.resource_pool, "ai");
       assertEquals(ai.scheduling_version, 1);
       assertEquals(ai.run_id, "original");
-      assertEquals(await redis.llen(`${prefix}:oi-wasm:medium`), 1);
+      assertEquals(await redis.llen(`${prefix}:oi-native:medium`), 1);
       assertEquals(await redis.lrange(`${prefix}:dead`, 0, -1), [
         "invalid JSON",
       ]);

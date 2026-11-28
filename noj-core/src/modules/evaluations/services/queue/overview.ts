@@ -549,19 +549,9 @@ export async function getQueueOverview(
           !group.resource_pools.includes(pool)
         ) continue;
         const stat = poolStats[pool];
-        const key = pool === "oi-wasm"
-          ? "wasm_tasks"
-          : pool === "oi-native"
-          ? "native_tasks"
-          : "ai_tasks";
+        const key = pool === "oi-native" ? "native_tasks" : "ai_tasks";
         stat.active = (stat.active ?? 0) + safe(active[pool]);
         stat.task_capacity = (stat.task_capacity ?? 0) + safe(capacities[key]);
-        if (pool === "oi-wasm") {
-          stat.compiling = (stat.compiling ?? 0) + safe(active.compile);
-          stat.running = (stat.running ?? 0) + safe(active.run);
-          stat.run_capacity = (stat.run_capacity ?? 0) +
-            safe(capacities.wasm_run);
-        }
       }
     }
   }

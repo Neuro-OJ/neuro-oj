@@ -71,10 +71,6 @@ const logger = getLogger(["noj", "admin"]);
 import { withAudit } from "../services/admin-audit.ts";
 import type { AuditMeta } from "../types/admin-audit.ts";
 import { adminVersionMiddleware } from "../middleware/admin-version.ts";
-import {
-  getOiCostProfileStatus,
-  OI_COST_PROFILE_SETTING_KEY,
-} from "../../../platform/system/services/oi-cost-profile.ts";
 
 /** 路由层审计用的临时请求体缓存（withAudit 在 handler 返回后才构建 detail）。 */
 const auditBodies = new WeakMap<object, unknown>();
@@ -284,11 +280,6 @@ router.put(
   ),
   async (c) => {
     const key = c.req.param("key") as string;
-    if (key === OI_COST_PROFILE_SETTING_KEY) {
-      throw new BadRequestError(
-        "WASM 使用 NOJ 内置统一标准，不支持自定义成本表",
-      );
-    }
     const body = await parseJsonBody<{ value: unknown }>(c);
     if (!("value" in body)) {
       throw new BadRequestError("请求体必须包含 value 字段");
@@ -311,11 +302,6 @@ router.delete(
   ),
   async (c) => {
     const key = c.req.param("key") as string;
-    if (key === OI_COST_PROFILE_SETTING_KEY) {
-      throw new BadRequestError(
-        "OI 成本表不能通过通用设置接口删除",
-      );
-    }
     const actor = requireUserActor(c.get("actor"));
     const auditMeta = { ipAddress: getClientIp(c) };
     if (isBootstrap(key)) {
@@ -326,11 +312,6 @@ router.delete(
     return c.body(null, 204);
   },
 );
-
-// ── OI WASM 统一标准（只读，保留原查询地址） ──────────────────────────
-router.get("/oi-cost-profile", (c) => {
-  return c.json({ data: getOiCostProfileStatus() });
-});
 
 // ── 评测镜像（路由层审计） ───────────────────────────────────────────────
 router.get("/judge-images", async (c) => {

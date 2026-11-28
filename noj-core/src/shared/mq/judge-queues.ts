@@ -8,7 +8,7 @@
 
 /** 评测任务优先级（与 submission 域的 JudgeTaskPriority 结构一致）。 */
 export type JudgeQueuePriority = "high" | "medium" | "low";
-export const JUDGE_RESOURCE_POOLS = ["oi-wasm", "oi-native", "ai"] as const;
+export const JUDGE_RESOURCE_POOLS = ["oi-native", "ai"] as const;
 export type JudgeQueuePool = typeof JUDGE_RESOURCE_POOLS[number];
 /** 仅用于滚动升级期间维持旧 Worker；生产新部署默认使用分池队列。 */
 export const JUDGE_QUEUE_LAYOUT =

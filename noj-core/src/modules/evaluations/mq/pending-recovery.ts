@@ -4,7 +4,10 @@ import { AppError } from "../../../shared/base/errors.ts";
 import { getDb } from "../../../shared/db/connection.ts";
 import { evaluationAttempts } from "../../../shared/db/schema.ts";
 import { buildOiSelfTestPackage } from "../../problems/contracts/cross-module/services_oi-self-test-package.ts";
-import { isOiRuntimeConfig } from "../../problems/types/runtime-config.ts";
+import {
+  isOiRuntimeConfig,
+  normalizeOiRuntimeConfig,
+} from "../../problems/types/runtime-config.ts";
 import type { OiSelfTestCase } from "../../problems/contracts/cross-module/services_oi-self-test-package.ts";
 import type { ProblemRuntimeConfig } from "../../problems/types/runtime-config.ts";
 import { buildJudgeTaskLlm } from "../../platform/contracts/cross-module/gateway_services_llm-token.ts";
@@ -65,8 +68,11 @@ export async function rebuildPendingTask(
     throw new AppError("绑定版本无法评测", 409, "RECOVERY_VERSION_MISSING");
   }
   const content = loaded.content;
-  const runtime = (snapshot?.runtime_config ??
+  const rawRuntime = (snapshot?.runtime_config ??
     content.runtime_config) as ProblemRuntimeConfig;
+  const runtime = isOiRuntimeConfig(rawRuntime)
+    ? normalizeOiRuntimeConfig(rawRuntime)
+    : rawRuntime;
   let downloadUrl = await versionSupportPackageDownload(versionId);
   let executionRuntime = runtime;
   if (source === "self_test" && isOiRuntimeConfig(runtime)) {
@@ -149,12 +155,6 @@ export async function rebuildPendingTask(
     rejudge_seq: sequence,
     llm,
   });
-  // 平台内置成本版本也属于本次运行的事实；重投不重新解析最新版。
-  if (snapshot?.oi_cost_profile) {
-    task.oi_cost_profile = snapshot.oi_cost_profile as NonNullable<
-      JudgeTask["oi_cost_profile"]
-    >;
-  }
   return task;
 }
 

@@ -69,7 +69,7 @@ export async function listDomainProblems(
   }
   if (
     query.judge_backend &&
-    !["dual", "oi-native", "oi-wasm"].includes(query.judge_backend)
+    !["dual", "oi-native"].includes(query.judge_backend)
   ) {
     throw new BadRequestError("评测后端非法");
   }
@@ -98,8 +98,7 @@ export async function listDomainProblems(
   const keyword = query.keyword?.trim();
   const backend = sql<
     string | null
-  >`CASE WHEN ${problemVersions.content}->>'kind'='oi'
-    THEN 'oi-' || (${problemVersions.content}->'runtime_config'->>'backend')
+  >`CASE WHEN ${problemVersions.content}->>'kind'='oi' THEN 'oi-native'
     WHEN ${problemVersions.content}->>'kind'='ai' THEN 'dual' ELSE NULL END`;
   const authorized = and(
     eq(binding.domain_id, workspace.domain.id),

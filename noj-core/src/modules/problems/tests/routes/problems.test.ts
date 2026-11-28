@@ -309,33 +309,31 @@ Deno.test({
 });
 
 Deno.test("problems route: 匿名选手可读取 OI 语言白名单但看不到评测配置", async () => {
-  for (const backend of ["native", "wasm"] as const) {
-    const p = await createProblem({
-      title: "OI 公开语言",
-      description: "题面",
-      runtime_config: {
-        backend,
-        languages: ["c", "cc"],
-        time_limit_ms: 1000,
-        memory_limit_mb: 256,
-        checker: { type: "default" },
-        subtasks: [{
-          id: "all",
-          score: 100,
-          cases: [{ input: "hidden/1.in", output: "hidden/1.out" }],
-        }],
-      },
-    });
-    await publishBaselineVersionForTest(p.id);
-    const res = await jsonRequest(createApp(), `/api/v1/problems/${p.id}`);
-    assertEquals(res.status, 200);
-    const data = (await res.json()).data;
-    assertEquals(data.judge_type, "oi");
-    assertEquals(data.judge_backend, `oi-${backend}`);
-    assertEquals(data.supported_languages, ["c", "cc"]);
-    assertEquals(data.runtime_config, undefined);
-    assertEquals(data.support_package_storage_url, undefined);
-  }
+  const p = await createProblem({
+    title: "OI 公开语言",
+    description: "题面",
+    runtime_config: {
+      backend: "native",
+      languages: ["c", "cc"],
+      time_limit_ms: 1000,
+      memory_limit_mb: 256,
+      checker: { type: "default" },
+      subtasks: [{
+        id: "all",
+        score: 100,
+        cases: [{ input: "hidden/1.in", output: "hidden/1.out" }],
+      }],
+    },
+  });
+  await publishBaselineVersionForTest(p.id);
+  const res = await jsonRequest(createApp(), `/api/v1/problems/${p.id}`);
+  assertEquals(res.status, 200);
+  const data = (await res.json()).data;
+  assertEquals(data.judge_type, "oi");
+  assertEquals(data.judge_backend, "oi-native");
+  assertEquals(data.supported_languages, ["c", "cc"]);
+  assertEquals(data.runtime_config, undefined);
+  assertEquals(data.support_package_storage_url, undefined);
 });
 
 Deno.test({

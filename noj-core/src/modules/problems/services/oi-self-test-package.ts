@@ -4,7 +4,10 @@ import { BadRequestError } from "../../../shared/base/errors.ts";
 import { unzipWithLimits } from "./bundle-parser.ts";
 import { buildBase64DownloadUrl, sha256Hex } from "../../assets/storage/mod.ts";
 import { getStorageProvider } from "../../assets/storage/mod.ts";
-import type { OiRuntimeConfig } from "../types/runtime-config.ts";
+import {
+  normalizeOiRuntimeConfig,
+  type OiRuntimeConfig,
+} from "../types/runtime-config.ts";
 
 /** 自测只接收用户输入和可选预期输出，不接受文件路径或 checker。 */
 export interface OiSelfTestCase {
@@ -72,8 +75,9 @@ export async function buildOiSelfTestPackage(
     }
   }
   const encoder = new TextEncoder();
+  const normalizedConfig = normalizeOiRuntimeConfig(config);
   const runtime = {
-    ...config,
+    ...normalizedConfig,
     scoring_version: 2 as const,
     checker: { type: "default" as const },
     checker_extra_files: [],

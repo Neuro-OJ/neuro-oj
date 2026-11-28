@@ -48,7 +48,7 @@ export interface ProblemResponse {
   /** 评测模式；存量题目缺省推断为 dual。 */
   judge_type: "dual" | "oi";
   /** 可公开的执行后端；客观题或配置不可用时为空。 */
-  judge_backend: "dual" | "oi-native" | "oi-wasm" | null;
+  judge_backend: "dual" | "oi-native" | null;
   /** 提交模式：code / artifact / prediction / ui */
   submission_mode: SubmissionMode;
   /** artifact 提交大小上限（MB），NULL = 使用 NOJ 硬上限 */
@@ -216,16 +216,6 @@ export function validateRuntimeConfig(
     ) {
       throw new BadRequestError(
         "runtime_config.solution.memory_limit_mb 必须为正整数",
-      );
-    }
-    if (
-      solution.isolation_mode !== undefined &&
-      solution.isolation_mode !== null &&
-      solution.isolation_mode !== "shared" &&
-      solution.isolation_mode !== "fork_per_call"
-    ) {
-      throw new BadRequestError(
-        "runtime_config.solution.isolation_mode 仅允许 shared / fork_per_call",
       );
     }
   }

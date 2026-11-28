@@ -196,10 +196,10 @@ export async function readJudgeHeartbeats(
   } while (cursor !== "0");
   for (const group of groupCapacities.values()) {
     for (
-      const [pool, key] of [["oi-wasm", "wasm_tasks"], [
-        "oi-native",
-        "native_tasks",
-      ], ["ai", "ai_tasks"]]
+      const [pool, key] of [
+        ["oi-native", "native_tasks"],
+        ["ai", "ai_tasks"],
+      ] as const
     ) {
       if (group.pools.has(pool)) {
         aggregate.max_concurrent_tasks += numberOrZero(group.capacities[key]);
