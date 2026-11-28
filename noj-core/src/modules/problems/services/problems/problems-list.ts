@@ -196,19 +196,14 @@ export async function listProblems(
     }
   }
   if (query.judge_backend) {
-    if (!["dual", "oi-native", "oi-wasm"].includes(query.judge_backend)) {
-      throw new BadRequestError("judge_backend 仅允许 dual/oi-native/oi-wasm");
+    if (!["dual", "oi-native"].includes(query.judge_backend)) {
+      throw new BadRequestError("judge_backend 仅允许 dual/oi-native");
     }
     conditions.push(eq(problems.is_objective, false));
     if (query.judge_backend === "dual") {
       conditions.push(sql`COALESCE(${problems.judge_type}, 'dual') = 'dual'`);
     } else {
       conditions.push(eq(problems.judge_type, "oi"));
-      conditions.push(
-        sql`${problems.runtime_config}->>'backend' = ${
-          query.judge_backend.slice(3)
-        }`,
-      );
     }
   }
 

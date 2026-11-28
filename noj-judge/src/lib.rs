@@ -13,7 +13,6 @@ pub mod mq;
 pub mod oi;
 pub mod prediction;
 pub mod sandbox;
-pub mod scheduling;
 pub mod types;
 pub mod user_claim;
 

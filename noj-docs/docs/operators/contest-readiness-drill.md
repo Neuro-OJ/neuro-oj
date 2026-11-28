@@ -94,7 +94,7 @@ deno run -A stress/chaos-drain-verify.ts \
    noj-cli judge status --dir /srv/noj-judge
    ```
 2. 确认 Prometheus / Alertmanager 正在正常采集 `noj-core` 与 `node_exporter`，`NojCoreScrapeDown`、`NojJudgeWorkersDown`、`NojDatabaseUnavailable`、`NojRedisUnavailable` 均无触发中告警。
-3. 执行一次 Canary 提交（或低并发预热提交），确认 SDK 镜像与 OI 编译工具链均已缓存在各 Worker 本地。
+3. 执行一次 Canary 提交（或低并发预热提交），确认 SDK 镜像与 `noj-oi-cpp` 镜像均已缓存在各 Worker 本地。
 
 ### T-30m：封盘与值守准备
 
@@ -120,12 +120,7 @@ deno run -A stress/chaos-drain-verify.ts \
    - 若某道题目出现恶意死循环或超大评测包阻塞槽位，结合 `NojStaleJudging`（`>600s`）与管理后台下线/限流异常账号（参见 [竞赛代码相似度与风控](./contest-similarity.md)）。
 3. **动态扩展 Judge Worker / 调整并发**：
    - **优先方案（无状态水平扩容）**：在新评测节点使用 `noj-cli judge install` 加入同一 `REDIS_URL` 与 `JUDGE_QUEUE`，立即分担消费压力；
-   - **同机/同组调参（需停机清锁）**：若需提高既有资源组并发（如 `--ai-tasks 8`、`--native-tasks 8`），严格按以下安全步骤执行：
-     - 单节点场景：
-       ```bash
-       noj-cli judge reset-config --dir /srv/noj-judge --restart --ai-tasks 8 --native-tasks 8
-       ```
-     - 多节点同 `JUDGE_RESOURCE_GROUP` 场景：先在同组所有节点 `noj-cli judge stop`，再在每个节点执行不带 `--restart` 的 `noj-cli judge reset-config --dir /srv/noj-judge --ai-tasks 8`，全部同步完成后再依次 `noj-cli judge start`。
+   - **调整既有节点本地并发**：先执行 `noj-cli judge stop --dir /srv/noj-judge` 优雅排空在途任务，更新 `.env.judge` 与 `docker-compose.judge.yml` 中的 `JUDGE_MAX_CONCURRENT_JUDGES` 后，再执行 `noj-cli judge start --dir /srv/noj-judge`（或 `noj-cli judge upgrade --dir /srv/noj-judge`）。
 
 ### 场景 B：Core / 数据库故障或升级后回归缺陷（触发 `NojApiErrorRateRecentCritical` / `NojCoreScrapeDown`）
 

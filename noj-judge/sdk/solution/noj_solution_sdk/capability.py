@@ -12,9 +12,8 @@ noj_solution_sdk capability 调用层。
 from __future__ import annotations
 
 import json
-import threading
 import uuid
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
 
 from noj_sdk_common.rpc import RpcClient
 
@@ -51,22 +50,6 @@ class CapabilityError(Exception):
 
 # 共享 RPC 状态：pending 注册、写帧、响应分发、关闭唤醒
 _rpc = RpcClient()
-_SYNC_TRANSPORT: tuple[Callable[[dict], None], Callable[[], dict]] | None = None
-_SYNC_TRANSPORT_LOCK = threading.Lock()
-
-
-def _set_sync_transport(
-    send_fn: Callable[[dict], None], recv_fn: Callable[[], dict]
-) -> None:
-    """在 fork_per_call 子进程内启用同步管道传输，绕过父进程 reader 线程。"""
-    global _SYNC_TRANSPORT
-    _SYNC_TRANSPORT = (send_fn, recv_fn)
-
-
-def _clear_sync_transport() -> None:
-    """清除同步管道传输（仅测试/清理用）。"""
-    global _SYNC_TRANSPORT
-    _SYNC_TRANSPORT = None
 
 
 def _set_protocol_out(out: TextIO) -> None:
@@ -128,37 +111,20 @@ def call_capability(name: str, *args: Any) -> Any:
     except _RejectedTypeError as e:
         raise CapabilityRejectedError(str(e)) from e
 
-    # 4. fork 子进程同步管道模式：串行化发帧与读帧，并按 call_id 匹配响应，防止多线程错乱消费
-    if _SYNC_TRANSPORT is not None:
-        send_fn, recv_fn = _SYNC_TRANSPORT
-        try:
-            with _SYNC_TRANSPORT_LOCK:
-                send_fn(frame)
-                while True:
-                    response = recv_fn()
-                    if (
-                        response.get("type") == "_shutdown"
-                        or response.get("id") == call_id
-                    ):
-                        break
-        except Exception as e:
-            raise CapabilityConnectionError(f"子进程 capability 通道断开: {e}") from e
-        return _handle_response(response)
-
-    # 5. 默认共享模式：注册 pending → 写帧 → 阻塞等 reader 分发
+    # 4. 注册 pending → 写帧 → 阻塞等 reader 分发
     q = _rpc.register_pending(call_id)
 
-    # 6. 写帧到 stdout
+    # 5. 写帧到 stdout
     _write_frame(frame)
 
-    # 7. 阻塞等响应
+    # 6. 阻塞等响应
     try:
         response = q.get()
     except Exception as e:
         _rpc.pop_pending(call_id)
         raise CapabilityConnectionError(f"等待响应异常: {e}") from e
 
-    # 8. 处理响应
+    # 7. 处理响应
     _rpc.pop_pending(call_id)
     return _handle_response(response)
 

@@ -217,7 +217,6 @@ async function dispatchAll(
         "noj:judge:queue:ai:medium",
         "noj:judge:queue:ai:low",
         "noj:judge:queue:oi-native:medium",
-        "noj:judge:queue:oi-wasm:medium",
       ]
     ) {
       for (const raw of fake.getMessages(queue)) messages.push(JSON.parse(raw));
@@ -728,7 +727,6 @@ async function dispatchUpgradeJob(
         "noj:judge:queue:ai:medium",
         "noj:judge:queue:ai:low",
         "noj:judge:queue:oi-native:medium",
-        "noj:judge:queue:oi-wasm:medium",
       ]
     ) {
       for (const raw of fake.getMessages(queue)) messages.push(JSON.parse(raw));

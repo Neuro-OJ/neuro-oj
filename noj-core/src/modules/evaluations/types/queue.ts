@@ -43,10 +43,7 @@ export interface QueueStats {
       pending: number;
       processing: number;
       active?: number;
-      compiling?: number;
-      running?: number;
       task_capacity?: number;
-      run_capacity?: number;
     }
   >;
   resource_memory?: { reserved_mb: number; budget_mb: number };

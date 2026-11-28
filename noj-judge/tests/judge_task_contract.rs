@@ -136,20 +136,58 @@ fn judge_task_contract_rejects_missing_required_field() {
 }
 
 #[test]
-fn oi_judge_task_contract_deserializes_trusted_cost_profile() {
+fn oi_judge_task_contract_deserializes_native_oi() {
     let value = load_oi_fixture();
     let task: JudgeTask = serde_json::from_value(value).expect("OI fixture 必须可反序列化");
     assert_eq!(task.judge_type, "oi");
     assert_eq!(task.language, "cc");
-    assert!(task.runtime_config.as_oi().is_some());
+    let oi = task
+        .runtime_config
+        .as_oi()
+        .expect("OI fixture 必须解析为 OiRuntimeConfig");
+    assert_eq!(oi.backend, noj_judge::oi::OiBackend::Native);
+    assert!(matches!(
+        task.resource_pool.as_deref(),
+        Some("oi-native" | "oi-wasm")
+    ));
+
+    // 验证合并后的标准 native OI 契约（无 oi_cost_profile、backend=native、resource_pool=oi-native）
+    let native_fixture = serde_json::json!({
+        "submission_id": "11111111-1111-4111-8111-111111111111",
+        "problem_id": "22222222-2222-4222-8222-222222222222",
+        "user_id": "33333333-3333-4333-8333-333333333333",
+        "task_kind": "submission",
+        "priority": "medium",
+        "judge_type": "oi",
+        "runtime_config": {
+            "backend": "native",
+            "languages": ["c", "cc"],
+            "time_limit_ms": 1000,
+            "memory_limit_mb": 256,
+            "checker": { "type": "default" },
+            "subtasks": [{
+                "id": "all",
+                "score": 100,
+                "cases": [{ "input": "testdata/1.in", "output": "testdata/1.out" }]
+            }]
+        },
+        "download_url": "noj-download://base64/?content=UEsDBBQAAAAI&checksum_sha256=abc123",
+        "language": "cc",
+        "code": "int main() { return 0; }",
+        "file_name": "main.cpp",
+        "rejudge_seq": 1,
+        "run_id": "55555555-5555-4555-8555-555555555555",
+        "attempt_id": "55555555-5555-4555-8555-555555555555",
+        "problem_version_id": "66666666-6666-4666-8666-666666666666",
+        "evaluation_protocol_version": 3,
+        "scheduling_version": 1,
+        "resource_pool": "oi-native"
+    });
+    let native_task: JudgeTask = serde_json::from_value(native_fixture)
+        .expect("native OI 契约必须无 oi_cost_profile 反序列化成功");
+    assert_eq!(native_task.resource_pool.as_deref(), Some("oi-native"));
     assert_eq!(
-        task.oi_cost_profile
-            .as_ref()
-            .map(|p| p.runtime_version.as_str()),
-        Some("wasmtime-49")
-    );
-    assert_eq!(
-        task.oi_cost_profile.as_ref().map(|p| p.hash.len()),
-        Some(64)
+        native_task.runtime_config.as_oi().unwrap().backend,
+        noj_judge::oi::OiBackend::Native
     );
 }

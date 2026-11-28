@@ -183,12 +183,11 @@ useSeoMeta({ title: '评测队列' });
             <h3 class="text-sm font-semibold text-text">共享资源池（实例资源）</h3>
             <span class="text-xs text-text-muted">共享池为全实例共享的评测计算资源</span>
           </div>
-          <div class="grid gap-3 sm:grid-cols-3">
+          <div class="grid gap-3 sm:grid-cols-2">
             <UCard v-for="(pool, name) in data.stats.pools" :key="name">
-              <p class="text-sm font-semibold text-text">{{ name === 'ai' ? 'AI 评测池' : name === 'oi-wasm' ? 'WASM 评测池' : name === 'oi-native' ? '原生评测池' : name }}</p>
+              <p class="text-sm font-semibold text-text">{{ name === 'ai' ? 'AI 评测池' : name === 'oi-native' ? '原生评测池' : name }}</p>
               <p class="mt-2 text-xs tabular-nums text-text-secondary">排队 {{ pool.pending }} · 已领取 {{ pool.processing }}</p>
               <p v-if="pool.task_capacity !== undefined" class="mt-1 text-xs tabular-nums text-text-secondary">活跃提交 {{ pool.active ?? 0 }} / {{ pool.task_capacity }}</p>
-              <p v-if="name === 'oi-wasm' && pool.run_capacity !== undefined" class="mt-1 text-xs tabular-nums text-text-secondary">编译 {{ pool.compiling ?? 0 }} · 运行测试点 {{ pool.running ?? 0 }} / {{ pool.run_capacity }}</p>
             </UCard>
           </div>
           <p v-if="data.stats.resource_memory?.budget_mb" class="text-xs tabular-nums text-text-muted">

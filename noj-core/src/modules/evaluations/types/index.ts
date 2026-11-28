@@ -1,17 +1,12 @@
 import {
   isOiRuntimeConfig,
-  validateOiRuntimeConfig,
-} from "../../problems/types/runtime-config.ts";
-import {
-  isValidOiCostProfile,
-  type OiCostProfile,
-} from "../../problems/types/oi-cost-profile.ts";
-import { BadRequestError } from "../../../shared/base/errors.ts";
-import {
   type JudgeType,
   judgeTypeForRuntimeConfig,
+  normalizeOiRuntimeConfig,
   type ProblemRuntimeConfig,
+  validateOiRuntimeConfig,
 } from "../../problems/types/runtime-config.ts";
+import { BadRequestError } from "../../../shared/base/errors.ts";
 import {
   buildUiSolutionScript,
   parseUiValues,
@@ -73,14 +68,12 @@ export function toJudgeSubmissionMode(
 export const EVALUATION_PROTOCOL_VERSION = 3;
 export type JudgeTaskKind = "submission" | "self_test";
 /** 资源池由服务端运行配置决定，不能由提交者声明。 */
-export type JudgeResourcePool = "oi-wasm" | "oi-native" | "ai";
+export type JudgeResourcePool = "oi-native" | "ai";
 
 export function judgeResourcePool(
   config: ProblemRuntimeConfig,
 ): JudgeResourcePool {
-  return isOiRuntimeConfig(config)
-    ? config.backend === "wasm" ? "oi-wasm" : "oi-native"
-    : "ai";
+  return isOiRuntimeConfig(config) ? "oi-native" : "ai";
 }
 
 /**
@@ -121,8 +114,6 @@ export interface JudgeTask {
   judge_type: JudgeType;
   /** 双容器或 OI Runtime 配置（必填） */
   runtime_config: ProblemRuntimeConfig;
-  /** WASM 活动成本快照，仅服务端任务构造允许注入。 */
-  oi_cost_profile?: OiCostProfile;
   /** 支持包下载 URL（`noj-download://` 格式） */
   download_url?: string;
   /** artifact 提交的下载 URL（`noj-download://` 格式），仅 artifact 模式携带 */
@@ -160,8 +151,6 @@ export interface BuildJudgeTaskInput {
   priority: JudgeTaskPriority;
   submission_mode: JudgeSubmissionMode;
   runtime_config: ProblemRuntimeConfig;
-  /** WASM 活动成本快照，仅服务端任务构造允许注入。 */
-  oi_cost_profile?: OiCostProfile;
   /** 评测模式；缺省根据 runtime_config 推断。 */
   judge_type?: JudgeType;
   language: string;
@@ -204,22 +193,21 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   if (taskKind === "submission" && input.self_test_run_id !== undefined) {
     throw new BadRequestError("正式提交不能携带 self_test_run_id");
   }
-  const inferredType = judgeTypeForRuntimeConfig(input.runtime_config);
+  const runtimeConfig = isOiRuntimeConfig(input.runtime_config)
+    ? normalizeOiRuntimeConfig(input.runtime_config)
+    : input.runtime_config;
+  const inferredType = judgeTypeForRuntimeConfig(runtimeConfig);
   if (input.judge_type !== undefined && input.judge_type !== inferredType) {
     throw new BadRequestError("judge_type 与 runtime_config 不一致");
   }
-  if (isOiRuntimeConfig(input.runtime_config)) {
+  if (isOiRuntimeConfig(runtimeConfig)) {
     validateOiRuntimeConfig(
-      input.runtime_config,
+      runtimeConfig,
       taskKind === "self_test",
     );
     if (
-      !input.runtime_config.languages.includes(input.language as "c" | "cc")
+      !runtimeConfig.languages.includes(input.language as "c" | "cc")
     ) throw new BadRequestError("OI 提交语言不在允许列表");
-    if (
-      input.runtime_config.backend === "wasm" &&
-      !isValidOiCostProfile(input.oi_cost_profile)
-    ) throw new BadRequestError("WASM 任务缺少有效的统一标准快照");
     if (input.llm || input.artifact_download_url) {
       throw new BadRequestError("OI 不支持 LLM/artifact 任务");
     }
@@ -231,7 +219,7 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
   }
   const task: JudgeTask = {
     scheduling_version: 1,
-    resource_pool: judgeResourcePool(input.runtime_config),
+    resource_pool: judgeResourcePool(runtimeConfig),
     task_kind: taskKind,
     submission_id: input.submission_id,
     problem_id: input.problem_id,
@@ -239,8 +227,8 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
     priority: input.priority,
     submission_mode: input.submission_mode,
     judge_type: input.judge_type ??
-      judgeTypeForRuntimeConfig(input.runtime_config),
-    runtime_config: structuredClone(input.runtime_config),
+      judgeTypeForRuntimeConfig(runtimeConfig),
+    runtime_config: structuredClone(runtimeConfig),
     language: isUi ? UI_WRAPPED_LANGUAGE : input.language,
     code: isUi
       ? buildUiSolutionScript(
@@ -249,10 +237,6 @@ export function buildJudgeTask(input: BuildJudgeTaskInput): JudgeTask {
       )
       : input.code,
   };
-  if (
-    isOiRuntimeConfig(input.runtime_config) &&
-    input.runtime_config.backend === "wasm"
-  ) task.oi_cost_profile = structuredClone(input.oi_cost_profile!);
   if (isUi) task.file_name = UI_WRAPPED_FILE_NAME;
   else if (input.file_name !== undefined) task.file_name = input.file_name;
   if (input.run_id !== undefined) {
@@ -301,7 +285,6 @@ export const JUDGE_TASK_FIELDS: readonly string[] = [
   "submission_mode",
   "judge_type",
   "runtime_config",
-  "oi_cost_profile",
   "download_url",
   "artifact_download_url",
   "language",

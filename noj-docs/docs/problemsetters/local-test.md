@@ -118,9 +118,7 @@ noj-cli problem test my-problem \
 **沙箱约束不放宽**：本地容器与线上使用同一套 host 配置（`cap_drop ALL`、
 `no-new-privileges`、默认 `network_mode none`，不挂载宿主 Docker socket），
 `--network host` 会被拒绝；设置了 `JUDGE_REQUIRE_ISOLATED_DOCKER=true`
-时同样要求 独立 Docker daemon。OI 原生题一律在本机 Docker
-中运行，即使环境里配置了 `JUDGE_GO_JUDGE_URL` 也不会把源码和测试数据发往远程
-go-judge。
+时同样要求 独立 Docker daemon。OI 题一律在本机 Docker 沙箱中运行。
 
 **平台错误不算分**：evaluator 崩溃、输出非法评分等平台错误不会被当成 0 分，
 该解答的所有断言直接判为不满足。按 Ctrl+C 中断时，会清理本次启动的评测容器。

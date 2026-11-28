@@ -63,22 +63,9 @@ noj-cli judge check        --dir /srv/noj-judge                    # 配置 / Re
 noj-cli judge start        --dir /srv/noj-judge                    # 启动（保留现有容器）
 noj-cli judge stop         --dir /srv/noj-judge                    # 停止（保留配置与 Redis 任务）
 noj-cli judge upgrade      --dir /srv/noj-judge                    # 升级镜像
-noj-cli judge reset-config --dir /srv/noj-judge --restart --ai-tasks 6
-                                                                   # 排空并重置资源组容量锁，同步调整并发后重建
 ```
 
-> 调整 `JUDGE_RESOURCE_GROUP` 内任意并发或内存预算时，因调度参数在生成
-> `docker-compose.judge.yml` 时固化（`judge start` 不会重渲染 Compose），
-> 多节点同组调参请严格按以下三步执行：
->
-> 1. 在同组**全部节点**停止 Worker（`noj-cli judge stop --dir /srv/noj-judge`；
->    该命令会自动传入 Worker 优雅排空宽限期 `compose stop -t <≥120s>`，防止
->    Docker 默认 10 秒强杀中断在途评测与退场清理）；
-> 2. 在**每个节点**执行**不带 `--restart`** 的
->    `noj-cli judge reset-config --dir /srv/noj-judge --ai-tasks 6`（首台等待在途租约与心跳过期后解除 Redis 容量锁，默认 90s 可用 `--wait-timeout` 调整；未显式设置 `JUDGE_RESOURCE_GROUP` 时需传 `--group`；各节点同步完成 `.env.judge` 与 `docker-compose.judge.yml` 局部更新）；
-> 3. 确认组内全部节点配置与 Compose 均已同步后，再依次执行 `noj-cli judge start --dir /srv/noj-judge`。
->
-> 单节点场景可直接带 `--restart` 一步完成停机、清锁、更新与重建。
+> 若需调整 `JUDGE_MAX_CONCURRENT_JUDGES` 等并发或资源配置，先执行 `noj-cli judge stop --dir /srv/noj-judge`（会传入优雅排空宽限期 `compose stop -t <≥120s>`），更新 `.env.judge` 与 `docker-compose.judge.yml` 中对应变量后，再执行 `noj-cli judge start --dir /srv/noj-judge`（或 `noj-cli judge upgrade --dir /srv/noj-judge` 重渲染并重建）。
 
 Judge 的部署与主站部署相互独立；`noj-cli` **不会安装、替换或配置**宿主 Docker
 daemon，宝塔类面板也只做探测与提示（不调用其 API）。
@@ -113,69 +100,7 @@ Docker socket 绕过该限制。
 
 未设置或超出范围时回退到 `1000m`，**不会**因为配置为 `0` 而变成不限制 CPU。
 
-传统 OI 题使用固定的 `JUDGE_OI_IMAGE`（默认 `noj-oi-cpp`）。Worker 启动时要求该
-镜像名以 `JUDGE_IMAGE_PREFIX` 开头；题目消息不能指定 OI 镜像。镜像应由部署流程
-预先构建并加载到每个评测节点。
-
-### OI 专用评测节点
-
-生产环境的 OI native 任务应配置独立的 go-judge 服务：
-
-```dotenv
-JUDGE_GO_JUDGE_URL=https://judge.example.internal
-JUDGE_GO_JUDGE_TOKEN=<secret>
-```
-
-Worker 只向该服务提交固定的 C99/C++11 编译命令、题目输入和资源限制；题目消息不能
-修改 URL、token、编译参数或镜像。每个测试点的 CPU 时间使用
-`cpuLimit`，墙钟保护为 三倍时限，标准输出和 checker 文件均限制为 32
-MiB。`testlib` checker 会在另一个 go-judge sandbox
-中运行，不能读取用户程序容器的文件或进程。
-
-远端测试点还通过 Redis 有序集合租约做跨 Worker 并发闸门。默认最多同时占用 2 个
-远端子任务槽位，可用 `JUDGE_GO_JUDGE_RESOURCE_CAPACITY`、
-`JUDGE_GO_JUDGE_RESOURCE_TTL_MS` 和 `JUDGE_GO_JUDGE_RESOURCE_WAIT_MS`
-调整；租约使用 Redis 服务端时间并在 Worker 异常退出后由 TTL 回收。TTL
-默认且最小为 660000 ms， 覆盖任务看门狗与仍在执行的远端请求窗口。容量应按
-go-judge 节点实际 CPU/ 内存预算设置，不能把它当作题目资源限制的替代品。
-
-WASM 题目不使用 go-judge 执行用户代码。正式 Worker 镜像内置固定的 WASI SDK，
-生产 Compose 与独立 Worker 均传递 OI 环境配置。Worker 使用固定的 `JUDGE_WASI_CC`
-/ `JUDGE_WASI_CXX` 编译 C99/C++11，再由 Wasmtime 以 NOJ 内置统一标准换算的 fuel
-预算运行； `JUDGE_WASI_TARGET` 与可选 `JUDGE_WASI_SYSROOT`
-必须由节点管理员统一配置。使用 WASM `testlib` 时还要把可信 testlib 头文件放在
-`JUDGE_WASI_TESTLIB_INCLUDE` 指定的 固定目录中。每个测试点的真实墙钟保护为
-`max(30 秒, 等效时限 × 10)`，触发判 SE；文件输入题的工作目录新增 数据上限为 32
-MiB。WASI 编译器还受 10 秒墙钟/CPU、512 MiB 地址空间和 64 MiB 输出
-上限约束，超时会回收整个编译进程组。
-
-WASI 编译节点需要启用 Landlock ABI 3 或更新版本的 Linux 内核（Linux 6.2+）。
-编译器只能读取系统工具链及管理员指定的 SDK/sysroot/testlib 目录，写入仅限本次
-临时目录，不能用源码的 `include`/`incbin` 读取 Worker 配置或凭据。 自定义
-`JUDGE_WASI_CC` / `JUDGE_WASI_CXX` 必须指向同一固定 SDK 的 `bin/clang` 和
-`bin/clang++`，sysroot 必须属于该 SDK。配置 WASI 的 Worker 启动时逐文件校验
-编译器、头文件、标准库和链接器内容，缺失或不匹配时启动失败；SDK 必须对 Worker
-只读。未配置 WASI 的原生专用 Worker 不执行该启动校验，收到 WASM 任务时返回 SE。
-编译隔离不可用时返回 SE。 默认 target 为 `wasm32-wasip1`，lld
-固定一个链接线程；WASM C++ 使用 SDK 的无异常 libc++
-配置（`-fno-exceptions`），显式使用 `throw`/`try` 的题目应选择 Native 后端。
-部署前可用以下命令验收真实工具链（含 C/C++、文件题、checker
-与私有文件隔离）。开发环境先构建 NOJ 修补版，不能直接使用未修补的官方 SDK：
-
-```bash
-cd noj-judge
-bash scripts/build-oi-wasi-toolchain.sh \
-  /tmp/noj-wasi-cache /tmp/noj-wasi-build /tmp/noj-wasi-sdk
-bash scripts/check-oi-wasi-toolchain.sh /tmp/noj-wasi-sdk
-```
-
-构建需要 Python 3.11+、CMake 3.20+、Ninja、Git 和 tar，源码与官方编译器下载均
-按固定 SHA-256 校验，产物必须匹配内置组件清单。构建和输出目录必须不存在，缓存
-目录可复用。生产镜像使用同一构建入口。
-
-升级 v2 时先暂停 WASM 提交入队并排空旧任务，再升级 Core 和全部 Worker，确认
-后台标准版本及摘要一致后恢复入队。旧任务不会自动切换标准；若携带 v1 快照交给 v2
-Worker，会返回 SE，需重新评测。历史成绩不自动重测。
+传统 OI 题使用固定的 `JUDGE_OI_IMAGE`（默认 `noj-oi-cpp`）在本地受限 Docker 沙箱中编译、运行并执行 checker。Worker 启动时要求该镜像名以 `JUDGE_IMAGE_PREFIX` 开头；题目消息不能指定 OI 镜像。镜像应由部署流程预先构建并加载到每个评测节点。
 
 ## Docker daemon 权限边界
 

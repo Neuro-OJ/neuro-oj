@@ -20,17 +20,9 @@ import threading
 import uuid
 from typing import Any, Optional
 
-from noj_sdk_common.chunking import (
-    ChunkReassembler,
-    encode_chunked_frames,
-    get_max_payload_bytes,
-)
 from noj_sdk_common.rpc import RpcClient
 from noj_sdk_common.sanitize import sanitize_message, sanitize_traceback
-from noj_sdk_common.serialization import (
-    RejectedTypeError,
-    estimate_min_frame_size,
-)
+from noj_sdk_common.serialization import estimate_min_frame_size
 
 from .capability import _get_capability
 from .errors import (
@@ -126,28 +118,18 @@ class SolutionRunner:
         self,
         missing_function_as_zero: bool = True,
         forward_solution_logs_to_stderr: bool = False,
-        max_payload_bytes: Optional[int] = None,
     ) -> None:
         """`missing_function_as_zero`：选手未定义被调用函数（`NotFoundError`）且
         evaluate.py 未捕获时，是否由 SDK 写出 0 分结果（默认开启）。关闭后恢复旧
         行为：进程异常退出、无 `---RESULT---`，judge 判为平台错误。
         `forward_solution_logs_to_stderr`：默认关闭，防止隐藏用例日志进入评测
         stderr 导致盲测泄题。
-        `max_payload_bytes`：允许分片传输的最大逻辑载荷（默认 16 MiB）。
         """
         if missing_function_as_zero:
             _install_missing_function_hook()
         self._rpc = RpcClient()
         self._closed = False
         self._forward_solution_logs_to_stderr = forward_solution_logs_to_stderr
-        self._max_payload_bytes = (
-            get_max_payload_bytes()
-            if max_payload_bytes is None
-            else max(MAX_FRAME_BYTES, max_payload_bytes)
-        )
-        self._reassembler = ChunkReassembler(
-            max_payload_bytes=self._max_payload_bytes
-        )
         self._log_lock = threading.Lock()
         self._call_logs: dict[str, list[str]] = {}
         self._call_log_bytes: dict[str, int] = {}
@@ -240,18 +222,18 @@ class SolutionRunner:
                     f"timeout_ms 必须是正整数或 None，实际 {timeout_ms!r}"
                 )
 
-        # 1. 参数校验与大载荷下界预检（仅拒绝必然超限的大对象，边界由分片编码精确判定）
-        for i, arg in enumerate(args):
-            validate_type(arg, f"arg[{i}]")
+        # 1. 参数校验与大载荷下界预检（仅拒绝必然超限的大对象，边界由 check_frame_size 精确判定）
         try:
+            for i, arg in enumerate(args):
+                validate_type(arg, f"arg[{i}]")
             min_size = estimate_min_frame_size(
-                list(args), limit=self._max_payload_bytes
+                list(args), limit=MAX_FRAME_BYTES
             )
         except RecursionError as e:
             raise RejectedError(f"call 参数包含循环引用，无法序列化: {e}") from e
-        if min_size > self._max_payload_bytes:
+        if min_size > MAX_FRAME_BYTES:
             raise RejectedError(
-                f"call 参数过大（超出分片载荷上限 {self._max_payload_bytes} 字节）"
+                f"call 参数过大（超出单帧 {MAX_FRAME_BYTES} 字节上限）"
             )
 
         # 2. 构造 call 帧
@@ -270,11 +252,11 @@ class SolutionRunner:
         self._last_call_logs = ""
         self._last_call_logs_truncated = False
 
-        # 4. 写帧到 stdout（> 1 MiB 自动透明分片）。已关闭时跳过写，交由下方
+        # 4. 写帧到 stdout。已关闭时跳过写（避免往断开的通道写帧），交由下方
         #    q.get() 取到哨兵帧、按约定抛 ConnectionError。
         if not self._closed:
             try:
-                self._write_out(frame, allow_chunk=True)
+                self._write_out(frame)
             except RejectedError:
                 self._rpc.pop_pending(call_id)
                 raise
@@ -327,13 +309,6 @@ class SolutionRunner:
 
                     frame_type = frame.get("type")
 
-                    if frame_type == "chunk":
-                        reassembled = self._reassembler.feed(frame)
-                        if reassembled is None:
-                            continue
-                        frame = reassembled
-                        frame_type = frame.get("type")
-
                     if frame_type == "capability":
                         # solution 请求调用 capability：查注册表并同步执行（写响应帧）
                         self._handle_capability(frame)
@@ -368,18 +343,8 @@ class SolutionRunner:
             self._closed = True
             self._rpc.shutdown_pending()
 
-    def _write_out(self, frame: dict, *, allow_chunk: bool = False) -> None:
-        """线程安全写 NDJSON 帧到 stdout（allow_chunk=True 时 > 1 MiB 自动分片）。"""
-        if allow_chunk:
-            try:
-                frames = encode_chunked_frames(
-                    frame, max_payload_bytes=self._max_payload_bytes
-                )
-            except RejectedTypeError as e:
-                raise RejectedError(str(e)) from e
-            for part in frames:
-                self._rpc.write_frame(part)
-            return
+    def _write_out(self, frame: dict) -> None:
+        """线程安全写 NDJSON 帧到 stdout（受单帧 1 MiB 软上限约束）。"""
         line = json.dumps(frame, ensure_ascii=False, separators=(",", ":"))
         check_frame_size(line)
         self._rpc.write_frame(frame)

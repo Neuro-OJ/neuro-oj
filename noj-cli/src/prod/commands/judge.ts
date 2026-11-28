@@ -1,12 +1,7 @@
-/** `judge` 子命令（install-env / install / check / start / stop / status / logs / upgrade / reset-config）的分发与输出。 */
+/** `judge` 子命令（install-env / install / check / start / stop / status / logs / upgrade）的分发与输出。 */
 
 import { type CommandRunner, realRunner } from "../../runtime/command.ts";
-import {
-  flagValue,
-  hasFlag,
-  optionalCount,
-  UsageError,
-} from "../../util/args.ts";
+import { flagValue, hasFlag, UsageError } from "../../util/args.ts";
 import { EXIT_USAGE } from "../../cli-commands/exit-codes.ts";
 import {
   judgeCheck,
@@ -19,84 +14,8 @@ import {
   judgeUpgrade,
 } from "../judge/actions.ts";
 import type { HostProbe } from "../judge/config.ts";
-import { judgeResetConfig } from "../judge/reset-config.ts";
 import { createLocalRedis } from "../judge/local-redis.ts";
 import { humanOutput } from "./args.ts";
-
-/** `judge reset-config` 支持同步调整的调度参数旗标映射。 */
-const RESET_FLAG_TO_ENV: ReadonlyArray<readonly [string, string]> = [
-  ["--ai-tasks", "JUDGE_AI_TASK_CONCURRENCY"],
-  ["--wasm-tasks", "JUDGE_WASM_TASK_CONCURRENCY"],
-  ["--native-tasks", "JUDGE_NATIVE_TASK_CONCURRENCY"],
-  ["--wasm-compile", "JUDGE_WASM_COMPILE_CONCURRENCY"],
-  ["--wasm-run", "JUDGE_WASM_CASE_CONCURRENCY"],
-  ["--memory-mb", "JUDGE_RESOURCE_MEMORY_MB"],
-  ["--pools", "JUDGE_RESOURCE_POOLS"],
-];
-
-const RESET_BOOLEAN_FLAGS = new Set([
-  "--stop",
-  "--restart",
-  "--dry-run",
-  "--json",
-]);
-
-const RESET_VALUE_FLAGS = new Set([
-  "--env-file",
-  "--compose-file",
-  "--group",
-  "--claim-prefix",
-  "--wait-timeout",
-  ...RESET_FLAG_TO_ENV.map(([flag]) => flag),
-]);
-
-/**
- * 严格校验 `judge reset-config` 的选项，防止 `--dry-run=true` 或未知选项
- * 在被 `hasFlag`/`positionals` 忽略后静默触发停机或重置。
- */
-export function validateResetConfigArgs(rest: string[]): void {
-  for (let i = 0; i < rest.length; i++) {
-    const arg = rest[i]!;
-    if (arg === "--") {
-      if (i + 1 < rest.length) {
-        throw new UsageError(
-          `judge reset-config 不接受额外参数：${rest.slice(i + 1).join(" ")}`,
-        );
-      }
-      break;
-    }
-    if (!arg.startsWith("-")) {
-      throw new UsageError(`judge reset-config 不接受位置参数：${arg}`);
-    }
-    const eq = arg.indexOf("=");
-    if (eq >= 0) {
-      const name = arg.slice(0, eq);
-      const val = arg.slice(eq + 1);
-      if (RESET_BOOLEAN_FLAGS.has(name)) {
-        throw new UsageError(
-          `布尔选项 ${name} 不支持 '=' 写法，请直接写 ${name}`,
-        );
-      }
-      if (!RESET_VALUE_FLAGS.has(name)) {
-        throw new UsageError(`judge reset-config 不支持选项：${name}`);
-      }
-      if (val === "") {
-        throw new UsageError(`${name} 需要一个值`);
-      }
-      continue;
-    }
-    if (RESET_BOOLEAN_FLAGS.has(arg)) continue;
-    if (RESET_VALUE_FLAGS.has(arg)) {
-      const next = rest[i + 1];
-      if (next === undefined || next.startsWith("--")) {
-        throw new UsageError(`${arg} 需要一个值`);
-      }
-      i++;
-      continue;
-    }
-    throw new UsageError(`judge reset-config 不支持选项：${arg}`);
-  }
-}
 
 /**
  * `judge` 的子命令分发（`install-env` / `install` / `upgrade` 等）。
@@ -230,45 +149,10 @@ export async function runProdJudge(
       say(r.message);
       return r.exitCode;
     }
-    case "reset-config": {
-      validateResetConfigArgs(rest);
-      const updates: Record<string, string> = {};
-      for (const [flag, envKey] of RESET_FLAG_TO_ENV) {
-        const value = flagValue(rest, flag);
-        if (value !== undefined) updates[envKey] = value;
-      }
-      const r = await judgeResetConfig({
-        ...base,
-        group: flagValue(rest, "--group"),
-        claimPrefix: flagValue(rest, "--claim-prefix"),
-        stop: hasFlag(rest, "--stop"),
-        restart: hasFlag(rest, "--restart"),
-        waitTimeoutSeconds: optionalCount(rest, "--wait-timeout"),
-        updates,
-      });
-      if (json) {
-        console.log(JSON.stringify(
-          {
-            exitCode: r.exitCode,
-            message: r.message,
-            resourceGroup: r.resourceGroup,
-            claimPrefix: r.claimPrefix,
-            updatedKeys: r.updatedKeys,
-            cleared: r.cleared,
-            restarted: r.restarted,
-          },
-          null,
-          2,
-        ));
-      } else {
-        say(r.message);
-      }
-      return r.exitCode;
-    }
     default:
       console.error(
         `judge 需要子命令 install-env/install/check/start/stop/status/logs/` +
-          `upgrade/reset-config，收到 "${sub}"`,
+          `upgrade，收到 "${sub}"`,
       );
       return EXIT_USAGE;
   }

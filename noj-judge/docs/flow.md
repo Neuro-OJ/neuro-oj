@@ -20,8 +20,7 @@
 | Docker API   | bollard 0.21               |
 | 沙箱         | Docker 容器                |
 
-依赖清单以 `Cargo.toml` 为准（OI WASM 后端另有 `wasmtime`，fuel 与线性内存限额由
-`src/oi/` 配置）。
+依赖清单以 `Cargo.toml` 为准。
 
 ## 双容器主流程
 

@@ -3,6 +3,8 @@ use std::path::Path;
 use sha2::{Digest, Sha256};
 use tracing::warn;
 
+use crate::mq::QueuePool;
+
 /// noj-judge 运行时配置。
 ///
 /// 所有配置项均从环境变量读取，提供合理的默认值。
@@ -45,6 +47,10 @@ pub struct Config {
     pub allow_http_s3: bool,
     /// 同时执行的评测任务数（默认: 2）
     pub max_concurrent_judges: usize,
+    /// 启用的队列池（默认: `["oi-native", "ai"]`，由 `JUDGE_RESOURCE_POOLS` 配置）
+    pub enabled_pools: Vec<QueuePool>,
+    /// 是否轮询 legacy 扁平队列 `{prefix}:{high|medium|low}`（`JUDGE_QUEUE_LAYOUT=legacy`）
+    pub poll_legacy_queues: bool,
     /// 每个评测容器的 CPU 上限（单位：millicores，默认: 1000 = 1 核）
     pub cpu_limit_millicores: u64,
     /// Evaluator 单次评测时间硬上限（毫秒，默认: 300000）
@@ -97,6 +103,8 @@ impl std::fmt::Debug for Config {
             .field("evaluator_network_mode", &self.evaluator_network_mode)
             .field("allow_http_s3", &self.allow_http_s3)
             .field("max_concurrent_judges", &self.max_concurrent_judges)
+            .field("enabled_pools", &self.enabled_pools)
+            .field("poll_legacy_queues", &self.poll_legacy_queues)
             .field("cpu_limit_millicores", &self.cpu_limit_millicores)
             .field("max_evaluator_time_ms", &self.max_evaluator_time_ms)
             .field(
@@ -417,8 +425,15 @@ impl Config {
             evaluator_network_mode: env_or("JUDGE_EVALUATOR_NETWORK", DEFAULT_EVALUATOR_NETWORK),
             allow_http_s3: env_var_parse::<bool>("JUDGE_ALLOW_HTTP_S3").unwrap_or(false),
             max_concurrent_judges: env_var_parse::<usize>("JUDGE_MAX_CONCURRENT_JUDGES")
+                .or_else(|| env_var_parse::<usize>("MAX_CONCURRENT_JUDGES"))
                 .filter(|value| (1..=MAX_CONFIGURED_CONCURRENT_JUDGES).contains(value))
                 .unwrap_or(DEFAULT_MAX_CONCURRENT_JUDGES),
+            enabled_pools: parse_enabled_pools(
+                std::env::var("JUDGE_RESOURCE_POOLS").ok().as_deref(),
+            ),
+            poll_legacy_queues: std::env::var("JUDGE_QUEUE_LAYOUT")
+                .ok()
+                .is_some_and(|v| v.trim().eq_ignore_ascii_case("legacy")),
             cpu_limit_millicores: env_var_parse::<u64>("JUDGE_CPU_LIMIT_MILLICORES")
                 .filter(|value| {
                     (MIN_CPU_LIMIT_MILLICORES..=MAX_CPU_LIMIT_MILLICORES).contains(value)
@@ -446,14 +461,18 @@ impl Config {
     }
 
     /// 返回三个评测任务队列名（high / medium / low）。
-    /// 历史队列布局用于配置兼容测试；生产调度使用资源池队列。
-    #[allow(dead_code)]
+    /// 用于 legacy 扁平队列布局（`JUDGE_QUEUE_LAYOUT=legacy`）与配置兼容测试。
     pub fn judge_queues(&self) -> [String; 3] {
         [
             format!("{}:high", self.judge_queue),
             format!("{}:medium", self.judge_queue),
             format!("{}:low", self.judge_queue),
         ]
+    }
+
+    /// 返回指定资源池的三级优先级队列名（high / medium / low）。
+    pub fn pool_queues(&self, pool: QueuePool) -> [String; 3] {
+        pool.queues(&self.judge_queue)
     }
 
     /// 优雅关闭排空超时：至少 30s，且覆盖支持包下载超时 + 结果推送余量。
@@ -493,6 +512,38 @@ impl Config {
             );
         }
         Ok(())
+    }
+}
+
+fn parse_enabled_pools(raw: Option<&str>) -> Vec<QueuePool> {
+    let Some(raw) = raw else {
+        return QueuePool::ALL.to_vec();
+    };
+    let mut pools = Vec::new();
+    for token in raw.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        match token {
+            "oi-native" => {
+                if !pools.contains(&QueuePool::OiNative) {
+                    pools.push(QueuePool::OiNative);
+                }
+            }
+            "ai" => {
+                if !pools.contains(&QueuePool::Ai) {
+                    pools.push(QueuePool::Ai);
+                }
+            }
+            "oi-wasm" => {
+                warn!("JUDGE_RESOURCE_POOLS 中的 oi-wasm 已移除，将忽略（OI 统一走 oi-native）");
+            }
+            other => {
+                warn!(pool = %other, "忽略未知的 JUDGE_RESOURCE_POOLS 条目");
+            }
+        }
+    }
+    if pools.is_empty() {
+        QueuePool::ALL.to_vec()
+    } else {
+        pools
     }
 }
 
@@ -574,6 +625,7 @@ mod tests {
             "RESULT_QUEUE",
             "WORK_DIR",
             "JUDGE_MAX_CONCURRENT_JUDGES",
+            "MAX_CONCURRENT_JUDGES",
             "JUDGE_CPU_LIMIT_MILLICORES",
             "JUDGE_DOCKER_HOST",
             "JUDGE_REQUIRE_ISOLATED_DOCKER",
@@ -582,10 +634,14 @@ mod tests {
             // 实例 ID 必须由环境变量隔离，否则会读到宿主/其他测试的值
             "JUDGE_INSTANCE_ID",
             "JUDGE_EVALUATOR_NETWORK",
+            "JUDGE_RESOURCE_POOLS",
+            "JUDGE_QUEUE_LAYOUT",
         ] {
             std::env::remove_var(key);
         }
         let cfg = Config::from_env();
+        assert_eq!(cfg.enabled_pools, vec![QueuePool::OiNative, QueuePool::Ai]);
+        assert!(!cfg.poll_legacy_queues);
         assert_eq!(cfg.redis_url, "redis://127.0.0.1/");
         assert_eq!(cfg.judge_queue, "noj:judge:queue");
         assert_eq!(
@@ -623,8 +679,12 @@ mod tests {
             ("JUDGE_DOCKER_HOST", "unix:///run/noj-judge/docker.sock"),
             ("JUDGE_REQUIRE_ISOLATED_DOCKER", "true"),
             ("JUDGE_PRIORITY_POLL_TIMEOUT_MS", "250"),
+            ("JUDGE_RESOURCE_POOLS", "ai"),
+            ("JUDGE_QUEUE_LAYOUT", "legacy"),
         ]);
         let cfg = Config::from_env();
+        assert_eq!(cfg.enabled_pools, vec![QueuePool::Ai]);
+        assert!(cfg.poll_legacy_queues);
         assert_eq!(cfg.redis_url, "redis://custom:6379");
         assert_eq!(cfg.judge_queue, "custom:queue");
         assert_eq!(
@@ -866,5 +926,31 @@ mod tests {
                 mode
             );
         }
+    }
+
+    #[test]
+    fn test_config_max_concurrent_judges_fallback_alias() {
+        let _lock = ENV_TEST_MUTEX.lock().unwrap();
+        let _removed = EnvGuard::remove(&["JUDGE_MAX_CONCURRENT_JUDGES"]);
+        let _alias = EnvGuard::set(vec![("MAX_CONCURRENT_JUDGES", "5")]);
+        let cfg = Config::from_env();
+        assert_eq!(cfg.max_concurrent_judges, 5);
+
+        let _primary = EnvGuard::set(vec![("JUDGE_MAX_CONCURRENT_JUDGES", "7")]);
+        let cfg = Config::from_env();
+        assert_eq!(cfg.max_concurrent_judges, 7);
+    }
+
+    #[test]
+    fn test_parse_enabled_pools_ignores_oi_wasm_and_falls_back() {
+        assert_eq!(
+            parse_enabled_pools(Some("oi-wasm,oi-native,ai")),
+            vec![QueuePool::OiNative, QueuePool::Ai]
+        );
+        assert_eq!(
+            parse_enabled_pools(Some("oi-wasm")),
+            vec![QueuePool::OiNative, QueuePool::Ai]
+        );
+        assert_eq!(parse_enabled_pools(Some("ai")), vec![QueuePool::Ai]);
     }
 }

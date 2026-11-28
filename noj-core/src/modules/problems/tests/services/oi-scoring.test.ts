@@ -80,7 +80,7 @@ Deno.test("OI 自测包读取额外文件时按 ZIP 安全基线限额解压", a
   const provider = new LocalStorageProvider(tempDir);
   setStorageProviderForTest(provider);
   const baseConfig = {
-    backend: "wasm" as const,
+    backend: "native" as const,
     languages: ["cc"] as ("c" | "cc")[],
     time_limit_ms: 1000,
     memory_limit_mb: 256,
@@ -149,10 +149,10 @@ Deno.test("OI 自测包读取额外文件时按 ZIP 安全基线限额解压", a
   }
 });
 
-Deno.test("OI 自测包遵循原始 base64 下载协议，校验和覆盖实际 ZIP 内容", async () => {
+Deno.test("OI 自测包遵循原始 base64 下载协议，校验和覆盖实际 ZIP 内容（含存量 WASM 配置归一化）", async () => {
   const built = await buildOiSelfTestPackage(
     {
-      backend: "wasm",
+      backend: "wasm" as unknown as "native",
       languages: ["cc"],
       time_limit_ms: 1000,
       memory_limit_mb: 256,
@@ -170,6 +170,7 @@ Deno.test("OI 自测包遵循原始 base64 下载协议，校验和覆盖实际 
       { id: "empty", input: "", expected_output: "" },
     ],
   );
+  assertEquals(built.runtime_config.backend, "native");
   // 与现有 Worker 一样按 & 与第一个 = 切分，不使用会把 + 改为空格的表单解析。
   const query = built.download_url.split("?")[1]!;
   const fields = Object.fromEntries(

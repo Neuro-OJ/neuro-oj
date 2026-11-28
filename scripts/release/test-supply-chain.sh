@@ -34,7 +34,7 @@ NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" >/de
   fail "合法供应链配置检查失败"
 pass "合法供应链配置"
 
-sed -i.bak 's/FROM wasi-runtime AS runtime/FROM unknown-runtime AS runtime/' "$TEST_ROOT/noj-judge/Dockerfile"
+sed -i.bak 's#^FROM [^[:space:]]*#FROM unknown-runtime#' "$TEST_ROOT/noj-judge/Dockerfile"
 if NOJ_SUPPLY_CHAIN_ROOT="$TEST_ROOT" bash "$SCRIPT_DIR/check-supply-chain.sh" >/dev/null 2>&1; then
   fail "未定义的内部阶段/未固定外部镜像未被拒绝"
 fi

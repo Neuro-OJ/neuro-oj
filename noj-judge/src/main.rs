@@ -11,18 +11,16 @@ mod mq;
 mod oi;
 mod prediction;
 mod sandbox;
-mod scheduling;
 mod types;
 
-use crate::scheduling::{Pool, Scheduler, Settings};
 use anyhow::{Context, Result};
 use futures_util::{stream::FuturesUnordered, FutureExt, StreamExt};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
 use crate::config::Config;
-use crate::mq::PulledTask;
-use noj_judge::metrics::{heartbeat_loop_with_resources, JudgeMetrics};
+use crate::mq::{PulledTask, QueuePool};
+use noj_judge::metrics::{heartbeat_loop, JudgeMetrics};
 // 跨 worker 的每用户评测占用（分布式 claim）：替代原先的进程内 HashSet。
 use noj_judge::user_claim;
 
@@ -118,49 +116,22 @@ impl Drop for ActiveUserGuard {
     }
 }
 
-async fn next_pool_admission(
-    scheduler: &Scheduler,
-    cursor: &mut usize,
-) -> Result<(Pool, Arc<scheduling::Lease>)> {
-    loop {
-        for _ in 0..scheduler.settings.enabled.len() {
-            let pool = scheduler.settings.enabled[*cursor % scheduler.settings.enabled.len()];
-            *cursor = (*cursor + 1) % scheduler.settings.enabled.len();
-            if let Some(lease) = scheduler.try_task(pool, 0, 0).await? {
-                return Ok((pool, Arc::new(lease)));
-            }
+async fn pull_next_task(
+    conn: &mut redis::aio::MultiplexedConnection,
+    groups: &[(&'static str, Option<QueuePool>, [String; 3])],
+    cursors: &mut [usize],
+    group_cursor: &mut usize,
+) -> Result<Option<(Option<QueuePool>, PulledTask)>> {
+    for offset in 0..groups.len() {
+        let idx = (*group_cursor + offset) % groups.len();
+        if let Some(pulled) =
+            mq::try_pull_task_priority(conn, &groups[idx].2, &mut cursors[idx]).await?
+        {
+            *group_cursor = (idx + 1) % groups.len();
+            return Ok(Some((groups[idx].1, pulled)));
         }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
-}
-
-fn task_memory_reservation(task: &types::JudgeTask) -> (u64, u64) {
-    if let Some(config) = task.runtime_config.as_oi() {
-        let memory = config
-            .subtasks
-            .iter()
-            .flat_map(|group| {
-                group.cases.iter().map(move |case| {
-                    case.memory_limit_mb
-                        .or(group.memory_limit_mb)
-                        .unwrap_or(config.memory_limit_mb)
-                })
-            })
-            .max()
-            .unwrap_or(config.memory_limit_mb);
-        (2 * 512 + 128, 512.max(memory.saturating_add(128)))
-    } else if let Some(config) = task.runtime_config.as_dual() {
-        (
-            512 + 64,
-            config
-                .evaluator
-                .memory_limit_mb
-                // prediction 任务没有 Solution 容器，只预留 Evaluator 内存。
-                .saturating_add(config.solution.as_ref().map_or(0, |s| s.memory_limit_mb)),
-        )
-    } else {
-        (512, 512)
-    }
+    Ok(None)
 }
 
 /// 初始化 Tokio 运行时，连接 Redis 与 Docker，进入主循环阻塞拉取评测任务。
@@ -181,10 +152,6 @@ fn main() -> Result<()> {
         let config = Config::from_env();
         // VULN-20：启动期配置校验（禁止 evaluator 使用 bridge/host 网络）。
         config.validate()?;
-        let resource_settings = Settings::from_env(&config.instance_id)?;
-        if resource_settings.enabled.contains(&Pool::Wasm) {
-            oi::toolchain::validate_configured_toolchain().context("启用 oi-wasm 资源池必须安装匹配的 WASI SDK")?;
-        } else { oi::toolchain::validate_at_startup()?; }
         info!("noj-judge 启动");
 
         // 连接 Redis
@@ -210,11 +177,21 @@ fn main() -> Result<()> {
         info!("Docker 连接成功");
 
         let result_queue = config.result_queue.clone();
-        let queue_prefix = config.judge_queue.clone();
-        let mut priority_cursors = [0usize; 3];
-        let mut pool_cursor = 0usize;
-        let scheduler = Scheduler::connect(redis_client.clone(), resource_settings, &config.user_claim_prefix).await?;
-        let idle_poll_delay = std::time::Duration::from_secs_f64(config.priority_poll_timeout_secs.clamp(0.001, 0.025));
+        let queue_groups: Vec<(&'static str, Option<QueuePool>, [String; 3])> =
+            if config.poll_legacy_queues {
+                vec![("legacy", None, config.judge_queues())]
+            } else {
+                config
+                    .enabled_pools
+                    .iter()
+                    .map(|&pool| (pool.name(), Some(pool), config.pool_queues(pool)))
+                    .collect()
+            };
+        let mut priority_cursors = vec![0usize; queue_groups.len()];
+        let mut group_cursor = 0usize;
+        let idle_poll_delay = std::time::Duration::from_secs_f64(
+            config.priority_poll_timeout_secs.clamp(0.001, 0.025),
+        );
         let work_dir = config.work_dir.clone();
         let instance_id = config.instance_id.clone();
 
@@ -247,21 +224,16 @@ fn main() -> Result<()> {
         let oi_image = config.oi_image.clone();
         let command_whitelist = config.command_whitelist.clone();
         let drain_timeout = config.drain_timeout_secs();
-        let capacity = &scheduler.settings.capacities;
-        let max_concurrent_judges = scheduler.settings.enabled.iter().map(|pool| match pool { Pool::Wasm => capacity.wasm_tasks, Pool::Native => capacity.native_tasks, Pool::Ai => capacity.ai_tasks }).sum::<u64>() as usize;
+        let max_concurrent_judges = config.max_concurrent_judges;
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_judges));
         let cpu_limit_millicores = config.cpu_limit_millicores;
         let max_evaluator_time_ms = config.max_evaluator_time_ms;
         let max_solution_call_timeout_ms = config.max_solution_call_timeout_ms;
         let prediction_workspace_mb = config.prediction_workspace_mb;
-        // F-07：全局并发闸门 + 每用户分布式 claim（同一用户跨 worker 同时最多 1 个评测）。
-        // 先获取全局 Semaphore 槽位，再做 per-user 公平调度，避免不同用户任务无限制 spawn。
-        if std::env::var_os("JUDGE_MAX_CONCURRENT_JUDGES").is_some() {
-            warn!("JUDGE_MAX_CONCURRENT_JUDGES 已弃用，使用分池任务与阶段容量");
-        }
         // 跨 worker 的每用户占用走 Redis（见 noj_judge::user_claim 的模块文档）。
         let user_claim_prefix = config.user_claim_prefix.clone();
         let user_claim_ttl_ms = config.user_claim_ttl_ms;
-        // 专用连接：不与主循环的 BRPOPLPUSH 连接共用，避免阻塞命令影响 claim 延迟。
+        // 专用连接：不与主循环的拉取连接共用，避免阻塞命令影响 claim 延迟。
         let mut claim_conn = redis_client
             .get_multiplexed_async_connection()
             .await
@@ -275,27 +247,27 @@ fn main() -> Result<()> {
         // member 前缀（`{instance_id}:`）清除是安全的，且不会误删其他实例的 claim。
         {
             let mut prefixes = vec![user_claim_prefix.clone()];
-            for pool in Pool::ALL { for kind in ["submission", "self-test"] { prefixes.push(format!("{}:{}:{}", user_claim_prefix, pool.name(), kind)); } }
-            for prefix in prefixes {
-            let mut purge_conn = claim_conn.clone();
-            match user_claim::purge_instance_claims(
-                &mut purge_conn,
-                &prefix,
-                &instance_id,
-            )
-            .await
-            {
-                Ok(n) if n > 0 => info!(
-                    removed = n,
-                    instance_id = %instance_id,
-                    "已回收本实例遗留的用户 claim（上次退出未释放）"
-                ),
-                Ok(_) => {}
-                Err(e) => warn!(
-                    error = %e,
-                    "回收本实例遗留 claim 失败（将由 claim TTL 兜底）"
-                ),
+            for pool in QueuePool::ALL {
+                for kind in ["submission", "self-test"] {
+                    prefixes.push(format!("{}:{}:{}", user_claim_prefix, pool.name(), kind));
+                }
             }
+            for prefix in prefixes {
+                let mut purge_conn = claim_conn.clone();
+                match user_claim::purge_instance_claims(&mut purge_conn, &prefix, &instance_id)
+                    .await
+                {
+                    Ok(n) if n > 0 => info!(
+                        removed = n,
+                        instance_id = %instance_id,
+                        "已回收本实例遗留的用户 claim（上次退出未释放）"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => warn!(
+                        error = %e,
+                        "回收本实例遗留 claim 失败（将由 claim TTL 兜底）"
+                    ),
+                }
             }
         }
         let judge_metrics = Arc::new(JudgeMetrics::new(max_concurrent_judges));
@@ -305,18 +277,20 @@ fn main() -> Result<()> {
         let heartbeat_instance_id = instance_id.clone();
         let heartbeat_cache_dir = std::path::PathBuf::from(cache_dir.clone());
         let heartbeat_work_dir = std::path::PathBuf::from(work_dir.clone());
-        let heartbeat_resources = (scheduler.settings.group.clone(), scheduler.resource_key().to_owned(),
-            scheduler.settings.enabled.iter().map(|pool| pool.name().to_owned()).collect::<Vec<_>>(),
-            serde_json::to_value(&scheduler.settings.capacities)?);
+        let heartbeat_pools = config
+            .enabled_pools
+            .iter()
+            .map(|pool| pool.name().to_string())
+            .collect::<Vec<_>>();
         tokio::spawn(async move {
-            heartbeat_loop_with_resources(
+            heartbeat_loop(
                 heartbeat_redis,
                 heartbeat_docker,
                 heartbeat_instance_id,
                 heartbeat_metrics,
                 heartbeat_cache_dir,
                 heartbeat_work_dir,
-                Some(heartbeat_resources),
+                heartbeat_pools,
             )
             .await;
         });
@@ -387,39 +361,30 @@ fn main() -> Result<()> {
 
         // 使用 FuturesUnordered 跟踪所有 in-flight 任务
         let mut tasks = FuturesUnordered::new();
-        let mut fatal_exit: Option<anyhow::Error> = None;
 
         loop {
             // F-07：先获取全局并发槽位，再拉取任务。
             // 若先拉取再等槽位，任务已被移入 processing 却只是在排队等槽位，
             // 会被 sweeper 误判超时重投，造成同一提交重复评测。
             let shutdown = &mut shutdown_rx;
-            let (pool, permit) = tokio::select! {
+            let permit = tokio::select! {
                 biased;
                 _ = shutdown => {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                acquired = next_pool_admission(&scheduler, &mut pool_cursor) => {
+                acquired = Arc::clone(&semaphore).acquire_owned() => {
                     match acquired {
                         Ok(permit) => permit,
-                        Err(e) if scheduling::is_group_config_mismatch(&e) => {
-                            error!(error = %e, "资源组容量配置已重置或变更，停止准入并在排空在途任务后退出");
-                            drain::drain_tasks(&mut tasks, drain_timeout).await;
-                            fatal_exit = Some(e);
-                            break;
-                        }
                         Err(e) => {
                             error!("获取评测并发槽位失败: {}", e);
-                            tokio::time::sleep(PULL_RETRY_DELAY).await;
-                            continue;
+                            break;
                         }
                     }
                 }
             };
 
-            let judge_queues = ["high", "medium", "low"].map(|level| format!("{}:{}:{}", queue_prefix, pool.name(), level));
-            // 空池只做非阻塞探测；领取后消息已在 processing，完成后再 ack。
+            // 非阻塞轮询各池；领取后消息已在 processing，完成后再 ack。
             // 关闭与 Redis 返回同时发生的遗留消息仍由现有 sweeper 恢复。
             let shutdown = &mut shutdown_rx;
             tokio::select! {
@@ -429,14 +394,19 @@ fn main() -> Result<()> {
                     drain::drain_tasks(&mut tasks, drain_timeout).await;
                     break;
                 }
-                task_result = mq::try_pull_task_priority(
+                task_result = pull_next_task(
                     &mut redis_conn,
-                    &judge_queues,
-                    &mut priority_cursors[pool.index()],
+                    &queue_groups,
+                    &mut priority_cursors,
+                    &mut group_cursor,
                 ) => {
-                    let pulled: PulledTask = match task_result {
-                        Ok(Some(pulled)) => pulled,
-                        Ok(None) => { drop(permit); tokio::time::sleep(idle_poll_delay).await; continue; },
+                    let (pulled_pool, pulled): (Option<QueuePool>, PulledTask) = match task_result {
+                        Ok(Some(item)) => item,
+                        Ok(None) => {
+                            drop(permit);
+                            tokio::time::sleep(idle_poll_delay).await;
+                            continue;
+                        }
                         Err(e) => {
                             error!("拉取任务失败: {}", e);
                             drop(permit);
@@ -448,43 +418,23 @@ fn main() -> Result<()> {
                         }
                     };
 
-                    let admission = pool.validate_task(&pulled.task).map(|_| task_memory_reservation(&pulled.task));
-                    let admission_error = match admission {
-                        Ok((base, headroom)) => match permit.try_resize_task(pool, base, headroom).await {
-                            Ok(true) => None,
-                            Ok(false) => {
-                                mq::mark_resource_wait(&redis_client, &config.judge_queue, &pulled.task, Some("memory")).await;
-                                mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await?;
-                                drop(permit);
-                                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                                continue;
-                            }
-                            Err(error) if scheduling::is_group_config_mismatch(&error) => {
-                                error!(
-                                    submission_id = %pulled.task.submission_id,
-                                    error = %error,
-                                    "检测到资源组容量配置已重置或变更，将任务放回队列并排空退出"
-                                );
-                                if let Err(requeue_err) =
-                                    mq::requeue_task(&redis_client, &pulled.queue, &pulled.raw).await
-                                {
-                                    error!(
-                                        submission_id = %pulled.task.submission_id,
-                                        error = %requeue_err,
-                                        "放回已拉取任务失败（将由 sweeper 兜底恢复）"
-                                    );
-                                }
-                                drop(permit);
-                                drain::drain_tasks(&mut tasks, drain_timeout).await;
-                                fatal_exit = Some(error);
-                                break;
-                            }
-                            Err(error) => Some(error),
-                        },
-                        Err(error) => Some(error),
-                    };
-                    let task_claim_prefix = format!("{}:{}:{}", user_claim_prefix, pool.name(),
-                        if pulled.task.task_kind.as_deref() == Some("self_test") { "self-test" } else { "submission" });
+                    let pool_name = pulled_pool.map(|p| p.name()).unwrap_or_else(|| {
+                        if pulled.task.runtime_config.as_oi().is_some() {
+                            QueuePool::OiNative.name()
+                        } else {
+                            QueuePool::Ai.name()
+                        }
+                    });
+                    let task_claim_prefix = format!(
+                        "{}:{}:{}",
+                        user_claim_prefix,
+                        pool_name,
+                        if pulled.task.task_kind.as_deref() == Some("self_test") {
+                            "self-test"
+                        } else {
+                            "submission"
+                        }
+                    );
                     // F-07 公平调度（跨 worker）：同一用户已有**未过期**评测 claim 时，
                     // 释放槽位并把任务放回队尾轮给他人。
                     // 判定走 Redis 全局状态，因此 N 个 worker 也严格保持「每用户 1 个」。
@@ -561,7 +511,6 @@ fn main() -> Result<()> {
                     let task_metrics = Arc::clone(&judge_metrics);
                     task_metrics.task_started();
 
-                    let task_scheduler = scheduler.clone();
                     let handle = tokio::spawn(async move {
                         let raw = pulled.raw;
                         let task = pulled.task;
@@ -590,6 +539,13 @@ fn main() -> Result<()> {
                         let task_work_dir = worker_context.work_dir.clone();
                         let task_image_prefix = worker_context.image_prefix.clone();
                         let task_instance_id = run_context.worker_instance_id.clone();
+                        tracing::debug!(
+                            submission_id = %run_context.submission_id,
+                            run_id = %run_context.run_id,
+                            task_kind = %run_context.task_kind,
+                            worker_instance_id = %task_instance_id,
+                            "开始执行评测任务"
+                        );
                         // RAII guard：任务结束（含 panic/异常路径）时自动释放用户 claim。
                         let _active_guard = ActiveUserGuard::new(
                             guard_conn,
@@ -601,7 +557,7 @@ fn main() -> Result<()> {
                         let _permit = permit;
 
                         // 根据 judge_type 分发到双容器或传统 OI 执行器。
-                        let execution = judge::runner::evaluate_with_scheduler(
+                        let outcome = judge::runner::evaluate_with_cpu_limit(
                             docker,
                             Some(redis_client.clone()),
                             &task,
@@ -621,38 +577,15 @@ fn main() -> Result<()> {
                             max_solution_call_timeout_ms,
                             prediction_workspace_mb,
                             &task_instance_id,
-                            Some((&task_scheduler, &_permit)),
-                        );
-                        let admission_failed = admission_error.is_some();
-                        let outcome = if let Some(error) = admission_error { Err(error) } else {
-                            tokio::select! {
-                                result = execution => result,
-                                _ = _permit.wait_lost() => {
-                                    run_context.cancel();
-                                    warn!(
-                                        submission_id = %run_context.submission_id,
-                                        run_id = %run_context.run_id,
-                                        task_kind = %run_context.task_kind,
-                                        worker_instance_id = %run_context.worker_instance_id,
-                                        cancelled = run_context.is_cancelled(),
-                                        "评测资源租约丢失，已标记本次运行取消"
-                                    );
-                                    Err(anyhow::anyhow!("资源租约续租失败，评测中止"))
-                                },
-                            }
-                        };
+                        )
+                        .await;
                         let mut result = match outcome {
                             Ok(r) => r,
                             Err(e) => {
                                 error!(submission_id = %task.submission_id, error = %e, "评测任务失败");
                                 let mut failed = types::JudgeResult::from_error(&e, &task.submission_id, task.rejudge_seq);
-                                if admission_failed {
-                                    failed.output = if e.to_string().contains("最低资源需求") {
-                                        "当前评测节点内存预算不足，请联系管理员".into()
-                                    } else { "调度协议或资源准入失败，请重测".into() };
-                                }
                                 if task.judge_type == "oi" {
-                                    failed.details["oi"] = serde_json::json!({"scoring_version":2,"verdict":"SE","backend":if pool == Pool::Wasm { "wasm" } else { "native" },"score":0,"max_score":10000,"subtasks":[]});
+                                    failed.details["oi"] = serde_json::json!({"scoring_version":2,"verdict":"SE","backend":"native","score":0,"max_score":10000,"subtasks":[]});
                                 }
                                 failed
                             }
@@ -731,10 +664,6 @@ fn main() -> Result<()> {
         )
         .await;
 
-        if let Some(err) = fatal_exit {
-            return Err(err);
-        }
-
         Ok(())
     })
 }
@@ -796,7 +725,6 @@ mod tests {
                 image: "img".to_string(),
                 call_timeout_ms: 1000,
                 memory_limit_mb: 256,
-                isolation_mode: None,
             }),
         };
         assert_eq!(config.evaluator.time_limit_ms, 1000);

@@ -4,6 +4,32 @@ use tracing::{error, info, warn};
 
 use crate::types::{JudgeResult, JudgeTask};
 
+/// 支持的评测任务队列池（不再包含 `oi-wasm`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueuePool {
+    OiNative,
+    Ai,
+}
+
+impl QueuePool {
+    pub const ALL: [Self; 2] = [Self::OiNative, Self::Ai];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::OiNative => "oi-native",
+            Self::Ai => "ai",
+        }
+    }
+
+    pub fn queues(self, prefix: &str) -> [String; 3] {
+        [
+            format!("{prefix}:{}:high", self.name()),
+            format!("{prefix}:{}:medium", self.name()),
+            format!("{prefix}:{}:low", self.name()),
+        ]
+    }
+}
+
 const PROCESSING_SUFFIX: &str = ":processing";
 
 /// 等待诊断只保留轮次和原因，不携带源码或题包；短 TTL 防止异常退出残留。

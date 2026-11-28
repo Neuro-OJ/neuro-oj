@@ -16,7 +16,7 @@ interface QueueItemShape {
   domain_id?: string
   domain_slug?: string
   kind?: 'submission' | 'self_test'
-  resource_pool?: 'oi-wasm' | 'oi-native' | 'ai'
+  resource_pool?: 'oi-native' | 'ai'
   waiting_reason?: 'pool_full' | 'user_busy' | 'memory'
   judge_started_at?: string | null
   judge_finished_at?: string | null

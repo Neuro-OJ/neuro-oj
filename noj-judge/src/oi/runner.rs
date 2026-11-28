@@ -10,26 +10,17 @@ use std::time::{Duration, Instant};
 
 use anyhow::{bail, Context, Result};
 use bollard::Docker;
-use futures_util::future::join_all;
 use tracing::warn;
 
 use super::docker_exec::{
     create_container, exec_with_stdin, exec_without_stdin, exec_without_stdin_with_output_limit,
 };
-use crate::oi::{
-    score_submission, OiBackend, OiCase, OiCaseResult, OiCheckerType, OiRuntimeConfig, OiStatus,
-};
+use crate::oi::{score_submission, OiCase, OiCaseResult, OiCheckerType, OiRuntimeConfig, OiStatus};
 use crate::sandbox::cleanup::remove_container_force;
 use crate::sandbox::container::{
     extract_zip_entries_from_file, inject_file_to_container, ZipEntry,
 };
 use crate::types::{JudgeResult, JudgeTask};
-
-#[path = "native_go_judge_runner.rs"]
-mod go_judge_runner;
-#[cfg(test)]
-use go_judge_runner::compile_response_is_infrastructure_error;
-use go_judge_runner::evaluate_native_go_judge;
 
 /// 用户源码上限。题包和 MQ 已有大小限制，judge 侧仍保留最后一道边界。
 const MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
@@ -76,8 +67,6 @@ enum CaseOutcome {
 
 /// 执行一个 OI 任务。`trusted_image` 只能来自 Worker 配置，绝不从题目或 MQ
 /// 消息中读取。
-// 独立验收程序仍使用此入口，不连接共享调度资源。
-#[allow(dead_code)]
 pub async fn evaluate_native(
     docker: &Docker,
     task: &JudgeTask,
@@ -86,33 +75,6 @@ pub async fn evaluate_native(
     cpu_limit_millicores: u64,
     instance_id: &str,
     resource_lease_client: Option<&redis::Client>,
-) -> Result<JudgeResult> {
-    evaluate_scheduled(
-        docker,
-        task,
-        support_package,
-        trusted_image,
-        cpu_limit_millicores,
-        instance_id,
-        resource_lease_client,
-        None,
-    )
-    .await
-}
-
-#[allow(clippy::too_many_arguments)]
-pub async fn evaluate_scheduled(
-    docker: &Docker,
-    task: &JudgeTask,
-    support_package: &Path,
-    trusted_image: &str,
-    cpu_limit_millicores: u64,
-    instance_id: &str,
-    resource_lease_client: Option<&redis::Client>,
-    scheduling: Option<(
-        &crate::scheduling::Scheduler,
-        &std::sync::Arc<crate::scheduling::Lease>,
-    )>,
 ) -> Result<JudgeResult> {
     let runtime_config = task
         .runtime_config
@@ -145,20 +107,10 @@ pub async fn evaluate_scheduled(
         ));
     }
     let progress =
-        super::progress::ProgressReporter::new(task, resource_lease_client, runtime_config)
-            .with_scheduling(scheduling);
-    progress
-        .phase(if runtime_config.backend == OiBackend::Wasm {
-            "queued"
-        } else {
-            "compiling"
-        })
-        .await;
+        super::progress::ProgressReporter::new(task, resource_lease_client, runtime_config);
+    progress.phase("compiling").await;
     let entries = extract_zip_entries_from_file(support_package).context("读取 OI 支持包失败")?;
     let files = index_files(entries)?;
-    progress
-        .adjust_data_memory(files.values().map(Vec::len).sum())
-        .await?;
     validate_references(runtime_config, &files)?;
     let checker_source = if runtime_config.checker.kind == OiCheckerType::Testlib {
         Some(
@@ -169,79 +121,6 @@ pub async fn evaluate_scheduled(
     } else {
         None
     };
-
-    // 生产节点配置 go-judge 时，编译和运行统一交给专用评测服务；未配置时
-    // 保留本地 Docker 路径供开发和离线测试使用。两条路径都使用同一份 OI
-    // scorer，避免服务端状态码与本地状态码分叉。
-    if runtime_config.backend == OiBackend::Native {
-        if let Some(client) = crate::oi::go_judge::GoJudgeClient::from_env()? {
-            let lease_config = resource_lease_client
-                .map(|client| {
-                    crate::oi::resource_lease::ResourceLeaseConfig::from_client(client.clone())
-                })
-                .transpose()?;
-            return match evaluate_native_go_judge(
-                &client,
-                task,
-                runtime_config,
-                &files,
-                lease_config.as_ref(),
-                &progress,
-            )
-            .await
-            {
-                Ok(result) => Ok(result),
-                Err(error) => {
-                    warn!(
-                        submission_id = %task.submission_id,
-                        error = %error,
-                        "go-judge OI 任务失败，归因为 SE"
-                    );
-                    Ok(system_error_result(task, "go-judge OI 评测失败"))
-                }
-            };
-        }
-    }
-
-    if runtime_config.backend == OiBackend::Wasm {
-        let Some(profile) = task.oi_cost_profile.as_ref() else {
-            let mut result = system_error_result(task, "WASM 任务缺少统一标准，请重测");
-            result.output = "WASM 任务缺少统一标准，请重测".to_string();
-            result.details["oi"]["backend"] = serde_json::json!("wasm");
-            result.details["metering"] = serde_json::json!({"comparable":false,"legacy":true,"termination_reason":"standard_mismatch"});
-            return Ok(result);
-        };
-        let cases = runtime_config
-            .subtasks
-            .iter()
-            .flat_map(|subtask| subtask.cases.iter())
-            .map(|case| {
-                Ok::<_, anyhow::Error>((
-                    case.input.clone(),
-                    files
-                        .get(&case.input)
-                        .context("WASM 输入文件索引丢失")?
-                        .clone(),
-                    files
-                        .get(&case.output)
-                        .context("WASM 输出文件索引丢失")?
-                        .clone(),
-                ))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        return crate::oi::wasm::evaluate_wasm_with_progress(
-            task,
-            runtime_config,
-            &cases,
-            profile,
-            checker_source.map(|source| source.as_slice()),
-            &selected_user_runtime_files(runtime_config, &files),
-            &selected_checker_compile_files(runtime_config, &files),
-            &selected_user_compile_files(runtime_config, &files),
-            Some(&progress),
-        )
-        .await;
-    }
 
     let started = Instant::now();
     let executable = match compile_native_program(
@@ -519,7 +398,7 @@ fn selected_checker_compile_files(
     selected_extra_files_from_paths(paths, files)
 }
 
-/// 本地 Docker 后端下，checker 运行容器同样需要注入 `checker_extra_files`（与 go-judge / WASM 保持一致）。
+/// 本地 Docker 后端下，checker 运行容器同样需要注入 `checker_extra_files`。
 fn selected_checker_runtime_files(
     config: &OiRuntimeConfig,
     files: &HashMap<String, Vec<u8>>,
@@ -1104,31 +983,6 @@ mod tests {
             Some(&b"secret-dict".to_vec())
         );
         assert_eq!(runtime.get("dict.txt"), Some(&b"secret-dict".to_vec()));
-    }
-
-    #[test]
-    fn incomplete_compile_response_is_infrastructure_error() {
-        let response = crate::oi::go_judge::GoJudgeResponse {
-            status: Some("Accepted".to_string()),
-            exit_status: Some(0),
-            time: None,
-            clock_time: None,
-            memory: None,
-            files: HashMap::new(),
-            file_ids: HashMap::new(),
-        };
-        assert!(compile_response_is_infrastructure_error(&response));
-
-        let response = crate::oi::go_judge::GoJudgeResponse {
-            status: None,
-            exit_status: Some(1),
-            time: None,
-            clock_time: None,
-            memory: None,
-            files: HashMap::new(),
-            file_ids: HashMap::new(),
-        };
-        assert!(compile_response_is_infrastructure_error(&response));
     }
 }
 

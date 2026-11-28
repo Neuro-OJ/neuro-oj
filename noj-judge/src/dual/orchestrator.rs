@@ -19,7 +19,7 @@ use super::config::{
 };
 use super::frames::{drain_eval_tail, handle_eval_chunk, handle_sol_chunk};
 use super::payload::{self, ResultPayload};
-use super::pipe::{write_cancel_frame, write_timeout_frame, PipeWriteOutcome};
+use super::pipe::{write_timeout_frame, PipeWriteOutcome};
 use super::SOLUTION_ENTRY_FILE;
 
 /// 双容器评测入口，允许通过 Worker 配置传入每个容器的 CPU 上限。
@@ -150,19 +150,13 @@ pub async fn evaluate_dual_with_cpu_limit(
 
         // 6–7. 并发启动 Evaluator exec 与 Solution exec（Solution 不注入 NOJ_LLM_*）
         let solution_entry_path = format!("/workspace/{}", solution_entry_file);
-        let mut solution_cmd = vec![
+        let solution_cmd = vec![
             "python3".to_string(),
             "-m".to_string(),
             "noj_solution_sdk.host".to_string(),
             "--entry".to_string(),
             solution_entry_path,
-            "--default-call-timeout-ms".to_string(),
-            solution.call_timeout_ms.to_string(),
         ];
-        if solution.isolation_mode.as_deref() == Some("fork_per_call") {
-            solution_cmd.push("--isolation-mode".to_string());
-            solution_cmd.push("fork_per_call".to_string());
-        }
         let eval_start = async {
             start_exec(&docker, &evaluator_id, evaluator_cmd, evaluator_env)
                 .await
@@ -293,12 +287,6 @@ async fn expire_call_timeouts(
                 let outcome = write_timeout_frame(eval_input, &id).await?;
                 if outcome == PipeWriteOutcome::PeerGone {
                     eval_outcome = PipeWriteOutcome::PeerGone;
-                }
-                if sol_outcome != PipeWriteOutcome::PeerGone {
-                    let cancel_outcome = write_cancel_frame(sol_input, &id).await?;
-                    if cancel_outcome == PipeWriteOutcome::PeerGone {
-                        sol_outcome = PipeWriteOutcome::PeerGone;
-                    }
                 }
                 *sent_call_timeout = true;
             }

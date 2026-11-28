@@ -94,7 +94,7 @@ def estimate_frame_size(value: Any, limit: int = MAX_FRAME_BYTES) -> int:
     用于在 `encode_value`（bytes → base64 膨胀 ~1.33×）之前预检超大返回值，
     避免对必然超限的大对象（如 handler 返回 1 GB dict）先吃完整序列化内存。
     估算为宽松上界（≥ 实际序列化字节数），因此"估算 > limit 即拒绝"
-    不会误伤合法值；边界附近仍由 `check_frame_size` 或分片编码做最终判定。
+    不会误伤合法值；边界附近仍由 `check_frame_size` 做最终判定。
     """
     total = 0
 
@@ -143,8 +143,8 @@ def estimate_min_frame_size(value: Any, limit: int = MAX_FRAME_BYTES) -> int:
     """估算 value 序列化后帧字节数的严格下界（不复制数据，超限即短路）。
 
     仅在必然超限时触发快速拒绝（`estimate_min_frame_size(v, limit) > limit`），
-    避免宽松上界把大规模数字列表（如 `[0] * 700_000` 或 `[0.5] * 700_000`）误判
-    为超限；实际精确字节数由后续 `encode_chunked_frames` / `check_frame_size` 判定。
+    避免宽松上界把大规模数字列表（如 `[0] * 300_000` 或 `[0.5] * 200_000`）误判
+    为超限；实际精确字节数由后续 `check_frame_size` 判定。
     """
     total = 0
 

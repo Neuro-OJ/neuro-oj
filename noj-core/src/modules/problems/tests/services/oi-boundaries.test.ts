@@ -15,11 +15,11 @@ const base = () => ({
     cases: [{ input: "1.in", output: "1.out" }],
   }],
 });
-Deno.test("OI: 公开后端标识区分原生、WASM、双容器与客观题", () => {
+Deno.test("OI: 公开后端标识区分原生（含存量 WASM 兼容）、双容器与客观题", () => {
   assertEquals(getJudgeBackend("oi", base()), "oi-native");
   assertEquals(
     getJudgeBackend("oi", { ...base(), backend: "wasm" }),
-    "oi-wasm",
+    "oi-native",
   );
   assertEquals(getJudgeBackend("dual", null), "dual");
   assertEquals(getJudgeBackend(undefined, null), "dual");
@@ -54,39 +54,22 @@ Deno.test("OI: 限制测试点100个且检查继承后的资源", () => {
   );
 });
 
-Deno.test("OI: WASM 完整数据使用独立总预算，原生仍限制60秒", () => {
-  const config = {
-    ...base(),
-    backend: "wasm",
-    time_limit_ms: 10000,
-    subtasks: [{
-      id: "all",
-      score: 100,
-      cases: Array.from({ length: 20 }, (_, i) => ({
-        input: `${i}.in`,
-        output: `${i}.out`,
-      })),
-    }],
-  };
-  validateOiRuntimeConfig(config);
-  assertThrows(() => validateOiRuntimeConfig({ ...config, backend: "native" }));
-  validateOiRuntimeConfig({ ...config, time_limit_ms: 15000 });
+Deno.test("OI: 新配置仅允许 native 后端，总时限按测试点与子任务覆盖累计不超过 60 秒", () => {
   assertThrows(() =>
-    validateOiRuntimeConfig({ ...config, time_limit_ms: 15001 })
+    validateOiRuntimeConfig({
+      ...base(),
+      backend: "wasm" as never,
+    })
   );
-});
-
-Deno.test("OI: WASM 总预算按测试点与子任务覆盖后的限制累计", () => {
   const config = {
     ...base(),
-    backend: "wasm",
     time_limit_ms: 1,
     subtasks: [{
       id: "all",
       score: 100,
-      time_limit_ms: 200000,
+      time_limit_ms: 30000,
       cases: [
-        { input: "1.in", output: "1.out", time_limit_ms: 100000 },
+        { input: "1.in", output: "1.out", time_limit_ms: 30000 },
         { input: "2.in", output: "2.out" },
       ],
     }],
@@ -95,7 +78,7 @@ Deno.test("OI: WASM 总预算按测试点与子任务覆盖后的限制累计", 
   assertThrows(() =>
     validateOiRuntimeConfig({
       ...config,
-      subtasks: [{ ...config.subtasks[0], time_limit_ms: 200001 }],
+      subtasks: [{ ...config.subtasks[0], time_limit_ms: 30001 }],
     })
   );
 });

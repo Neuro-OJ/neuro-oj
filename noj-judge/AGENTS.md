@@ -48,7 +48,7 @@ docker build -t noj-evaluator-python -f docker/evaluator-python/Dockerfile .
 | 想找                                       | 看                                       |
 | ------------------------------------------ | ---------------------------------------- |
 | 通用环境变量全表                           | [docs/env.md](docs/env.md)               |
-| OI / go-judge / WASI 变量与工具链          | [docs/env-oi.md](docs/env-oi.md)         |
+| OI Docker 环境变量                       | [docs/env-oi.md](docs/env-oi.md)         |
 | 容器安全项、zip 防护、镜像与支持包缓存     | [docs/sandbox.md](docs/sandbox.md)       |
 | wire 契约、协议 v3 封套、结果字段语义      | [docs/protocol.md](docs/protocol.md)     |
 | 职责、技术栈、双容器主流程、超时归属       | [docs/flow.md](docs/flow.md)             |
@@ -64,7 +64,7 @@ docker build -t noj-evaluator-python -f docker/evaluator-python/Dockerfile .
 | `src/dual/`                                      | 双容器编排、NDJSON 帧与管道、调用追踪             |
 | `src/prediction/mod.rs`                          | prediction 单容器数据评分（无 Solution 容器）     |
 | `src/sandbox/`                                   | 容器生命周期、HostConfig 安全项、下载、缓存、清扫 |
-| `src/oi/`                                        | OI WASM / native 编译运行、go-judge 租约          |
+| `src/oi/`                                        | OI 原生 Docker 编译与运行                         |
 | `src/mq.rs`、`src/user_claim.rs`、`src/drain.rs` | 拉取与重投、用户级 claim、优雅关闭排空            |
 | `src/types.rs`、`src/config.rs`                  | wire 类型、环境变量解析                           |
 

@@ -1,5 +1,3 @@
-import { SCHEDULING_ENV_DEFAULTS } from "./scheduling-env.ts";
-
 /**
  * 独立 Judge 的命令编排。
  *
@@ -49,10 +47,7 @@ import {
   redactUrl,
   renderJudgeCompose,
 } from "./compose.ts";
-import {
-  computeJudgeStopTimeoutSeconds,
-  readJudgeComposeEnv,
-} from "./reset-config-helpers.ts";
+import { isMap, isSeq, parseDocument, Scalar } from "yaml";
 import { isFile } from "../../util/fs.ts";
 
 /** 所有动作的公共注入点。 */
@@ -405,7 +400,7 @@ export async function judgeCheck(
   return { exitCode: 0, message: "Judge 配置检查通过", paths };
 }
 
-/** `start` / `stop` / `upgrade` / `reset-config` 的公共前置。 */
+/** \`start\` / \`stop\` / \`upgrade\` 的公共前置。 */
 export async function prepareExisting(
   opts: JudgeActionOptions,
 ): Promise<
@@ -572,7 +567,7 @@ export function renderStatusSummary(env: Record<string, string>): string[] {
     "JUDGE_QUEUE",
     "RESULT_QUEUE",
     "WORK_DIR",
-    ...Object.keys(SCHEDULING_ENV_DEFAULTS),
+    "JUDGE_MAX_CONCURRENT_JUDGES",
     "JUDGE_IMAGE_PREFIX",
     "JUDGE_IMAGE_REGISTRY",
     "JUDGE_DOCKER_SOCKET",
@@ -783,7 +778,7 @@ function defaultsForDryRun(): Record<string, string> {
     JUDGE_QUEUE: "noj:judge:queue",
     RESULT_QUEUE: "noj:judge:results",
     WORK_DIR: "/tmp/noj-judge",
-    ...SCHEDULING_ENV_DEFAULTS,
+    JUDGE_MAX_CONCURRENT_JUDGES: "2",
     JUDGE_IMAGE_PREFIX: "noj-",
     JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
     JUDGE_DOCKER_HOST: "unix:///run/noj-judge/docker.sock",
@@ -791,4 +786,128 @@ function defaultsForDryRun(): Record<string, string> {
     JUDGE_UID: "10001",
     JUDGE_GID: "10001",
   };
+}
+
+function lookupComposeVar(
+  name: string,
+  envFileValues: Record<string, string>,
+  hostEnv: Record<string, string>,
+): string | undefined {
+  if (Object.prototype.hasOwnProperty.call(hostEnv, name)) {
+    return hostEnv[name];
+  }
+  if (Object.prototype.hasOwnProperty.call(envFileValues, name)) {
+    return envFileValues[name];
+  }
+  return undefined;
+}
+
+function expandComposeValue(
+  raw: string,
+  envFileValues: Record<string, string>,
+  hostEnv: Record<string, string>,
+): string {
+  return raw.replace(
+    /\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)(?:(:?[-+?])([^}]*))?\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
+    (
+      match,
+      bracedName: string | undefined,
+      op: string | undefined,
+      operand: string | undefined,
+      bareName: string | undefined,
+    ) => {
+      if (match === "$$") return "$";
+      const name = bracedName ?? bareName!;
+      const val = lookupComposeVar(name, envFileValues, hostEnv);
+      const isSet = val !== undefined;
+      const isNonEmpty = val !== undefined && val !== "";
+      switch (op) {
+        case ":-":
+          return isNonEmpty ? val : (operand ?? "");
+        case "-":
+          return isSet ? val : (operand ?? "");
+        case ":+":
+          return isNonEmpty ? (operand ?? "") : "";
+        case "+":
+          return isSet ? (operand ?? "") : "";
+        case ":?":
+          if (!isNonEmpty) {
+            throw new UsageError(
+              `Compose 变量 ${name} 未设置或为空：${operand || "缺少必需变量"}`,
+            );
+          }
+          return val;
+        case "?":
+          if (!isSet) {
+            throw new UsageError(
+              `Compose 变量 ${name} 未设置：${operand || "缺少必需变量"}`,
+            );
+          }
+          return val;
+        default:
+          return val ?? "";
+      }
+    },
+  );
+}
+
+function scalarText(node: unknown): string {
+  if (node instanceof Scalar) {
+    return node.value === null || node.value === undefined
+      ? ""
+      : String(node.value);
+  }
+  if (node === null || node === undefined) return "";
+  return String(node);
+}
+
+/** 静态读取 `docker-compose.judge.yml` 中 `services.judge.environment`，供 `judgeStop` 计算宽限期。 */
+export function readJudgeComposeEnv(
+  composeText: string,
+  envFileValues: Record<string, string>,
+  hostEnv: Record<string, string> = {},
+): Record<string, string> | null {
+  const doc = parseDocument(composeText);
+  if (doc.errors.length > 0) return null;
+  const envNode = doc.getIn(["services", "judge", "environment"], true);
+  if (isMap(envNode)) {
+    const out: Record<string, string> = {};
+    for (const pair of envNode.items) {
+      const key = scalarText(pair.key);
+      if (key === "") continue;
+      const rawVal = scalarText(pair.value);
+      out[key] = expandComposeValue(rawVal, envFileValues, hostEnv);
+    }
+    return out;
+  }
+  if (isSeq(envNode)) {
+    const out: Record<string, string> = {};
+    for (const item of envNode.items) {
+      const text = scalarText(item);
+      const eq = text.indexOf("=");
+      if (eq > 0) {
+        const key = text.slice(0, eq);
+        out[key] = expandComposeValue(
+          text.slice(eq + 1),
+          envFileValues,
+          hostEnv,
+        );
+      } else if (text !== "") {
+        const passed = lookupComposeVar(text, envFileValues, hostEnv);
+        if (passed !== undefined) out[text] = passed;
+      }
+    }
+    return out;
+  }
+  return null;
+}
+
+/** 计算 `docker compose stop -t <sec>` 宽限期，确保覆盖 Worker 的优雅排空与退场清理预算。 */
+export function computeJudgeStopTimeoutSeconds(
+  effectiveEnv: Record<string, string>,
+): number {
+  const raw = (effectiveEnv["SUPPORT_PACKAGE_DOWNLOAD_TIMEOUT"] ?? "").trim();
+  const parsed = /^[1-9][0-9]*$/.test(raw) ? Number.parseInt(raw, 10) : 60;
+  const drainTimeout = Math.max(30, parsed + 30);
+  return Math.max(120, drainTimeout + 30);
 }

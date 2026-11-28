@@ -1,5 +1,7 @@
-import { getBuiltinOiCostProfile } from "../../problems/types/oi-cost-profile.ts";
-import { isOiRuntimeConfig } from "../../problems/types/runtime-config.ts";
+import {
+  isOiRuntimeConfig,
+  normalizeOiRuntimeConfig,
+} from "../../problems/types/runtime-config.ts";
 import {
   buildJudgeTask,
   type BuildJudgeTaskInput,
@@ -28,16 +30,10 @@ export interface PrepareJudgeTaskInput extends BuildJudgeTaskInput {
  * - `problem_version_id` 仅在**已知**时下发（迁移期存量题目无版本）；
  * - `evaluation_protocol_version = 3`，judge 回显 task_kind、对应运行标识与
  *   `result_kind`。
- *
- * WASM 任务只绑定内置标准，禁止注入本机或题目自定义成本。
  */
 export function prepareJudgeTask(
   input: PrepareJudgeTaskInput,
 ): JudgeTask {
-  const profile = isOiRuntimeConfig(input.runtime_config) &&
-      input.runtime_config.backend === "wasm"
-    ? getBuiltinOiCostProfile()
-    : undefined;
   const taskKind: JudgeTaskKind = input.task_kind ?? "submission";
   const runId = taskKind === "self_test"
     ? input.self_test_run_id ?? input.run_id ?? crypto.randomUUID()
@@ -54,8 +50,10 @@ export function prepareJudgeTask(
       : {}),
     evaluation_protocol_version: EVALUATION_PROTOCOL_VERSION,
     runtime_config: isOiRuntimeConfig(input.runtime_config)
-      ? { ...input.runtime_config, scoring_version: 2 }
+      ? {
+        ...normalizeOiRuntimeConfig(input.runtime_config),
+        scoring_version: 2,
+      }
       : input.runtime_config,
-    oi_cost_profile: profile,
   });
 }

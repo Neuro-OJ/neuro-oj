@@ -1149,7 +1149,6 @@ const CASES: Array<{ name: string; fn: () => Promise<void> | void }> = [
           );
           assertEquals(snap.totalPending, 2);
           assertEquals(snap.byPool?.ai.pendingByTier.high, 2);
-          assertEquals(snap.byPool?.["oi-wasm"].totalPending, 0);
           assertEquals(snap.byPool?.["oi-native"].totalPending, 0);
 
           const res = await runChaosDrainVerification({
@@ -1166,9 +1165,9 @@ const CASES: Array<{ name: string; fn: () => Promise<void> | void }> = [
         },
       );
 
-      // 2) 仅 oi-wasm:medium:dead 有死信残留
+      // 2) 仅 oi-native:medium:dead 有死信残留
       await withMockRedis(
-        { "noj:judge:queue:oi-wasm:medium:dead": 1 },
+        { "noj:judge:queue:oi-native:medium:dead": 1 },
         [],
         async (redisUrl) => {
           const res = await runChaosDrainVerification({
@@ -1179,7 +1178,7 @@ const CASES: Array<{ name: string; fn: () => Promise<void> | void }> = [
           assertEquals(res.passed, false);
           assertEquals(res.finalSnapshot.deadCount, 1);
           assertEquals(
-            res.finalSnapshot.byPool?.["oi-wasm"].deadByTier.medium,
+            res.finalSnapshot.byPool?.["oi-native"].deadByTier.medium,
             1,
           );
           assertEquals(

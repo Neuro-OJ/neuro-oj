@@ -1,6 +1,7 @@
 import { getRedis } from "../../../shared/mq/connection.ts";
 import {
   isOiRuntimeConfig,
+  normalizeOiRuntimeConfig,
   validateOiRuntimeConfig,
 } from "../../problems/types/runtime-config.ts";
 import { validateRuntimeConfig } from "../../problems/contracts/cross-module/services_problems_problems-types.ts";
@@ -55,6 +56,7 @@ export function normalizePoolTask(
       return null;
     }
     if (isOiRuntimeConfig(value.runtime_config)) {
+      value.runtime_config = normalizeOiRuntimeConfig(value.runtime_config);
       validateOiRuntimeConfig(
         value.runtime_config,
         value.task_kind === "self_test",

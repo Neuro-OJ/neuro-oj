@@ -1,11 +1,9 @@
 //! Judge worker 与单次运行的显式上下文。
 //!
-//! 资源、路径和实例身份属于 WorkerContext；任务归属、取消状态和本次运行标识属于
+//! 资源、路径和实例身份属于 WorkerContext；任务归属和本次运行标识属于
 //! RunContext。这样执行后端不需要继续在调用栈中散落一组相互独立的生命周期参数。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 
@@ -41,7 +39,6 @@ pub struct RunContext {
     pub submission_id: String,
     pub run_id: String,
     pub worker_instance_id: String,
-    cancelled: Arc<AtomicBool>,
 }
 
 impl RunContext {
@@ -61,16 +58,7 @@ impl RunContext {
             submission_id: task.submission_id.clone(),
             run_id,
             worker_instance_id: worker.instance_id.clone(),
-            cancelled: Arc::new(AtomicBool::new(false)),
         })
-    }
-
-    pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
     }
 }
 
@@ -112,10 +100,8 @@ mod tests {
         let worker = WorkerContext::new("worker-1", "/tmp/noj", "/tmp/noj/cache", "noj-");
         let run = RunContext::new(&task, &worker).unwrap();
         assert_eq!(run.task_kind, "submission");
+        assert_eq!(run.submission_id, "submission-1");
         assert_eq!(run.run_id, "attempt-1");
-        assert!(!run.is_cancelled());
-        run.cancel();
-        assert!(run.is_cancelled());
         let _: Option<RuntimeConfig> = task.runtime_config.as_dual().cloned();
         let _: &JudgeRuntimeConfig = &task.runtime_config;
     }

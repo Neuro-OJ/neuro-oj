@@ -106,6 +106,7 @@ export {
   LLM_DEFAULT_MODEL_ALIAS,
   LLM_MAX_MODELS_PER_PROBLEM,
   LLM_MODEL_ALIAS_PATTERN,
+  normalizeOiRuntimeConfig,
   parseImageRef,
   SUBMISSION_MODES,
   validateOiRuntimeConfig,
@@ -151,13 +152,6 @@ export type {
   ProblemBundleManifest,
 } from "./types/problem-bundle.ts";
 export type { OiSubtask, OiTestCase } from "./types/runtime-config.ts";
-export {
-  getBuiltinOiCostProfile,
-  getOiMeteringStandard,
-  isValidOiCostProfile,
-  OI_VARIABLE_COST_KEYS,
-} from "./types/oi-cost-profile.ts";
-export type { OiCostProfile } from "./types/oi-cost-profile.ts";
 export {
   buildOiSelfTestPackage,
   validateOiSelfTestCases,

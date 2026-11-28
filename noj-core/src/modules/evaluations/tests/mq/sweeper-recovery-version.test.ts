@@ -139,7 +139,6 @@ async function recoverAndReadMessages(
         "noj:judge:queue:ai:medium",
         "noj:judge:queue:ai:low",
         "noj:judge:queue:oi-native:medium",
-        "noj:judge:queue:oi-wasm:medium",
       ]
     ) {
       for (const raw of fake.getMessages(queue)) {

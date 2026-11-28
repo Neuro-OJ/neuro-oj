@@ -107,16 +107,6 @@ export function assertDraftRuntimeConfigShape(runtime: unknown): void {
         throw new BadRequestError(`solution.${field} 必须是数字`);
       }
     }
-    const isolationMode = (solution as Record<string, unknown>).isolation_mode;
-    if (
-      isolationMode !== undefined &&
-      isolationMode !== "shared" &&
-      isolationMode !== "fork_per_call"
-    ) {
-      throw new BadRequestError(
-        "solution.isolation_mode 仅允许 shared / fork_per_call",
-      );
-    }
   }
 }
 

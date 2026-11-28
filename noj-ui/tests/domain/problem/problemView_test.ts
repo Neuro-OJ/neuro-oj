@@ -299,7 +299,7 @@ function baseProblem() {
   };
 }
 Deno.test('problemView: OI 后端公开字段在独立页与竞赛页保留，缺失时不猜测后端', () => {
-  for (const backend of ['oi-native', 'oi-wasm'] as const) {
+  for (const backend of ['oi-native', 'dual'] as const) {
     const view = toContestProblemView({
       ...baseContest(),
       judge_type: 'oi',

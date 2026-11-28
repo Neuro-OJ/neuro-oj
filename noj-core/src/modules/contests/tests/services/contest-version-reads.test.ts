@@ -232,7 +232,7 @@ Deno.test({
       );
       assertExists(upgraded);
       assertEquals(upgraded.title, "V2 题面");
-      assertEquals(upgraded.judge_backend, "oi-wasm");
+      assertEquals(upgraded.judge_backend, "oi-native");
       assertEquals(upgraded.supported_languages, ["c"]);
       assertEquals(upgraded.samples, [{
         id: "sample",

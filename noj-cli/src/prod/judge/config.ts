@@ -34,10 +34,6 @@
  * 本模块不持有模块级可变状态（AGENTS.md §8.2 多副本约束）。
  */
 
-import {
-  assertSchedulingEnv,
-  SCHEDULING_ENV_DEFAULTS,
-} from "./scheduling-env.ts";
 import { OI_ENV_DEFAULTS } from "./oi-env.ts";
 import { dirname, isAbsolute, join, normalize } from "@std/path";
 import { isPlaceholder, validateEnv } from "../../core/config-schema.ts";
@@ -121,11 +117,11 @@ export const JUDGE_REQUIRED_KEYS: readonly string[] = [
 /** 首装写入的键与默认值。 */
 export const JUDGE_DEFAULT_VALUES: Readonly<Record<string, string>> = {
   ...OI_ENV_DEFAULTS,
-  ...SCHEDULING_ENV_DEFAULTS,
   JUDGE_QUEUE: "noj:judge:queue",
   RESULT_QUEUE: "noj:judge:results",
   JUDGE_PRIORITY_POLL_TIMEOUT_MS: "100",
   WORK_DIR: "/tmp/noj-judge",
+  JUDGE_MAX_CONCURRENT_JUDGES: "2",
 
   JUDGE_IMAGE_PREFIX: "noj-",
   JUDGE_IMAGE_REGISTRY: "ghcr.io/neuro-oj",
@@ -356,7 +352,13 @@ export function assertJudgeConfigValues(env: Record<string, string>): void {
   }
   assertJudgeVersion(envValue(env, "NOJ_VERSION"));
 
-  assertSchedulingEnv(env);
+  const maxConcurrent = env["JUDGE_MAX_CONCURRENT_JUDGES"] ??
+    JUDGE_DEFAULT_VALUES["JUDGE_MAX_CONCURRENT_JUDGES"]!;
+  if (!/^[1-9][0-9]*$/.test(maxConcurrent) || Number(maxConcurrent) > 1024) {
+    throw new UsageError(
+      "JUDGE_MAX_CONCURRENT_JUDGES 必须为 1～1024 的正整数",
+    );
+  }
   for (const key of ["JUDGE_DOCKER_SOCKET_GID", "JUDGE_UID", "JUDGE_GID"]) {
     if (!/^[0-9]+$/.test(envValue(env, key))) {
       throw new UsageError(`${key} 必须是数字：${envValue(env, key)}`);

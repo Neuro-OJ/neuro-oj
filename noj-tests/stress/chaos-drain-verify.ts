@@ -2,7 +2,7 @@
  * Worker 排空（drain）与队列重投恢复一致性演练校验器。
  *
  * 对齐 `noj-judge/src/mq.rs` 与 `noj-core/src/shared/mq/judge-queues.ts` 的 Redis 队列布局：
- * - 分池主队列（默认 `pools`）：`<prefix>:<pool>:<tier>`（pool 为 `ai` / `oi-wasm` / `oi-native`）
+ * - 分池主队列（默认 `pools`）：`<prefix>:<pool>:<tier>`（pool 为 `ai` / `oi-native`）
  * - 旧版主队列（`legacy`）：`<prefix>:<tier>`（`high` / `medium` / `low`）
  * - 进行中队列：`<queue>:processing`
  * - 资源等待状态键：`<prefix>:waiting:<submission_id>`
@@ -16,10 +16,9 @@
  */
 
 export type QueuePriority = "high" | "medium" | "low";
-export type QueuePool = "ai" | "oi-wasm" | "oi-native";
+export type QueuePool = "ai" | "oi-native";
 export const QUEUE_POOLS: readonly QueuePool[] = [
   "ai",
-  "oi-wasm",
   "oi-native",
 ];
 export type QueueLayout = "pools" | "legacy" | "both";

@@ -1043,18 +1043,26 @@ Deno.test({
       const oi = await listProblems({ ...query, judge_type: "oi" });
       assertEquals(oi.total, 2);
       assertEquals(oi.items.length, 1);
-      for (
-        const [backend, index] of [["dual", 0], ["oi-native", 1], [
-          "oi-wasm",
-          2,
-        ]] as const
-      ) {
-        const result = await listProblems({ ...query, judge_backend: backend });
-        assertEquals(result.total, 1);
-        assertEquals(result.items[0].id, ids[index]);
-        assertEquals(result.items[0].judge_backend, backend);
-        assertEquals(result.items[0].runtime_config, undefined);
-      }
+      const dualResult = await listProblems({
+        ...query,
+        judge_backend: "dual",
+      });
+      assertEquals(dualResult.total, 1);
+      assertEquals(dualResult.items[0].id, ids[0]);
+      assertEquals(dualResult.items[0].judge_backend, "dual");
+      assertEquals(dualResult.items[0].runtime_config, undefined);
+
+      // 存量 wasm DB 行在读与筛选时兼容归一化为 oi-native
+      const oiResult = await listProblems({
+        ...query,
+        limit: 10,
+        judge_backend: "oi-native",
+      });
+      assertEquals(oiResult.total, 2);
+      assertEquals(
+        oiResult.items.map((item) => item.judge_backend),
+        ["oi-native", "oi-native"],
+      );
       assertEquals(
         (await listProblems({ ...query, judge_type: "dual" })).total,
         1,
@@ -1067,12 +1075,16 @@ Deno.test({
         (await listProblems({
           ...query,
           judge_type: "dual",
-          judge_backend: "oi-wasm",
+          judge_backend: "oi-native",
         })).total,
         0,
       );
       await assertRejects(
         () => listProblems({ judge_type: "invalid" }),
+        BadRequestError,
+      );
+      await assertRejects(
+        () => listProblems({ judge_backend: "oi-wasm" }),
         BadRequestError,
       );
       await assertRejects(

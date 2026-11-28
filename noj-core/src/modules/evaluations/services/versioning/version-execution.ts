@@ -65,7 +65,6 @@ export async function versionSupportPackageDownload(
     problem_version_id: task.problem_version_id,
     judge_type: task.judge_type,
     runtime_config: task.runtime_config,
-    ...(task.oi_cost_profile ? { oi_cost_profile: task.oi_cost_profile } : {}),
     ...(task.llm && llmConfig
       ? {
         llm_execution: previous?.llm_execution ?? {
