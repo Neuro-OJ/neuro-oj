@@ -32,17 +32,28 @@ function setPage(p: number) {
   router.push({ query: { ...route.query, page: String(p) } });
 }
 
-// 榜单切换（#580）：`?board=checkin` 为签到活跃榜，缺省为解题榜
+// 榜单切换（#580 / #810）：`?board=practice-rating` 能力值榜，`?board=checkin` 签到活跃榜，缺省为解题榜
 // UTabs v-model 类型为 string | number，这里用 string 承接
 const board = computed<string>({
-  get: () => (route.query.board === 'checkin' ? 'checkin' : 'solved'),
+  get: () => {
+    if (route.query.board === 'checkin') return 'checkin';
+    if (route.query.board === 'practice-rating') return 'practice-rating';
+    return 'solved';
+  },
   // 切换榜单时重置页码与月份，避免沿用另一榜单的分页
   set: (value: string) => {
-    router.push({ query: value === 'checkin' ? { board: 'checkin' } : {} });
+    if (value === 'checkin') {
+      router.push({ query: { board: 'checkin' } });
+    } else if (value === 'practice-rating') {
+      router.push({ query: { board: 'practice-rating' } });
+    } else {
+      router.push({ query: {} });
+    }
   },
 });
 const boardItems = [
   { label: '解题榜', value: 'solved', icon: 'i-lucide-trophy' },
+  { label: '能力值榜', value: 'practice-rating', icon: 'i-lucide-gauge' },
   { label: '签到活跃榜', value: 'checkin', icon: 'i-lucide-calendar-check' },
 ];
 
@@ -54,14 +65,21 @@ function setCheckinMonth(month: string) {
 
 <template>
   <div class="mx-auto max-w-[1440px] space-y-3 px-4 pt-4 pb-8 sm:px-6">
-    <LibraryPageHeader title="全站榜单" description="解题成就与每月签到活跃排行榜"
+    <LibraryPageHeader title="全站榜单" description="解题成就、练习能力值与每月签到活跃排行榜"
       :count="board === 'solved' ? `${total} 人上榜` : undefined" />
 
     <UTabs v-model="board" :items="boardItems" :content="false" class="w-fit" />
 
+    <!-- 练习能力值榜（Best 30） -->
+    <PracticeRatingLeaderboard
+      v-if="board === 'practice-rating'"
+      :page="page"
+      @update:page="setPage"
+    />
+
     <!-- 签到活跃榜 -->
     <CheckinLeaderboard
-      v-if="board === 'checkin'"
+      v-else-if="board === 'checkin'"
       :month="checkinMonth"
       :page="page"
       @update:month="setCheckinMonth"

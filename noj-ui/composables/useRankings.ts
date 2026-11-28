@@ -81,3 +81,40 @@ export function useCheckinRankings(
     return `/api/v1/rankings/checkin?${qs.toString()}`;
   });
 }
+
+import type { PracticeRatingLeaderboardRow, UserPracticeRating } from '~/utils/generated/api-contracts';
+
+export type { PracticeRatingLeaderboardRow, UserPracticeRating };
+
+export interface PracticeRatingRankingsResponse {
+  data: PracticeRatingLeaderboardRow[];
+  pagination: RankingsPagination;
+  user_rank: number | null;
+  user_rating: number | null;
+}
+
+/**
+ * 获取练习能力值榜（Best-30 Practice Rating，issue #810）。
+ */
+export function usePracticeRatingRankings(
+  page: Ref<number>,
+  perPage: number = 50,
+) {
+  return useFetch<PracticeRatingRankingsResponse>(() => {
+    const qs = new URLSearchParams({
+      page: String(page.value),
+      per_page: String(perPage),
+    });
+    return `/api/v1/rankings/practice-rating?${qs.toString()}`;
+  });
+}
+
+/**
+ * 获取指定用户的练习能力值与 Top-30 构成明细（支持 UUID 或 username）。
+ */
+export function useUserPracticeRating(userId: Ref<string> | string) {
+  const idRef = isRef(userId) ? userId : ref(userId);
+  return useFetch<{ data: UserPracticeRating }>(
+    () => `/api/v1/practice-rating/users/${encodeURIComponent(idRef.value)}`,
+  );
+}

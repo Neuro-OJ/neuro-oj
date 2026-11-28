@@ -16,6 +16,7 @@ import * as contestCommunitySilence from "./features/contest-community-silence/i
 import * as evaluationFeedback from "./features/evaluation-feedback/index.ts";
 import * as knowledge from "./features/knowledge/index.ts";
 import * as legal from "./features/legal/index.ts";
+import * as practiceRating from "./features/practice-rating/index.ts";
 import * as tags from "./features/tags/index.ts";
 import * as trainings from "./features/trainings/index.ts";
 
@@ -26,6 +27,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
   tags.feature,
   checkin.feature,
   knowledge.feature,
+  practiceRating.feature,
   byok.feature,
   evaluationFeedback.feature,
   artifactRetention.feature,
