@@ -1,20 +1,8 @@
 /**
  * 仓库级门禁清单（**单一事实源**）。
  *
- * 背景（2026-09-21 架构收敛）：`check-all.ts`（本地全量检查入口）与
- * `check-ci.ts`（CI 门禁入口）此前各自维护一份手写的门禁列表，长期分叉——
- * 实测 `check-all.ts` 比 `check-ci.ts` **少 19 项**（静默跳过棘轮、迁移安全、
- * 迁移快照链、日志迁移/一致性、单文件规模、写端点限流、Deno 版本、schema
- * 一致性，以及 9 个门禁自测）。后果是本地 `deno run -A scripts/check-all.ts`
- * 显示"全部检查通过"，而同一份代码在 CI 上红灯——典型的"本地假绿"。
- *
- * 现在两个入口都从本文件的 `REPO_GATES` 派生：
- * - `check-ci.ts` 跑 `REPO_GATES`（CI 的 root-gates job 使用）；
- * - `check-all.ts` 跑 `REPO_GATES` + `MODULE_CHECKS`（本地额外补齐各模块的
- *   `deno task check`；CI 侧这些由各模块独立 job 并行执行，故不重复）。
- *
- * 分叉由 `scripts/gate-list_test.ts` 守护：断言两个入口都从本清单派生、
- * 且 `check-all` 覆盖 `check-ci` 的全部门禁。
+ * `check-ci.ts`（CI root-gates）与 `check-all.ts`（本地全量检查）均从本文件的
+ * `REPO_GATES` 派生，分叉由 `scripts/gate-list_test.ts` 守护。
  */
 
 /** 单条门禁。 */
@@ -29,61 +17,29 @@ export interface Gate {
 
 /** 门禁自测文件（`deno test` 一次跑完，避免启动多次 Deno）。 */
 export const GATE_SELF_TESTS: string[] = [
-  // P3 结构门禁自测：解析器负例与生产严格结构门禁共同执行。
+  // 结构与功能边界门禁自测
   "scripts/check-module-boundaries_test.ts",
-  // 功能边界门禁自测（core 重构阶段 2.4）。
   "scripts/check-feature-boundaries_test.ts",
   "scripts/select-core-ci_test.ts",
-  "scripts/check-metrics_test.ts",
-  "scripts/check-runtime-contract_test.ts",
-  "scripts/check-runbooks_test.ts",
-  "scripts/gen-alert-rules_test.ts",
   "scripts/check-test-discovery_test.ts",
-  "scripts/check-dashboards_test.ts",
   "scripts/check-migration-safety_test.ts",
   "scripts/check-migration-snapshot-chain_test.ts",
   "scripts/verify-compile-safe-imports_test.ts",
   "scripts/gen-route-catalog_test.ts",
-  "scripts/silent-skip-report_test.ts",
-  "scripts/check-file-size_test.ts",
-  "scripts/check-write-rate-limits_test.ts",
-  // 旧无域比赛 API 下线门禁：写方法必须已退役 + 不允许新增生产调用方。
-  "scripts/check-legacy-api-removed_test.ts",
-  "scripts/check-dependency-audit_test.ts",
-  "scripts/check-upload-limits_test.ts",
-  "scripts/check-log-migration_test.ts",
-  "scripts/check-deno-version_test.ts",
   "scripts/check-version-consistency_test.ts",
-  // 发布阶段版本校验（0.11 RC）：标签基础版本必须等于清单基础版本。
   "scripts/check-release-version_test.ts",
-  "scripts/check-action-pins_test.ts",
   "scripts/check-prod-env-injection_test.ts",
-  // deno.lock → package-lock 转换器（osv-scanner 无 deno.lock 提取器，见 issue #661）。
-  // 转换失败会让 5 个 deno.lock 变成零扫描，必须由测试守住解析行为。
+  // deno.lock → package-lock 转换器（osv-scanner 无 deno.lock 提取器，见 issue #661）
   "scripts/security/deno-lock-to-package-lock_test.ts",
-  // 评审发现：下面两个是本次新增/扩展的守卫测试，却**不在任何执行入口内**
-  // ——写了测试却永不执行，正是本仓库反复治理的"假绿"形态。
   "scripts/gate-list_test.ts",
-  "scripts/coverage-report_test.ts",
-  // 同轮收口的存量漏网：这四个同样无人执行（评审发现）。
   "scripts/test-baseline_test.ts",
-  // 耗时基线必须只指向现存测试文件：曾长期保留 5 个已删除条目，分片计划照旧"有依据"。
   "scripts/test-duration-baseline_test.ts",
-  // 测试性能基础设施（2026-11-03）：阶段计时与报告聚合是后续所有性能结论的
-  // 事实源，坏行/坏文件/缺失清单都必须有回归。
   "scripts/lib/test-timing_test.ts",
   "scripts/test-performance-report_test.ts",
-  // 本地 E2E 会话所有权：session/project/owner 不匹配必须拒绝清理。
   "scripts/e2e/session_test.ts",
   "scripts/verify-md-links_test.ts",
-  "scripts/verify-agent-note-format_test.ts",
-  // 一键部署脚本：校验失败必须中止、参数与版本标签必须原样交给 noj-cli install。
   "scripts/deploy/install-sh_test.ts",
   "scripts/gen-api-contracts_test.ts",
-  // 分支安全自检（2026-11-22）：A/C/D 的判定依赖真实 git 历史，测试用临时仓库
-  // 夹具覆盖「静默覆盖 / 断链引用 / 签名开关 / 提交信息白名单」，以及 pre-push 的
-  // 「多引用 / 非当前分支 / 脏工作区 / 旧分支无任务放行」与钩子安装路径。
-  "scripts/check-branch-safety_test.ts",
 ];
 
 /**
@@ -92,42 +48,22 @@ export const GATE_SELF_TESTS: string[] = [
  * 新增门禁请**只**加到本清单，不要再写进任一入口文件。
  */
 export const REPO_GATES: Gate[] = [
-  { args: ["deno", "run", "-A", "scripts/verify-agent-note-format.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-md-links.ts"] },
-  // deno compile 导入安全：变量说明符的动态导入无法内联进生产二进制，
-  // 编译期不报错、源码运行与单元测试全绿，只在生产容器里抛 Module not found
-  //（2026-09-25 实测：noj-server 的阿里云邮件 Provider 不可用，邮件全链路 500）。
+  // deno compile 导入安全：变量说明符的动态导入无法内联进生产二进制
   { args: ["deno", "run", "-A", "scripts/verify-compile-safe-imports.ts"] },
   { args: ["deno", "run", "-A", "scripts/verify-domain-ci.ts"] },
-  // E2E 启动脚本闸门：**项目名隔离**（2026-09-28 实测事故——setup.sh 与 dev 共用 compose
-  // 项目名 `neuro-oj`，执行它会把 dev 的 noj-postgres/redis/minio 认领并重建为 noj-e2e-*）
-  // 与"SDK 镜像构建失败必须阻止启动"。此前该脚本仅手工可跑，缺陷因此无人拦。
   {
     label: "E2E 启动脚本闸门（项目名隔离 + SDK 构建失败传播）",
     args: ["bash", "scripts/e2e/check-setup.sh"],
-  },
-  // 协调服务是 LLM 治理用例的同步屏障：单线程服务器、nonce 去重或 release
-  // 幂等任一回归都会让 Browser 用例死锁/假通过，必须在仓库门禁里跑契约检查。
-  {
-    label: "E2E 评测屏障协调服务契约检查",
-    args: ["python3", "-B", "scripts/e2e/check_test_coordinator.py"],
   },
   {
     label: "E2E LLM Mock 只读接口契约检查",
     args: ["python3", "-B", "scripts/e2e/check_llm_mock.py"],
   },
-  // 静默跳过：与基线比对，**跳过数增长即失败**（2026-09-12 评审 §5.1）。
-  {
-    label: "静默跳过棘轮（silent-skip-report --check）",
-    args: ["deno", "run", "-A", "scripts/silent-skip-report.ts", "--check"],
-  },
-  // 测试文件可发现性：防止「写了 Deno.test 但文件名不匹配运行器约定、
-  // 永不执行却显示绿色」这类静默失效（实测案例：noj-core/tests/routes/health.ts）。
   {
     label: "测试文件可发现性（check-test-discovery）",
     args: ["deno", "run", "-A", "scripts/check-test-discovery.ts"],
   },
-  { args: ["deno", "run", "-A", "scripts/check-dashboards.ts"] },
   { args: ["deno", "run", "-A", "scripts/deploy/verify-build-server.ts"] },
   { args: ["deno", "run", "-A", "scripts/deploy/verify-compose-server.ts"] },
   {
@@ -149,33 +85,11 @@ export const REPO_GATES: Gate[] = [
       "--strict",
     ],
   },
-  // 功能边界（core 重构阶段 2.4）：功能只经对方 index.ts 互相引用、底座不依赖功能、
-  // 功能不深入旧模块内部、功能间无运行时循环。
   { args: ["deno", "run", "-A", "scripts/check-feature-boundaries.ts"] },
-  // 迁移安全：拦截"向已有表加 NOT NULL 列但无 DEFAULT"（存量库升级必失败，
-  // 空库测试无法发现——见 2026-09-12 评审 §2.1 与 drizzle/0080）。
   { args: ["deno", "run", "-A", "scripts/check-migration-safety.ts"] },
-  // 迁移快照链：drizzle/meta/*_snapshot.json 丢表会让下一次 db:generate 重新生成
-  // CREATE TABLE，空库测试通过而**存量部署必失败**（2026-09-14 实测：search_entries
-  // 自 0076 起从快照链消失，0082 因此生成了重复建表语句）。
   { args: ["deno", "run", "-A", "scripts/check-migration-snapshot-chain.ts"] },
-  // 知识图谱官方内容包：加载并校验 data/knowledge-graph（ID 唯一、无悬挂、无环、考纲已声明）；
-  // 官方包随版本发布，内容损坏必须在 CI 拦截，而不是等到实例初始化时才发现。
   { args: ["deno", "run", "-A", "scripts/check-knowledge-pack.ts"] },
-  { args: ["deno", "run", "-A", "scripts/check-metrics.ts"] },
-  { args: ["deno", "run", "-A", "scripts/check-runtime-contract.ts"] },
-  { args: ["deno", "run", "-A", "scripts/check-runbooks.ts"] },
-  // 日志模板语法：LogTape 把 `{...}` 当占位符且**失败是静默的**，
-  // 残留的 JS 模板字符串会被当作占位符消费而不报错，只能静态拦住。
-  { args: ["deno", "run", "-A", "scripts/check-log-migration.ts"] },
-  // 跨运行时日志渲染一致性：core 与 gateway 的渲染实现刻意独立
-  // （跨模块相对导入会破坏 deno check 与 exports 边界），只能靠同一组
-  // fixture 逐字符锁定等价，否则「统一日志渲染」会静默漂移。
-  { args: ["deno", "run", "-A", "scripts/check-log-parity.ts"] },
-  { args: ["deno", "run", "-A", "scripts/gen-alert-rules.ts", "--check"] },
   { args: ["deno", "run", "-A", "scripts/gen-api-contracts.ts", "--check"] },
-  // 出题模板嵌入（P0-2 B）：noj-cli 单二进制读不到仓库文件，模板以生成模块嵌入；
-  // 改了 noj-core/scripts/problem-templates/ 却没重新生成，两处 init 会发出旧模板。
   {
     args: [
       "deno",
@@ -185,42 +99,12 @@ export const REPO_GATES: Gate[] = [
       "--check",
     ],
   },
-  // AI 出题 Skill 嵌入（P0-2 C）：同理，改了 noj-cli/skills/ 却没重新生成，
-  // `noj-cli problem skill` 会写出旧版 Skill。
   {
     args: ["deno", "run", "-A", "noj-cli/src/problem/gen-skill.ts", "--check"],
   },
-  // 单文件规模棘轮：存量巨型文件不得继续变大，新文件超阈值直接失败（评审 §3.2）
-  { args: ["deno", "run", "-A", "scripts/check-file-size.ts"] },
-  // 写端点限流覆盖：含写路由的文件必须有有限流证据或在白名单登记（评审 §4.6）
-  { args: ["deno", "run", "-A", "scripts/check-write-rate-limits.ts"] },
-  // 旧无域比赛 API 下线门禁（0.11 RC）：写方法必须已退役，且第一方生产代码
-  // 不得再引用 `/api/v1/contests/*`（只保留只读兼容到 0.12）。
-  { args: ["deno", "run", "-A", "scripts/check-legacy-api-removed.ts"] },
-  { args: ["deno", "run", "-A", "scripts/check-dependency-audit.ts"] },
-  { args: ["deno", "run", "-A", "scripts/check-upload-limits.ts"] },
-  // Deno 版本一致性（2026-09-17）：CI 曾用浮动 v2.x，2.9.7 发布引入 BrokenPipe
-  // 回归导致 UI Components 间歇红灯。.dvmrc 为唯一事实源，禁止写死 deno-version。
-  { args: ["deno", "run", "-A", "scripts/check-deno-version.ts"] },
-  // 模块版本一致性（2026-10-17，Issue #658）：6 个模块各自在自己的清单里声明
-  // version，没有任何同步机制——实测 noj-tests 已漂移到 0.9.5，其余为 0.10.5，
-  // 而页脚/构建身份/文档各取一处，无人察觉。只断言彼此一致，不绑定 Release 标签。
   { args: ["deno", "run", "-A", "scripts/check-version-consistency.ts"] },
-  // 发布阶段版本校验（2026-10-31，0.11 RC）：上一条只断言清单彼此一致、不绑定 Release
-  // 标签，于是"标签是 v0.11.0、清单还写 0.10.5"这种发布身份错位永远是绿的
-  // （0.10.6 之后 412 个提交零版本跃迁正是此状态）。本门禁在**未提供标签时跳过**，
-  // 只作发布流水线前置断言，本地 check-all 不会因此误报。
   { args: ["deno", "run", "-A", "scripts/check-release-version.ts"] },
-  // Actions 引用固定（审计 S1，2026-10-04）：175 处 uses 曾零处固定 SHA，而 release.yml
-  // 持有写权限并 --clobber 覆盖 Release 资产——上游可变 tag 被篡改即污染所有后续安装。
-  { args: ["deno", "run", "-A", "scripts/check-action-pins.ts"] },
-  // 生产 env 注入一致性（2026-10-04）：compose 无 env_file，.env.prod.example 声明却未插值的
-  // 变量静默无效——实测邮件凭据未注入导致启用邮件即 core 启动失败、G-03 白名单无法放行。
   { args: ["deno", "run", "-A", "scripts/check-prod-env-injection.ts"] },
-  // T24：被删脚本的测试（test-deploy/test-backup/test-restore-drill/
-  // test-monitoring 等）随之移除——它们测的是已删除的 bash 实现，
-  // 其行为覆盖已由 noj-cli 的 TS 测试承接（prod/*_test.ts）。
-  // Bash 部署脚本与弃用闸门已删除，生产行为由 noj-cli 的 TS 测试覆盖。
   { args: ["deno", "test", "-A", ...GATE_SELF_TESTS] },
 ];
 

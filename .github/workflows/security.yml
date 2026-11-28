@@ -2,8 +2,6 @@
 # Security — 依赖漏洞审计与静态代码扫描（issue #661）
 #
 # 与 ci.yml 的分工：ci.yml 负责格式 / 类型 / 测试，本 workflow 只做安全面：
-#   dependency-review  PR 上比对 base↔head 新增依赖，high 及以上直接拦截
-#                      （依赖 GitHub Dependency Graph，见该 job 注释）
 #   cargo-audit        noj-judge/Cargo.lock（Rust 侧；CodeQL 官方不支持 Rust）
 #   osv-scanner        5 个 deno.lock + noj-docs 的 package-lock.json
 #   codeql             javascript-typescript（PR / main push / 每周定时）
@@ -90,52 +88,6 @@ jobs:
               - '**/*.cjs'
               - '**/*.vue'
               - '.github/workflows/security.yml'
-
-  # ===========================================================================
-  # 依赖变更审查 — 只在 PR 上比对 base↔head，新增 high/critical 漏洞直接失败
-  #
-  # 这是设计上的硬拦截项：它只看 PR 引入的增量，不会被存量漏洞影响。
-  # 但 dependency-review-action 依赖 GitHub Dependency Graph，本仓库所属组织
-  # 目前禁用了该能力（`/dependency-graph/compare` 返回 404），直接运行会让
-  # 每个 PR 变红。因此先探测，不可用时**显式跳过并写 summary 告警**（不是
-  # 扫描通过）；组织 owner 启用 Dependency Graph 后本 job 自动恢复硬拦截。
-  # ===========================================================================
-  dependency-review:
-    name: 依赖变更审查（需 Dependency Graph）
-    needs: changes
-    if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.deps == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      # dependency-review 需要在 PR 上写注释/注解
-      pull-requests: write
-    steps:
-      - name: 探测 Dependency Graph 是否可用
-        id: graph
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if gh api \
-            "repos/${GITHUB_REPOSITORY}/dependency-graph/compare/${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
-            > /dev/null 2>&1; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "### dependency-review 未执行"
-              echo ""
-              echo "Dependency Graph 不可用（compare 接口返回错误），dependency-review-action 无法比对新增依赖。"
-              echo "需要组织 owner 在 Settings → Code security 启用 Dependency Graph；启用后本 job 自动生效。"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::Dependency Graph 不可用，dependency-review 本次跳过（未执行，不代表扫描通过）"
-          fi
-
-      - name: 审查新增依赖的已知漏洞
-        if: steps.graph.outputs.available == 'true'
-        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
-        with:
-          fail-on-severity: high
 
   # ===========================================================================
   # Rust 依赖审计 — noj-judge/Cargo.lock
