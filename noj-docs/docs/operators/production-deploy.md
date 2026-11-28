@@ -340,9 +340,8 @@ deno task preflight -- --json /tmp/noj-preflight.json
 | -------------------------------- | --------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NOJ_INTERNAL_SERVICE_TOKEN`     | 空（关闭）      | `.env.prod`           | 内部维护 / 排空 API 的服务凭据（`Authorization: Bearer <token>`）。`openssl rand -hex 32` 生成。**未设置时所有 drain 端点返回 503**，`noj-cli update` 的自动排空会失败并提示设置本变量；过渡期可显式 `--skip-drain` 跳过。首次从尚无该 API 的旧版本升级时，`update` 会识别 `endpoint_unavailable` 并自动跳过。 |
 | `NUXT_PUBLIC_AUTH_COOKIE_PREFIX` | `noj`           | `.env.prod` / compose | 身份 Cookie 前缀。同一主机不同端口运行多套 UI 时分别设置，避免登录 Cookie 互相覆盖。                                                                                                                                                                                                                           |
-| `NUXT_BFF_CACHE_PREFIX`          | `noj:ui:bff:v1` | `.env.prod` / compose | UI BFF 聚合缓存的 Redis 命名空间（TTL 30 秒，复用现有 Redis）。多套 UI 共用同一 Redis 时必须区分。                                                                                                                                                                                                             |
 
-三者都由 `docker-compose.prod.yml` 插值传入容器；修改后需要重建受影响的容器
+两者都由 `docker-compose.prod.yml` 插值传入容器；修改后需要重建受影响的容器
 （`noj-cli restart`）。`check-prod-env-injection.ts`
 会校验它们在被声明与实际注入 之间没有断链。
 

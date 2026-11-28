@@ -248,7 +248,7 @@ runs:
 
     - name: 安装 Playwright Chromium
       if: inputs.browser == 'true' && steps.pw-cache.outputs.cache-hit != 'true'
-      run: deno run -A npm:playwright@1.62.1 install chromium
+      run: deno run -A npm:playwright@1.65.1 install chromium
       shell: bash
 
     - name: UI 浏览器关键流程测试 (noj-tests test:browser)
