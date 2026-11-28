@@ -231,3 +231,97 @@ export interface EvaluationFeedback {
   traces: LlmTraceItem[];
   badcases: FeedbackBadcase[];
 }
+
+// ── Practice Rating（练习能力值 Best-N，issue #810） ────────────
+
+/** 练习能力值聚合题数上限（Best 30）。 */
+export const PRACTICE_RATING_TOP_N = 30;
+
+/** 练习能力值公式版本标识。 */
+export const PRACTICE_RATING_FORMULA_VERSION = "b30-v1";
+
+/** 练习能力值段位。 */
+export type PracticeRatingTier =
+  | "unrated"
+  | "novice"
+  | "apprentice"
+  | "proficient"
+  | "expert"
+  | "master"
+  | "grandmaster";
+
+/** 构成用户练习能力值的单题明细条目。 */
+export interface PracticeRatingEntry {
+  /** 在 Best-N 中的 1-based 位次 */
+  rank: number;
+  problem_id: string;
+  /** 主域题号（如 1001） */
+  number: number;
+  /** 主域展示编号（如 main:1001） */
+  display_id: string;
+  title: string;
+  /** 出题人原始难度档（easy / medium / hard） */
+  difficulty: string;
+  /** 实际参与计算的难度分（0–100；优先取校准值，无校准行时回退先验） */
+  effective_difficulty: number;
+  /** 是否来自数据校准（false 表示回退出题人先验） */
+  is_calibrated: boolean;
+  /** 是否为客观题套卷 */
+  is_objective: boolean;
+  /** 提交模式（code / artifact / prediction / ui） */
+  submission_mode: string;
+  /** 有效最高分（×100 整数口径） */
+  best_score: number;
+  /** 该题满分（普通题 10000，客观题为小题数 × 100） */
+  full_score: number;
+  /** 得分率（0–1 浮点数，保留 4 位小数） */
+  score_ratio: number;
+  /** 本题贡献的单题能力分（0–500 整数） */
+  problem_rating: number;
+  /** 首次达到该最高分的时间（ISO 字符串） */
+  achieved_at: string;
+}
+
+/** 单用户练习能力值概览与 Top-N 构成明细。 */
+export interface UserPracticeRating {
+  user_id: string;
+  /** 练习能力值总分（Top-N 单题能力分之和，0–15000） */
+  rating: number;
+  /** 对应段位 */
+  tier: PracticeRatingTier;
+  /** Best-N 上限（默认 30） */
+  top_n: number;
+  /** 已纳入 Best-N 计算的题目数（0..top_n） */
+  counted_problems: number;
+  /** 在官方公开题库中有正得分的有效题目总数 */
+  total_scored_problems: number;
+  /** B30 门槛分：凑满 top_n 题时为第 N 题单题分，未满时为 null */
+  floor_rating: number | null;
+  /** 全站练习能力值排名（1-based；未上榜或系统管理员为 null） */
+  rank: number | null;
+  /** 构成当前能力值的 Top-N 题目明细（按单题能力分降序） */
+  entries: PracticeRatingEntry[];
+  /** 当前公式版本 */
+  formula_version: string;
+}
+
+/** 练习能力值榜单行数据。 */
+export interface PracticeRatingLeaderboardRow {
+  rank: number;
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  rating: number;
+  tier: PracticeRatingTier;
+  counted_problems: number;
+  /** 该用户 Best-N 中最高单题能力分 */
+  top_problem_rating: number;
+}
+
+/** 练习能力值榜单响应（含当前登录用户名次与分数）。 */
+export interface PracticeRatingLeaderboard {
+  data: PracticeRatingLeaderboardRow[];
+  total: number;
+  user_rank: number | null;
+  user_rating: number | null;
+}

@@ -5,6 +5,7 @@ import {
   optionalAuthMiddleware,
 } from "../../../access/identity/middleware/auth.ts";
 import { getCheckinLeaderboard } from "../../../../features/checkin/index.ts";
+import { getPracticeRatingLeaderboard } from "../../../../features/practice-rating/index.ts";
 import { getGlobalRankings, getMyRanking } from "../services/rankings.ts";
 import {
   buildPaginationMeta,
@@ -77,6 +78,30 @@ router.get("/checkin", optionalAuthMiddleware, async (c) => {
     data: result.data,
     pagination: buildPaginationMeta(page, perPage, result.total),
     user_rank: result.user_rank,
+  });
+});
+
+/**
+ * 练习能力值榜（issue #810）。
+ * GET /api/v1/rankings/practice-rating?page=1&per_page=50
+ * 公开只读；登录时响应额外包含 user_rank 与 user_rating。
+ */
+router.get("/practice-rating", optionalAuthMiddleware, async (c) => {
+  const { page, perPage } = parsePagination(c, {
+    defaultPerPage: 50,
+    maxPerPage: 100,
+    perPageField: "per_page",
+  });
+  const result = await getPracticeRatingLeaderboard(
+    page,
+    perPage,
+    c.var.userId,
+  );
+  return c.json({
+    data: result.data,
+    pagination: buildPaginationMeta(page, perPage, result.total),
+    user_rank: result.user_rank,
+    user_rating: result.user_rating,
   });
 });
 
