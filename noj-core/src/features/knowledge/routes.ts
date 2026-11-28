@@ -67,10 +67,9 @@ import {
   readKnowledgePick,
 } from "./coach.ts";
 import { setPassRatioOverride } from "./pass-ratio.ts";
+import { type CoverageView, readCoverage } from "./coverage.ts";
 import {
-  type CoverageView,
   diagnoseNode,
-  readCoverage,
   readMyMastery,
   readMyRecommendations,
   RECOMMENDATIONS_MAX_LIMIT,

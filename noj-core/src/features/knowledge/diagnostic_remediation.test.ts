@@ -42,6 +42,7 @@ import {
 } from "./mastery.ts";
 import { resolveOfficialPackDir } from "./pack.ts";
 import {
+  collectPrerequisiteIds,
   computeDownstreamReach,
   readDiagnosticPlan,
   saveSelfAssessedPlacements,
@@ -372,6 +373,40 @@ Deno.test({
       mode: "replace",
     });
     assertEquals(replaced.placed_nodes, ["prog.python-basics"]);
+    assertEquals(replaced.removed_count, 1);
+
+    // 3b. 一键标熟（含前置级联）与取消标熟（mode = 'remove'）
+    const graphForPrereq = await readKnowledgeGraph();
+    const expectedPrereqs = collectPrerequisiteIds(graphForPrereq, [
+      "prog.numpy",
+    ]);
+    assertEquals(expectedPrereqs.has("prog.python-basics"), true);
+    const cascaded = await saveSelfAssessedPlacements(student, {
+      node_ids: ["prog.numpy"],
+      mode: "merge",
+      include_prerequisites: true,
+    });
+    assertEquals(cascaded.placed_nodes.includes("prog.numpy"), true);
+    for (const reqId of expectedPrereqs) {
+      assertEquals(cascaded.placed_nodes.includes(reqId), true);
+    }
+    const unmarked = await saveSelfAssessedPlacements(student, {
+      node_ids: ["prog.numpy"],
+      mode: "remove",
+    });
+    assertEquals(unmarked.placed_nodes.includes("prog.numpy"), false);
+    assertEquals(unmarked.removed_count, 1);
+    assertEquals(
+      (await getDb().select().from(userKnowledgeMastery).where(
+        eq(userKnowledgeMastery.user_id, student),
+      )).length,
+      0,
+    );
+    // 恢复为仅 prog.python-basics 供后续断言使用
+    await saveSelfAssessedPlacements(student, {
+      node_ids: ["prog.python-basics"],
+      mode: "replace",
+    });
 
     // 4. 摸底计划与官方图谱一致，含 14 领域与检查点
     const graph = await readKnowledgeGraph();

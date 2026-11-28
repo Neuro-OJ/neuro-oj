@@ -4,6 +4,7 @@ import { assert, assertEquals } from 'jsr:@std/assert@^1';
 import {
   type ClassroomMasteryArea,
   coverageNodeHasProblem,
+  displayAbilityScore,
   filterMasteryAreas,
   knowledgeNodePath,
   masteryCellState,
@@ -18,7 +19,7 @@ import {
   recommendationReasonText,
 } from '../../../utils/domain/education/knowledge.ts';
 
-Deno.test('推荐理由：四种已知 code 拼中文，未知 code 回退通用文案', () => {
+Deno.test('推荐理由：五种已知 code 拼中文，未知 code 回退通用文案', () => {
   assertEquals(
     recommendationReasonText({ code: 'continue_learning', params: { remaining: 2 } }),
     '已在学习中，再完成 2 道达标题即可掌握',
@@ -38,8 +39,24 @@ Deno.test('推荐理由：四种已知 code 拼中文，未知 code 回退通用
     }),
     '你在 树 上多次未达标，建议先巩固 链表',
   );
+  assertEquals(
+    recommendationReasonText({
+      code: 'needs_review',
+      params: { ability_score: 80, effective_ability: 64 },
+    }),
+    '距上次达标已有一段时间，建议做题复习巩固',
+  );
   assertEquals(recommendationReasonText({ code: 'unknown', params: {} }), '根据你的学习进度推荐');
   assertEquals(recommendationReasonText(null), '根据你的学习进度推荐');
+});
+
+Deno.test('能力分展示：优先取衰减后展示能力分并做范围夹紧', () => {
+  assertEquals(displayAbilityScore({ ability_score: 76, effective_ability: 62 }), 62);
+  assertEquals(displayAbilityScore({ ability_score: 76 }), 76);
+  assertEquals(displayAbilityScore({ ability_score: 120 }), 100);
+  assertEquals(displayAbilityScore({ ability_score: -5 }), 0);
+  assertEquals(displayAbilityScore(null), null);
+  assertEquals(displayAbilityScore({}), null);
 });
 
 Deno.test('掌握状态：文案与徽标配色（已掌握绿/学习中主色/未开始中性灰）', () => {

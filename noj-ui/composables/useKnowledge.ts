@@ -308,11 +308,12 @@ export function useKnowledge() {
     }
   }
 
-  /** 提交摸底自评（`POST /knowledge/me/diagnostic/self-assess`）。 */
+  /** 提交摸底自评或一键标熟/取消标熟（`POST /knowledge/me/diagnostic/self-assess`）。 */
   async function submitSelfAssessment(input: {
     node_ids?: string[];
     area_ids?: string[];
-    mode?: 'merge' | 'replace';
+    mode?: 'merge' | 'replace' | 'remove';
+    include_prerequisites?: boolean;
   }): Promise<SelfAssessResult | null> {
     if (disabled.value) return null;
     try {
@@ -325,6 +326,26 @@ export function useKnowledge() {
       markDisabled(err);
       throw err;
     }
+  }
+
+  /** 一键标熟单个知识点（可选级联标熟全部上游前置）。 */
+  function markNodeFamiliar(
+    nodeId: string,
+    options: { includePrerequisites?: boolean } = {},
+  ): Promise<SelfAssessResult | null> {
+    return submitSelfAssessment({
+      node_ids: [nodeId],
+      mode: 'merge',
+      include_prerequisites: options.includePrerequisites ?? false,
+    });
+  }
+
+  /** 取消单个知识点的标熟状态。 */
+  function unmarkNodeFamiliar(nodeId: string): Promise<SelfAssessResult | null> {
+    return submitSelfAssessment({
+      node_ids: [nodeId],
+      mode: 'remove',
+    });
   }
 
   /**
@@ -523,6 +544,8 @@ export function useKnowledge() {
     loadDiagnosis,
     loadDiagnosticPlan,
     submitSelfAssessment,
+    markNodeFamiliar,
+    unmarkNodeFamiliar,
     loadProblemRemediation,
     loadClassroomMastery,
     loadClassroomPick,

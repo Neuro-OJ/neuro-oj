@@ -44,6 +44,9 @@ const masteryItems: MasteryItem[] = [
     attempted_count: 3,
     failed_attempts: 0,
     max_passed_difficulty: 50,
+    ability_score: 78,
+    effective_ability: 64,
+    needs_review: true,
     problem_count: 2,
   },
 ];
@@ -65,21 +68,103 @@ describe('KnowledgeSkillTree', () => {
       global: {
         stubs: {
           NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+          UButton: {
+            props: ['type', 'color', 'variant', 'size', 'block', 'icon'],
+            template: '<button :type="type || \'button\'"><slot /></button>',
+          },
+          UInput: {
+            props: ['modelValue', 'type', 'placeholder'],
+            emits: ['update:modelValue', 'focus', 'blur'],
+            template:
+              '<input :type="type || \'text\'" :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', ($event.target).value)" @focus="$emit(\'focus\', $event)" @blur="$emit(\'blur\', $event)" />',
+          },
         },
       },
     });
 
+    expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="overview-area-card-ai"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="overview-area-card-ml"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="skill-area-tab-ai"]').text()).toContain('1/1');
     const aiNode = wrapper.find('[data-testid="skill-node-ai.concepts"]');
     expect(aiNode.exists()).toBe(true);
     expect(aiNode.text()).toContain('已掌握');
+    expect(aiNode.text()).toContain('待复习');
+    expect(aiNode.text()).toContain('能力 64');
     expect(aiNode.text()).toContain('讲解');
     expect(aiNode.text()).toContain('题 2');
+    const docLink = wrapper.find('[data-testid="skill-node-doc-ai.concepts"]');
+    expect(docLink.exists()).toBe(true);
+    expect(docLink.attributes('data-to')).toBe('/d/school/knowledge/ai.concepts');
 
+    // 点击节点打开总览快览面板
+    await aiNode.trigger('click');
+    const inspector = wrapper.find('[data-testid="overview-node-inspector"]');
+    expect(inspector.exists()).toBe(true);
+    expect(inspector.text()).toContain('人工智能基本概念');
+    expect(inspector.text()).toContain('后继 1');
+
+    // 切换至单领域视图
     await wrapper.find('[data-testid="skill-area-tab-ml"]').trigger('click');
     const mlNode = wrapper.find('[data-testid="skill-node-ml.linear"]');
     expect(mlNode.exists()).toBe(true);
     expect(mlNode.text()).toContain('已解锁');
     expect(mlNode.text()).toContain('前置域 1/1');
+
+    // 从单领域视图通过搜索定位节点：切回全图总览后应保留选中节点与聚焦领域，不被挂载 fit 覆盖
+    const searchInput = wrapper.find('[data-testid="overview-search-input"]');
+    await searchInput.trigger('focus');
+    await searchInput.setValue('线性回归');
+    const firstHit = wrapper.find('[data-testid="overview-search-results"] button');
+    expect(firstHit.exists()).toBe(true);
+    await firstHit.trigger('mousedown');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
+    const focusedInspector = wrapper.find('[data-testid="overview-node-inspector"]');
+    expect(focusedInspector.exists()).toBe(true);
+    expect(focusedInspector.text()).toContain('线性回归');
+
+    // 切回全图总览（适配全部）
+    await wrapper.find('[data-testid="skill-area-tab-overview"]').trigger('click');
+    expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
+  });
+
+  it('登录态快览面板支持一键标熟、含前置标熟与取消标熟事件', async () => {
+    const wrapper = mount(KnowledgeSkillTree, {
+      props: {
+        graph,
+        slug: 'school',
+        masteryItems: [],
+        recommendations: [],
+        placedNodeIds: [],
+        canMarkFamiliar: true,
+      },
+      global: {
+        stubs: {
+          NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+        },
+      },
+    });
+
+    await wrapper.find('[data-testid="skill-node-ml.linear"]').trigger('click');
+    const markBtn = wrapper.find('[data-testid="overview-mark-familiar-btn"]');
+    const markWithPrereqsBtn = wrapper.find('[data-testid="overview-mark-familiar-prereqs-btn"]');
+    expect(markBtn.exists()).toBe(true);
+    expect(markWithPrereqsBtn.exists()).toBe(true);
+    expect(markWithPrereqsBtn.text()).toContain('+1');
+
+    await markBtn.trigger('click');
+    await markWithPrereqsBtn.trigger('click');
+    expect(wrapper.emitted('mark-familiar')).toEqual([
+      [{ nodeId: 'ml.linear', includePrerequisites: false }],
+      [{ nodeId: 'ml.linear', includePrerequisites: true }],
+    ]);
+
+    await wrapper.setProps({ placedNodeIds: ['ml.linear'] });
+    const unmarkBtn = wrapper.find('[data-testid="overview-unmark-familiar-btn"]');
+    expect(unmarkBtn.exists()).toBe(true);
+    await unmarkBtn.trigger('click');
+    expect(wrapper.emitted('unmark-familiar')).toEqual([['ml.linear']]);
   });
 });

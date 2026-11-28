@@ -17,6 +17,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  real,
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -258,6 +259,12 @@ export const userKnowledgeMastery = pgTable(
     attempted_count: integer("attempted_count").notNull().default(0),
     failed_attempts: integer("failed_attempts").notNull().default(0),
     max_passed_difficulty: integer("max_passed_difficulty"),
+    /** 轻量级 Elo 能力分（0–100 整数，默认 0）。 */
+    ability_score: integer("ability_score").notNull().default(0),
+    /** 有效加权证据量（主/次知识点累计，非负，默认 0）。 */
+    evidence_weight: real("evidence_weight").notNull().default(0),
+    /** 最近一次达标时间（ISO 8601，可空；供读时遗忘衰减计算）。 */
+    last_passed_at: text("last_passed_at"),
     updated_at: text("updated_at").notNull(),
   },
   (table) => ({
@@ -276,6 +283,14 @@ export const userKnowledgeMastery = pgTable(
       sql`${table.max_passed_difficulty} IS NULL
         OR (${table.max_passed_difficulty} >= 0
           AND ${table.max_passed_difficulty} <= 100)`,
+    ),
+    abilityScoreCheck: check(
+      "user_knowledge_mastery_ability_score_check",
+      sql`${table.ability_score} >= 0 AND ${table.ability_score} <= 100`,
+    ),
+    evidenceWeightCheck: check(
+      "user_knowledge_mastery_evidence_weight_check",
+      sql`${table.evidence_weight} >= 0`,
     ),
     nodeStateIndex: index("user_knowledge_mastery_node_state_idx").on(
       table.node_id,
