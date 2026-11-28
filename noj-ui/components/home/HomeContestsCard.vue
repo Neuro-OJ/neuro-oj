@@ -2,21 +2,26 @@
 import { formatDateTime } from '~/utils/domain/submission/submissionFormat';
 import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
 import { DOMAIN_CONTEST_TYPES } from '~/utils/domain/contest/domain-contests';
+import type { DomainContest } from '~/composables/useDomainContests';
 import { extractApiError } from '~/utils/server/apiError';
 
-const props = defineProps<{ domainSlug: string }>();
+type HomeContestsData = { data: DomainContest[] };
+type HomeSectionError = { statusCode: number; data: { error: string; code?: string; request_id?: string } };
+const props = defineProps<{ domainSlug: string; initialData?: HomeContestsData; initialError?: HomeSectionError }>();
 const { user } = useAuth();
 const api = useDomainContests();
 const key = computed(() => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'home-contests'));
 const { data, error, status, refresh } = await useAsyncData(
   key,
-  () => api.list(props.domainSlug, 1),
+  () => api.list(props.domainSlug, 1, { per_page: 3, sort: 'upcoming' }),
+  { immediate: props.initialData === undefined && props.initialError === undefined },
 );
 const contests = computed(() => {
-  const list = data.value?.data ?? [];
+  const list = (data.value ?? props.initialData)?.data ?? [];
   const active = list.filter((item) => item.status === 'running' || item.status === 'pending');
   return (active.length ? active : list).slice(0, 3);
 });
+const activeError = computed(() => error.value ?? (data.value ? undefined : props.initialError));
 </script>
 
 <template>
@@ -31,8 +36,8 @@ const contests = computed(() => {
       </NuxtLink>
     </div>
     <AsyncContent
-      :status="error ? 'error' : contests.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
-      :error="error ? extractApiError(error).message : undefined"
+      :status="activeError ? 'error' : contests.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
+      :error="activeError ? extractApiError(activeError).message : undefined"
       empty-text="暂无近期比赛"
       @retry="refresh()"
     >

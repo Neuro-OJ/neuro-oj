@@ -108,9 +108,14 @@ function assertNoLegacyContestField(input: Record<string, unknown>): void {
   }
 }
 domainContestRouter.get(path, async (c) => {
-  const { page, perPage } = parsePagination(c), type = c.req.query("type");
+  const { page, perPage } = parsePagination(c),
+    type = c.req.query("type"),
+    sort = c.req.query("sort");
   if (type && !isValidContestType(type)) {
     throw new BadRequestError("竞赛类型不合法");
+  }
+  if (sort && sort !== "recent" && sort !== "upcoming") {
+    throw new BadRequestError("竞赛排序方式不合法");
   }
   const result = await listDomainContests(
     c.req.param("slug"),
@@ -121,6 +126,7 @@ domainContestRouter.get(path, async (c) => {
       type: type && isValidContestType(type) ? type : undefined,
       classroomId: c.req.query("classroom_id"),
       myClassrooms: c.req.query("my_classrooms") === "true",
+      sort: sort === "upcoming" || sort === "recent" ? sort : undefined,
     },
   );
   return c.json({

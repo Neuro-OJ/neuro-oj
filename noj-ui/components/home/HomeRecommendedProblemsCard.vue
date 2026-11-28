@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspacePath, workspaceProblemPath } from '~/utils/domain/workspace/workspace';
+import type { DomainProblemSummary } from '~/utils/domain/problem/domain-problems';
 import { extractApiError } from '~/utils/server/apiError';
 
-const props = defineProps<{ domainSlug: string }>();
+type HomeProblemsData = { items: DomainProblemSummary[] };
+type HomeSectionError = { statusCode: number; data: { error: string; code?: string; request_id?: string } };
+const props = defineProps<{ domainSlug: string; initialData?: HomeProblemsData; initialError?: HomeSectionError }>();
 const { user } = useAuth();
 const api = useDomainProblems();
 const key = computed(() => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'home-problems'));
 const { data, error, status, refresh } = await useAsyncData(
   key,
   () => api.list(props.domainSlug, 1, '', {}),
+  { immediate: props.initialData === undefined && props.initialError === undefined },
 );
-const problems = computed(() => (data.value?.items ?? []).slice(0, 3));
+const problems = computed(() => ((data.value ?? props.initialData)?.items ?? []).slice(0, 3));
+const activeError = computed(() => error.value ?? (data.value ? undefined : props.initialError));
 </script>
 
 <template>
@@ -25,8 +30,8 @@ const problems = computed(() => (data.value?.items ?? []).slice(0, 3));
       </NuxtLink>
     </div>
     <AsyncContent
-      :status="error ? 'error' : problems.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
-      :error="error ? extractApiError(error).message : undefined"
+      :status="activeError ? 'error' : problems.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
+      :error="activeError ? extractApiError(activeError).message : undefined"
       empty-text="暂无公开题目"
       @retry="refresh()"
     >

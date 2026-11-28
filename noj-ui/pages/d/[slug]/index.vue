@@ -5,6 +5,12 @@ import type { BffEnvelope } from '~/utils/server/bff-view';
 import type { AnnouncementSummary } from '~/composables/useAnnouncements';
 import type { EducationDashboardData } from '~/utils/domain/education/education-dashboard';
 import type { DomainProblemSummary } from '~/utils/domain/problem/domain-problems';
+import type { DomainContest } from '~/composables/useDomainContests';
+import type { DomainTrainingDetail } from '~/utils/domain/problem/domain-trainings';
+type HomeTrainingItem = Pick<
+  DomainTrainingDetail,
+  'id' | 'title' | 'description' | 'source_domain_slug' | 'visibility' | 'state' | 'can_edit' | 'revision'
+>;
 type HomeSnapshot = { total: number; full_score: number; not_full_score: number };
 type HomeRecentSubmission = {
   id: string;
@@ -37,9 +43,13 @@ const { data: view, error: viewError, status: viewStatus, refresh: refreshView }
   { dedupe: 'defer' },
 );
 const section = <T>(name: keyof BffEnvelope['sections']) => view.value?.sections[name]?.data as T | undefined;
+const sectionError = (name: keyof BffEnvelope['sections']) => view.value?.sections[name]?.error;
 const announcements = computed(() => (section<{ data: AnnouncementSummary[] }>('announcements')?.data ?? undefined));
 const dashboard = computed(() => section<{ data: EducationDashboardData }>('dashboard'));
 const activity = computed(() => section<HomeActivity>('activity'));
+const problems = computed(() => section<{ items: DomainProblemSummary[] }>('problems'));
+const contests = computed(() => section<{ data: DomainContest[] }>('contests'));
+const trainings = computed(() => section<{ items: HomeTrainingItem[] }>('trainings'));
 async function join() {
   if (!domain.value || joining.value) return;
   joining.value = true;
@@ -110,15 +120,27 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
       <!-- 主体：左侧推荐题目与评测流，右侧公告、比赛、题单与教学待办 -->
       <div class="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div class="space-y-3">
-          <HomeRecommendedProblemsCard :domain-slug="domain.slug" />
+          <HomeRecommendedProblemsCard
+            :domain-slug="domain.slug"
+            :initial-data="problems"
+            :initial-error="sectionError('problems')"
+          />
           <HomeLatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
         </div>
         <div class="space-y-3">
           <div class="overflow-hidden rounded-lg border border-border bg-bg-panel empty:hidden">
             <AnnouncementSection :domain-slug="domain.slug" :initial-data="announcements" />
           </div>
-          <HomeContestsCard :domain-slug="domain.slug" />
-          <HomeTrainingsCard :domain-slug="domain.slug" />
+          <HomeContestsCard
+            :domain-slug="domain.slug"
+            :initial-data="contests"
+            :initial-error="sectionError('contests')"
+          />
+          <HomeTrainingsCard
+            :domain-slug="domain.slug"
+            :initial-data="trainings"
+            :initial-error="sectionError('trainings')"
+          />
           <div class="overflow-hidden rounded-lg border border-border bg-bg-panel empty:hidden">
             <WorkspaceHomeContent :initial-data="dashboard" />
           </div>

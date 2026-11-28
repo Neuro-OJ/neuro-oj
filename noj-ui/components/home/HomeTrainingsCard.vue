@@ -1,16 +1,25 @@
 <script setup lang="ts">
 import { workspaceCacheKey, workspacePath } from '~/utils/domain/workspace/workspace';
+import type { DomainTrainingDetail } from '~/utils/domain/problem/domain-trainings';
 import { extractApiError } from '~/utils/server/apiError';
 
-const props = defineProps<{ domainSlug: string }>();
+type HomeTrainingItem = Pick<
+  DomainTrainingDetail,
+  'id' | 'title' | 'description' | 'source_domain_slug' | 'visibility' | 'state' | 'can_edit' | 'revision'
+>;
+type HomeTrainingsData = { items: HomeTrainingItem[] };
+type HomeSectionError = { statusCode: number; data: { error: string; code?: string; request_id?: string } };
+const props = defineProps<{ domainSlug: string; initialData?: HomeTrainingsData; initialError?: HomeSectionError }>();
 const { user } = useAuth();
 const api = useDomainTrainings();
 const key = computed(() => workspaceCacheKey(props.domainSlug, user.value?.id ?? null, 'home-trainings'));
 const { data, error, status, refresh } = await useAsyncData(
   key,
   () => api.list(props.domainSlug, 1, ''),
+  { immediate: props.initialData === undefined && props.initialError === undefined },
 );
-const trainings = computed(() => (data.value?.items ?? []).slice(0, 3));
+const trainings = computed(() => ((data.value ?? props.initialData)?.items ?? []).slice(0, 3));
+const activeError = computed(() => error.value ?? (data.value ? undefined : props.initialError));
 </script>
 
 <template>
@@ -25,8 +34,8 @@ const trainings = computed(() => (data.value?.items ?? []).slice(0, 3));
       </NuxtLink>
     </div>
     <AsyncContent
-      :status="error ? 'error' : trainings.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
-      :error="error ? extractApiError(error).message : undefined"
+      :status="activeError ? 'error' : trainings.length ? 'data' : status === 'pending' ? 'loading' : 'empty'"
+      :error="activeError ? extractApiError(activeError).message : undefined"
       empty-text="暂无公开题单"
       @retry="refresh()"
     >

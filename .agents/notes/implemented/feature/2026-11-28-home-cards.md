@@ -8,18 +8,18 @@ Status: implemented
 
 ## Decision
 
-在保留现有域首页双栏结构与终端风格设计 token 的前提下，新增三个紧凑首页卡片组件并接入 `noj-ui/pages/d/[slug]/index.vue`：
+在保留现有域首页双栏结构与终端风格设计 token 的前提下，新增三个紧凑首页卡片组件并接入 `noj-ui/pages/d/[slug]/index.vue`，同时将三个卡片的首屏数据收口到 Nitro 首页 BFF（`/api/bff/v1/domains/:slug/home`）：
 
 1. `HomeRecommendedProblemsCard.vue`：置于左栏「最新评测」上方，展示当前域前 3 道公开题目（题号、标题、类型、难度与通过率）及「全部题目 →」入口。
-2. `HomeContestsCard.vue`：置于右栏公告下方，优先展示进行中/未开始的最近 3 场比赛（状态指示、赛制、开始时间、题数）及「全部比赛 →」入口。
+2. `HomeContestsCard.vue`：置于右栏公告下方，优先展示进行中/未开始的最近 3 场比赛（状态指示、赛制、开始时间、题数）及「全部比赛 →」入口；`GET /api/v1/domains/:slug/contests` 新增 `sort=upcoming` 参数，在分页截断前按「进行中 → 最近未开始 → 已结束倒序兜底」排序。
 3. `HomeTrainingsCard.vue`：置于右栏比赛卡片下方，展示最近 3 份公开题单（标题、来源域标识、简介）及「全部题单 →」入口。
 
 ## Alternatives considered
 
-1. 将三个列表一并并入 Nitro 首页 BFF（`/api/bff/v1/domains/:slug/home`）：可进一步减少首屏请求数，但需要同步修改 BFF 契约与对应服务端测试；本次先以组件内 `useAsyncData` 独立加载并保留 `AsyncContent` 错误重试，后续可平滑收口到 BFF。
+1. 三个卡片各自在组件内以 `useAsyncData` 独立请求：会违背域首页 SPA 导航单 BFF 请求的约束，且仅靠前端对 `start_time DESC` 的首页结果过滤会在多场未来比赛时挤掉进行中或临近比赛，故改为后端 `sort=upcoming` 并在首页 BFF 中聚合。
 2. 在 Hero 中增加题号直接跳转输入框：已实现后按产品反馈移除，保持命令头简洁。
 
 ## Consequences
 
 - 访客与新环境进入域首页即可看到可点击的题目、比赛与题单内容，左右两栏视觉密度更均衡。
-- 三个卡片各自通过 `useAsyncData` 请求现有列表接口，未改动后端 API 与 BFF 协议。
+- 三个卡片的首屏与 SPA 跨空间导航复用单次 `/api/bff/v1/domains/:slug/home` 聚合请求，失败重试仍走对应细粒度接口；默认比赛列表排序保持 `start_time DESC` 不变。

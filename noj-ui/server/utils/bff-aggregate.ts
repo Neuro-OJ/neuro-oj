@@ -75,6 +75,9 @@ export async function aggregateView(reader: CoreReader, input: {
       const reads: Promise<unknown>[] = [
         read('announcements', `${root}/announcements?page=1&per_page=5`),
         read('activity', `${root}/activity`),
+        read('problems', `${root}/problems?page=1&limit=3`),
+        read('contests', `${root}/contests?page=1&per_page=3&sort=upcoming`),
+        read('trainings', `${root}/trainings?page=1&limit=3`),
       ];
       if (viewer) reads.push(read('checkin', '/api/v1/checkin/today'));
       else put('checkin', { data: { checked_in: false, streak: 0 } });
