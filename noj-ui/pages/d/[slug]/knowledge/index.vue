@@ -36,6 +36,52 @@ const graph = ref<KnowledgeGraph | null>(null);
 const loading = ref(true);
 const failure = ref('');
 const diagnosticOpen = ref(false);
+const markingNodeId = ref<string | null>(null);
+
+const canMarkFamiliar = computed(() => isLoggedIn.value && typeof knowledge.submitSelfAssessment === 'function');
+
+async function handleMarkFamiliar(payload: { nodeId: string; includePrerequisites: boolean }) {
+  const domain = slug.value;
+  if (!canMarkFamiliar.value || markingNodeId.value) return;
+  markingNodeId.value = payload.nodeId;
+  try {
+    const res = await knowledge.submitSelfAssessment({
+      node_ids: [payload.nodeId],
+      mode: 'merge',
+      include_prerequisites: payload.includePrerequisites,
+    });
+    if (res && mastery.value) {
+      mastery.value = { ...mastery.value, placed_nodes: res.placed_nodes };
+    }
+    if (domain) {
+      const refreshed = await knowledge.loadRecommendations(domain, 5).catch(() => null);
+      if (refreshed) recommendations.value = refreshed.items;
+    }
+  } finally {
+    markingNodeId.value = null;
+  }
+}
+
+async function handleUnmarkFamiliar(nodeId: string) {
+  const domain = slug.value;
+  if (!canMarkFamiliar.value || markingNodeId.value) return;
+  markingNodeId.value = nodeId;
+  try {
+    const res = await knowledge.submitSelfAssessment({
+      node_ids: [nodeId],
+      mode: 'remove',
+    });
+    if (res && mastery.value) {
+      mastery.value = { ...mastery.value, placed_nodes: res.placed_nodes };
+    }
+    if (domain) {
+      const refreshed = await knowledge.loadRecommendations(domain, 5).catch(() => null);
+      if (refreshed) recommendations.value = refreshed.items;
+    }
+  } finally {
+    markingNodeId.value = null;
+  }
+}
 
 /** 功能关闭：整块隐藏，不报错。 */
 const hidden = computed(() => knowledge.disabled.value);
@@ -223,6 +269,10 @@ useSeoMeta({ title: '我的学习' });
           :mastery-items="items"
           :recommendations="recommendations"
           :placed-node-ids="mastery?.placed_nodes ?? []"
+          :can-mark-familiar="canMarkFamiliar"
+          :marking-node-id="markingNodeId"
+          @mark-familiar="handleMarkFamiliar"
+          @unmark-familiar="handleUnmarkFamiliar"
         />
 
         <!-- 掌握度（按当前域汇总） -->

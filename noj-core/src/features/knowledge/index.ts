@@ -170,6 +170,7 @@ export {
 export { objectiveFullScore } from "./objective-full-score.ts";
 export { setPassRatioOverride } from "./pass-ratio.ts";
 export {
+  collectPrerequisiteIds,
   computeDownstreamReach,
   DIAGNOSTIC_MAX_CHECKPOINTS,
   type DiagnosticAreaSummary,

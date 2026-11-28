@@ -61,18 +61,55 @@ export interface DiagnosticPlanView {
   checkpoints: DiagnosticCheckpoint[];
 }
 
-/** 自评提交请求。 */
+/** 自评/标熟提交请求。 */
 export interface SelfAssessInput {
   node_ids?: unknown;
   area_ids?: unknown;
   mode?: unknown;
+  /** 可选：标熟时一并标熟全部上游前置知识点（仅 merge / replace 生效）。 */
+  include_prerequisites?: unknown;
 }
 
-/** 自评提交结果。 */
+/** 自评/标熟提交结果。 */
 export interface SelfAssessResult {
   placed_nodes: string[];
   added_count: number;
+  removed_count: number;
   total_placed: number;
+}
+
+/**
+ * 纯函数：收集给定节点集合在图谱中的全部上游前置知识点 ID（不含缺失节点，防环）。
+ */
+export function collectPrerequisiteIds(
+  graph: Pick<KnowledgeGraphView, "nodes">,
+  seedIds: Iterable<string>,
+): Set<string> {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const result = new Set<string>();
+  const queue: string[] = [];
+  for (const id of seedIds) {
+    const node = byId.get(id);
+    if (!node) continue;
+    for (const req of node.requires) {
+      if (byId.has(req) && !result.has(req)) {
+        result.add(req);
+        queue.push(req);
+      }
+    }
+  }
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const node = byId.get(cur);
+    if (!node) continue;
+    for (const req of node.requires) {
+      if (byId.has(req) && !result.has(req)) {
+        result.add(req);
+        queue.push(req);
+      }
+    }
+  }
+  return result;
 }
 
 /**
@@ -307,7 +344,11 @@ function parseIdList(
 }
 
 /**
- * 保存用户摸底自评结果（写入 `user_knowledge_placements`，不触碰做题掌握度）。
+ * 保存/移除用户摸底自评与一键标熟结果（写入 `user_knowledge_placements`，不触碰做题掌握度）。
+ *
+ * - `mode = 'merge'`（默认）：增量标熟指定节点（可选 `include_prerequisites: true` 级联前置）；
+ * - `mode = 'replace'`：整体替换 `self_assessed` 集合（保留 `diagnostic_passed`）；
+ * - `mode = 'remove'`：取消标熟指定节点。
  */
 export async function saveSelfAssessedPlacements(
   userId: string,
@@ -316,9 +357,18 @@ export async function saveSelfAssessedPlacements(
 ): Promise<SelfAssessResult> {
   const modeRaw = input.mode;
   const mode = modeRaw === undefined || modeRaw === null ? "merge" : modeRaw;
-  if (mode !== "merge" && mode !== "replace") {
-    throw new BadRequestError("mode 仅支持 merge 或 replace");
+  if (mode !== "merge" && mode !== "replace" && mode !== "remove") {
+    throw new BadRequestError("mode 仅支持 merge、replace 或 remove");
   }
+  const includePrereqsRaw = input.include_prerequisites;
+  if (
+    includePrereqsRaw !== undefined &&
+    includePrereqsRaw !== null &&
+    typeof includePrereqsRaw !== "boolean"
+  ) {
+    throw new ValidationError("include_prerequisites 必须是布尔值");
+  }
+  const includePrerequisites = includePrereqsRaw === true;
 
   const graph = await readKnowledgeGraph();
   const validNodeIds = new Set(graph.nodes.map((n) => n.id));
@@ -349,6 +399,11 @@ export async function saveSelfAssessedPlacements(
       targetIds.add(nodeId);
     }
   }
+  if (includePrerequisites && mode !== "remove" && targetIds.size > 0) {
+    for (const reqId of collectPrerequisiteIds(graph, targetIds)) {
+      targetIds.add(reqId);
+    }
+  }
   if (targetIds.size > MAX_SELF_ASSESS_NODES) {
     throw new ValidationError(
       `单次自评最多提交 ${MAX_SELF_ASSESS_NODES} 个知识点`,
@@ -359,6 +414,19 @@ export async function saveSelfAssessedPlacements(
   const now = new Date().toISOString();
 
   await db.transaction(async (tx) => {
+    const list = [...targetIds];
+    if (mode === "remove") {
+      if (list.length > 0) {
+        await tx.delete(userKnowledgePlacements).where(
+          and(
+            eq(userKnowledgePlacements.user_id, userId),
+            inArray(userKnowledgePlacements.node_id, list),
+          ),
+        );
+      }
+      return;
+    }
+
     if (mode === "replace") {
       await tx.delete(userKnowledgePlacements).where(
         and(
@@ -367,7 +435,6 @@ export async function saveSelfAssessedPlacements(
         ),
       );
     }
-    const list = [...targetIds];
     if (list.length > 0) {
       if (mode === "merge") {
         // 确保只写未覆盖行，保留已有 diagnostic_passed 来源
@@ -413,9 +480,14 @@ export async function saveSelfAssessedPlacements(
   for (const id of existingAfter) {
     if (!existingBefore.has(id)) addedCount++;
   }
+  let removedCount = 0;
+  for (const id of existingBefore) {
+    if (!existingAfter.has(id)) removedCount++;
+  }
   return {
     placed_nodes: [...existingAfter].sort(),
     added_count: addedCount,
+    removed_count: removedCount,
     total_placed: existingAfter.size,
   };
 }

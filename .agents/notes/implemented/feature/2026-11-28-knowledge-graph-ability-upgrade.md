@@ -44,7 +44,8 @@ Status: implemented
 
 5. **前端最小闭环与全图总览视图**：
    - 更新 `noj-ui/utils/domain/education/knowledge.ts`、`knowledgeTree.ts`、`KnowledgeSkillTree.vue` 与学生端「我的学习」页，按 Precision Instrument 设计 Token 展示节点能力分（`tabular-nums`）与轻量「待复习」徽标，不影响教练班级矩阵；
-   - 在 `knowledgeTree.ts` 扩展纯布局算法 `buildGlobalSkillTreeLayout`（3 列均衡宏观阶段泳道 + 跨领域连线）与 `collectDependencyChain`（全图跨领域上下游依赖链），新增 `KnowledgeGlobalOverview.vue` 并将 14 领域进度面板与搜索定位整合到左侧导航栏，支持节点表面直接拖拽、触控板平移/捏合缩放、交互式小地图、全屏切换及点击「讲解」/双击直达节点详情页，同时放开未登录态下公开知识图谱的浏览（不请求个人数据）。
+   - 在 `knowledgeTree.ts` 扩展纯布局算法 `buildGlobalSkillTreeLayout`（3 列均衡宏观阶段泳道 + 跨领域连线）与 `collectDependencyChain`（全图跨领域上下游依赖链），新增 `KnowledgeGlobalOverview.vue` 并将 14 领域进度面板与搜索定位整合到左侧导航栏，支持节点表面直接拖拽、触控板平移/捏合缩放、交互式小地图、全屏切换及点击「讲解」/双击直达节点详情页，同时放开未登录态下公开知识图谱的浏览（不请求个人数据）；
+   - 复用 `user_knowledge_placements` 扩展 `POST /knowledge/me/diagnostic/self-assess` 支持 `mode: 'remove'` 与 `include_prerequisites: true`，在全图快览面板与知识点详情页提供一键「标熟 / 含前置标熟 / 取消标熟」，立即点亮技能树并放行下游前置推荐，同时不污染刷题统计与教练班级矩阵。
 
 ## Alternatives considered
 

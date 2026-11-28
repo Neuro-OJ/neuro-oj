@@ -204,6 +204,7 @@ export interface DiagnosticPlanView {
 export interface SelfAssessResult {
   placed_nodes: string[];
   added_count: number;
+  removed_count?: number;
   total_placed: number;
 }
 

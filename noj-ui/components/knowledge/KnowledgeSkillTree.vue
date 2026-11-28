@@ -23,13 +23,22 @@ const props = withDefaults(
     masteryItems?: MasteryItem[];
     recommendations?: KnowledgeRecommendation[];
     placedNodeIds?: string[];
+    canMarkFamiliar?: boolean;
+    markingNodeId?: string | null;
   }>(),
   {
     masteryItems: () => [],
     recommendations: () => [],
     placedNodeIds: () => [],
+    canMarkFamiliar: false,
+    markingNodeId: null,
   },
 );
+
+const emit = defineEmits<{
+  (e: 'mark-familiar', payload: { nodeId: string; includePrerequisites: boolean }): void;
+  (e: 'unmark-familiar', nodeId: string): void;
+}>();
 
 const selectedSyllabus = ref<'all' | 'ioai' | 'noai' | 'lmcc'>('all');
 const onlyWithProblems = ref(false);
@@ -203,7 +212,7 @@ function statusLabel(status: SkillTreeNodeStatus): string {
     case 'mastered':
       return '已掌握';
     case 'placed':
-      return '已摸底';
+      return '已标熟';
     case 'learning':
       return '学习中';
     case 'recommended':
@@ -320,7 +329,7 @@ function badgeClass(status: SkillTreeNodeStatus): string {
         <span class="size-2 rounded-full bg-signal" />已掌握
       </span>
       <span class="inline-flex items-center gap-1.5">
-        <span class="size-2 rounded-full bg-primary" />学习中 / 推荐 / 已摸底
+        <span class="size-2 rounded-full bg-primary" />学习中 / 推荐 / 已标熟
       </span>
       <span class="inline-flex items-center gap-1.5">
         <span class="size-2 rounded-full bg-text-secondary" />前置已通
@@ -356,7 +365,7 @@ function badgeClass(status: SkillTreeNodeStatus): string {
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-muted tabular-nums">
             <span>已掌握 {{ globalTotals.mastered }}</span>
-            <span v-if="globalTotals.placed > 0">已摸底 {{ globalTotals.placed }}</span>
+            <span v-if="globalTotals.placed > 0">已标熟 {{ globalTotals.placed }}</span>
             <span class="text-primary">学习中 {{ globalTotals.learning }}</span>
             <span v-if="globalTotals.review > 0" class="text-verdict-partial">
               待复习 {{ globalTotals.review }}
@@ -507,8 +516,12 @@ function badgeClass(status: SkillTreeNodeStatus): string {
           :placed-node-ids="placedSet"
           :recommended-ids="recommendedSet"
           :focused-area-id="focusedAreaId"
+          :can-mark-familiar="canMarkFamiliar"
+          :marking-node-id="markingNodeId"
           @select-area="openArea"
           @focus-area-change="focusedAreaId = $event"
+          @mark-familiar="emit('mark-familiar', $event)"
+          @unmark-familiar="emit('unmark-familiar', $event)"
         />
 
         <div

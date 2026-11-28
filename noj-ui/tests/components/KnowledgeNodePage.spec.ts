@@ -323,4 +323,60 @@ describe('知识点页', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('知识点不存在或已被移除');
   });
+
+  it('登录且支持标熟时可在知识点页一键标熟、含前置标熟与取消标熟', async () => {
+    const submitSelfAssessment = vi.fn()
+      .mockResolvedValueOnce({
+        placed_nodes: ['ds.array', 'ds.stack'],
+        added_count: 2,
+        removed_count: 0,
+        total_placed: 2,
+      })
+      .mockResolvedValueOnce({ placed_nodes: ['ds.stack'], added_count: 0, removed_count: 1, total_placed: 1 });
+    vi.stubGlobal('useKnowledge', () => ({
+      disabled,
+      graph: ref(null),
+      loadNode,
+      loadLadder,
+      loadGraph,
+      loadProblem: () => Promise.resolve(null),
+      loadNextForProblem: () => Promise.resolve(null),
+      saveProblem: vi.fn(),
+      loadMyMastery,
+      loadDiagnosis,
+      submitSelfAssessment,
+    }));
+    diagnosis.value = {
+      node_id: 'ds.array',
+      state: 'none',
+      missing_prerequisites: [{ node_id: 'ds.stack', name: '栈', depth: 1, state: 'none', failed_attempts: 0 }],
+      chain: [{ node_id: 'ds.stack', name: '栈', depth: 1, state: 'none', failed_attempts: 0 }],
+    };
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="node-mark-familiar-btn"]').exists()).toBe(true);
+    const prereqBtn = wrapper.find('[data-testid="node-mark-familiar-prereqs-btn"]');
+    expect(prereqBtn.exists()).toBe(true);
+
+    await prereqBtn.trigger('click');
+    await flushPromises();
+    expect(submitSelfAssessment).toHaveBeenNthCalledWith(1, {
+      node_ids: ['ds.array'],
+      mode: 'merge',
+      include_prerequisites: true,
+    });
+    expect(wrapper.find('[data-testid="node-placed-badge"]').text()).toContain('已标熟');
+
+    const unmarkBtn = wrapper.find('[data-testid="node-unmark-familiar-btn"]');
+    expect(unmarkBtn.exists()).toBe(true);
+    await unmarkBtn.trigger('click');
+    await flushPromises();
+    expect(submitSelfAssessment).toHaveBeenNthCalledWith(2, {
+      node_ids: ['ds.array'],
+      mode: 'remove',
+      include_prerequisites: false,
+    });
+  });
 });

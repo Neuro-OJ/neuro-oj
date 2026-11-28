@@ -129,4 +129,42 @@ describe('KnowledgeSkillTree', () => {
     await wrapper.find('[data-testid="skill-area-tab-overview"]').trigger('click');
     expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
   });
+
+  it('登录态快览面板支持一键标熟、含前置标熟与取消标熟事件', async () => {
+    const wrapper = mount(KnowledgeSkillTree, {
+      props: {
+        graph,
+        slug: 'school',
+        masteryItems: [],
+        recommendations: [],
+        placedNodeIds: [],
+        canMarkFamiliar: true,
+      },
+      global: {
+        stubs: {
+          NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+        },
+      },
+    });
+
+    await wrapper.find('[data-testid="skill-node-ml.linear"]').trigger('click');
+    const markBtn = wrapper.find('[data-testid="overview-mark-familiar-btn"]');
+    const markWithPrereqsBtn = wrapper.find('[data-testid="overview-mark-familiar-prereqs-btn"]');
+    expect(markBtn.exists()).toBe(true);
+    expect(markWithPrereqsBtn.exists()).toBe(true);
+    expect(markWithPrereqsBtn.text()).toContain('+1');
+
+    await markBtn.trigger('click');
+    await markWithPrereqsBtn.trigger('click');
+    expect(wrapper.emitted('mark-familiar')).toEqual([
+      [{ nodeId: 'ml.linear', includePrerequisites: false }],
+      [{ nodeId: 'ml.linear', includePrerequisites: true }],
+    ]);
+
+    await wrapper.setProps({ placedNodeIds: ['ml.linear'] });
+    const unmarkBtn = wrapper.find('[data-testid="overview-unmark-familiar-btn"]');
+    expect(unmarkBtn.exists()).toBe(true);
+    await unmarkBtn.trigger('click');
+    expect(wrapper.emitted('unmark-familiar')).toEqual([['ml.linear']]);
+  });
 });

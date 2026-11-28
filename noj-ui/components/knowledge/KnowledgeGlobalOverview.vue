@@ -25,11 +25,15 @@ const props = defineProps<{
   placedNodeIds: ReadonlySet<string>;
   recommendedIds: ReadonlySet<string>;
   focusedAreaId?: string | null;
+  canMarkFamiliar?: boolean;
+  markingNodeId?: string | null;
 }>();
 
 const emit = defineEmits<{
   (e: 'select-area', areaId: string): void;
   (e: 'focus-area-change', areaId: string | null): void;
+  (e: 'mark-familiar', payload: { nodeId: string; includePrerequisites: boolean }): void;
+  (e: 'unmark-familiar', nodeId: string): void;
 }>();
 
 const MIN_SCALE = 0.12;
@@ -102,10 +106,18 @@ const selectedNodeLayout = computed<SkillTreeNodeLayout | null>(() => {
 });
 
 const selectedChainCounts = computed(() => {
-  if (!selectedNodeId.value) return { ancestors: 0, descendants: 0 };
+  if (!selectedNodeId.value) return { ancestors: 0, descendants: 0, unmetAncestors: 0 };
   const { ancestors, descendants } = collectDependencyChain(props.graph, selectedNodeId.value);
-  return { ancestors: ancestors.size, descendants: descendants.size };
+  let unmetAncestors = 0;
+  for (const id of ancestors) {
+    if (props.masteryByNode.get(id)?.state !== 'mastered' && !props.placedNodeIds.has(id)) {
+      unmetAncestors++;
+    }
+  }
+  return { ancestors: ancestors.size, descendants: descendants.size, unmetAncestors };
 });
+
+const selectedIsPlaced = computed(() => selectedNodeId.value ? props.placedNodeIds.has(selectedNodeId.value) : false);
 
 const scalePercent = computed(() => Math.round(scale.value * 100));
 
@@ -407,7 +419,7 @@ function statusLabel(status: SkillTreeNodeStatus): string {
     case 'mastered':
       return '已掌握';
     case 'placed':
-      return '已摸底';
+      return '已标熟';
     case 'learning':
       return '学习中';
     case 'recommended':
@@ -873,7 +885,47 @@ function edgeOpacity(edge: GlobalSkillTreeEdgeLayout): number {
             <span class="text-signal">后继 {{ selectedChainCounts.descendants }}</span>
           </div>
 
-          <div class="mt-3 flex items-center gap-2">
+          <!-- 一键标熟 / 含前置标熟 / 取消标熟（写入隔离摸底表，不污染做题统计与班级矩阵） -->
+          <div
+            v-if="canMarkFamiliar && selectedNodeLayout.status !== 'mastered'"
+            class="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-border/80 pt-2.5"
+            data-testid="overview-familiar-actions"
+          >
+            <button
+              v-if="selectedIsPlaced"
+              type="button"
+              :disabled="markingNodeId === selectedNodeLayout.node.id"
+              class="rounded-[4px] border border-border bg-bg-panel px-2.5 py-1 text-xs font-medium text-text-secondary hover:border-border-strong hover:text-text disabled:opacity-50"
+              data-testid="overview-unmark-familiar-btn"
+              @click="emit('unmark-familiar', selectedNodeLayout.node.id)"
+            >
+              {{ markingNodeId === selectedNodeLayout.node.id ? '处理中...' : '取消标熟' }}
+            </button>
+            <template v-else>
+              <button
+                type="button"
+                :disabled="markingNodeId === selectedNodeLayout.node.id"
+                class="rounded-[4px] border border-primary/50 bg-primary-bg px-2.5 py-1 text-xs font-medium text-primary hover:border-primary disabled:opacity-50"
+                data-testid="overview-mark-familiar-btn"
+                @click="emit('mark-familiar', { nodeId: selectedNodeLayout.node.id, includePrerequisites: false })"
+              >
+                {{ markingNodeId === selectedNodeLayout.node.id ? '处理中...' : '标熟' }}
+              </button>
+              <button
+                v-if="selectedChainCounts.unmetAncestors > 0"
+                type="button"
+                :disabled="markingNodeId === selectedNodeLayout.node.id"
+                class="rounded-[4px] border border-border bg-bg-panel px-2 py-1 text-xs font-medium text-text-secondary hover:border-primary/60 hover:text-primary disabled:opacity-50"
+                title="将该知识点及其全部未完成前置一并标熟，快速跳过已掌握分支"
+                data-testid="overview-mark-familiar-prereqs-btn"
+                @click="emit('mark-familiar', { nodeId: selectedNodeLayout.node.id, includePrerequisites: true })"
+              >
+                含前置标熟 (+{{ selectedChainCounts.unmetAncestors }})
+              </button>
+            </template>
+          </div>
+
+          <div class="mt-2.5 flex items-center gap-2">
             <NuxtLink
               :to="nodePath(selectedNodeLayout.node.id)"
               class="inline-flex flex-1 items-center justify-center rounded-[4px] bg-primary px-2.5 py-1.5 text-xs font-medium text-white no-underline hover:bg-primary-dark"
