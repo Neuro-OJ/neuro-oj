@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** 实例与两域运营内容：管理页面实际发布，公开入口与隔离用真实 API 核对。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { api, getAdminToken } from "../helper.ts";
 import { BROWSER_E2E, gotoPage, withBrowserJourney } from "./browser.ts";
 import { inputModeFixture as fixture } from "./_workspace-input-mode-fixtures.ts";

@@ -47,7 +47,6 @@ function manifestFor(session = "perf-a"): SessionManifest {
       minioConsole: 15405,
       llmGateway: 15406,
       llmMock: 15407,
-      coordinator: 15408,
     },
     now: new Date("2026-11-03T00:00:00.000Z"),
   });
@@ -97,18 +96,6 @@ Deno.test("e2e-session: 清单字段由 runId 派生且所有权可核对", () =
     evaluatorNetworkFor(manifest.runId),
   );
   assertEquals(manifest.ownerLabel, "noj.e2e.session=perf-a");
-  // evaluator 在会话私有网络内访问协调服务：必须用容器端口 8010，
-  // 用宿主映射端口会让评测容器连不上（屏障 arrivals 恒为 0）。
-  assertEquals(
-    manifest.urls.evaluatorCoordinator,
-    "http://test-coordinator:8010",
-  );
-  assertEquals(
-    manifest.urls.evaluatorCoordinator.includes(
-      String(manifest.ports.coordinator),
-    ),
-    false,
-  );
   assertSessionOwnership(manifest, "perf-a");
   let mismatch: unknown;
   try {
@@ -249,7 +236,6 @@ Deno.test("e2e-session: 环境文本 session 私有且包含全部资源", () =>
       "DATABASE_URL",
       "E2E_LLM_MOCK_INSPECT_URL",
       "E2E_REDIS_URL",
-      "E2E_COORDINATOR_URL",
       "E2E_EVALUATOR_NETWORK",
     ]
   ) {
@@ -384,7 +370,6 @@ Deno.test("e2e-session: 端口冲突自动换端口重试并把实际端口写�
         minioConsole: base + 5,
         llmGateway: base + 6,
         llmMock: base + 7,
-        coordinator: base + 8,
       }));
     };
     const calls: Array<{ command: string[]; env?: Record<string, string> }> =
@@ -505,7 +490,6 @@ Deno.test("e2e-session: down 成功时删除清单与 env 文件", async () => {
     assertEquals(text.includes("export COMPOSE_PROJECT_NAME="), true);
     const parsed = parseSessionEnv(text);
     assertEquals(parsed.COMPOSE_PROJECT_NAME, "noj-e2e-perf-env-envfile1");
-    assertEquals(parsed.E2E_TEST_COORDINATOR_URL, parsed.E2E_COORDINATOR_URL);
     await downSession("perf-env", deps, dir);
     assertEquals(await loadSession("perf-env", dir), undefined);
     let envGone = false;

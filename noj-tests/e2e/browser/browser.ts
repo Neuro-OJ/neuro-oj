@@ -12,10 +12,10 @@ export const BROWSER_E2E = Deno.env.get("NOJ_RUN_BROWSER_E2E") === "1";
 export const UI_URL = Deno.env.get("E2E_UI_URL") || "http://localhost:3000";
 export const ARTIFACT_DIR = "test-results/ui-browser";
 
-type Browser = import("npm:playwright@1.62.1").Browser;
-type BrowserContext = import("npm:playwright@1.62.1").BrowserContext;
-type Page = import("npm:playwright@1.62.1").Page;
-type Locator = import("npm:playwright@1.62.1").Locator;
+type Browser = import("npm:playwright@1.65.1").Browser;
+type BrowserContext = import("npm:playwright@1.65.1").BrowserContext;
+type Page = import("npm:playwright@1.65.1").Page;
+type Locator = import("npm:playwright@1.65.1").Locator;
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 
@@ -54,7 +54,7 @@ export interface JourneyPage {
 export interface JourneyTracing {
   start(
     options: { screenshots: boolean; snapshots: boolean; sources: boolean },
-  ): Promise<void>;
+  ): Promise<unknown>;
   stop(options?: { path?: string }): Promise<void>;
 }
 
@@ -84,7 +84,7 @@ export interface BrowserJourneyOptions {
 }
 
 const launchChromium: BrowserLauncher = async () => {
-  const { chromium } = await import("npm:playwright@1.62.1");
+  const { chromium } = await import("npm:playwright@1.65.1");
   const browser = await chromium.launch({ headless: true });
   // Playwright 的 Page/BrowserContext 是超集，这里只需要生命周期所需子集。
   return browser as unknown as JourneyBrowser;
@@ -257,6 +257,6 @@ export async function assertClassContains(
   timeout = 15_000,
 ): Promise<void> {
   // 惰性加载断言库：生命周期模块被零依赖单测导入时不触发 Playwright 加载。
-  const { expect } = await import("npm:playwright@1.62.1/test");
+  const { expect } = await import("npm:playwright@1.65.1/test");
   await expect(element).toContainClass(className, { timeout });
 }

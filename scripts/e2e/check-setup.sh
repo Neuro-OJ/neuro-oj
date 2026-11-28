@@ -50,8 +50,7 @@ done
 
 # ── 3. 主机端口全部参数化 ──────────────────────────────────────────
 for var in E2E_PG_PORT E2E_REDIS_PORT E2E_CORE_PORT E2E_MINIO_PORT \
-  E2E_MINIO_CONSOLE_PORT E2E_LLM_GATEWAY_PORT E2E_LLM_MOCK_PORT \
-  E2E_TEST_COORDINATOR_PORT; do
+  E2E_MINIO_CONSOLE_PORT E2E_LLM_GATEWAY_PORT E2E_LLM_MOCK_PORT; do
   pattern='${'"$var"':-'
   grep -Fq "$pattern" "$COMPOSE_FILE" ||
     fail_check "docker-compose.e2e.yml 未参数化 $var"

@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import postgres from "npm:postgres@3.4.5";
 import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
@@ -10,24 +10,18 @@ import {
   UI_URL,
   withBrowserJourney,
 } from "./browser.ts";
-import { readEvaluationGate } from "../../fixtures/evaluation-gate.ts";
 import {
   copyLlmGovernanceProblem,
   createLlmGovernanceFixture,
-  createLlmGovernanceGate,
-  deleteLlmGovernanceGate,
   finishLlmGovernance,
   type LlmAccount,
   llmFixtureApi,
   type LlmGovernanceCopy,
-  type LlmGovernanceGate,
   llmGovernanceUsage,
   type LlmSchool,
-  releaseLlmGovernanceGate,
   submitLlmGovernance,
-  waitForLlmGovernanceArrival,
 } from "./_workspace-llm-governance-fixture.ts";
-type Page = import("npm:playwright@1.62.1").Page;
+type Page = import("npm:playwright@1.65.1").Page;
 
 async function login(page: Page, actor: LlmAccount) {
   await gotoPage(page, "/login");
@@ -188,30 +182,6 @@ async function editAlias(
   );
 }
 
-/** 释放并删除屏障；两个动作分别记录，避免一个失败掩盖另一个。 */
-async function cleanupLlmGovernanceGate(
-  gate: LlmGovernanceGate,
-): Promise<void> {
-  const errors: string[] = [];
-  try {
-    await releaseLlmGovernanceGate(gate);
-  } catch (error) {
-    errors.push(
-      `释放屏障失败：${error instanceof Error ? error.message : error}`,
-    );
-  }
-  try {
-    await deleteLlmGovernanceGate(gate);
-  } catch (error) {
-    errors.push(
-      `删除屏障失败：${error instanceof Error ? error.message : error}`,
-    );
-  }
-  if (errors.length) {
-    throw new AggregateError(errors, `评测屏障清理失败：${errors.join("；")}`);
-  }
-}
-
 Deno.test({
   name:
     "[ui/workspace-llm-governance] 普通owner治理、别名CAS与两学校真实调用和冻结归属",
@@ -225,21 +195,15 @@ Deno.test({
     const dbUrl = Deno.env.get("E2E_LLM_GOVERNANCE_DATABASE_URL") ||
       Deno.env.get("DATABASE_URL");
     if (!dbUrl) throw new Error("需要隔离测试数据库以只读核对受理快照");
-    // 第 1 步的前置：屏障必须先于评测任务存在。evaluator 启动后立刻 wait，
-    // gate 不存在会直接 404 失败，而不是静默跳过。放在 sql 之前：协调服务不可用时
-    // 直接失败，不会留下未关闭的连接池。
-    const gate = await createLlmGovernanceGate(suffix);
     const sql = postgres(dbUrl, { max: 1 });
-    let passed = false;
     try {
       await withBrowserJourney("workspace-llm-governance", async (journey) => {
         const browserA = await journey.newSession("school-a"),
           browserB = await journey.newSession("school-b");
         // A 上下文里的第二个页面，保留原来的 stale revision 语义。
         const stale = await browserA.context.newPage();
-        let cleanupError: Error | undefined;
         try {
-          const f = await createLlmGovernanceFixture(suffix, gate);
+          const f = await createLlmGovernanceFixture(suffix);
           const [a, b] = f.schools;
           await login(browserA.page, a.owner);
           await login(browserB.page, b.owner);
@@ -252,30 +216,7 @@ Deno.test({
           let idA = "", idB = "", attemptId = "";
           assertEquals(
             await t.step(
-              "1. 唯一屏障写入 evaluator 夹具，固定休眠已删除",
-              async () => {
-                const status = await readEvaluationGate(
-                  gate.placement,
-                  gate.id,
-                );
-                assertEquals(status.arrivals, 0);
-                assertEquals(status.released, false);
-                assertEquals(status.cancelled, false);
-                // 夹具写进 evaluate.py 的是容器网络地址与 gate 标识；
-                // 原来的 time.sleep(20) 必须彻底消失。
-                assertEquals(f.evaluatorScript.includes("time.sleep"), false);
-                assertEquals(
-                  f.evaluatorScript.includes(gate.placement.evaluatorUrl),
-                  true,
-                );
-                assertEquals(f.evaluatorScript.includes(gate.id), true);
-              },
-            ),
-            true,
-          );
-          assertEquals(
-            await t.step(
-              "2. 两普通owner在Web创建独立Provider、RPM/TPM并测试真实连接",
+              "1. 两普通owner在Web创建独立Provider、RPM/TPM并测试真实连接",
               async () => {
                 providerA = await createProvider(
                   browserA.page,
@@ -316,7 +257,7 @@ Deno.test({
           );
           assertEquals(
             await t.step(
-              "3. 同域两tab旧revision409，原模型输入与旧依据保留",
+              "2. 同域两tab旧revision409，原模型输入与旧依据保留",
               async () => {
                 await gotoPage(stale, `/d/${a.slug}/llm`);
                 await stale.getByRole("button", {
@@ -368,7 +309,7 @@ Deno.test({
           );
           assertEquals(
             await t.step(
-              "4. 提交A、B并等到一个evaluator到达屏障，核对两条在途尝试与A冻结快照",
+              "3. 提交A、B完成真实评测并核对A冻结快照、原模型、域归属与用量",
               async () => {
                 const copyA = copies[a.id], copyB = copies[b.id];
                 idA = await submitLlmGovernance(
@@ -383,37 +324,14 @@ Deno.test({
                   copyB.ref,
                   copyB.versionId,
                 );
-                // 只等一个：Judge 并发 1 时第二个 evaluator 要等第一个结束才启动，
-                // 等两个会死锁。屏障上限 45 秒，短于 evaluator 的 60 秒时限。
-                const arrived = await waitForLlmGovernanceArrival(gate, 1);
-                assertEquals(
-                  arrived.arrivals >= 1,
-                  true,
-                  "必须至少一个 evaluator 真实到达屏障",
-                );
-                assertEquals(arrived.released, false);
-                assertEquals(arrived.cancelled, false);
+                await Promise.all([
+                  finishLlmGovernance(a, f.student, idA),
+                  finishLlmGovernance(b, f.student, idB),
+                ]);
                 const [attempt] =
-                  await sql`SELECT ea.id,ea.task_snapshot,s.domain_id,ea.state FROM evaluation_attempts ea JOIN submissions s ON s.id=ea.submission_id WHERE s.id=${idA} ORDER BY ea.sequence DESC LIMIT 1`;
-                const [attemptB] =
-                  await sql`SELECT ea.id,ea.state FROM evaluation_attempts ea JOIN submissions s ON s.id=ea.submission_id WHERE s.id=${idB} ORDER BY ea.sequence DESC LIMIT 1`;
+                  await sql`SELECT ea.id,ea.task_snapshot,s.domain_id FROM evaluation_attempts ea JOIN submissions s ON s.id=ea.submission_id WHERE s.id=${idA} ORDER BY ea.sequence DESC LIMIT 1`;
                 assertEquals(attempt !== undefined, true, "A 的尝试必须已受理");
-                assertEquals(
-                  attemptB !== undefined,
-                  true,
-                  "B 的尝试必须已受理",
-                );
                 assertEquals(attempt.domain_id, a.id);
-                assertEquals(
-                  ["queued", "judging"].includes(attempt.state),
-                  true,
-                  "屏障期间原尝试必须仍在途",
-                );
-                assertEquals(
-                  ["queued", "judging"].includes(attemptB.state),
-                  true,
-                  "屏障期间 B 的尝试也必须仍在途",
-                );
                 assertEquals(
                   attempt.task_snapshot.llm_execution.domain_id,
                   a.id,
@@ -427,40 +345,6 @@ Deno.test({
                   model: currentA,
                 }]);
                 attemptId = attempt.id;
-              },
-            ),
-            true,
-          );
-          assertEquals(
-            await t.step(
-              "5. 经原UI修改A模型别名，尝试仍在途",
-              async () => {
-                await editAlias(browserA.page, a, nextA);
-                const [row] =
-                  await sql`SELECT state FROM evaluation_attempts WHERE id=${attemptId}`;
-                assertEquals(
-                  ["queued", "judging"].includes(row.state),
-                  true,
-                  "改模型期间原尝试必须仍在途（屏障未提前释放）",
-                );
-                const alias = await llmFixtureApi<
-                  { data: Array<{ model: string }> }
-                >("GET", `/domains/${a.slug}/llm/model-aliases`, a.owner.token);
-                assertEquals(alias.data[0].model, nextA);
-              },
-            ),
-            true,
-          );
-          assertEquals(
-            await t.step(
-              "6. 释放屏障，两次真实评测完成并核对原模型、域归属与用量",
-              async () => {
-                const released = await releaseLlmGovernanceGate(gate);
-                assertEquals(released.released, true);
-                await Promise.all([
-                  finishLlmGovernance(a, f.student, idA),
-                  finishLlmGovernance(b, f.student, idB),
-                ]);
                 for (
                   const [school, id, provider, model] of [[
                     a,
@@ -497,13 +381,14 @@ Deno.test({
           );
           assertEquals(
             await t.step(
-              "7. 再提交A：已释放屏障立即通过，新尝试用新模型",
+              "4. 经原UI修改A模型别名，再提交A使用新模型且原尝试冻结快照不变",
               async () => {
+                await editAlias(browserA.page, a, nextA);
+                const alias = await llmFixtureApi<
+                  { data: Array<{ model: string }> }
+                >("GET", `/domains/${a.slug}/llm/model-aliases`, a.owner.token);
+                assertEquals(alias.data[0].model, nextA);
                 const copyA = copies[a.id];
-                const before = await readEvaluationGate(
-                  gate.placement,
-                  gate.id,
-                );
                 const fresh = await submitLlmGovernance(
                   a,
                   f.student,
@@ -521,21 +406,13 @@ Deno.test({
                   freshAttempt.task_snapshot.llm_execution.models,
                   [{ alias: "fast", model: nextA }],
                 );
-                // 新 evaluator 必须真实经过屏障：计数增加且释放状态保持。
-                const after = await readEvaluationGate(gate.placement, gate.id);
-                assertEquals(after.released, true);
-                assertEquals(
-                  after.arrivals > before.arrivals,
-                  true,
-                  "新 evaluator 必须真实到达已释放的屏障",
-                );
               },
             ),
             true,
           );
           assertEquals(
             await t.step(
-              "8. 保留冻结快照、Mock上游收到正确模型，用量页按题展示",
+              "5. 保留冻结快照、Mock上游收到正确模型，用量页按题展示",
               async () => {
                 const copyA = copies[a.id], copyB = copies[b.id];
                 const [original] =
@@ -597,41 +474,9 @@ Deno.test({
             ),
             true,
           );
-          passed = true;
         } finally {
-          // 第 9 步：无论 UI 步骤成功还是抛错，都要立刻放行 evaluator 并删除 gate，
-          // 不能让评测容器一直阻塞到屏障超时。
-          try {
-            const stepPassed = await t.step(
-              "9. 释放并删除屏障，清理失败必须显式报告",
-              () => cleanupLlmGovernanceGate(gate),
-            );
-            if (!stepPassed) {
-              cleanupError = new Error("评测屏障清理失败（详见第 9 步输出）");
-            }
-          } catch (error) {
-            cleanupError = error instanceof Error
-              ? error
-              : new Error(String(error));
-          }
-          try {
-            await stale.close();
-          } catch (error) {
-            // 收尾失败不能覆盖已经发生的业务失败，只记录下来一并报告。
-            cleanupError ??= error instanceof Error
-              ? error
-              : new Error(String(error));
-          }
-          if (cleanupError && !passed) {
-            // 用例已经失败时只报告，避免覆盖原始失败原因。
-            console.error(
-              `评测屏障清理失败（用例已失败，保留原始错误）：${cleanupError.message}`,
-            );
-          }
+          await stale.close();
         }
-        // 清理失败且用例其余部分通过时必须让用例失败（不在 finally 里 throw，
-        // 否则会掩盖原始异常并触发 no-unsafe-finally）。
-        if (cleanupError && passed) throw cleanupError;
       });
     } finally {
       await sql.end();

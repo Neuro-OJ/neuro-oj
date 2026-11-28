@@ -21,7 +21,7 @@
 import { BROWSER_E2E, UI_URL, withBrowserJourney } from "./browser.ts";
 import { getAdminToken } from "../helper.ts";
 
-type Page = import("npm:playwright@1.62.1").Page;
+type Page = import("npm:playwright@1.65.1").Page;
 
 const ADMIN_EMAIL = Deno.env.get("E2E_ADMIN_EMAIL") || "e2e_admin@test.com";
 /** getAdminToken() 会把 admin 密码归一化为该值（含强制改密流程） */

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** 域内搜索真实浏览器验收：快捷入口、兼容链接与 URL 状态。 */
 
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
 import {
   api,

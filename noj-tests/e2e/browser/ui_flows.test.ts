@@ -137,7 +137,7 @@ finally:
  * 当前用例的活动页面。每个 Deno.test 各自启动一个 Chromium（withBrowserJourney），
  * 用例之间不共享进程与上下文；这里只把本用例的页面交给操作辅助函数。
  */
-let activePage: import("npm:playwright@1.62.1").Page | null = null;
+let activePage: import("npm:playwright@1.65.1").Page | null = null;
 
 /**
  * 在独立 journey 中执行用例：每个用例一个 Chromium、一个上下文，
@@ -160,14 +160,14 @@ async function inBrowser(
 
 // ── 页面操作辅助 ──────────────────────────────────
 
-function mustPage(): import("npm:playwright@1.62.1").Page {
+function mustPage(): import("npm:playwright@1.65.1").Page {
   if (!activePage) throw new Error("browser 未启动");
   return activePage;
 }
 
 async function goto(
   path: string,
-): Promise<import("npm:playwright@1.62.1").Page> {
+): Promise<import("npm:playwright@1.65.1").Page> {
   const p = mustPage();
   await p.goto(`${UI_URL}${path}`, { waitUntil: "domcontentloaded" });
   return p;

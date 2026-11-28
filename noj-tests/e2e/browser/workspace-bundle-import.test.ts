@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** 题包直接建题必须使用路径域，并以返回的草稿 revision 发布。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { strToU8, zipSync } from "npm:fflate@0.8.2";
 import { Buffer } from "node:buffer";
 import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";

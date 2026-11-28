@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** main 新输入模式的真实浏览器→Core→Judge旅程；API只准备资源及核对结果。 */
 import { assertEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { getAdminToken, TEST_PASSWORD } from "../helper.ts";
 import {
@@ -20,8 +20,8 @@ import {
   shareInputModeProblem,
 } from "./_workspace-input-mode-fixtures.ts";
 import type { InputModeProblem } from "./_workspace-input-mode-fixtures.ts";
-type Page = import("npm:playwright@1.62.1").Page;
-type Locator = import("npm:playwright@1.62.1").Locator;
+type Page = import("npm:playwright@1.65.1").Page;
+type Locator = import("npm:playwright@1.65.1").Locator;
 interface Submission {
   id: string;
   domain_id: string;

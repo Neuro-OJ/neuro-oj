@@ -19,7 +19,7 @@ Playwright 真实操作浏览器，覆盖 API E2E 无法触达的页面交互：
 # 前置：完整评测栈已启动（scripts/e2e/setup.sh），noj-ui 已构建并监听 :3000
 cd noj-ui && NUXT_API_BASE=http://localhost:8099 PORT=3000 deno task preview  # 或 deno run -A .output/server/index.mjs
 cd noj-tests
-deno run -A npm:playwright@1.62.1 install chromium   # 首次安装浏览器
+deno run -A npm:playwright@1.65.1 install chromium   # 首次安装浏览器
 NOJ_RUN_BROWSER_E2E=1 deno task test:browser
 ```
 
@@ -279,19 +279,17 @@ docker compose -p <session-project> -f ../docker-compose.e2e.yml down -v
 
 ## 环境变量
 
-| 变量                                 | 默认值                   | 说明                                         |
-| ------------------------------------ | ------------------------ | -------------------------------------------- |
-| `NOJ_RUN_E2E`                        | —                        | 设为 `1` 启用 E2E 测试                       |
-| `E2E_BASE_URL`                       | `http://localhost:8099`  | noj-core 地址                                |
-| `E2E_NO_CLEANUP`                     | —                        | 设为 `1` 不自动清理容器                      |
-| `E2E_JWT_SECRET`                     | `e2e-test-secret`        | JWT 签名密钥                                 |
-| `NOJ_RUN_BROWSER_E2E`                | —                        | 设为 `1` 启用 UI 浏览器门禁                  |
-| `E2E_UI_URL`                         | `http://localhost:3000`  | noj-ui 地址（浏览器门禁用）                  |
-| `NOJ_TEST_PROFILE`                   | —                        | 启动器 `--profile` 转换；设为 1 记录阶段计时 |
-| `NOJ_TEST_TIMING_DIR`                | 由启动器生成             | 计时 JSONL 与 manifest 输出目录              |
-| `NOJ_TEST_MANIFEST`                  | 由启动器生成             | 子测试读取 canary 证据的清单路径             |
-| `E2E_TEST_COORDINATOR_URL`           | `http://127.0.0.1:18010` | 主机侧屏障管理地址（仅 loopback）            |
-| `E2E_TEST_COORDINATOR_EVALUATOR_URL` | 容器网络地址             | evaluator 侧屏障地址（不能写 localhost）     |
+| 变量                  | 默认值                  | 说明                                         |
+| --------------------- | ----------------------- | -------------------------------------------- |
+| `NOJ_RUN_E2E`         | —                       | 设为 `1` 启用 E2E 测试                       |
+| `E2E_BASE_URL`        | `http://localhost:8099` | noj-core 地址                                |
+| `E2E_NO_CLEANUP`      | —                       | 设为 `1` 不自动清理容器                      |
+| `E2E_JWT_SECRET`      | `e2e-test-secret`       | JWT 签名密钥                                 |
+| `NOJ_RUN_BROWSER_E2E` | —                       | 设为 `1` 启用 UI 浏览器门禁                  |
+| `E2E_UI_URL`          | `http://localhost:3000` | noj-ui 地址（浏览器门禁用）                  |
+| `NOJ_TEST_PROFILE`    | —                       | 启动器 `--profile` 转换；设为 1 记录阶段计时 |
+| `NOJ_TEST_TIMING_DIR` | 由启动器生成            | 计时 JSONL 与 manifest 输出目录              |
+| `NOJ_TEST_MANIFEST`   | 由启动器生成            | 子测试读取 canary 证据的清单路径             |
 
 ## CI 集成
 

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 /** Public/Mixed 实际用户旅程：页面写操作与当前域请求一起验收。 */
 import { assertEquals, assertNotEquals } from "jsr:@std/assert@^1.0.13";
-import { expect } from "npm:playwright@1.62.1/test";
+import { expect } from "npm:playwright@1.65.1/test";
 import { collectPendingConsents } from "../../../noj-ui/utils/auth/legalConsent.ts";
 import { api, getAdminToken, registerUser, TEST_PASSWORD } from "../helper.ts";
 import {
@@ -11,7 +11,7 @@ import {
   withBrowserJourney,
 } from "./browser.ts";
 
-type Page = import("npm:playwright@1.62.1").Page;
+type Page = import("npm:playwright@1.65.1").Page;
 interface Account {
   id: string;
   username: string;
