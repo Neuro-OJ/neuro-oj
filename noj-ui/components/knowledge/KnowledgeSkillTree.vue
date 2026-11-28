@@ -365,11 +365,13 @@ function badgeClass(status: SkillTreeNodeStatus): string {
 
           <!-- 节点搜索框 -->
           <div class="relative pt-1">
-            <input
+            <UInput
               v-model="searchQuery"
               type="search"
+              size="xs"
+              icon="i-lucide-search"
               placeholder="搜索并定位知识点..."
-              class="w-full rounded-[4px] border border-border bg-bg-sunken/60 px-2.5 py-1 text-xs text-text placeholder:text-text-muted focus:border-primary focus:bg-bg-panel focus:outline-none"
+              class="w-full"
               data-testid="overview-search-input"
               @focus="searchFocused = true"
               @blur="onSearchBlur"
@@ -380,16 +382,20 @@ function badgeClass(status: SkillTreeNodeStatus): string {
               data-testid="overview-search-results"
             >
               <li v-for="hit in searchResults" :key="hit.id">
-                <button
+                <UButton
                   type="button"
-                  class="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs hover:bg-primary-bg/70"
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  block
+                  class="justify-between rounded-none px-2.5 py-1.5 text-left hover:bg-primary-bg/70"
                   @mousedown.prevent="jumpToSearchHit(hit.id, hit.area)"
                 >
                   <span class="truncate font-medium text-text">{{ hit.name }}</span>
                   <span class="shrink-0 text-[10px] text-text-muted">
                     {{ areaNameMap.get(hit.area) ?? hit.area }}
                   </span>
-                </button>
+                </UButton>
               </li>
             </ul>
           </div>
@@ -402,20 +408,21 @@ function badgeClass(status: SkillTreeNodeStatus): string {
           aria-label="知识领域"
           data-testid="overview-area-grid"
         >
-          <button
+          <UButton
             type="button"
             role="tab"
             :aria-selected="viewMode === 'overview' && focusedAreaId === null"
-            class="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium transition-colors"
-            :class="viewMode === 'overview' && focusedAreaId === null
-              ? 'bg-primary-bg text-primary'
-              : 'text-text hover:bg-bg-sunken/70'"
+            :color="viewMode === 'overview' && focusedAreaId === null ? 'primary' : 'neutral'"
+            :variant="viewMode === 'overview' && focusedAreaId === null ? 'soft' : 'ghost'"
+            size="xs"
+            block
+            class="justify-between rounded-none px-3 py-2 text-left font-medium"
             data-testid="skill-area-tab-overview"
             @click="openOverview()"
           >
             <span>全图总览（适配全部）</span>
             <span class="text-[11px] tabular-nums opacity-80">{{ areas.length }} 域</span>
-          </button>
+          </UButton>
 
           <div
             v-for="area in areas"
@@ -428,18 +435,20 @@ function badgeClass(status: SkillTreeNodeStatus): string {
             :data-testid="`overview-area-card-${area.id}`"
           >
             <div class="flex items-center justify-between gap-2">
-              <button
+              <UButton
                 type="button"
-                class="min-w-0 flex-1 truncate text-left text-xs font-semibold transition-colors"
-                :class="(viewMode === 'area' && selectedAreaId === area.id) ||
+                :color="(viewMode === 'area' && selectedAreaId === area.id) ||
                     (viewMode === 'overview' && focusedAreaId === area.id)
-                  ? 'text-primary'
-                  : 'text-text hover:text-primary'"
+                  ? 'primary'
+                  : 'neutral'"
+                variant="link"
+                size="xs"
+                class="min-w-0 flex-1 justify-start truncate p-0 text-left font-semibold"
                 :title="`${area.name}（点击在总览中聚焦）`"
                 @click="focusAreaInOverview(area.id)"
               >
                 {{ area.name }}
-              </button>
+              </UButton>
               <span class="shrink-0 text-[11px] font-medium text-text-secondary tabular-nums">
                 {{ area.masteredCount + area.placedCount }}/{{ area.totalNodes }}
               </span>
@@ -467,19 +476,19 @@ function badgeClass(status: SkillTreeNodeStatus): string {
                 </span>
               </span>
 
-              <button
+              <UButton
                 type="button"
                 role="tab"
                 :aria-selected="viewMode === 'area' && selectedAreaId === area.id"
-                class="shrink-0 rounded-[4px] px-1.5 py-0.5 text-[10px] font-medium transition-colors"
-                :class="viewMode === 'area' && selectedAreaId === area.id
-                  ? 'bg-primary text-white'
-                  : 'text-primary hover:bg-primary-bg'"
+                color="primary"
+                :variant="viewMode === 'area' && selectedAreaId === area.id ? 'solid' : 'ghost'"
+                size="xs"
+                class="shrink-0 px-1.5 py-0.5 text-[10px]"
                 :data-testid="`skill-area-tab-${area.id}`"
                 @click="openArea(area.id)"
               >
                 单域 {{ area.masteredCount + area.placedCount }}/{{ area.totalNodes }}
-              </button>
+              </UButton>
             </div>
           </div>
         </div>
@@ -510,13 +519,16 @@ function badgeClass(status: SkillTreeNodeStatus): string {
             <span class="font-semibold text-text">
               {{ areaNameMap.get(selectedAreaId) ?? selectedAreaId }} · 单领域拓扑
             </span>
-            <button
+            <UButton
               type="button"
-              class="rounded-[4px] px-2 py-0.5 font-medium text-primary hover:bg-primary-bg"
+              color="primary"
+              variant="ghost"
+              size="xs"
+              icon="i-lucide-arrow-left"
               @click="openOverview()"
             >
-              ← 返回全图总览
-            </button>
+              返回全图总览
+            </UButton>
           </div>
 
           <div

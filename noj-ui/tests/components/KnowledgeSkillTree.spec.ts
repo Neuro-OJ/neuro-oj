@@ -68,6 +68,16 @@ describe('KnowledgeSkillTree', () => {
       global: {
         stubs: {
           NuxtLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' },
+          UButton: {
+            props: ['type', 'color', 'variant', 'size', 'block', 'icon'],
+            template: '<button :type="type || \'button\'"><slot /></button>',
+          },
+          UInput: {
+            props: ['modelValue', 'type', 'placeholder'],
+            emits: ['update:modelValue', 'focus', 'blur'],
+            template:
+              '<input :type="type || \'text\'" :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', ($event.target).value)" @focus="$emit(\'focus\', $event)" @blur="$emit(\'blur\', $event)" />',
+          },
         },
       },
     });
@@ -101,7 +111,21 @@ describe('KnowledgeSkillTree', () => {
     expect(mlNode.text()).toContain('已解锁');
     expect(mlNode.text()).toContain('前置域 1/1');
 
-    // 切回全图总览
+    // 从单领域视图通过搜索定位节点：切回全图总览后应保留选中节点与聚焦领域，不被挂载 fit 覆盖
+    const searchInput = wrapper.find('[data-testid="overview-search-input"]');
+    await searchInput.trigger('focus');
+    await searchInput.setValue('线性回归');
+    const firstHit = wrapper.find('[data-testid="overview-search-results"] button');
+    expect(firstHit.exists()).toBe(true);
+    await firstHit.trigger('mousedown');
+    await wrapper.vm.$nextTick();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
+    const focusedInspector = wrapper.find('[data-testid="overview-node-inspector"]');
+    expect(focusedInspector.exists()).toBe(true);
+    expect(focusedInspector.text()).toContain('线性回归');
+
+    // 切回全图总览（适配全部）
     await wrapper.find('[data-testid="skill-area-tab-overview"]').trigger('click');
     expect(wrapper.find('[data-testid="knowledge-global-overview"]').exists()).toBe(true);
   });

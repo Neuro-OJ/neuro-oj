@@ -182,6 +182,7 @@ function zoomAt(nextScaleRaw: number, clientX?: number, clientY?: number) {
 function focusNodeById(nodeId: string) {
   const item = nodeLayoutById.value.get(nodeId);
   if (!item) return;
+  hasExplicitFocus = true;
   measureViewport();
   hoveredNodeId.value = null;
   selectedNodeId.value = item.node.id;
@@ -199,6 +200,7 @@ function focusNodeById(nodeId: string) {
 function focusArea(areaId: string) {
   const cluster = globalLayout.value.clusters.find((c) => c.areaId === areaId);
   if (!cluster) return;
+  hasExplicitFocus = true;
   measureViewport();
   hoveredNodeId.value = null;
   selectedNodeId.value = null;
@@ -355,10 +357,19 @@ function onKeyDown(event: KeyboardEvent) {
 }
 
 let resizeObserver: ResizeObserver | null = null;
+let hasExplicitFocus = false;
 
 onMounted(() => {
   measureViewport();
-  void nextTick(() => fitToViewport());
+  // 挂载前若已由父级传入目标聚焦领域或随后触发显式聚焦，则跳过默认适配，避免覆盖用户定位。
+  if (!hasExplicitFocus && !props.focusedAreaId) {
+    fitToViewport();
+  }
+  void nextTick(() => {
+    if (!hasExplicitFocus && !props.focusedAreaId) {
+      fitToViewport();
+    }
+  });
   globalThis.addEventListener?.('keydown', onKeyDown);
   if (typeof ResizeObserver !== 'undefined' && viewportRef.value) {
     resizeObserver = new ResizeObserver(() => measureViewport());

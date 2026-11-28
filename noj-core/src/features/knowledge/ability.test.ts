@@ -273,9 +273,74 @@ Deno.test("ability: 同题去重防刷分（重复提交同一题不虚增能力
   assertEquals(deduped.length, 1);
   assertEquals(deduped[0]!.role, "primary");
   assertEquals(deduped[0]!.score_ratio, 0.9);
-  assertEquals(deduped[0]!.attempted_at, "2026-10-05T00:00:00.000Z");
+  assertEquals(deduped[0]!.attempted_at, "2026-10-02T00:00:00.000Z");
+  assertEquals(deduped[0]!.last_passed_at, "2026-10-05T00:00:00.000Z");
 
   assertEquals(computeNodeAbility(spammed), computeNodeAbility(single));
+});
+
+Deno.test("ability: 同分重刷不改变 Elo 重放顺序，低分达标复习独立刷新 last_passed_at", () => {
+  const base: ProblemAbilityObservation[] = [
+    {
+      problem_id: "p1",
+      role: "primary",
+      difficulty: 25,
+      score_ratio: 0.6,
+      passed: true,
+      attempted_at: "2026-10-01T00:00:00.000Z",
+    },
+    {
+      problem_id: "p2",
+      role: "primary",
+      difficulty: 50,
+      score_ratio: 0.6,
+      passed: true,
+      attempted_at: "2026-10-02T00:00:00.000Z",
+    },
+    {
+      problem_id: "p3",
+      role: "primary",
+      difficulty: 50,
+      score_ratio: 0.6,
+      passed: true,
+      attempted_at: "2026-10-03T00:00:00.000Z",
+    },
+  ];
+  const repeatedSameScore: ProblemAbilityObservation[] = [
+    ...base,
+    {
+      problem_id: "p1",
+      role: "primary",
+      difficulty: 25,
+      score_ratio: 0.6,
+      passed: true,
+      attempted_at: "2026-10-10T00:00:00.000Z",
+    },
+  ];
+  const baseAbility = computeNodeAbility(base);
+  const repeatedAbility = computeNodeAbility(repeatedSameScore);
+  assertEquals(repeatedAbility.ability_score, baseAbility.ability_score);
+  assertEquals(repeatedAbility.last_passed_at, "2026-10-10T00:00:00.000Z");
+
+  const reviewedLowerScore = computeNodeAbility([
+    {
+      problem_id: "p1",
+      role: "primary",
+      difficulty: 60,
+      score_ratio: 1,
+      passed: true,
+      attempted_at: "2026-06-01T00:00:00.000Z",
+    },
+    {
+      problem_id: "p1",
+      role: "primary",
+      difficulty: 60,
+      score_ratio: 0.7,
+      passed: true,
+      attempted_at: "2026-10-20T00:00:00.000Z",
+    },
+  ]);
+  assertEquals(reviewedLowerScore.last_passed_at, "2026-10-20T00:00:00.000Z");
 });
 
 Deno.test("ability: 稀疏题库防虚高（单道简单题不判 mastered，攻克高难题或足量高分可判 mastered）", () => {

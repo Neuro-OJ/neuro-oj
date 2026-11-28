@@ -51,7 +51,9 @@ import {
 import {
   isPassingScore,
   type LadderItem,
+  type PassOption,
   readNodeLadder,
+  resolvePassScore,
   tierToPrior,
 } from "./difficulty.ts";
 import { type KnowledgeGraphNode, readKnowledgeGraph } from "./graph.ts";
@@ -104,12 +106,14 @@ type NodeProblemMappingRow = NodeProblemRow & {
   role: KnowledgeMappingRole;
 };
 
-/** 某用户在某题上的有效成绩（最高分）、对应作答时间与未达标提交数。 */
+/** 某用户在某题上的有效成绩（最高分）、稳定最高分时间、最新达标时间与未达标提交数。 */
 interface UserProblemScore {
   /** 有效成绩最高分（×100 记分；无有效成绩为空）。 */
   best: number | null;
-  /** 达到有效最高分的最近一次作答/评测完成时间（ISO 8601；无有效成绩为空）。 */
+  /** 首次达到有效最高分的作答时间（ISO 8601；无有效成绩为空，用于稳定的 Elo 重放顺序）。 */
   best_at: string | null;
+  /** 最近一次达标作答时间（ISO 8601；独立于最高分时间，供遗忘衰减使用）。 */
+  last_passed_at: string | null;
   /** 未达标提交次数（全部正式提交中未达标的尝试数）。 */
   failed_attempts: number;
 }
@@ -119,6 +123,7 @@ type UserScoreRow = {
   kind: string;
   best: number | null;
   best_at: string | null;
+  last_passed_at: string | null;
   failed_attempts: number;
 } & Record<string, unknown>;
 
@@ -193,29 +198,42 @@ export function scoreOfNodeProblem(row: NodeProblemRow): number {
 /**
  * 用户在特定题目集合上的有效成绩（练习 + 已结束比赛）、对应时间与未达标次数。
  *
- * `best` 为分题型（普通提交 / 客观题套卷）的最高有效分，`best_at` 为达到该最高分
- * 的最近一次作答时间；未达标次数按全部正式提交统计。
+ * - 时间统一采用源提交的用户活动时间（`submissions.created_at` / `objective_submissions.created_at`），
+ *   避免管理员重测旧提交刷新遗忘时钟或打乱 Elo 重放顺序；
+ * - `best_at` 为首次达到该最高分的时间（保持未提分重刷时的重放顺序稳定）；
+ * - `last_passed_at` 独立聚合最近一次达到题目及格线的有效提交时间（供读时遗忘衰减使用）。
  */
 export async function loadUserProblemScores(
   userId: string,
   problemIds: string[],
   db: DbRoot = getDb(),
+  passThresholds?: ReadonlyMap<string, number>,
 ): Promise<Map<string, UserProblemScore>> {
   const result = new Map<string, UserProblemScore>();
   if (problemIds.length === 0) return result;
   const uniqueIds = [...new Set(problemIds)];
   const ids = sql.join(uniqueIds.map((id) => sql`${id}`), sql`, `);
+  const thresholdValues = sql.join(
+    uniqueIds.map((id) => {
+      const passScore = passThresholds?.get(id);
+      return sql`(${id}::text, ${passScore ?? null}::int)`;
+    }),
+    sql`, `,
+  );
   const rows = await db.execute<UserScoreRow>(sql`
-    WITH eff AS (
+    WITH thresholds(problem_id, pass_score) AS (
+      VALUES ${thresholdValues}
+    ),
+    eff AS (
       SELECT s.problem_id, 'submission' AS kind, a.score, a.accepted, s.contest_id,
-             COALESCE(a.finished_at, a.created_at, s.created_at) AS attempt_at
+             s.created_at AS attempt_at
       FROM submissions s
       JOIN evaluation_attempts a ON a.id = s.effective_attempt_id
       WHERE s.user_id = ${userId} AND s.problem_id IN (${ids})
       UNION ALL
       SELECT o.paper_id AS problem_id, 'objective' AS kind,
              a.score, a.accepted, o.contest_id,
-             COALESCE(a.finished_at, a.created_at, o.created_at) AS attempt_at
+             o.created_at AS attempt_at
       FROM objective_submissions o
       JOIN evaluation_attempts a ON a.id = o.effective_attempt_id
       WHERE o.user_id = ${userId} AND o.paper_id IN (${ids})
@@ -226,27 +244,34 @@ export async function loadUserProblemScores(
                c.end_time ~ ${CONTEST_TIME_REGEX}
                AND pg_input_is_valid(c.end_time, 'timestamptz')
                AND c.end_time::timestamptz <= now()
-             )) AS is_eligible
+             )) AS is_eligible,
+             CASE
+               WHEN t.pass_score IS NOT NULL THEN COALESCE(e.score, 0) >= t.pass_score
+               ELSE e.accepted
+             END AS is_passed
       FROM eff e
+      JOIN thresholds t ON t.problem_id = e.problem_id
       LEFT JOIN contests c ON c.id = e.contest_id
     ),
     agg AS (
       SELECT problem_id, kind,
              count(*) FILTER (WHERE NOT accepted)::int AS failed_attempts,
-             max(score) FILTER (WHERE is_eligible) AS best
+             max(score) FILTER (WHERE is_eligible) AS best,
+             max(attempt_at) FILTER (WHERE is_eligible AND is_passed) AS last_passed_at
       FROM elig
       GROUP BY problem_id, kind
     )
     SELECT a.problem_id, a.kind, a.failed_attempts, a.best,
-           (SELECT max(e2.attempt_at) FROM elig e2
+           (SELECT min(e2.attempt_at) FROM elig e2
             WHERE e2.problem_id = a.problem_id
               AND e2.kind = a.kind
               AND e2.is_eligible
-              AND e2.score = a.best) AS best_at
+              AND e2.score = a.best) AS best_at,
+           a.last_passed_at
     FROM agg a
   `);
   for (const row of unwrapRows(rows as never) as UserScoreRow[]) {
-    // 同一题目可能同时有普通提交与客观题套卷成绩：合并为该题的最高分与失败数。
+    // 同一题目可能同时有普通提交与客观题套卷成绩：合并为该题的最高分、稳定最高分时间与最新达标时间。
     const previous = result.get(row.problem_id);
     let best: number | null;
     let bestAt: string | null;
@@ -265,12 +290,18 @@ export async function loadUserProblemScores(
     } else {
       best = previous.best;
       bestAt = previous.best_at && row.best_at
-        ? (previous.best_at >= row.best_at ? previous.best_at : row.best_at)
-        : (row.best_at ?? previous.best_at);
+        ? (previous.best_at <= row.best_at ? previous.best_at : row.best_at)
+        : (previous.best_at ?? row.best_at ?? null);
     }
+    const lastPassedAt = previous?.last_passed_at && row.last_passed_at
+      ? (previous.last_passed_at >= row.last_passed_at
+        ? previous.last_passed_at
+        : row.last_passed_at)
+      : (row.last_passed_at ?? previous?.last_passed_at ?? null);
     result.set(row.problem_id, {
       best,
       best_at: bestAt,
+      last_passed_at: lastPassedAt,
       failed_attempts: Math.max(
         previous?.failed_attempts ?? 0,
         row.failed_attempts,
@@ -357,13 +388,22 @@ export async function recomputeUserMastery(
     );
     return empty;
   }
+  const fullScores = new FullScoreCache();
+  const passOptionByProblem = new Map<string, PassOption>();
+  const passThresholds = new Map<string, number>();
+  for (const row of rows) {
+    if (passOptionByProblem.has(row.problem_id)) continue;
+    const option = await passOptionOf(row, fullScores);
+    passOptionByProblem.set(row.problem_id, option);
+    passThresholds.set(row.problem_id, resolvePassScore(option));
+  }
   const scores = await loadUserProblemScores(
     userId,
     rows.map((row) => row.problem_id),
     db,
+    passThresholds,
   );
   const protectedIds = await loadProtectedProblems(rows);
-  const fullScores = new FullScoreCache();
   const minSolved = masteryMinSolved();
 
   /** 节点 → 主知识点题目（难度/计数）与主/次作答观测。 */
@@ -396,7 +436,8 @@ export async function recomputeUserMastery(
       agg.failed += mine.failed_attempts;
     }
     if (mine.best !== null) {
-      const passOption = await passOptionOf(row, fullScores);
+      const passOption = passOptionByProblem.get(row.problem_id) ??
+        await passOptionOf(row, fullScores);
       const passed = isPassingScore(mine.best, passOption);
       const scoreRatio = computeScoreRatio(mine.best, passOption);
       if (row.role === "primary") {
@@ -413,6 +454,7 @@ export async function recomputeUserMastery(
         score_ratio: scoreRatio,
         passed,
         attempted_at: mine.best_at,
+        last_passed_at: mine.last_passed_at,
       });
     }
   }

@@ -107,8 +107,10 @@ export interface ProblemAbilityObservation {
   score_ratio: number;
   /** 是否达到该题及格线（沿用 `isPassingScore` 口径）。 */
   passed: boolean;
-  /** 有效作答/更新时间（ISO 字符串；用于按时间顺序重放与 `last_passed_at`）。 */
+  /** 首次达到该题最高分的作答时间（ISO 字符串；用于稳定的 Elo 重放顺序）。 */
   attempted_at?: string | null;
+  /** 该题最近一次达标作答时间（ISO 字符串；独立于最高分时间，供遗忘衰减使用）。 */
+  last_passed_at?: string | null;
 }
 
 /** 节点能力分计算结果。 */
@@ -131,57 +133,83 @@ function parseTimestampMs(iso: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function earlierTimestamp(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  const aMs = parseTimestampMs(a);
+  const bMs = parseTimestampMs(b);
+  if (aMs !== null && bMs !== null) return aMs <= bMs ? a! : b!;
+  if (aMs !== null) return a!;
+  if (bMs !== null) return b!;
+  return a ?? b ?? null;
+}
+
+function laterTimestamp(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): string | null {
+  const aMs = parseTimestampMs(a);
+  const bMs = parseTimestampMs(b);
+  if (aMs !== null && bMs !== null) return aMs >= bMs ? a! : b!;
+  if (aMs !== null) return a!;
+  if (bMs !== null) return b!;
+  return a ?? b ?? null;
+}
+
 /**
  * 按题目去重防刷分：同一题保留最高得分率；得分率相同时优先 `primary` 与 `passed`，
- * 再保留较新的作答时间，最终按作答时间升序（空值靠后、同时间按 `problem_id` 字典序）排列。
+ * 最高分对应时间保留较早一次（保证重复刷同分不改变 Elo 重放顺序），同时独立追踪
+ * 最新一次达标时间 `last_passed_at` 供遗忘衰减使用。
  */
 export function deduplicateObservations(
   observations: readonly ProblemAbilityObservation[],
 ): ProblemAbilityObservation[] {
   const byProblem = new Map<string, ProblemAbilityObservation>();
   for (const raw of observations) {
+    const passed = Boolean(raw.passed);
     const normalized: ProblemAbilityObservation = {
       problem_id: raw.problem_id,
       role: raw.role,
       difficulty: clamp(raw.difficulty, 0, 100),
       score_ratio: clamp(raw.score_ratio, 0, 1),
-      passed: Boolean(raw.passed),
+      passed,
       attempted_at: raw.attempted_at ?? null,
+      last_passed_at: raw.last_passed_at ??
+        (passed ? (raw.attempted_at ?? null) : null),
     };
     const prev = byProblem.get(normalized.problem_id);
     if (!prev) {
       byProblem.set(normalized.problem_id, normalized);
       continue;
     }
-    const prevMs = parseTimestampMs(prev.attempted_at);
-    const nextMs = parseTimestampMs(normalized.attempted_at);
     const role: KnowledgeMappingRole =
       prev.role === "primary" || normalized.role === "primary"
         ? "primary"
         : "secondary";
-    const passed = prev.passed || normalized.passed;
+    const mergedPassed = prev.passed || normalized.passed;
     const betterScore = normalized.score_ratio > prev.score_ratio;
-    const tiedScoreNewer = normalized.score_ratio === prev.score_ratio &&
-      nextMs !== null && (prevMs === null || nextMs > prevMs);
-    const chosen = betterScore || tiedScoreNewer ? normalized : prev;
-    // 若两侧均有达标，保留最新的达标时间戳，便于读时遗忘衰减准确反映最近练习。
-    let attemptedAt = chosen.attempted_at;
-    if (prev.passed && normalized.passed) {
-      if (prevMs !== null && nextMs !== null) {
-        attemptedAt = nextMs >= prevMs
-          ? normalized.attempted_at
-          : prev.attempted_at;
-      } else {
-        attemptedAt = normalized.attempted_at ?? prev.attempted_at;
-      }
-    }
+    const tiedScore = normalized.score_ratio === prev.score_ratio;
+    const chosen = betterScore ? normalized : prev;
+    // 得分未提升时保持首次达到最高分的时间，避免重复刷题导致 Elo 重放顺序漂移。
+    const attemptedAt = betterScore
+      ? normalized.attempted_at ?? null
+      : tiedScore
+      ? earlierTimestamp(prev.attempted_at, normalized.attempted_at)
+      : prev.attempted_at ?? null;
+    // 达标时间独立取最新值，让复习通过（哪怕低于历史最高分）也能刷新遗忘时钟。
+    const lastPassedAt = laterTimestamp(
+      prev.last_passed_at,
+      normalized.last_passed_at,
+    );
     byProblem.set(normalized.problem_id, {
       problem_id: normalized.problem_id,
       role,
       difficulty: chosen.difficulty,
       score_ratio: Math.max(prev.score_ratio, normalized.score_ratio),
-      passed,
+      passed: mergedPassed,
       attempted_at: attemptedAt,
+      last_passed_at: lastPassedAt,
     });
   }
 
@@ -235,14 +263,15 @@ export function computeNodeAbility(
     if (obs.passed) {
       evidenceWeight += wRole;
       passedWeight += wRole;
-      const ms = parseTimestampMs(obs.attempted_at);
+      const passTime = obs.last_passed_at ?? obs.attempted_at ?? null;
+      const ms = parseTimestampMs(passTime);
       if (ms !== null) {
         if (lastPassedMs === null || ms > lastPassedMs) {
           lastPassedMs = ms;
-          lastPassedAt = obs.attempted_at!;
+          lastPassedAt = passTime!;
         }
-      } else if (lastPassedAt === null && obs.attempted_at) {
-        lastPassedAt = obs.attempted_at;
+      } else if (lastPassedAt === null && passTime) {
+        lastPassedAt = passTime;
       }
     } else {
       evidenceWeight += wRole * ATTEMPT_EVIDENCE_FACTOR;

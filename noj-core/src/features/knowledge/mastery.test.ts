@@ -250,9 +250,12 @@ async function mkScore(input: {
   userId: string;
   score: number;
   contestId?: string | null;
+  createdAt?: string;
+  finishedAt?: string | null;
 }): Promise<void> {
   const d = db();
-  const now = NOW();
+  const createdAt = input.createdAt ?? NOW();
+  const finishedAt = input.finishedAt ?? createdAt;
   const submissionId = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   await d.insert(submissions).values({
@@ -264,16 +267,16 @@ async function mkScore(input: {
     contest_id: input.contestId ?? null,
     language: "c",
     code: "",
-    created_at: now,
+    created_at: createdAt,
   } as never);
   await d.execute(sql`
     INSERT INTO evaluation_attempts
       (id, submission_id, problem_id, sequence, source, state,
-       result_kind, score, accepted, created_at)
+       result_kind, score, accepted, created_at, finished_at)
     VALUES (${attemptId}, ${submissionId}, ${input.problemId}, 0, 'initial',
             'finished', 'graded', ${input.score}, ${
     input.score >= 10000
-  }, ${now})
+  }, ${finishedAt}, ${finishedAt})
   `);
   await d.update(submissions).set({ effective_attempt_id: attemptId })
     .where(eq(submissions.id, submissionId));
@@ -1153,5 +1156,146 @@ Deno.test({
       404,
     );
     await updateSetting("knowledge_enabled", true, admin());
+  },
+});
+
+Deno.test({
+  name:
+    "knowledge mastery: 复习低分达标刷新遗忘时钟、重测不重置时钟且同分重刷稳定 Elo",
+  sanitizeResources: false,
+  sanitizeOps: false,
+  fn: async () => {
+    await resetDbForTest();
+    const f = await baseFixture("kg-mastery-clock");
+    await seedGraph({
+      areas: [{ id: "k", sort: 0 }],
+      nodes: [{ id: "k.n", area: "k" }],
+    });
+    const p1 = await mkProblem({
+      domainId: f.domain.id,
+      authorId: f.author,
+      number: 1,
+      nodeId: "k.n",
+      calibrated: 25,
+    });
+    const p2 = await mkProblem({
+      domainId: f.domain.id,
+      authorId: f.author,
+      number: 2,
+      nodeId: "k.n",
+      calibrated: 50,
+    });
+    const p3 = await mkProblem({
+      domainId: f.domain.id,
+      authorId: f.author,
+      number: 3,
+      nodeId: "k.n",
+      calibrated: 50,
+    });
+    const u = await mkUser();
+    await addDomainMember(db(), f.domain.id, u);
+
+    const oldTime = new Date(Date.now() - 120 * 86_400_000).toISOString();
+    const t2 = new Date(Date.now() - 119 * 86_400_000).toISOString();
+    const t3 = new Date(Date.now() - 118 * 86_400_000).toISOString();
+    const recentTime = new Date(Date.now() - 60_000).toISOString();
+
+    // 1. 管理员重测旧提交（evaluation_attempts.finished_at 为现在，但源提交在 120 天前）
+    //    不得重置遗忘时钟，节点应保持待复习。
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p1.bindingId,
+      problemId: p1.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: oldTime,
+      finishedAt: recentTime,
+    });
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p2.bindingId,
+      problemId: p2.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: t2,
+      finishedAt: recentTime,
+    });
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p3.bindingId,
+      problemId: p3.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: t3,
+      finishedAt: recentTime,
+    });
+    await recomputeUserMastery(u);
+    const beforeRepeat = await readMyMastery(u, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    const itemBefore = beforeRepeat.items.find((it) => it.node_id === "k.n")!;
+    assertEquals(itemBefore.state, "mastered");
+    assertEquals(itemBefore.last_passed_at, t3);
+    assertEquals(itemBefore.needs_review, true);
+
+    // 2. 同分重刷 p1（d=25, 60%）：Elo 重放顺序与 ability_score 不得退化，且 last_passed_at 刷新。
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p1.bindingId,
+      problemId: p1.problemId,
+      userId: u,
+      score: 6000,
+      createdAt: recentTime,
+    });
+    await recomputeUserMastery(u);
+    const afterSameScore = await readMyMastery(u, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    const itemAfterSame = afterSameScore.items.find((it) =>
+      it.node_id === "k.n"
+    )!;
+    assertEquals(itemAfterSame.ability_score, itemBefore.ability_score);
+    assertEquals(itemAfterSame.state, "mastered");
+    assertEquals(itemAfterSame.last_passed_at, recentTime);
+    assertEquals(itemAfterSame.needs_review, false);
+
+    // 3. 历史满分 100%，随后以较低但仍达标的 70% 复习：last_passed_at 应刷新到最新复习时间。
+    const u2 = await mkUser();
+    await addDomainMember(db(), f.domain.id, u2);
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p2.bindingId,
+      problemId: p2.problemId,
+      userId: u2,
+      score: 10000,
+      createdAt: oldTime,
+    });
+    await recomputeUserMastery(u2);
+    const u2Before = await readMyMastery(u2, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    assertEquals(
+      u2Before.items.find((it) => it.node_id === "k.n")!.needs_review,
+      true,
+    );
+    await mkScore({
+      domainId: f.domain.id,
+      bindingId: p2.bindingId,
+      problemId: p2.problemId,
+      userId: u2,
+      score: 7000,
+      createdAt: recentTime,
+    });
+    await recomputeUserMastery(u2);
+    const u2After = await readMyMastery(u2, {
+      id: f.domain.id,
+      slug: f.domain.slug,
+    });
+    const u2Item = u2After.items.find((it) => it.node_id === "k.n")!;
+    assertEquals(u2Item.last_passed_at, recentTime);
+    assertEquals(u2Item.needs_review, false);
   },
 });
