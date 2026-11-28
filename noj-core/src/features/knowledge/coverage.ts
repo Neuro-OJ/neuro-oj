@@ -1,7 +1,7 @@
 /**
  * 知识图谱覆盖度面板（P3，聚合 SQL 一次取数，不逐节点查询）。
  *
- * 从 `mastery.ts` 拆出以保持单文件规模低于门禁上限；仍由 `mastery.ts` 与 `index.ts` 重新导出。
+ * 从 `mastery.ts` 拆出以保持单文件规模低于门禁上限；由 `index.ts` 对外导出，避免循环依赖。
  */
 import { sql } from "drizzle-orm";
 import { unwrapRows } from "../../shared/base/sql-rows.ts";

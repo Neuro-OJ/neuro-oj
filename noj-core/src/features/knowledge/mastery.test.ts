@@ -48,7 +48,6 @@ import {
   knowledgeMasteryHandler,
   MASTERY_TASK_TYPE,
   rankFrontierNodes,
-  readCoverage,
   readMyMastery,
   readMyRecommendations,
   recomputeRecentlyUnprotectedMastery,
@@ -56,6 +55,7 @@ import {
   ROOT_CAUSE_THRESHOLD,
   upperThirdThreshold,
 } from "./mastery.ts";
+import { readCoverage } from "./coverage.ts";
 import { pickNextLadderItem } from "./difficulty.ts";
 import { type KnowledgeGraphNode } from "./graph.ts";
 

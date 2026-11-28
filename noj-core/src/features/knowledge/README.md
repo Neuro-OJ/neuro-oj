@@ -17,7 +17,7 @@
 | `pass-ratio.ts`           | 出题人按题覆盖及格线（`pass_ratio_override`），题目编辑权限 + 审计                         |
 | `objective-full-score.ts` | 客观题套卷满分（作答版本小题数 × 100，`evaluation_attempts` 记分口径）                     |
 | `ability.ts`              | 纯计算内核：轻量级 Elo 能力分、主/次权重、同题去重、稀疏防虚高三态与读时遗忘衰减           |
-| `coverage.ts`             | 覆盖度面板聚合查询（从 `mastery.ts` 拆出，由 `mastery.ts` / `index.ts` 重导出）            |
+| `coverage.ts`             | 覆盖度面板聚合查询（从 `mastery.ts` 拆出，由 `index.ts` 统一对外导出）                     |
 | `coach.ts`                | P4 教练视角：班级掌握矩阵 `readClassMastery`、按知识点挑题 `readKnowledgePick`（均匀抽样） |
 | `routes.ts`               | API：图谱/节点只读、题目挂载、`/admin/knowledge/reviews` 审核、教练视角接口                |
 | `ability.test.ts`         | 纯函数单测（连续得分、难题/水题涨幅、主/次权重、去重防刷分、稀疏防虚高、遗忘衰减、边界）   |

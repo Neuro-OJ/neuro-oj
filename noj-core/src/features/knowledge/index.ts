@@ -102,9 +102,12 @@ export {
   SPARSE_MASTERED_MIN_EVIDENCE,
 } from "./ability.ts";
 export {
-  computeNodeMastery,
   type CoverageNodeItem,
   type CoverageView,
+  readCoverage,
+} from "./coverage.ts";
+export {
+  computeNodeMastery,
   diagnoseNode,
   DIAGNOSIS_MAX_ITEMS,
   type DiagnosisItem,
@@ -122,7 +125,6 @@ export {
   type NodeMasteryInput,
   type NodeMasteryResult,
   rankFrontierNodes,
-  readCoverage,
   readMyMastery,
   readMyRecommendations,
   type Recommendation,

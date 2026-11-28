@@ -56,11 +56,6 @@ import {
 } from "./difficulty.ts";
 import { type KnowledgeGraphNode, readKnowledgeGraph } from "./graph.ts";
 import { objectiveFullScore } from "./objective-full-score.ts";
-export {
-  type CoverageNodeItem,
-  type CoverageView,
-  readCoverage,
-} from "./coverage.ts";
 
 export {
   computeNodeMastery,

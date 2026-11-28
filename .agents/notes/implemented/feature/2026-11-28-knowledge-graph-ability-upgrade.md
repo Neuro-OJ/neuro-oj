@@ -19,7 +19,7 @@ Status: implemented
 
 1. **模块拆分守住门禁**：
    - 新建无数据库依赖的纯函数模块 `noj-core/src/features/knowledge/ability.ts`，承载同题去重、主/次权重、轻量级 Elo、有效证据量、三态收敛与读时遗忘衰减；
-   - 将覆盖度面板拆至 `noj-core/src/features/knowledge/coverage.ts`（`mastery.ts` 与 `index.ts` 原样 re-export，外部调用方零破坏），保证所有源文件均低于 1200 行门禁。
+   - 将覆盖度面板拆至 `noj-core/src/features/knowledge/coverage.ts`（由 `index.ts` 统一对外导出，避免 `coverage.ts <-> mastery.ts` 运行时循环依赖），保证所有源文件均低于 1200 行门禁。
 
 2. **Schema 与安全迁移**：
    - 在 `user_knowledge_mastery` 扩展三个标量列并经 `deno task db:generate` 生成迁移 `0147_worried_silver_surfer.sql`：
