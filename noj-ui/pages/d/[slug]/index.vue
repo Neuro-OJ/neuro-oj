@@ -107,13 +107,18 @@ useSeoMeta({ title: () => domain.value?.name ?? 'Neuro OJ' });
         </div>
       </section>
 
-      <!-- 主体：左侧评测流，右侧公告与教学待办 -->
+      <!-- 主体：左侧推荐题目与评测流，右侧公告、比赛、题单与教学待办 -->
       <div class="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_400px]">
-        <HomeLatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
+        <div class="space-y-3">
+          <HomeRecommendedProblemsCard :domain-slug="domain.slug" />
+          <HomeLatestSubmissions :domain-slug="domain.slug" :initial-data="activity" />
+        </div>
         <div class="space-y-3">
           <div class="overflow-hidden rounded-lg border border-border bg-bg-panel empty:hidden">
             <AnnouncementSection :domain-slug="domain.slug" :initial-data="announcements" />
           </div>
+          <HomeContestsCard :domain-slug="domain.slug" />
+          <HomeTrainingsCard :domain-slug="domain.slug" />
           <div class="overflow-hidden rounded-lg border border-border bg-bg-panel empty:hidden">
             <WorkspaceHomeContent :initial-data="dashboard" />
           </div>
